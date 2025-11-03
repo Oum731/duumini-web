@@ -12,7 +12,10 @@ function imgUrl(u?: string | null) {
   return u;
 }
 function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(Number(n || 0));
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "MAD",
+  }).format(Number(n || 0));
 }
 function shortText(s?: string | null, max = 200) {
   const t = (s || "").trim();
@@ -20,9 +23,13 @@ function shortText(s?: string | null, max = 200) {
   return t.slice(0, max - 1) + "…";
 }
 function buildProductUrl(p: Product) {
-  const base = "https://duumini.com";
-  const path = p.slug ? `/products/${p.slug}` : `/products/${p.id}`;
-  return `${base}${path}`;
+  const base =
+    typeof window !== "undefined" && window.location.origin
+      ? window.location.origin
+      : "https://duumini.com";
+
+  // ✅ On utilise toujours l’ID pour être compatible avec /api/products/:id
+  return `${base}/products/${p.id}`;
 }
 
 /* ===== Component ===== */
@@ -33,8 +40,14 @@ export default function ProductCard({ product, onAdd }: Props) {
   const coverUrl = imgUrl(cover);
   const tag =
     product.sub_category === "food"
-      ? { text: "Food", cls: "bg-success-subtle text-success-emphasis border-success-subtle" }
-      : { text: "Market", cls: "bg-primary-subtle text-primary-emphasis border-primary-subtle" };
+      ? {
+          text: "Food",
+          cls: "bg-success-subtle text-success-emphasis border-success-subtle",
+        }
+      : {
+          text: "Market",
+          cls: "bg-primary-subtle text-primary-emphasis border-primary-subtle",
+        };
 
   const { add } = useCart();
   const [open, setOpen] = useState(false);
@@ -54,23 +67,40 @@ export default function ProductCard({ product, onAdd }: Props) {
         const resp = await fetch(coverUrl, { mode: "cors" });
         const blob = await resp.blob();
         const ext = blob.type.split("/")[1] || "jpg";
-        const file = new File([blob], `${(product.slug || `product-${product.id}`)}.${ext}`, {
-          type: blob.type || "image/jpeg",
-          lastModified: Date.now(),
-        });
+        const file = new File(
+          [blob],
+          `${product.slug || `product-${product.id}`}.${ext}`,
+          {
+            type: blob.type || "image/jpeg",
+            lastModified: Date.now(),
+          }
+        );
         // @ts-ignore
-        if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        if (
+          typeof navigator.canShare === "function" &&
           // @ts-ignore
-          await navigator.share({ title: product.name, text: shareText, url: shareUrl, files: [file] });
+          navigator.canShare({ files: [file] })
+        ) {
+          // @ts-ignore
+          await navigator.share({
+            title: product.name,
+            text: shareText,
+            url: shareUrl,
+            files: [file],
+          });
           return;
         }
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   return (
@@ -82,24 +112,53 @@ export default function ProductCard({ product, onAdd }: Props) {
               src={coverUrl}
               alt={product.name}
               className="w-100"
-              style={{ aspectRatio: "1 / 1", objectFit: "cover", borderTopLeftRadius: ".5rem", borderTopRightRadius: ".5rem" }}
+              style={{
+                aspectRatio: "1 / 1",
+                objectFit: "cover",
+                borderTopLeftRadius: ".5rem",
+                borderTopRightRadius: ".5rem",
+              }}
               loading="lazy"
             />
           ) : (
-            <div className="w-100 bg-light" style={{ aspectRatio: "1 / 1", borderTopLeftRadius: ".5rem", borderTopRightRadius: ".5rem" }} />
+            <div
+              className="w-100 bg-light"
+              style={{
+                aspectRatio: "1 / 1",
+                borderTopLeftRadius: ".5rem",
+                borderTopRightRadius: ".5rem",
+              }}
+            />
           )}
-          <span className={`badge position-absolute top-0 start-0 m-2 border ${tag.cls}`} style={{ backdropFilter: "blur(4px)" }}>
+          <span
+            className={`badge position-absolute top-0 start-0 m-2 border ${tag.cls}`}
+            style={{ backdropFilter: "blur(4px)" }}
+          >
             {tag.text}
           </span>
         </div>
 
         <div className="card-body d-flex flex-column">
-          <h3 className="h6 mb-1 text-truncate" title={product.name}>{product.name}</h3>
+          <h3 className="h6 mb-1 text-truncate" title={product.name}>
+            {product.name}
+          </h3>
           <div className="fw-semibold mb-2">{moneyMAD(product.price)}</div>
 
           <div className="mt-auto d-flex gap-2">
-            <button type="button" className="btn btn-outline-dark btn-sm flex-fill" onClick={() => setOpen(true)}>Voir</button>
-            <button className="btn btn-dark btn-sm flex-fill" onClick={handleAdd} title="Ajouter au panier">+ Panier</button>
+            <button
+              type="button"
+              className="btn btn-outline-dark btn-sm flex-fill"
+              onClick={() => setOpen(true)}
+            >
+              Voir
+            </button>
+            <button
+              className="btn btn-dark btn-sm flex-fill"
+              onClick={handleAdd}
+              title="Ajouter au panier"
+            >
+              + Panier
+            </button>
           </div>
         </div>
       </div>
@@ -112,42 +171,66 @@ export default function ProductCard({ product, onAdd }: Props) {
           role="dialog"
           aria-modal="true"
           style={{ background: "rgba(0,0,0,.35)" }}
-          onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
         >
-          <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg modal-fullscreen-sm-down" role="document">
+          <div
+            className="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg modal-fullscreen-sm-down"
+            role="document"
+          >
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">{product.name}</h5>
-                <button className="btn-close" aria-label="Fermer" onClick={() => setOpen(false)} />
+                <button
+                  className="btn-close"
+                  aria-label="Fermer"
+                  onClick={() => setOpen(false)}
+                />
               </div>
 
               <div className="modal-body">
                 <div className="row g-3 align-items-start">
                   <div className="col-12 col-md-6">
                     {coverUrl ? (
-                      <img src={coverUrl} alt={product.name} className="img-fluid rounded" style={{ width: "100%", height: "auto" }} />
+                      <img
+                        src={coverUrl}
+                        alt={product.name}
+                        className="img-fluid rounded"
+                        style={{ width: "100%", height: "auto" }}
+                      />
                     ) : (
-                      <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
+                      <div
+                        className="bg-light rounded"
+                        style={{ width: "100%", paddingTop: "100%" }}
+                      />
                     )}
                   </div>
 
                   <div className="col-12 col-md-6 d-flex flex-column">
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <span className="h5 m-0">{moneyMAD(product.price)}</span>
-                      <span className={`badge border ${tag.cls}`}>{tag.text}</span>
+                      <span className={`badge border ${tag.cls}`}>
+                        {tag.text}
+                      </span>
                     </div>
 
                     {product.description ? (
-                      <p className="text-muted">{shortText(product.description, 320)}</p>
+                      <p className="text-muted">
+                        {shortText(product.description, 320)}
+                      </p>
                     ) : (
                       <p className="text-muted">Aucune description fournie.</p>
                     )}
 
-                    {/* ⛔️ Pas de nom de boutique ici */}
-
                     <div className="mt-auto d-grid gap-2">
-                      <button className="btn btn-dark" onClick={handleAdd}>+ Ajouter au panier</button>
-                      <button className="btn btn-outline-secondary" onClick={shareProductWithImage}>
+                      <button className="btn btn-dark" onClick={handleAdd}>
+                        + Ajouter au panier
+                      </button>
+                      <button
+                        className="btn btn-outline-secondary"
+                        onClick={shareProductWithImage}
+                      >
                         {copied ? "Lien copié" : "Partager"}
                       </button>
                     </div>
@@ -158,7 +241,17 @@ export default function ProductCard({ product, onAdd }: Props) {
                   <div className="mt-3">
                     <div className="d-flex gap-2 flex-wrap">
                       {product.images.slice(0, 6).map((im, i) => (
-                        <img key={i} src={imgUrl(im.url)} alt={`${product.name} ${i + 1}`} className="rounded" style={{ width: 72, height: 72, objectFit: "cover" }} />
+                        <img
+                          key={i}
+                          src={imgUrl(im.url)}
+                          alt={`${product.name} ${i + 1}`}
+                          className="rounded"
+                          style={{
+                            width: 72,
+                            height: 72,
+                            objectFit: "cover",
+                          }}
+                        />
                       ))}
                     </div>
                   </div>
@@ -166,7 +259,12 @@ export default function ProductCard({ product, onAdd }: Props) {
               </div>
 
               <div className="modal-footer d-flex flex-wrap gap-2">
-                <button className="btn btn-outline-dark ms-auto" onClick={() => setOpen(false)}>Fermer</button>
+                <button
+                  className="btn btn-outline-dark ms-auto"
+                  onClick={() => setOpen(false)}
+                >
+                  Fermer
+                </button>
               </div>
             </div>
           </div>
