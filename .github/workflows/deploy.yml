@@ -8,10 +8,23 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    # 🌍 Variables d'environnement globales au job (optionnel)
+    env:
+      # Exemple pour Vite :
+        VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ✅ Configure la version de Node AVANT d'afficher les infos
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # ℹ️ Affiche les versions de Node & npm (debug)
       - name: Node info
         run: |
           node -v
@@ -20,18 +33,13 @@ jobs:
       # ✅ Vérifie que les secrets indispensables existent
       - name: Preflight secrets
         run: |
-          test -n "${{ secrets.FTP_HOST }}" || (echo "❌ Missing FTP_HOST" && exit 1)
-          test -n "${{ secrets.FTP_USERNAME }}" || (echo "❌ Missing FTP_USERNAME" && exit 1)
-          test -n "${{ secrets.FTP_PASSWORD }}" || (echo "❌ Missing FTP_PASSWORD" && exit 1)
+          set -e
+          [ -n "${{ secrets.FTP_HOST }}" ] || (echo "❌ Missing FTP_HOST" && exit 1)
+          [ -n "${{ secrets.FTP_USERNAME }}" ] || (echo "❌ Missing FTP_USERNAME" && exit 1)
+          [ -n "${{ secrets.FTP_PASSWORD }}" ] || (echo "❌ Missing FTP_PASSWORD" && exit 1)
           echo "✅ Secrets présents"
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
-      # ✅ Installe sans dépendances optionnelles (évite fsevents sur Linux)
+      # ✅ Installe sans dépendances optionnelles (évite fsevents, chokidar, etc. sur Linux)
       - name: Install deps (omit optional)
         run: |
           if [ -f package-lock.json ]; then
@@ -40,14 +48,11 @@ jobs:
             npm install --omit=optional
           fi
 
-      # ⚠️ Ajoute tes variables build si besoin:
-      # env:
-      #   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
-
+      # 🏗 Build du projet
       - name: Build
         run: npm run build
 
-      # 🔎 Archive dist en artifact (debug)
+      # 🔎 Archive dist en artifact (pratique pour debug)
       - name: Upload dist artifact (debug)
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,7 +60,7 @@ jobs:
           name: dist
           path: dist
 
-      # 🚀 Déploiement FTP
+      # 🚀 Déploiement FTP vers Nindohost
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
