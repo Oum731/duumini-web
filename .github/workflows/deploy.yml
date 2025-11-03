@@ -44,13 +44,14 @@ jobs:
           echo "✅ Secrets présents"
 
       # ✅ Install deps sans dépendances optionnelles
-      - name: Install deps (omit optional)
+      - name: Install deps
         run: |
           if [ -f package-lock.json ]; then
-            npm ci --omit=optional
+            npm ci
           else
-            npm install --omit=optional
+            npm install
           fi
+
 
       # 🏗 Build du projet
       - name: Build
