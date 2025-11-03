@@ -31,13 +31,13 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      # ✅ Si pas de package-lock.json, bascule sur npm install
-      - name: Install deps (ci or install)
+      # ✅ Installe sans dépendances optionnelles (évite fsevents sur Linux)
+      - name: Install deps (omit optional)
         run: |
           if [ -f package-lock.json ]; then
-            npm ci
+            npm ci --omit=optional
           else
-            npm install
+            npm install --omit=optional
           fi
 
       # ⚠️ Ajoute tes variables build si besoin:
@@ -47,7 +47,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      # 🔎 Archive dist en artifact (pratique pour vérifier le build)
+      # 🔎 Archive dist en artifact (debug)
       - name: Upload dist artifact (debug)
         if: always()
         uses: actions/upload-artifact@v4
@@ -65,9 +65,4 @@ jobs:
           port: ${{ secrets.FTP_PORT || 21 }}
           local-dir: dist/
           server-dir: ${{ secrets.FTP_DIR || '/public_html/' }}
-          # Ajoute des exclusions si besoin (exemples) :
-          # exclude: |
-          #   **/.git*
-          #   **/.DS_Store
-          #   **/node_modules/**
           dangerous-clean-slate: false
