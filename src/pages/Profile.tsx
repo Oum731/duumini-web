@@ -92,10 +92,14 @@ function validateRegisterForm(params: {
   commune: string;
 }) {
   const errors: Record<string, string> = {};
-  if (!rePhoneMA.test(params.phone.trim())) {
+  if (!params.phone.trim()) {
+    errors.phone = "Téléphone requis.";
+  } else if (!rePhoneMA.test(params.phone.trim())) {
     errors.phone = "Format attendu: +2126XXXXXXXX (ex: +212600000000)";
   }
-  if (!rePassword.test(params.password)) {
+  if (!params.password) {
+    errors.password = "Mot de passe requis.";
+  } else if (!rePassword.test(params.password)) {
     errors.password = "Au moins 8 caractères, avec 1 lettre et 1 chiffre.";
   }
   if (!params.quartierText.trim()) {
@@ -113,7 +117,9 @@ function validateEditForm(params: {
   commune: string;
 }) {
   const errors: Record<string, string> = {};
-  if (!rePhoneMA.test(params.phone.trim())) {
+  if (!params.phone.trim()) {
+    errors.phone = "Téléphone requis.";
+  } else if (!rePhoneMA.test(params.phone.trim())) {
     errors.phone = "Format attendu: +2126XXXXXXXX (ex: +212600000000)";
   }
   if (!params.quartierText.trim()) {
@@ -264,7 +270,7 @@ function PasswordField({
       <button
         type="button"
         className="btn btn-outline-secondary"
-        onClick={() => setShow(s => !s)}
+        onClick={() => setShow((s) => !s)}
         aria-label={show ? "Masquer le mot de passe" : "Afficher le mot de passe"}
         title={show ? "Masquer" : "Afficher"}
       >
@@ -298,6 +304,7 @@ export default function ProfilePage() {
   /* ====== Forms: Login ====== */
   const [loginPhone, setLoginPhone] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
 
   /* ====== Forms: Register ====== */
   const [regPhone, setRegPhone] = useState("");
@@ -309,11 +316,13 @@ export default function ProfilePage() {
   const [regQuartierText, setRegQuartierText] = useState(""); // ← libre
   const [regSexe, setRegSexe] = useState<"M" | "F">("M");
   const [regAccept, setRegAccept] = useState(false); // ✅ Acceptation CGU/Privacy
+  const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const communeRegisterValue =
     regCommune === "__other__" ? (regCommuneOther.trim() || "") : regCommune;
 
   /* ====== Forms: Forgot ====== */
   const [forgotPhone, setForgotPhone] = useState("");
+  const [forgotErrors, setForgotErrors] = useState<Record<string, string>>({});
 
   /* ====== Forms: Edit (user connecté) ====== */
   const [editing, setEditing] = useState(false);
@@ -328,6 +337,7 @@ export default function ProfilePage() {
   const [editSexe, setEditSexe] = useState<"M" | "F">(
     ((user as any)?.sexe as "M" | "F") || "M"
   );
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const communeEditValue =
     editCommune === "__other__" ? (editCommuneOther.trim() || "") : editCommune;
 
@@ -366,10 +376,27 @@ export default function ProfilePage() {
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setErr(null);
+    const errors: Record<string, string> = {};
+
+    if (!loginPhone.trim()) {
+      errors.phone = "Téléphone requis.";
+    } else if (!rePhoneMA.test(loginPhone.trim())) {
+      errors.phone = "Format attendu: +2126XXXXXXXX (ex: +212600000000)";
+    }
+    if (!loginPassword) {
+      errors.password = "Mot de passe requis.";
+    }
+
+    if (Object.keys(errors).length) {
+      setLoginErrors(errors);
+      setErr(Object.values(errors)[0]);
+      return;
+    }
+
+    setLoginErrors({});
     try {
-      const u = await login(loginPhone, loginPassword);
+      const u = await login(loginPhone.trim(), loginPassword);
       setUser(u);
-      // Redirection immédiate vers l'accueil après connexion
       navigate("/", { replace: true });
     } catch (e: any) {
       setErr(e.message || "Erreur de connexion");
@@ -386,6 +413,7 @@ export default function ProfilePage() {
       quartierText: regQuartierText,
       commune: communeRegisterValue,
     });
+    setRegErrors(errors);
     if (Object.keys(errors).length) {
       setErr(Object.values(errors)[0]);
       return;
@@ -399,6 +427,7 @@ export default function ProfilePage() {
       return;
     }
 
+    setRegErrors({});
     try {
       await register({
         phone: regPhone.trim(),
@@ -412,7 +441,6 @@ export default function ProfilePage() {
       } as any);
       const u = await login(regPhone.trim(), regPassword);
       setUser(u);
-      // Redirection immédiate vers l'accueil après création + connexion
       navigate("/", { replace: true });
     } catch (e: any) {
       setErr(e.message || "Erreur d'inscription");
@@ -423,7 +451,6 @@ export default function ProfilePage() {
     await logout();
     setUser(null);
     setEditing(false);
-    // Retour sur l’onglet Connexion
     navigate("/profile?tab=login", { replace: true });
   }
 
@@ -436,11 +463,13 @@ export default function ProfilePage() {
       quartierText: editQuartierText,
       commune: communeEditValue,
     });
+    setEditErrors(errors);
     if (Object.keys(errors).length) {
       setErr(Object.values(errors)[0]);
       return;
     }
 
+    setEditErrors({});
     try {
       const u = await updateProfile({
         first_name: firstName,
@@ -462,14 +491,24 @@ export default function ProfilePage() {
   async function handleForgot(e: FormEvent) {
     e.preventDefault();
     setErr(null);
-    const phone = forgotPhone.trim();
-    if (!rePhoneMA.test(phone)) {
-      setErr("Téléphone invalide. Format attendu: +2126XXXXXXXX");
+    const phoneVal = forgotPhone.trim();
+    const errors: Record<string, string> = {};
+    if (!phoneVal) {
+      errors.phone = "Téléphone requis.";
+    } else if (!rePhoneMA.test(phoneVal)) {
+      errors.phone = "Téléphone invalide. Format attendu: +2126XXXXXXXX";
+    }
+
+    if (Object.keys(errors).length) {
+      setForgotErrors(errors);
+      setErr(Object.values(errors)[0]);
       return;
     }
+
+    setForgotErrors({});
     try {
-      await apiOtpStart(phone, "reset");
-      navigate(`/verify?phone=${encodeURIComponent(phone)}&purpose=reset`);
+      await apiOtpStart(phoneVal, "reset");
+      navigate(`/verify?phone=${encodeURIComponent(phoneVal)}&purpose=reset`);
     } catch (e: any) {
       setErr(e?.message || "Impossible d'envoyer le code de réinitialisation.");
     }
@@ -539,15 +578,23 @@ export default function ProfilePage() {
                 <div className="card-body">
                   <h2 className="h6">Réinitialiser le mot de passe</h2>
                   <form className="mt-2" onSubmit={handleForgot}>
-                    <label className="form-label">Téléphone</label>
+                    <label className="form-label">
+                      Téléphone <span className="text-danger">*</span>
+                    </label>
                     <input
                       type="tel"
-                      className="form-control"
+                      className={`form-control ${forgotErrors.phone ? "is-invalid" : ""}`}
                       placeholder="+2126..."
                       value={forgotPhone}
-                      onChange={(e) => setForgotPhone(e.target.value)}
+                      onChange={(e) => {
+                        setForgotPhone(e.target.value);
+                        setForgotErrors((prev) => ({ ...prev, phone: "" }));
+                      }}
                       required
                     />
+                    {forgotErrors.phone && (
+                      <div className="invalid-feedback">{forgotErrors.phone}</div>
+                    )}
                     <div className="d-grid mt-3">
                       <button className="btn btn-dark" type="submit">
                         Envoyer
@@ -593,20 +640,23 @@ export default function ProfilePage() {
 
                     <div className="col-12 col-md-6">
                       <label className="form-label d-flex align-items-center gap-2">
-                        <Phone size={16} /> Téléphone
+                        <Phone size={16} /> Téléphone <span className="text-danger">*</span>
                       </label>
                       <input
                         type="tel"
                         inputMode="tel"
-                        className={`form-control ${phone && !rePhoneMA.test(phone) ? "is-invalid" : ""}`}
+                        className={`form-control ${editErrors.phone ? "is-invalid" : ""}`}
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) => {
+                          setPhone(e.target.value);
+                          setEditErrors((prev) => ({ ...prev, phone: "" }));
+                        }}
                         required
                         placeholder="+2126XXXXXXXX"
                         autoComplete="tel"
                       />
-                      {phone && !rePhoneMA.test(phone) && (
-                        <div className="invalid-feedback">Format: +2126XXXXXXXX</div>
+                      {editErrors.phone && (
+                        <div className="invalid-feedback">{editErrors.phone}</div>
                       )}
                     </div>
 
@@ -618,10 +668,14 @@ export default function ProfilePage() {
 
                     {/* Commune (modal) */}
                     <div className="col-12 col-md-6">
-                      <label className="form-label">Commune</label>
+                      <label className="form-label">
+                        Commune <span className="text-danger">*</span>
+                      </label>
                       <button
                         type="button"
-                        className="form-select text-start"
+                        className={`form-select text-start ${
+                          editErrors.commune ? "border border-danger" : ""
+                        }`}
                         onClick={() => setOpenEditCommune(true)}
                       >
                         {editCommune === "__other__" ? "Autre…" : editCommune}
@@ -631,8 +685,16 @@ export default function ProfilePage() {
                           className="form-control mt-2"
                           placeholder="Saisir votre commune"
                           value={editCommuneOther}
-                          onChange={(e) => setEditCommuneOther(e.target.value)}
+                          onChange={(e) => {
+                            setEditCommuneOther(e.target.value);
+                            setEditErrors((prev) => ({ ...prev, commune: "" }));
+                          }}
                         />
+                      )}
+                      {editErrors.commune && (
+                        <div className="text-danger small mt-1">
+                          {editErrors.commune}
+                        </div>
                       )}
                       <Modal
                         open={openEditCommune}
@@ -644,6 +706,8 @@ export default function ProfilePage() {
                           value={editCommune}
                           onSelect={(val) => {
                             setEditCommune(val as any);
+                            setEditCommuneOther("");
+                            setEditErrors((prev) => ({ ...prev, commune: "" }));
                             setOpenEditCommune(false);
                           }}
                           placeholder="Rechercher une commune…"
@@ -653,15 +717,25 @@ export default function ProfilePage() {
 
                     {/* Quartier (TEXTE LIBRE) */}
                     <div className="col-12 col-md-6">
-                      <label className="form-label">Quartier</label>
+                      <label className="form-label">
+                        Quartier <span className="text-danger">*</span>
+                      </label>
                       <input
-                        className="form-control"
+                        className={`form-control ${
+                          editErrors.quartier ? "is-invalid" : ""
+                        }`}
                         placeholder="Ex. Riad Oulfa, Terminus 20"
                         value={editQuartierText}
-                        onChange={(e) => setEditQuartierText(e.target.value)}
+                        onChange={(e) => {
+                          setEditQuartierText(e.target.value);
+                          setEditErrors((prev) => ({ ...prev, quartier: "" }));
+                        }}
                         autoCapitalize="words"
                         autoComplete="address-level3"
                       />
+                      {editErrors.quartier && (
+                        <div className="invalid-feedback">{editErrors.quartier}</div>
+                      )}
                       <div className="form-text">Saisissez librement votre quartier.</div>
                     </div>
 
@@ -815,35 +889,48 @@ export default function ProfilePage() {
                 <form onSubmit={handleLogin} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone
+                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
-                      className={`form-control ${loginPhone && !rePhoneMA.test(loginPhone) ? "is-invalid" : ""}`}
+                      className={`form-control ${loginErrors.phone ? "is-invalid" : ""}`}
                       placeholder="+2126..."
                       value={loginPhone}
-                      onChange={(e) => setLoginPhone(e.target.value)}
+                      onChange={(e) => {
+                        setLoginPhone(e.target.value);
+                        setLoginErrors((prev) => ({ ...prev, phone: "" }));
+                      }}
                       required
                     />
-                    {loginPhone && !rePhoneMA.test(loginPhone) && (
-                      <div className="invalid-feedback">Format: +2126XXXXXXXX</div>
+                    {loginErrors.phone && (
+                      <div className="invalid-feedback">{loginErrors.phone}</div>
                     )}
                   </div>
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Lock size={16} /> Mot de passe
+                      <Lock size={16} /> Mot de passe{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <PasswordField
                       id="loginPassword"
                       value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
+                      onChange={(e) => {
+                        setLoginPassword(e.target.value);
+                        setLoginErrors((prev) => ({ ...prev, password: "" }));
+                      }}
                       required
                       placeholder="Votre mot de passe"
                       autoComplete="current-password"
+                      invalid={!!loginErrors.password}
                     />
+                    {loginErrors.password && (
+                      <div className="invalid-feedback d-block">
+                        {loginErrors.password}
+                      </div>
+                    )}
                   </div>
                   <div className="col-12 d-grid">
-                    <button className="btn btn-dark" type="submit" disabled={!rePhoneMA.test(loginPhone)}>
+                    <button className="btn btn-dark" type="submit">
                       Se connecter
                     </button>
                   </div>
@@ -854,39 +941,46 @@ export default function ProfilePage() {
                 <form onSubmit={handleRegister} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone
+                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
-                      className={`form-control ${regPhone && !rePhoneMA.test(regPhone) ? "is-invalid" : ""}`}
+                      className={`form-control ${regErrors.phone ? "is-invalid" : ""}`}
                       placeholder="+2126..."
                       value={regPhone}
-                      onChange={(e) => setRegPhone(e.target.value)}
+                      onChange={(e) => {
+                        setRegPhone(e.target.value);
+                        setRegErrors((prev) => ({ ...prev, phone: "" }));
+                      }}
                       required
                     />
-                    {regPhone && !rePhoneMA.test(regPhone) && (
-                      <div className="invalid-feedback">Format: +2126XXXXXXXX</div>
+                    {regErrors.phone && (
+                      <div className="invalid-feedback">{regErrors.phone}</div>
                     )}
                   </div>
 
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Lock size={16} /> Mot de passe
+                      <Lock size={16} /> Mot de passe{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <PasswordField
                       id="registerPassword"
                       value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
+                      onChange={(e) => {
+                        setRegPassword(e.target.value);
+                        setRegErrors((prev) => ({ ...prev, password: "" }));
+                      }}
                       required
-                      invalid={!!(regPassword && !rePassword.test(regPassword))}
+                      invalid={!!regErrors.password}
                       placeholder="Créer un mot de passe"
                       autoComplete="new-password"
                     />
                     <div className="form-text">
                       Min 8 caractères, inclure au moins 1 lettre et 1 chiffre.
                     </div>
-                    {regPassword && !rePassword.test(regPassword) && (
-                      <div className="invalid-feedback d-block">Mot de passe trop faible.</div>
+                    {regErrors.password && (
+                      <div className="invalid-feedback d-block">{regErrors.password}</div>
                     )}
                   </div>
 
@@ -922,10 +1016,14 @@ export default function ProfilePage() {
 
                   {/* Commune (modal) */}
                   <div className="col-12 col-md-6">
-                    <label className="form-label">Commune</label>
+                    <label className="form-label">
+                      Commune <span className="text-danger">*</span>
+                    </label>
                     <button
                       type="button"
-                      className="form-select text-start"
+                      className={`form-select text-start ${
+                        regErrors.commune ? "border border-danger" : ""
+                      }`}
                       onClick={() => setOpenRegCommune(true)}
                     >
                       {regCommune === "__other__" ? "Autre…" : regCommune}
@@ -935,9 +1033,15 @@ export default function ProfilePage() {
                         className="form-control mt-2"
                         placeholder="Saisir votre commune"
                         value={regCommuneOther}
-                        onChange={(e) => setRegCommuneOther(e.target.value)}
+                        onChange={(e) => {
+                          setRegCommuneOther(e.target.value);
+                          setRegErrors((prev) => ({ ...prev, commune: "" }));
+                        }}
                         required
                       />
+                    )}
+                    {regErrors.commune && (
+                      <div className="text-danger small mt-1">{regErrors.commune}</div>
                     )}
 
                     <Modal
@@ -950,6 +1054,8 @@ export default function ProfilePage() {
                         value={regCommune}
                         onSelect={(val) => {
                           setRegCommune(val as any);
+                          setRegCommuneOther("");
+                          setRegErrors((prev) => ({ ...prev, commune: "" }));
                           setOpenRegCommune(false);
                         }}
                         placeholder="Rechercher une commune…"
@@ -959,21 +1065,33 @@ export default function ProfilePage() {
 
                   {/* Quartier (TEXTE LIBRE) */}
                   <div className="col-12">
-                    <label className="form-label">Quartier</label>
+                    <label className="form-label">
+                      Quartier <span className="text-danger">*</span>
+                    </label>
                     <input
-                      className="form-control"
+                      className={`form-control ${
+                        regErrors.quartier ? "is-invalid" : ""
+                      }`}
                       placeholder="Ex. Riad Oulfa, Terminus 20"
                       value={regQuartierText}
-                      onChange={(e) => setRegQuartierText(e.target.value)}
+                      onChange={(e) => {
+                        setRegQuartierText(e.target.value);
+                        setRegErrors((prev) => ({ ...prev, quartier: "" }));
+                      }}
                       autoCapitalize="words"
                       autoComplete="address-level3"
                       required
                     />
+                    {regErrors.quartier && (
+                      <div className="invalid-feedback">{regErrors.quartier}</div>
+                    )}
                   </div>
 
                   {/* Sexe (M/F) */}
                   <div className="col-12 col-md-6">
-                    <label className="form-label">Sexe</label>
+                    <label className="form-label">
+                      Sexe <span className="text-danger">*</span>
+                    </label>
                     <div className="d-flex gap-3">
                       <div className="form-check">
                         <input
@@ -983,6 +1101,7 @@ export default function ProfilePage() {
                           id="regSexeM"
                           checked={regSexe === "M"}
                           onChange={() => setRegSexe("M")}
+                          required
                         />
                         <label className="form-check-label" htmlFor="regSexeM">
                           M
@@ -1017,28 +1136,24 @@ export default function ProfilePage() {
                       />
                       <label className="form-check-label" htmlFor="regAccept">
                         Je confirme avoir lu et j’accepte les{" "}
-                        <Link to="/legal/terms" className="link-dark">Conditions d’utilisation</Link>{" "}
+                        <Link to="/legal/terms" className="link-dark">
+                          Conditions d’utilisation
+                        </Link>{" "}
                         et la{" "}
-                        <Link to="/legal/privacy" className="link-dark">Politique de confidentialité</Link>.
+                        <Link to="/legal/privacy" className="link-dark">
+                          Politique de confidentialité
+                        </Link>
+                        . <span className="text-danger">*</span>
                       </label>
                     </div>
                     <div className="form-text">
-                      Tu peux les consulter en cliquant sur les liens ci-dessus avant de continuer.
+                      Tu peux les consulter en cliquant sur les liens ci-dessus avant de
+                      continuer.
                     </div>
                   </div>
 
                   <div className="col-12 d-grid">
-                    <button
-                      className="btn btn-dark"
-                      type="submit"
-                      disabled={
-                        !rePhoneMA.test(regPhone) ||
-                        !rePassword.test(regPassword) ||
-                        (regCommune === "__other__" && !regCommuneOther.trim()) ||
-                        !regQuartierText.trim() ||
-                        !regAccept
-                      }
-                    >
+                    <button className="btn btn-dark" type="submit">
                       Créer le compte
                     </button>
                   </div>
@@ -1049,16 +1164,22 @@ export default function ProfilePage() {
                 <form onSubmit={handleForgot} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone
+                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
-                      className="form-control"
+                      className={`form-control ${forgotErrors.phone ? "is-invalid" : ""}`}
                       placeholder="+2126..."
                       value={forgotPhone}
-                      onChange={(e) => setForgotPhone(e.target.value)}
+                      onChange={(e) => {
+                        setForgotPhone(e.target.value);
+                        setForgotErrors((prev) => ({ ...prev, phone: "" }));
+                      }}
                       required
                     />
+                    {forgotErrors.phone && (
+                      <div className="invalid-feedback">{forgotErrors.phone}</div>
+                    )}
                   </div>
                   <div className="col-12 d-grid">
                     <button className="btn btn-dark" type="submit">
