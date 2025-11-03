@@ -53,13 +53,14 @@ jobs:
 
       # 🔎 Archive dist en artifact (debug)
       - name: Upload dist artifact (debug)
+      # on garde ça pour pouvoir inspecter le build si besoin
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist
+          path: dist/
 
-            # 🚀 Déploiement FTP vers Nindohost
+      # 🚀 Déploiement FTP vers Nindohost
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -68,7 +69,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT || 21 }}
           # ✅ On déploie uniquement le build Vite
-          local-dir: ./dist
+          local-dir: dist/
           # ✅ Dossier distant (à adapter si besoin)
           server-dir: ${{ secrets.FTP_DIR || '/public_html/' }}
           dangerous-clean-slate: false
