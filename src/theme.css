@@ -1,0 +1,78 @@
+:root{
+  --duu-yellow:#FFD54F;
+  --duu-red:#E53935;
+  --duu-black:#111111;
+}
+
+.navbar {
+  box-shadow: 0 2px 10px rgba(0,0,0,.05);
+}
+
+/* Lien nav par défaut + hover + actif + focus */
+.navbar .nav-link{
+  position: relative;
+  color: var(--duu-black) !important;
+  transition: color .2s ease;
+}
+.navbar .nav-link:hover{ color: var(--duu-red) !important; }
+
+/* Page active (NavLink isActive) : gras + soulignement rouge */
+.navbar .nav-link.active{
+  font-weight: 700;
+  color: var(--duu-black) !important;
+}
+.navbar .nav-link.active::after,
+.navbar .nav-link:focus-visible::after{
+  content:"";
+  position:absolute;
+  left: 8px;
+  right: 8px;
+  bottom:-6px;   /* petit trait sous l’onglet */
+  height:3px;
+  background: var(--duu-red);
+  border-radius: 3px;
+}
+
+/* Focus clavier accessible (sans contour bleu agressif) */
+.navbar .nav-link:focus-visible{
+  outline:none;
+  color: var(--duu-black) !important;
+}
+
+.btn-duu {
+  background: var(--duu-yellow);
+  color: #1f1f1f;
+  border: none;
+}
+.btn-duu:hover { filter: brightness(0.95); }
+
+.badge-duu { background: var(--duu-red); }
+
+/* Toggler plus visible sur fond jaune (optionnel) */
+.navbar .navbar-toggler{
+  border-color: rgba(0,0,0,.25);
+}
+.navbar .navbar-toggler:focus{
+  box-shadow: 0 0 0 .2rem rgba(0,0,0,.1);
+}
+/* Accent sur les champs (focus rouge) */
+.form-control:focus {
+  border-color: var(--duu-red);
+  box-shadow: 0 0 0 .2rem rgba(229, 57, 53, .15);
+}
+
+/* Bouton thème "Duumini" */
+.btn-duu {
+  background: var(--duu-yellow);
+  color: #1f1f1f;
+  border: none;
+}
+.btn-duu:hover { filter: brightness(0.95); }
+
+/* Badge */
+.badge-duu { background: var(--duu-red); }
+
+/* Placeholders un peu plus visibles */
+.placeholder { background: rgba(0,0,0,.06); }
+/* src/styles/theme.css (ou équivalent) */
+footer a.link-dark:hover { color: var(--duu-red) !important; }
