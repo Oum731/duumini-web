@@ -43,15 +43,9 @@ jobs:
           fi
           echo "✅ Secrets présents"
 
-      # ✅ Install deps sans dépendances optionnelles
+      # ✅ Install deps (npm install, pas de npm ci pour éviter EBADPLATFORM)
       - name: Install deps
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
-
+        run: npm install
 
       # 🏗 Build du projet
       - name: Build
