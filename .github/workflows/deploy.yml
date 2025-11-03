@@ -59,7 +59,7 @@ jobs:
           name: dist
           path: dist
 
-      # 🚀 Déploiement FTP vers Nindohost
+            # 🚀 Déploiement FTP vers Nindohost
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -67,6 +67,8 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT || 21 }}
-          local-dir: /
+          # ✅ On déploie uniquement le build Vite
+          local-dir: ./dist
+          # ✅ Dossier distant (à adapter si besoin)
           server-dir: ${{ secrets.FTP_DIR || '/public_html/' }}
           dangerous-clean-slate: false
