@@ -8,23 +8,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    # 🌍 Variables d'environnement globales au job (optionnel)
-    env:
-      # Exemple pour Vite :
-        VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ✅ Configure la version de Node AVANT d'afficher les infos
+      # ✅ Configure Node
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # ℹ️ Affiche les versions de Node & npm (debug)
+      # ℹ️ Infos Node & npm
       - name: Node info
         run: |
           node -v
@@ -34,12 +29,21 @@ jobs:
       - name: Preflight secrets
         run: |
           set -e
-          [ -n "${{ secrets.FTP_HOST }}" ] || (echo "❌ Missing FTP_HOST" && exit 1)
-          [ -n "${{ secrets.FTP_USERNAME }}" ] || (echo "❌ Missing FTP_USERNAME" && exit 1)
-          [ -n "${{ secrets.FTP_PASSWORD }}" ] || (echo "❌ Missing FTP_PASSWORD" && exit 1)
+          if [ -z "${{ secrets.FTP_HOST }}" ]; then
+            echo "❌ Missing FTP_HOST"
+            exit 1
+          fi
+          if [ -z "${{ secrets.FTP_USERNAME }}" ]; then
+            echo "❌ Missing FTP_USERNAME"
+            exit 1
+          fi
+          if [ -z "${{ secrets.FTP_PASSWORD }}" ]; then
+            echo "❌ Missing FTP_PASSWORD"
+            exit 1
+          fi
           echo "✅ Secrets présents"
 
-      # ✅ Installe sans dépendances optionnelles (évite fsevents, chokidar, etc. sur Linux)
+      # ✅ Install deps sans dépendances optionnelles
       - name: Install deps (omit optional)
         run: |
           if [ -f package-lock.json ]; then
@@ -52,7 +56,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      # 🔎 Archive dist en artifact (pratique pour debug)
+      # 🔎 Archive dist en artifact (debug)
       - name: Upload dist artifact (debug)
         if: always()
         uses: actions/upload-artifact@v4
