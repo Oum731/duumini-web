@@ -2,34 +2,72 @@ name: Deploy to Nindohost
 
 on:
   push:
-    branches: [ "main" ]  # déploie à chaque push sur main
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Node info
+        run: |
+          node -v
+          npm -v
+
+      # ✅ Vérifie que les secrets indispensables existent
+      - name: Preflight secrets
+        run: |
+          test -n "${{ secrets.FTP_HOST }}" || (echo "❌ Missing FTP_HOST" && exit 1)
+          test -n "${{ secrets.FTP_USERNAME }}" || (echo "❌ Missing FTP_USERNAME" && exit 1)
+          test -n "${{ secrets.FTP_PASSWORD }}" || (echo "❌ Missing FTP_PASSWORD" && exit 1)
+          echo "✅ Secrets présents"
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: "npm"
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      # ✅ Si pas de package-lock.json, bascule sur npm install
+      - name: Install deps (ci or install)
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
-      - name: Build site
+      # ⚠️ Ajoute tes variables build si besoin:
+      # env:
+      #   VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+
+      - name: Build
         run: npm run build
 
-      - name: Upload via FTP
+      # 🔎 Archive dist en artifact (pratique pour vérifier le build)
+      - name: Upload dist artifact (debug)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # 🚀 Déploiement FTP
+      - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_HOST }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
+          port: ${{ secrets.FTP_PORT || 21 }}
           local-dir: dist/
-          server-dir: ${{ secrets.FTP_DIR }}
+          server-dir: ${{ secrets.FTP_DIR || '/public_html/' }}
+          # Ajoute des exclusions si besoin (exemples) :
+          # exclude: |
+          #   **/.git*
+          #   **/.DS_Store
+          #   **/node_modules/**
           dangerous-clean-slate: false
