@@ -28,8 +28,11 @@ function buildProductUrl(p: Product) {
       ? window.location.origin
       : "https://duumini.com";
 
-  // ✅ On utilise toujours l’ID pour être compatible avec /api/products/:id
-  return `${base}/products/${p.id}`;
+  const sub = (p.sub_category || "").toString().toLowerCase();
+  const path = sub === "food" ? "/african-food" : "/african-market";
+
+  // ✅ Le lien partagé envoie directement vers la rubrique (pas la fiche produit)
+  return `${base}${path}`;
 }
 
 /* ===== Component ===== */
@@ -210,9 +213,7 @@ export default function ProductCard({ product, onAdd }: Props) {
                   <div className="col-12 col-md-6 d-flex flex-column">
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <span className="h5 m-0">{moneyMAD(product.price)}</span>
-                      <span className={`badge border ${tag.cls}`}>
-                        {tag.text}
-                      </span>
+                      <span className={`badge border ${tag.cls}`}>{tag.text}</span>
                     </div>
 
                     {product.description ? (

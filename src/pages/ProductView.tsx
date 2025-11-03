@@ -13,7 +13,9 @@ function imgUrl(u?: string | null) {
   return u;
 }
 function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(Number(n || 0));
+  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(
+    Number(n || 0)
+  );
 }
 
 export default function ProductView() {
@@ -58,7 +60,9 @@ export default function ProductView() {
         // 1) Essayer en tant qu'ID numérique
         const asId = Number(idOrSlug);
         if (Number.isFinite(asId)) {
-          const res = await fetch(`${API_BASE}/api/products/${asId}`, { credentials: "omit" });
+          const res = await fetch(`${API_BASE}/api/products/${asId}`, {
+            credentials: "omit",
+          });
           if (res.ok) {
             const p = (await res.json()) as Product;
             if (!stop) setProduct(p || null);
@@ -67,7 +71,10 @@ export default function ProductView() {
         }
 
         // 2) Essayer par slug si endpoint dispo: /api/products/slug/:slug
-        const resSlug = await fetch(`${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`, { credentials: "omit" });
+        const resSlug = await fetch(
+          `${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`,
+          { credentials: "omit" }
+        );
         if (resSlug.ok) {
           const p = (await resSlug.json()) as Product;
           if (!stop) setProduct(p || null);
@@ -81,7 +88,9 @@ export default function ProductView() {
         if (!stop) setLoading(false);
       }
     })();
-    return () => { stop = true; };
+    return () => {
+      stop = true;
+    };
   }, [idOrSlug]);
 
   // Charger des produits "similaires"
@@ -92,17 +101,30 @@ export default function ProductView() {
       try {
         // On récupère une page et on filtre côté client pour éviter de changer le backend.
         const res = await listProducts({ page: 1, pageSize: 24 } as any);
-        const items: Product[] = Array.isArray((res as any)?.items) ? (res as any).items : [];
+        const items: Product[] = Array.isArray((res as any)?.items)
+          ? (res as any).items
+          : [];
         const sameSub = (p: Product) =>
-          (p?.sub_category || "").toString().toLowerCase() === (product?.sub_category || "").toString().toLowerCase();
+          (p?.sub_category || "").toString().toLowerCase() ===
+          (product?.sub_category || "").toString().toLowerCase();
         const rel = items.filter((p) => p.id !== product.id && sameSub(p)).slice(0, 8);
         if (!stop) setRelated(rel);
       } catch {
         if (!stop) setRelated([]);
       }
     })();
-    return () => { stop = true; };
+    return () => {
+      stop = true;
+    };
   }, [product]);
+
+  // ✅ Si on a bien récupéré le produit, on redirige automatiquement
+  useEffect(() => {
+    if (!product) return;
+    const sub = (product.sub_category || "").toString().toLowerCase();
+    const path = sub === "food" ? "/african-food" : "/african-market";
+    nav(path, { replace: true });
+  }, [product, nav]);
 
   if (loading) {
     return (
@@ -124,12 +146,17 @@ export default function ProductView() {
     );
   }
 
+  // Si on a une erreur ou aucun produit → message + boutons
   if (error || !product) {
     return (
       <div className="container-xxl py-4">
         <div className="d-flex flex-wrap gap-2 mb-3">
-          <button className="btn btn-outline-dark" onClick={handleBack}>← Retour</button>
-          <Link to={sectionPath} className="btn btn-dark">Explorer</Link>
+          <button className="btn btn-outline-dark" onClick={handleBack}>
+            ← Retour
+          </button>
+          <Link to={sectionPath} className="btn btn-dark">
+            Explorer
+          </Link>
         </div>
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
@@ -139,12 +166,18 @@ export default function ProductView() {
     );
   }
 
+  // En théorie, on ne devrait presque jamais arriver ici,
+  // car l'effet de redirection nav() va nous envoyer sur la section.
   return (
     <div className="container-xxl py-4">
       {/* Barre d’actions */}
       <div className="d-flex flex-wrap gap-2 mb-3">
-        <button className="btn btn-outline-dark" onClick={handleBack}>← Retour</button>
-        <Link to={sectionPath} className="btn btn-dark">Explorer</Link>
+        <button className="btn btn-outline-dark" onClick={handleBack}>
+          ← Retour
+        </button>
+        <Link to={sectionPath} className="btn btn-dark">
+          Explorer
+        </Link>
       </div>
 
       <h1 className="h4 mb-3">{title}</h1>
@@ -154,7 +187,10 @@ export default function ProductView() {
           {coverUrl ? (
             <img src={coverUrl} alt={product.name} className="img-fluid rounded" />
           ) : (
-            <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
+            <div
+              className="bg-light rounded"
+              style={{ width: "100%", paddingTop: "100%" }}
+            />
           )}
         </div>
 
@@ -181,7 +217,9 @@ export default function ProductView() {
         <div className="mt-4">
           <div className="d-flex align-items-center justify-content-between mb-2">
             <h2 className="h6 m-0">Vous aimerez aussi</h2>
-            <Link to={sectionPath} className="btn btn-sm btn-outline-dark">Voir tout</Link>
+            <Link to={sectionPath} className="btn btn-sm btn-outline-dark">
+              Voir tout
+            </Link>
           </div>
           <div className="row g-2 g-sm-3">
             {related.map((p) => (
