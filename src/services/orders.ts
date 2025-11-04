@@ -144,7 +144,12 @@ export async function cancelOrder(id: number) {
   return api.post<{ ok: true; status: "CANCELLED" }>(`/api/orders/${id}/cancel`, {});
 }
 
-/** Création (payload conforme à Checkout.tsx) */
+/** Création pour utilisateur CONNECTÉ (route protégée) */
 export async function createOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>("/api/orders", payload);
+}
+
+/** Création pour INVITÉ (sans authRequired → /guest) */
+export async function createGuestOrder(payload: CreateOrderPayload) {
+  return api.post<CreateOrderResult>("/api/orders/guest", payload);
 }

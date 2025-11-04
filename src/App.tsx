@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useEffect } from "react";
 import { Routes, Route, Outlet, useLocation, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
@@ -57,13 +56,13 @@ function ScrollToTop() {
   return null;
 }
 
-/** 🧭 Page d’atterrissage :
- * - si user connecté → Home
- * - sinon → /profile?tab=login
+/** 🧭 Page d’atterrissage publique :
+ * - user connecté ou non → Home
  */
 function LandingRedirect() {
-  const u = getCurrentUser();
-  return u ? <Home /> : <Navigate to="/profile?tab=login" replace />;
+  // On laisse la signature et l’import de getCurrentUser pour compat,
+  // mais on ne force plus la redirection vers /profile.
+  return <Home />;
 }
 
 // Layout admin

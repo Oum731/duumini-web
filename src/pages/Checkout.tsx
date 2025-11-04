@@ -1,9 +1,12 @@
-// src/pages/Checkout.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
 import { me, getAccessToken } from "../services/auth";
-import { createOrder, type CreateOrderPayload } from "../services/orders";
+import {
+  createOrder,
+  createGuestOrder,
+  type CreateOrderPayload,
+} from "../services/orders";
 
 /* ——— Style local : focus rouge + état loading ——— */
 const FocusAndLoadingStyle = () => (
@@ -97,14 +100,20 @@ export default function CheckoutPage() {
   const deliveryFee = FEES[delivery];
   const grandTotal = totalAmount + deliveryFee;
 
-  /* ---------- Sécurité: token obligatoire ---------- */
+  // Indique si on a un token (user potentiellement connecté)
+  const hasToken = !!getAccessToken?.();
+
+  // ✅ état local : l’utilisateur a explicitement choisi "invité"
+  const [guestConfirmed, setGuestConfirmed] = useState(false);
+
+  /* ---------- Pré-remplissage optionnel, sans obliger le login ---------- */
   useEffect(() => {
-    const token = getAccessToken?.();
-    if (!token) {
-      const next = encodeURIComponent(location.pathname);
-      nav(`/profile?next=${next}`, { replace: true });
+    // Pas de token → mode invité, pas de redirection
+    if (!hasToken) {
+      setLoading(false);
       return;
     }
+
     setLoading(true);
     (async () => {
       try {
@@ -127,14 +136,13 @@ export default function CheckoutPage() {
           if ((u as any).quartier) setQuartier((u as any).quartier);
         }
       } catch {
-        const next = encodeURIComponent(location.pathname);
-        nav(`/profile?next=${next}`, { replace: true });
+        // Si erreur (401, etc.), on reste simplement en mode formulaire manuel
       } finally {
         setLoading(false);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hasToken, location.pathname]);
 
   const validPhone = rePhoneMA.test(phone.trim());
   const communeVal = commune === "__other__" ? communeOther.trim() : commune;
@@ -172,7 +180,7 @@ export default function CheckoutPage() {
     );
   }, []);
 
-  // Recharger les champs depuis /me à la demande
+  // Recharger les champs depuis /me à la demande (utile seulement si connecté)
   const refillFromProfile = useCallback(async () => {
     try {
       setErr(null);
@@ -202,7 +210,7 @@ export default function CheckoutPage() {
     }
   }, []);
 
-  // Soumission commande
+  // Soumission commande (connecté OU invité)
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
     try {
@@ -254,20 +262,23 @@ export default function CheckoutPage() {
         address_gps_lng: address.gps?.lng ?? null,
       } satisfies CreateOrderPayload;
 
-      const { id: orderId } = await createOrder(payload);
+      // Si connecté → /api/orders
+      // Sinon → /api/orders/guest
+      const result = hasToken
+        ? await createOrder(payload)
+        : await createGuestOrder(payload);
+
+      const orderId = result.id;
       clear();
-      nav(`/orders?order=${orderId}`);
-    } catch (e: any) {
-      const msg = String(e?.message || "").toLowerCase();
-      if (
-        msg.includes("no token") ||
-        msg.includes("unauthorized") ||
-        msg.includes("401")
-      ) {
-        const next = encodeURIComponent("/checkout");
-        nav(`/profile?next=${next}`, { replace: true });
-        return;
+
+      if (hasToken) {
+        // Client connecté : historique
+        nav(`/orders?order=${orderId}`);
+      } else {
+        // Invité : il a fini sa commande sans compte
+        nav("/");
       }
+    } catch (e: any) {
       setErr(
         e?.message || "Impossible de confirmer la commande pour le moment."
       );
@@ -292,6 +303,7 @@ export default function CheckoutPage() {
     clear,
     nav,
     quartier,
+    hasToken,
   ]);
 
   const headerRight = useMemo(
@@ -344,6 +356,56 @@ export default function CheckoutPage() {
 
       {err && <div className="alert alert-danger">{err}</div>}
 
+      {/* ✅ Proposition invité / connexion / inscription */}
+      {!hasToken && (
+        <div className="alert alert-info mb-3">
+          <div className="fw-semibold mb-1">Commander sans créer de compte</div>
+          <p className="mb-2 small">
+            Vous pouvez finaliser votre commande{" "}
+            <strong>en tant qu’invité</strong>. Dans ce cas, vous ne pourrez pas
+            consulter l’historique dans l’espace « Mes commandes », mais nous
+            vous contacterons directement sur le numéro indiqué en cas de
+            besoin.
+          </p>
+          <div className="d-flex flex-wrap gap-2">
+            {/* 🔓 Maintenant actif : confirme le mode invité */}
+            <button
+              type="button"
+              className="btn btn-sm btn-dark"
+              onClick={() => setGuestConfirmed(true)}
+            >
+              Continuer en tant qu’invité
+            </button>
+
+            {/* Connexion avec retour vers le checkout */}
+            <Link
+              to="/profile?tab=login&next=/checkout"
+              className="btn btn-sm btn-outline-dark"
+            >
+              Se connecter
+            </Link>
+
+            {/* Inscription avec retour vers le checkout */}
+            <Link
+              to="/profile?tab=register&next=/checkout"
+              className="btn btn-sm btn-outline-secondary"
+            >
+              Créer un compte
+            </Link>
+          </div>
+
+          {guestConfirmed && (
+            <p className="mt-2 small mb-0">
+              ✅ Vous avez choisi de{" "}
+              <strong>continuer en tant qu’invité</strong>. Remplissez le
+              formulaire ci-dessous puis cliquez sur{" "}
+              <strong>« Confirmer la commande »</strong> pour valider votre
+              achat.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="row g-4">
         {/* Formulaire */}
         <div className="col-12 col-lg-7">
@@ -352,27 +414,29 @@ export default function CheckoutPage() {
               <div className="d-flex justify-content-between align-items-center mb-2">
                 <h2 className="h6 m-0">Vos coordonnées</h2>
 
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-dark"
-                  onClick={refillFromProfile}
-                  disabled={loadingRefill}
-                  aria-busy={loadingRefill}
-                >
-                  {loadingRefill ? (
-                    <>
-                      <span
-                        className="spinner-border spinner-border-sm me-2"
-                        role="status"
-                        aria-hidden="true"
-                      />
-                      Rechargement…
-                      <span className="visually-hidden">en cours</span>
-                    </>
-                  ) : (
-                    "Recharger depuis mon profil"
-                  )}
-                </button>
+                {hasToken && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-dark"
+                    onClick={refillFromProfile}
+                    disabled={loadingRefill}
+                    aria-busy={loadingRefill}
+                  >
+                    {loadingRefill ? (
+                      <>
+                        <span
+                          className="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"
+                        />
+                        Rechargement…
+                        <span className="visually-hidden">en cours</span>
+                      </>
+                    ) : (
+                      "Recharger depuis mon profil"
+                    )}
+                  </button>
+                )}
               </div>
 
               <div className="row g-3">
@@ -406,7 +470,7 @@ export default function CheckoutPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                   />
-                  {phone && !rePhoneMA.test(phone) && (
+                {phone && !rePhoneMA.test(phone) && (
                     <div className="invalid-feedback">
                       Format attendu: +2126XXXXXXXX
                     </div>
