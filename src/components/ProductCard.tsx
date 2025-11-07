@@ -11,17 +11,21 @@ function imgUrl(u?: string | null) {
   if (u.startsWith("/")) return `${API_BASE}${u}`;
   return u;
 }
+
 function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "MAD",
-  }).format(Number(n || 0));
+  const v = Number(n || 0);
+  return `${v.toLocaleString("fr-FR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })} MAD`;
 }
+
 function shortText(s?: string | null, max = 200) {
   const t = (s || "").trim();
   if (t.length <= max) return t;
   return t.slice(0, max - 1) + "…";
 }
+
 function buildProductUrl(p: Product) {
   const base =
     typeof window !== "undefined" && window.location.origin
@@ -142,9 +146,16 @@ export default function ProductCard({ product, onAdd }: Props) {
         </div>
 
         <div className="card-body d-flex flex-column">
-          <h3 className="h6 mb-1 text-truncate" title={product.name}>
+          {/* ✅ Titre avec retour à la ligne (plus de text-truncate) */}
+          <h3
+            className="h6 mb-1"
+            title={product.name}
+            style={{ wordWrap: "break-word", whiteSpace: "normal" }}
+          >
             {product.name}
           </h3>
+
+          {/* ✅ Prix sans décimales */}
           <div className="fw-semibold mb-2">{moneyMAD(product.price)}</div>
 
           <div className="mt-auto d-flex gap-2">
