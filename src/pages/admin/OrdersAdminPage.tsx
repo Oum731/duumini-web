@@ -12,7 +12,7 @@ import {
 import { listProducts, type Product } from "../../services/products";
 import { Link } from "react-router-dom";
 
-const STATUSES: OrderStatus[] = ["OPEN","PREPARATION","DELIVERY","DONE","CANCELLED"];
+const STATUSES: OrderStatus[] = ["OPEN", "PREPARATION", "DELIVERY", "DONE", "CANCELLED"];
 
 const BADGE: Record<OrderStatus, string> = {
   OPEN: "bg-secondary",
@@ -46,30 +46,31 @@ function waHref(orderId: number | string, toPhone?: string, customerName?: strin
 }
 
 /* ====== Petit util prix ====== */
-const mad = (n?: number|null) =>
-  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" })
-    .format(Number(n || 0));
+const mad = (n?: number | null) =>
+  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(
+    Number(n || 0)
+  );
 
 /* ===================== Page ===================== */
 export default function OrdersAdminPage() {
   const [items, setItems] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string|null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
 
   // Edition statut (modale simple)
-  const [editId, setEditId] = useState<number|null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
   const [editStatus, setEditStatus] = useState<OrderStatus>("OPEN");
   const [saving, setSaving] = useState(false);
 
   // Modale "Voir" (détails)
-  const [viewId, setViewId] = useState<number|null>(null);
+  const [viewId, setViewId] = useState<number | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
-  const [viewErr, setViewErr] = useState<string|null>(null);
-  const [detail, setDetail] = useState<AnyObj|null>(null);
+  const [viewErr, setViewErr] = useState<string | null>(null);
+  const [detail, setDetail] = useState<AnyObj | null>(null);
   const [viewStatus, setViewStatus] = useState<OrderStatus>("OPEN");
   const [viewSaving, setViewSaving] = useState(false);
 
@@ -86,7 +87,20 @@ export default function OrdersAdminPage() {
   const [markDone, setMarkDone] = useState(true); // par défaut validée sur place
   const searchAbort = useRef<AbortController | null>(null);
 
-  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+  // Pagination commandes
+  const pages = useMemo(
+    () => Math.max(1, Math.ceil(total / pageSize)),
+    [total, pageSize]
+  );
+
+  // Pagination produits dans le modal "vente sur place"
+  const [prodPage, setProdPage] = useState(1);
+  const [prodPageSize] = useState(20);
+  const [prodTotal, setProdTotal] = useState(0);
+  const prodPages = useMemo(
+    () => Math.max(1, Math.ceil(prodTotal / prodPageSize)),
+    [prodTotal, prodPageSize]
+  );
 
   async function refresh() {
     setLoading(true);
@@ -97,20 +111,27 @@ export default function OrdersAdminPage() {
       setError(null);
     } catch (e: any) {
       setError(e?.message || String(e));
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [page, pageSize]);
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize]);
 
   const dateTime = (iso?: string) =>
     iso ? new Date(iso).toLocaleString("fr-FR") : "";
 
-  // Recherche simple
+  // Recherche simple sur la liste des commandes
   const filtered = items.filter((o) => {
     if (!q.trim()) return true;
     const txt = q.toLowerCase();
     const contact = (o as any)?.contact || (o as any)?.user || {};
-    const contactName = `${(contact?.first_name || "")} ${(contact?.last_name || "")}`.trim();
+    const contactName = `${(contact?.first_name || "")} ${
+      contact?.last_name || ""
+    }`.trim();
     return (
       String(o.id).includes(txt) ||
       (o.status?.toLowerCase() || "").includes(txt) ||
@@ -188,21 +209,33 @@ export default function OrdersAdminPage() {
     const first_name = c?.first_name ?? "";
     const last_name = c?.last_name ?? "";
     const phone = c?.phone ?? c?.user_phone ?? "";
-    const fullName = `${(first_name || "").trim()} ${(last_name || "").trim()}`.trim() || "—";
+    const fullName =
+      `${(first_name || "").trim()} ${(last_name || "").trim()}`.trim() || "—";
     return { first_name, last_name, fullName, phone };
   })();
   const address = (detail?.address as AnyObj) || {};
-  const itemsDetail: AnyObj[] = Array.isArray(detail?.items) ? detail!.items : [];
+  const itemsDetail: AnyObj[] = Array.isArray(detail?.items)
+    ? detail!.items
+    : [];
   const itemsAmount = itemsDetail.reduce(
-    (sum, it) => sum + Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1), 0
+    (sum, it) =>
+      sum +
+      Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1),
+    0
   );
   const totalAmount: number =
-    typeof detail?.total === "number" ? detail!.total : Number((detail as any)?.totals?.amount ?? itemsAmount);
+    typeof detail?.total === "number"
+      ? detail!.total
+      : Number((detail as any)?.totals?.amount ?? itemsAmount);
   const deliveryFee =
-    (detail as any)?.totals?.delivery_fee ?? Math.max(0, Number(totalAmount) - Number(itemsAmount));
+    (detail as any)?.totals?.delivery_fee ??
+    Math.max(0, Number(totalAmount) - Number(itemsAmount));
 
   /* ====== Création commande sur place ====== */
-  const basketTotal = basket.reduce((s, it) => s + Number(it.product.price || 0) * Number(it.qty || 0), 0);
+  const basketTotal = basket.reduce(
+    (s, it) => s + Number(it.product.price || 0) * Number(it.qty || 0),
+    0
+  );
 
   function addToBasket(p: Product) {
     setBasket((prev) => {
@@ -216,12 +249,17 @@ export default function OrdersAdminPage() {
     });
   }
   function setQty(pId: number, qty: number) {
-    setBasket((prev) => prev.map((x) => x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x));
+    setBasket((prev) =>
+      prev.map((x) =>
+        x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x
+      )
+    );
   }
   function removeLine(pId: number) {
     setBasket((prev) => prev.filter((x) => x.product.id !== pId));
   }
 
+  // ====== Recherche / pagination produits pour la vente sur place ======
   async function runSearch() {
     if (!openCreate) return;
     searchAbort.current?.abort();
@@ -230,14 +268,11 @@ export default function OrdersAdminPage() {
     setSearchLoading(true);
     setSearchErr(null);
     try {
-      // simple recherche client-side après fetch d’une page
-      const res = await listProducts({ page: 1, pageSize: 20 }); // tous canaux
+      // On récupère les produits sans distinctions (pas de channel), paginés
+      const res = await listProducts({ page: prodPage, pageSize: prodPageSize });
       if (ac.signal.aborted) return;
-      const ql = search.trim().toLowerCase();
-      const arr = (res.items || []).filter((p) =>
-        (p.name || "").toLowerCase().includes(ql)
-      );
-      setResults(arr.slice(0, 12));
+      setProdTotal(res.pageInfo.total);
+      setResults(res.items || []);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setSearchErr(e?.message || "Impossible de rechercher.");
@@ -246,11 +281,24 @@ export default function OrdersAdminPage() {
     }
   }
 
+  // On recharge les produits quand :
+  // - le modal s'ouvre
+  // - la page produits change
   useEffect(() => {
-    const t = setTimeout(runSearch, 300);
-    return () => clearTimeout(t);
+    if (openCreate) {
+      runSearch();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, openCreate]);
+  }, [openCreate, prodPage, prodPageSize]);
+
+  // Filtrage par nom dans la page courante (20 produits)
+  const filteredResults = useMemo(() => {
+    const ql = search.trim().toLowerCase();
+    if (!ql) return results;
+    return results.filter((p) =>
+      (p.name || "").toLowerCase().includes(ql)
+    );
+  }, [results, search]);
 
   async function submitCreate() {
     if (basket.length === 0) {
@@ -297,8 +345,13 @@ export default function OrdersAdminPage() {
       }
       setOpenCreate(false);
       setBasket([]);
-      setCFirst(""); setCLast(""); setCPhone("");
-      setSearch(""); setResults([]);
+      setCFirst("");
+      setCLast("");
+      setCPhone("");
+      setSearch("");
+      setResults([]);
+      setProdPage(1);
+      setProdTotal(0);
       await refresh();
     } catch (e: any) {
       alert(e?.message || "Erreur lors de la création.");
@@ -313,8 +366,18 @@ export default function OrdersAdminPage() {
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <h1 className="h5 m-0">Commandes</h1>
         <div className="d-flex gap-2">
-          <button className="btn btn-duu" onClick={() => setOpenCreate(true)}>+ Vente sur place</button>
-          <Link to="/admin" className="btn btn-outline-dark">Accueil admin</Link>
+          <button
+            className="btn btn-duu"
+            onClick={() => {
+              setOpenCreate(true);
+              setProdPage(1); // on revient à la page 1 des produits à l'ouverture
+            }}
+          >
+            + Vente sur place
+          </button>
+          <Link to="/admin" className="btn btn-outline-dark">
+            Accueil admin
+          </Link>
         </div>
       </div>
 
@@ -324,7 +387,7 @@ export default function OrdersAdminPage() {
           className="form-control"
           placeholder="Recherche (#, statut, client, téléphone...)"
           value={q}
-          onChange={(e)=>setQ(e.target.value)}
+          onChange={(e) => setQ(e.target.value)}
           style={{ maxWidth: 420 }}
         />
       </div>
@@ -359,16 +422,30 @@ export default function OrdersAdminPage() {
                     const clientName = (fn || ln) ? `${fn} ${ln}`.trim() : "—";
                     const phone = (c?.phone || "").trim();
                     const hrefTel = telHref(phone);
-                    const hrefWa  = waHref(o.id, phone, clientName);
+                    const hrefWa = waHref(o.id, phone, clientName);
 
                     return (
                       <tr key={o.id}>
-                        <td><button className="btn btn-link link-dark p-0" onClick={()=>onView(o.id)}>{o.id}</button></td>
+                        <td>
+                          <button
+                            className="btn btn-link link-dark p-0"
+                            onClick={() => onView(o.id)}
+                          >
+                            {o.id}
+                          </button>
+                        </td>
                         <td>{dateTime(o.created_at)}</td>
-                        <td className="text-truncate" style={{ maxWidth: 220 }}>{clientName}</td>
+                        <td
+                          className="text-truncate"
+                          style={{ maxWidth: 220 }}
+                        >
+                          {clientName}
+                        </td>
                         <td>
                           <div className="d-flex flex-column">
-                            <small className="text-muted">{phone || "—"}</small>
+                            <small className="text-muted">
+                              {phone || "—"}
+                            </small>
                             <div className="d-flex gap-1 mt-1">
                               <a
                                 className="btn btn-sm btn-outline-secondary"
@@ -380,21 +457,44 @@ export default function OrdersAdminPage() {
                                 WhatsApp
                               </a>
                               {hrefTel ? (
-                                <a className="btn btn-sm btn-outline-dark" href={hrefTel} aria-label="Appeler">
+                                <a
+                                  className="btn btn-sm btn-outline-dark"
+                                  href={hrefTel}
+                                  aria-label="Appeler"
+                                >
                                   Appeler
                                 </a>
                               ) : null}
                             </div>
                           </div>
                         </td>
-                        <td><span className={`badge ${BADGE[o.status]}`}>{o.status}</span></td>
+                        <td>
+                          <span className={`badge ${BADGE[o.status]}`}>
+                            {o.status}
+                          </span>
+                        </td>
                         <td className="text-end">{mad(o.total)}</td>
                         <td className="text-end">
                           <div className="btn-group">
-                            <button className="btn btn-sm btn-outline-secondary" onClick={()=>onView(o.id)}>Voir</button>
-                            <button className="btn btn-sm btn-outline-dark" onClick={()=>onEdit(o.id)}>Modifier</button>
+                            <button
+                              className="btn btn-sm btn-outline-secondary"
+                              onClick={() => onView(o.id)}
+                            >
+                              Voir
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => onEdit(o.id)}
+                            >
+                              Modifier
+                            </button>
                             {o.status !== "CANCELLED" && o.status !== "DONE" && (
-                              <button className="btn btn-sm btn-outline-danger" onClick={()=>onCancel(o.id)}>Annuler</button>
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => onCancel(o.id)}
+                              >
+                                Annuler
+                              </button>
                             )}
                           </div>
                         </td>
@@ -406,13 +506,27 @@ export default function OrdersAdminPage() {
             </div>
           )}
 
-          {/* Pagination */}
+          {/* Pagination commandes */}
           <div className="d-flex justify-content-between align-items-center mt-2">
             <div className="text-muted small">{total} éléments</div>
             <div className="btn-group">
-              <button className="btn btn-sm btn-outline-dark" disabled={page<=1} onClick={()=>setPage(p=>p-1)}>Préc.</button>
-              <span className="btn btn-sm btn-outline-dark disabled">{page} / {pages}</span>
-              <button className="btn btn-sm btn-outline-dark" disabled={page>=pages} onClick={()=>setPage(p=>p+1)}>Suiv.</button>
+              <button
+                className="btn btn-sm btn-outline-dark"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                Préc.
+              </button>
+              <span className="btn btn-sm btn-outline-dark disabled">
+                {page} / {pages}
+              </span>
+              <button
+                className="btn btn-sm btn-outline-dark"
+                disabled={page >= pages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Suiv.
+              </button>
             </div>
           </div>
         </div>
@@ -420,27 +534,48 @@ export default function OrdersAdminPage() {
 
       {/* Modal Edition (statut simple) */}
       {editId !== null && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.2)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ background: "rgba(0,0,0,.2)" }}
+        >
           <div className="modal-dialog" role="document">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Commande #{editId}</h5>
-                <button className="btn-close" onClick={()=>setEditId(null)} />
+                <button className="btn-close" onClick={() => setEditId(null)} />
               </div>
               <div className="modal-body">
                 <label className="form-label">Statut</label>
                 <select
                   className="form-select"
                   value={editStatus}
-                  onChange={e=>setEditStatus(e.target.value as OrderStatus)}
+                  onChange={(e) =>
+                    setEditStatus(e.target.value as OrderStatus)
+                  }
                   disabled={saving}
                 >
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" disabled={saving} onClick={()=>setEditId(null)}>Fermer</button>
-                <button className="btn btn-dark" disabled={saving} onClick={onSave}>
+                <button
+                  className="btn btn-outline-dark"
+                  disabled={saving}
+                  onClick={() => setEditId(null)}
+                >
+                  Fermer
+                </button>
+                <button
+                  className="btn btn-dark"
+                  disabled={saving}
+                  onClick={onSave}
+                >
                   {saving ? "Enregistrement…" : "Enregistrer"}
                 </button>
               </div>
@@ -451,12 +586,17 @@ export default function OrdersAdminPage() {
 
       {/* Modal Voir (détails complets) */}
       {viewId !== null && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ background: "rgba(0,0,0,.35)" }}
+        >
           <div className="modal-dialog modal-lg" role="document">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Commande #{viewId}</h5>
-                <button className="btn-close" onClick={()=>setViewId(null)} />
+                <button className="btn-close" onClick={() => setViewId(null)} />
               </div>
 
               <div className="modal-body">
@@ -471,22 +611,38 @@ export default function OrdersAdminPage() {
                     {/* En-tête statut + date */}
                     <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                       <div className="d-flex align-items-center gap-2">
-                        <span className={`badge ${BADGE[(detail.status as OrderStatus) || "OPEN"]}`}>
+                        <span
+                          className={`badge ${
+                            BADGE[(detail.status as OrderStatus) || "OPEN"]
+                          }`}
+                        >
                           {detail.status}
                         </span>
-                        <small className="text-muted">{dateTime(detail.created_at)}</small>
+                        <small className="text-muted">
+                          {dateTime(detail.created_at)}
+                        </small>
                       </div>
                       <div className="d-flex gap-2">
                         <select
                           className="form-select form-select-sm"
                           value={viewStatus}
-                          onChange={(e)=>setViewStatus(e.target.value as OrderStatus)}
+                          onChange={(e) =>
+                            setViewStatus(e.target.value as OrderStatus)
+                          }
                           style={{ width: 180 }}
                           disabled={viewSaving}
                         >
-                          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                          {STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
                         </select>
-                        <button className="btn btn-sm btn-dark" disabled={viewSaving} onClick={onViewSaveStatus}>
+                        <button
+                          className="btn btn-sm btn-dark"
+                          disabled={viewSaving}
+                          onClick={onViewSaveStatus}
+                        >
                           {viewSaving ? "Enregistrement…" : "Enregistrer"}
                         </button>
                       </div>
@@ -499,19 +655,28 @@ export default function OrdersAdminPage() {
                         <div className="d-flex flex-wrap justify-content-between align-items-center">
                           <div>
                             <div className="fw-semibold">{client.fullName}</div>
-                            <div className="text-muted small">{client.phone || "—"}</div>
+                            <div className="text-muted small">
+                              {client.phone || "—"}
+                            </div>
                           </div>
                           <div className="d-flex gap-2">
                             <a
                               className="btn btn-sm btn-success"
-                              href={waHref(viewId!, client.phone, client.fullName)}
+                              href={waHref(
+                                viewId!,
+                                client.phone,
+                                client.fullName
+                              )}
                               target="_blank"
                               rel="noopener noreferrer"
                             >
                               WhatsApp
                             </a>
                             {client.phone ? (
-                              <a className="btn btn-sm btn-outline-dark" href={telHref(client.phone)}>
+                              <a
+                                className="btn btn-sm btn-outline-dark"
+                                href={telHref(client.phone)}
+                              >
                                 Appeler
                               </a>
                             ) : null}
@@ -525,21 +690,29 @@ export default function OrdersAdminPage() {
                       <div className="card-body">
                         <h6 className="mb-2">Adresse de livraison</h6>
                         <div>
-                          {(address?.city || address?.ville || "—")}
+                          {address?.city || address?.ville || "—"}
                           {address?.commune ? `, ${address.commune}` : ""}
-                          {address?.district || address?.quartier ? `, ${address.district ?? address.quartier}` : ""}
+                          {address?.district || address?.quartier
+                            ? `, ${address.district ?? address.quartier}`
+                            : ""}
                           {address?.gps ? (
                             <>
                               <br />
                               <span className="text-muted small">
-                                GPS: {address.gps.lat?.toFixed?.(5)}, {address.gps.lng?.toFixed?.(5)}
+                                GPS: {address.gps.lat?.toFixed?.(5)},{" "}
+                                {address.gps.lng?.toFixed?.(5)}
                               </span>
                             </>
                           ) : null}
                         </div>
                         {detail?.geo_link ? (
                           <div className="mt-2">
-                            <a className="btn btn-sm btn-outline-secondary" href={detail.geo_link} target="_blank" rel="noopener noreferrer">
+                            <a
+                              className="btn btn-sm btn-outline-secondary"
+                              href={detail.geo_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
                               Ouvrir dans Google Maps
                             </a>
                           </div>
@@ -553,23 +726,35 @@ export default function OrdersAdminPage() {
                         <h6 className="mb-2">Articles</h6>
                         <ul className="list-group list-group-flush">
                           {itemsDetail.map((it, i) => {
-                            const name = it?.product_name || it?.name || `Produit #${it?.product_id ?? ""}`;
+                            const name =
+                              it?.product_name ||
+                              it?.name ||
+                              `Produit #${it?.product_id ?? ""}`;
                             const qty = Number(it?.qty ?? 1);
-                            const unit = Number(it?.unit_price ?? it?.price ?? 0);
+                            const unit = Number(
+                              it?.unit_price ?? it?.price ?? 0
+                            );
                             return (
-                              <li key={i} className="list-group-item d-flex justify-content-between align-items-center">
+                              <li
+                                key={i}
+                                className="list-group-item d-flex justify-content-between align-items-center"
+                              >
                                 <div className="text-truncate" title={name}>
                                   <span className="fw-semibold">{name}</span>{" "}
                                   <span className="text-muted">×{qty}</span>
                                 </div>
-                                <span className="fw-semibold">{mad(unit * qty)}</span>
+                                <span className="fw-semibold">
+                                  {mad(unit * qty)}
+                                </span>
                               </li>
                             );
                           })}
                           {deliveryFee > 0 && (
                             <li className="list-group-item d-flex justify-content-between align-items-center">
                               <span className="text-muted">Livraison</span>
-                              <span className="fw-semibold">{mad(deliveryFee)}</span>
+                              <span className="fw-semibold">
+                                {mad(deliveryFee)}
+                              </span>
                             </li>
                           )}
                         </ul>
@@ -594,7 +779,12 @@ export default function OrdersAdminPage() {
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" onClick={()=>setViewId(null)}>Fermer</button>
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={() => setViewId(null)}
+                >
+                  Fermer
+                </button>
               </div>
             </div>
           </div>
@@ -603,12 +793,20 @@ export default function OrdersAdminPage() {
 
       {/* Modal Création — Vente sur place */}
       {openCreate && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ background: "rgba(0,0,0,.35)" }}
+        >
           <div className="modal-dialog modal-lg" role="document">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Nouvelle commande (sur place)</h5>
-                <button className="btn-close" onClick={()=>setOpenCreate(false)} />
+                <button
+                  className="btn-close"
+                  onClick={() => setOpenCreate(false)}
+                />
               </div>
 
               <div className="modal-body">
@@ -622,26 +820,78 @@ export default function OrdersAdminPage() {
                           className="form-control mb-2"
                           placeholder="Rechercher un produit…"
                           value={search}
-                          onChange={(e)=>setSearch(e.target.value)}
+                          onChange={(e) => {
+                            setSearch(e.target.value);
+                            // on ne touche pas prodPage ici : la recherche filtre seulement la page courante
+                          }}
                         />
-                        {searchErr && <div className="alert alert-danger">{searchErr}</div>}
+                        {searchErr && (
+                          <div className="alert alert-danger">
+                            {searchErr}
+                          </div>
+                        )}
                         {searchLoading ? (
                           <div className="text-muted">Recherche…</div>
                         ) : (
-                          <div className="vstack gap-2">
-                            {results.map((p) => (
-                              <div key={p.id} className="d-flex justify-content-between align-items-center border rounded p-2">
-                                <div className="text-truncate" style={{maxWidth: 220}}>
-                                  <div className="fw-semibold text-truncate">{p.name}</div>
-                                  <div className="text-muted small">{mad(p.price)}</div>
+                          <>
+                            <div className="vstack gap-2">
+                              {filteredResults.map((p) => (
+                                <div
+                                  key={p.id}
+                                  className="d-flex justify-content-between align-items-center border rounded p-2"
+                                >
+                                  <div
+                                    className="text-truncate"
+                                    style={{ maxWidth: 220 }}
+                                  >
+                                    <div className="fw-semibold text-truncate">
+                                      {p.name}
+                                    </div>
+                                    <div className="text-muted small">
+                                      {mad(p.price)}
+                                    </div>
+                                  </div>
+                                  <button
+                                    className="btn btn-sm btn-duu"
+                                    onClick={() => addToBasket(p)}
+                                  >
+                                    Ajouter
+                                  </button>
                                 </div>
-                                <button className="btn btn-sm btn-duu" onClick={()=>addToBasket(p)}>Ajouter</button>
+                              ))}
+                              {filteredResults.length === 0 && (
+                                <div className="text-muted small">
+                                  Aucun produit sur cette page.
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Pagination produits (20 par page) */}
+                            <div className="d-flex justify-content-between align-items-center mt-2">
+                              <div className="small text-muted">
+                                {prodTotal} produits — page {prodPage} /{" "}
+                                {prodPages}
                               </div>
-                            ))}
-                            {results.length === 0 && (
-                              <div className="text-muted small">Tape un mot-clé pour chercher des produits…</div>
-                            )}
-                          </div>
+                              <div className="btn-group btn-group-sm">
+                                <button
+                                  className="btn btn-outline-dark"
+                                  disabled={prodPage <= 1}
+                                  onClick={() => setProdPage((p) => p - 1)}
+                                >
+                                  ◀
+                                </button>
+                                <button
+                                  className="btn btn-outline-dark"
+                                  disabled={prodPage >= prodPages}
+                                  onClick={() =>
+                                    setProdPage((p) => p + 1)
+                                  }
+                                >
+                                  ▶
+                                </button>
+                              </div>
+                            </div>
+                          </>
                         )}
                       </div>
                     </div>
@@ -654,26 +904,55 @@ export default function OrdersAdminPage() {
                         <h6 className="mb-2">Panier</h6>
                         <div className="vstack gap-2">
                           {basket.length === 0 ? (
-                            <div className="text-muted small">Aucun article.</div>
-                          ) : basket.map((ln) => (
-                            <div key={ln.product.id} className="d-flex align-items-center justify-content-between border rounded p-2">
-                              <div className="text-truncate" style={{maxWidth: 180}}>
-                                <div className="fw-semibold text-truncate">{ln.product.name}</div>
-                                <div className="text-muted small">{mad(ln.product.price)}</div>
-                              </div>
-                              <div className="d-flex align-items-center gap-2">
-                                <input
-                                  type="number"
-                                  className="form-control form-control-sm"
-                                  style={{width: 80}}
-                                  min={1}
-                                  value={ln.qty}
-                                  onChange={(e)=>setQty(ln.product.id, Math.max(1, Number(e.target.value || 1)))}
-                                />
-                                <button className="btn btn-sm btn-outline-danger" onClick={()=>removeLine(ln.product.id)}>Retirer</button>
-                              </div>
+                            <div className="text-muted small">
+                              Aucun article.
                             </div>
-                          ))}
+                          ) : (
+                            basket.map((ln) => (
+                              <div
+                                key={ln.product.id}
+                                className="d-flex align-items-center justify-content-between border rounded p-2"
+                              >
+                                <div
+                                  className="text-truncate"
+                                  style={{ maxWidth: 180 }}
+                                >
+                                  <div className="fw-semibold text-truncate">
+                                    {ln.product.name}
+                                  </div>
+                                  <div className="text-muted small">
+                                    {mad(ln.product.price)}
+                                  </div>
+                                </div>
+                                <div className="d-flex align-items-center gap-2">
+                                  <input
+                                    type="number"
+                                    className="form-control form-control-sm"
+                                    style={{ width: 80 }}
+                                    min={1}
+                                    value={ln.qty}
+                                    onChange={(e) =>
+                                      setQty(
+                                        ln.product.id,
+                                        Math.max(
+                                          1,
+                                          Number(e.target.value || 1)
+                                        )
+                                      )
+                                    }
+                                  />
+                                  <button
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() =>
+                                      removeLine(ln.product.id)
+                                    }
+                                  >
+                                    Retirer
+                                  </button>
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
 
                         <hr className="my-3" />
@@ -681,13 +960,28 @@ export default function OrdersAdminPage() {
                         <h6 className="mb-2">Client (facultatif)</h6>
                         <div className="row g-2">
                           <div className="col-12 col-sm-6">
-                            <input className="form-control" placeholder="Prénom" value={cFirst} onChange={(e)=>setCFirst(e.target.value)} />
+                            <input
+                              className="form-control"
+                              placeholder="Prénom"
+                              value={cFirst}
+                              onChange={(e) => setCFirst(e.target.value)}
+                            />
                           </div>
                           <div className="col-12 col-sm-6">
-                            <input className="form-control" placeholder="Nom" value={cLast} onChange={(e)=>setCLast(e.target.value)} />
+                            <input
+                              className="form-control"
+                              placeholder="Nom"
+                              value={cLast}
+                              onChange={(e) => setCLast(e.target.value)}
+                            />
                           </div>
                           <div className="col-12">
-                            <input className="form-control" placeholder="Téléphone (+212…)" value={cPhone} onChange={(e)=>setCPhone(e.target.value)} />
+                            <input
+                              className="form-control"
+                              placeholder="Téléphone (+212…)"
+                              value={cPhone}
+                              onChange={(e) => setCPhone(e.target.value)}
+                            />
                           </div>
                         </div>
 
@@ -698,13 +992,19 @@ export default function OrdersAdminPage() {
                               type="checkbox"
                               id="markDone"
                               checked={markDone}
-                              onChange={(e)=>setMarkDone(e.target.checked)}
+                              onChange={(e) => setMarkDone(e.target.checked)}
                             />
-                            <label className="form-check-label" htmlFor="markDone">
-                              Marquer comme <strong>livrée (DONE)</strong> après création
+                            <label
+                              className="form-check-label"
+                              htmlFor="markDone"
+                            >
+                              Marquer comme{" "}
+                              <strong>livrée (DONE)</strong> après création
                             </label>
                           </div>
-                          <div className="h6 m-0">Total : {mad(basketTotal)}</div>
+                          <div className="h6 m-0">
+                            Total : {mad(basketTotal)}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -713,8 +1013,18 @@ export default function OrdersAdminPage() {
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" onClick={()=>setOpenCreate(false)} disabled={saving}>Fermer</button>
-                <button className="btn btn-dark" onClick={submitCreate} disabled={saving || basket.length===0}>
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={() => setOpenCreate(false)}
+                  disabled={saving}
+                >
+                  Fermer
+                </button>
+                <button
+                  className="btn btn-dark"
+                  onClick={submitCreate}
+                  disabled={saving || basket.length === 0}
+                >
                   {saving ? "Enregistrement…" : "Créer la commande"}
                 </button>
               </div>
@@ -722,7 +1032,6 @@ export default function OrdersAdminPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
