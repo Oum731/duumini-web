@@ -48,11 +48,11 @@ export default function ProductCard({ product, onAdd }: Props) {
   const tag =
     product.sub_category === "food"
       ? {
-          text: "Food",
+          
           cls: "bg-success-subtle text-success-emphasis border-success-subtle",
         }
       : {
-          text: "Market",
+          
           cls: "bg-primary-subtle text-primary-emphasis border-primary-subtle",
         };
 
@@ -141,7 +141,7 @@ export default function ProductCard({ product, onAdd }: Props) {
             className={`badge position-absolute top-0 start-0 m-2 border ${tag.cls}`}
             style={{ backdropFilter: "blur(4px)" }}
           >
-            {tag.text}
+           
           </span>
         </div>
 
@@ -224,7 +224,7 @@ export default function ProductCard({ product, onAdd }: Props) {
                   <div className="col-12 col-md-6 d-flex flex-column">
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <span className="h5 m-0">{moneyMAD(product.price)}</span>
-                      <span className={`badge border ${tag.cls}`}>{tag.text}</span>
+                      <span className={`badge border ${tag.cls}`}></span>
                     </div>
 
                     {product.description ? (
