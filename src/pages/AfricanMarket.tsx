@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ProductCard from "../components/ProductCard";
 import { listProducts, type Product } from "../services/products";
+import { listCategories, type Category } from "../services/categories";
 
 function GridSkeleton() {
   return (
@@ -26,6 +27,8 @@ function GridSkeleton() {
 
 export default function AfricanMarket() {
   const [items, setItems] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +36,6 @@ export default function AfricanMarket() {
   const [pageSize] = useState(24);
   const [total, setTotal] = useState(0);
 
-  // Recherche locale (debounce)
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   useEffect(() => {
@@ -41,27 +43,32 @@ export default function AfricanMarket() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Clamp page si nécessaire
+  const pages = useMemo(
+    () => Math.max(1, Math.ceil(total / pageSize)),
+    [total, pageSize]
+  );
+
   useEffect(() => {
     if (page > pages) setPage(pages);
   }, [pages, page]);
 
-  // Chargement avec annulation
-  const abortRef = useRef<AbortController | null>(null);
   async function refresh() {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-
     setLoading(true);
     setError(null);
     try {
-      const res = await listProducts({ page, pageSize, channel: "african-market" });
+      const [resProducts, resCats] = await Promise.all([
+        listProducts({ page, pageSize, channel: "african-market" }),
+        listCategories({ page: 1, pageSize: 100 }),
+      ]);
       if (ac.signal.aborted) return;
-      setItems(res.items);
-      setTotal(res.pageInfo.total);
+      setItems(resProducts.items);
+      setTotal(resProducts.pageInfo.total);
+      setCategories(resCats.items);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setError(e?.message || String(e));
@@ -75,19 +82,44 @@ export default function AfricanMarket() {
     refresh();
   }, [page, pageSize]);
 
-  const filtered = useMemo(() => {
+  const categoriesById = useMemo(() => {
+    const map: Record<number, Category> = {};
+    for (const c of categories) map[c.id] = c;
+    return map;
+  }, [categories]);
+
+  const MARKET_CATS = ["viandes-volailles", "epices", "frais-surgeles"];
+  const marketCategories = useMemo(
+    () => categories.filter((c) => MARKET_CATS.includes(c.slug)),
+    [categories]
+  );
+
+  const filteredBySearch = useMemo(() => {
     if (!qDebounced) return items;
     return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
   }, [items, qDebounced]);
 
+  const filtered = useMemo(() => {
+    if (!categoryFilter) return filteredBySearch;
+    return filteredBySearch.filter((p) => {
+      if (!p.category_id) return false;
+      const cat = categoriesById[p.category_id];
+      return cat?.slug === categoryFilter;
+    });
+  }, [filteredBySearch, categoryFilter, categoriesById]);
+
   const filteredCount = filtered.length;
-  const showCount = qDebounced ? `${filteredCount} / ${total} éléments` : `${total} éléments`;
+  const showCount = qDebounced
+    ? `${filteredCount} / ${total} éléments`
+    : `${total} éléments`;
 
   return (
     <section className="container-xxl py-4">
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
         <div>
-          <h1 className="h4 mb-1" style={{ color: "var(--duu-black)" }}>Duumini Market</h1>
+          <h1 className="h4 mb-1" style={{ color: "var(--duu-black)" }}>
+            Duumini Market
+          </h1>
         </div>
 
         <div className="input-group" style={{ maxWidth: 420 }}>
@@ -113,6 +145,35 @@ export default function AfricanMarket() {
         </div>
       </div>
 
+      {/* Filtres de sous-catégorie Market */}
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <span className="small text-muted me-1">Filtrer par catégorie :</span>
+        <button
+          type="button"
+          className={
+            "btn btn-sm " + (!categoryFilter ? "btn-dark" : "btn-outline-dark")
+          }
+          onClick={() => setCategoryFilter("")}
+        >
+          Tous
+        </button>
+        {marketCategories.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            className={
+              "btn btn-sm " +
+              (categoryFilter === cat.slug ? "btn-dark" : "btn-outline-dark")
+            }
+            onClick={() =>
+              setCategoryFilter((prev) => (prev === cat.slug ? "" : cat.slug))
+            }
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div className="alert alert-danger d-flex justify-content-between align-items-center">
           <span>{error}</span>
@@ -130,7 +191,6 @@ export default function AfricanMarket() {
         <div className="row g-3">
           {filtered.map((p) => (
             <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={p.id}>
-              {/* ❌ ne pas passer onAdd → ProductCard utilise le contexte panier */}
               <ProductCard product={p} />
             </div>
           ))}
@@ -145,8 +205,6 @@ export default function AfricanMarket() {
               className="btn btn-sm btn-outline-dark"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              aria-label="Page précédente"
-              title="Page précédente"
             >
               ◀
             </button>
@@ -157,8 +215,6 @@ export default function AfricanMarket() {
               className="btn btn-sm btn-duu"
               disabled={page >= pages}
               onClick={() => setPage((p) => Math.min(pages, p + 1))}
-              aria-label="Page suivante"
-              title="Page suivante"
             >
               ▶
             </button>
