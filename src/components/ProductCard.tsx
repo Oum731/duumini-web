@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
+import ProductRating from "./ProductRating"; // ✅ NEW
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -48,11 +49,9 @@ export default function ProductCard({ product, onAdd }: Props) {
   const tag =
     product.sub_category === "food"
       ? {
-          
           cls: "bg-success-subtle text-success-emphasis border-success-subtle",
         }
       : {
-          
           cls: "bg-primary-subtle text-primary-emphasis border-primary-subtle",
         };
 
@@ -141,12 +140,12 @@ export default function ProductCard({ product, onAdd }: Props) {
             className={`badge position-absolute top-0 start-0 m-2 border ${tag.cls}`}
             style={{ backdropFilter: "blur(4px)" }}
           >
-           
+            {/* tu peux mettre un texte ici si tu veux (Food / Market) */}
           </span>
         </div>
 
         <div className="card-body d-flex flex-column">
-          {/* ✅ Titre avec retour à la ligne (plus de text-truncate) */}
+          {/* ✅ Titre avec retour à la ligne */}
           <h3
             className="h6 mb-1"
             title={product.name}
@@ -156,7 +155,12 @@ export default function ProductCard({ product, onAdd }: Props) {
           </h3>
 
           {/* ✅ Prix sans décimales */}
-          <div className="fw-semibold mb-2">{moneyMAD(product.price)}</div>
+          <div className="fw-semibold mb-1">{moneyMAD(product.price)}</div>
+
+          {/* ✅ Note du produit sous le prix */}
+          <div className="mb-2">
+            <ProductRating productId={product.id} />
+          </div>
 
           <div className="mt-auto d-flex gap-2">
             <button
@@ -225,6 +229,11 @@ export default function ProductCard({ product, onAdd }: Props) {
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <span className="h5 m-0">{moneyMAD(product.price)}</span>
                       <span className={`badge border ${tag.cls}`}></span>
+                    </div>
+
+                    {/* ✅ Note aussi dans la modale, sous le prix (optionnel mais sympa) */}
+                    <div className="mb-2">
+                      <ProductRating productId={product.id} />
                     </div>
 
                     {product.description ? (

@@ -8,13 +8,12 @@ import "./theme.css";
 
 import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
+import { RealtimeProvider } from "./context/RealtimeContext"; // ✅
 
-// 👉 PWA: registre l’auto-update (vite-plugin-pwa)
 import { registerSW } from "virtual:pwa-register";
 
 // Petit helper: toast Bootstrap "Nouvelle version"
 function showUpdateToast(onReload: () => void) {
-  // Si Bootstrap n’est pas dispo, fallback prompt
   const bs = (window as any).bootstrap;
   if (!bs?.Toast) {
     if (confirm("Une nouvelle version de Duumini est disponible. Recharger maintenant ?")) {
@@ -23,7 +22,6 @@ function showUpdateToast(onReload: () => void) {
     return;
   }
 
-  // Conteneur (une seule fois)
   let container = document.getElementById("pwa-toast-container");
   if (!container) {
     container = document.createElement("div");
@@ -33,7 +31,6 @@ function showUpdateToast(onReload: () => void) {
     document.body.appendChild(container);
   }
 
-  // Toast
   const el = document.createElement("div");
   el.className = "toast align-items-center text-bg-dark border-0";
   el.setAttribute("role", "alert");
@@ -60,14 +57,13 @@ function showUpdateToast(onReload: () => void) {
   toast.show();
 }
 
-// Enregistre le SW & gère l’update UX
 const updateSW = registerSW({
-  immediate: true, // installe le SW dès le premier chargement
+  immediate: true,
   onNeedRefresh() {
-    showUpdateToast(() => updateSW(true)); // -> skipWaiting + reload
+    showUpdateToast(() => updateSW(true));
   },
   onOfflineReady() {
-    // Optionnel : console.log("Duumini prête hors-ligne");
+    // optionnel
   },
 });
 
@@ -80,7 +76,9 @@ createRoot(document.getElementById("root")!).render(
       }}
     >
       <AuthProvider>
-        <App />
+        <RealtimeProvider>
+          <App />
+        </RealtimeProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

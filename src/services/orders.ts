@@ -61,24 +61,20 @@ export type CreateOrderResult = {
 export type Order = {
   id: number;
   user_id?: number;
-
-  /** 💡 Pour l’Admin: infos client en priorité via contact, sinon via user */
   contact?: {
     first_name?: string | null;
     last_name?: string | null;
     phone?: string | null;
   } | null;
-
   user?: {
     first_name?: string | null;
     last_name?: string | null;
     phone?: string | null;
   } | null;
-
-  address?: any | null;      // JSON côté backend
+  address?: any | null;
   geo_link?: string | null;
   total?: number | null;
-  currency?: string | null;  // "MAD"
+  currency?: string | null;
   status: OrderStatus;
   created_at: string;
   updated_at?: string;
@@ -91,13 +87,28 @@ export type OrderItem = {
   product_id: number;
   qty: number;
   unit_price: number;
+
   // enrichissements
   product_name?: string | null;
+
+  /** 💡 image principale du produit (JOIN sur product_images) */
   product_cover?: string | null;
   image_url?: string | null;
+  /** compat éventuelle avec un alias "cover" */
+  cover?: string | null;
+
   // fallbacks possibles selon API
   name?: string | null;
   price?: number | null;
+
+  // compat si l’API renvoie un objet imbriqué product
+  product?: {
+    id?: number;
+    name?: string | null;
+    cover?: string | null;
+    product_cover?: string | null;
+    image_url?: string | null;
+  } | null;
 };
 
 /** Détails d’une commande (GET /api/orders/:id) */
@@ -122,34 +133,28 @@ export type OrderDetail = Order & {
 
 /* ===== API ===== */
 
-/** Liste paginée — { items, pageInfo } */
 export async function listOrders(opts: { page?: number; pageSize?: number } = {}) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
   return api.get<Paginated<Order>>("/api/orders", { query: { page, pageSize } });
 }
 
-/** Détails d’une commande (incl. contact/user/address/delivery/items/totals) */
 export async function getOrder(id: number) {
   return api.get<OrderDetail>(`/api/orders/${id}`);
 }
 
-/** Mise à jour du statut */
 export async function updateOrderStatus(id: number, status: OrderStatus) {
   return api.put<{ ok: true }>(`/api/orders/${id}/status`, { status });
 }
 
-/** Annulation */
 export async function cancelOrder(id: number) {
   return api.post<{ ok: true; status: "CANCELLED" }>(`/api/orders/${id}/cancel`, {});
 }
 
-/** Création pour utilisateur CONNECTÉ (route protégée) */
 export async function createOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>("/api/orders", payload);
 }
 
-/** Création pour INVITÉ (sans authRequired → /guest) */
 export async function createGuestOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>("/api/orders/guest", payload);
 }

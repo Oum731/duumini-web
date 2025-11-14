@@ -1,5 +1,4 @@
-// src/pages/admin/OrdersAdminPage.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   listOrders,
   getOrder,
@@ -11,6 +10,8 @@ import {
 } from "../../services/orders";
 import { listProducts, type Product } from "../../services/products";
 import { Link } from "react-router-dom";
+import { subscribeSSE, type ServerEvent } from "../../services/events";
+import { API_BASE } from "../../services/http";
 
 const STATUSES: OrderStatus[] = ["OPEN", "PREPARATION", "DELIVERY", "DONE", "CANCELLED"];
 
@@ -23,6 +24,40 @@ const BADGE: Record<OrderStatus, string> = {
 };
 
 type AnyObj = Record<string, any>;
+
+/* ===== Helpers image ===== */
+function imgUrl(u?: string | null) {
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("/")) return `${API_BASE}${u}`;
+  return u;
+}
+
+/** Image de produit robuste (utilise product_cover renvoyé par GET /api/orders/:id) */
+function getItemImage(it: AnyObj): string {
+  const raw =
+    it.product_cover ||
+    it.image_url ||
+    it.cover ||
+    it.product_image ||
+    it.image ||
+    it.thumb ||
+    it.thumbnail ||
+    (it.product &&
+      (it.product.product_cover ||
+        it.product.image_url ||
+        it.product.cover ||
+        it.product.image ||
+        it.product.thumb)) ||
+    null;
+
+  return imgUrl(raw || "");
+}
+
+/** Vignette pour la ligne de tableau (liste des commandes) */
+function getOrderThumb(o: AnyObj): string {
+  return imgUrl(o.first_product_cover || o.product_cover || "");
+}
 
 /* ===== Helpers téléphone / WhatsApp ===== */
 function normalizePhoneTel(phone?: string, defaultCountry = "+212") {
@@ -102,7 +137,8 @@ export default function OrdersAdminPage() {
     [prodTotal, prodPageSize]
   );
 
-  async function refresh() {
+  // ✅ refresh en useCallback pour pouvoir l'utiliser dans les effets (SSE)
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listOrders({ page, pageSize });
@@ -114,12 +150,32 @@ export default function OrdersAdminPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, pageSize]);
 
+  // Chargement initial + changement de page
   useEffect(() => {
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  }, [refresh]);
+
+  // ✅ Abonnement SSE temps réel : refresh sur nouvelle commande / changement statut
+  useEffect(() => {
+    const sub = subscribeSSE("/api/events/stream", (evt: ServerEvent) => {
+      if (evt.type === "ORDER_CREATED" || evt.type === "ORDER_STATUS") {
+        refresh();
+        // Toast global si dispo
+        // @ts-ignore
+        window?.duuminiToast?.({
+          title:
+            evt.payload?.title ||
+            (evt.type === "ORDER_CREATED"
+              ? "Nouvelle commande"
+              : "Commande mise à jour"),
+          message: evt.payload?.body || "",
+        });
+      }
+    });
+    return () => sub.close();
+  }, [refresh]);
 
   const dateTime = (iso?: string) =>
     iso ? new Date(iso).toLocaleString("fr-FR") : "";
@@ -217,6 +273,8 @@ export default function OrdersAdminPage() {
   const itemsDetail: AnyObj[] = Array.isArray(detail?.items)
     ? detail!.items
     : [];
+
+  // On garde le calcul local, mais si le backend renvoie totals, on peut l'utiliser
   const itemsAmount = itemsDetail.reduce(
     (sum, it) =>
       sum +
@@ -268,7 +326,6 @@ export default function OrdersAdminPage() {
     setSearchLoading(true);
     setSearchErr(null);
     try {
-      // On récupère les produits sans distinctions (pas de channel), paginés
       const res = await listProducts({ page: prodPage, pageSize: prodPageSize });
       if (ac.signal.aborted) return;
       setProdTotal(res.pageInfo.total);
@@ -281,9 +338,6 @@ export default function OrdersAdminPage() {
     }
   }
 
-  // On recharge les produits quand :
-  // - le modal s'ouvre
-  // - la page produits change
   useEffect(() => {
     if (openCreate) {
       runSearch();
@@ -291,7 +345,6 @@ export default function OrdersAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCreate, prodPage, prodPageSize]);
 
-  // Filtrage par nom dans la page courante (20 produits)
   const filteredResults = useMemo(() => {
     const ql = search.trim().toLowerCase();
     if (!ql) return results;
@@ -339,7 +392,6 @@ export default function OrdersAdminPage() {
     try {
       setSaving(true);
       const created = await createOrder(payload);
-      // marquer DONE si coché
       if (markDone && created?.id) {
         await updateOrderStatus(created.id, "DONE");
       }
@@ -370,7 +422,7 @@ export default function OrdersAdminPage() {
             className="btn btn-duu"
             onClick={() => {
               setOpenCreate(true);
-              setProdPage(1); // on revient à la page 1 des produits à l'ouverture
+              setProdPage(1);
             }}
           >
             + Vente sur place
@@ -406,6 +458,7 @@ export default function OrdersAdminPage() {
                 <thead>
                   <tr>
                     <th>#</th>
+                    <th>Image</th>{/* ✅ nouvelle colonne */}
                     <th>Date</th>
                     <th>Client</th>
                     <th>Contact</th>
@@ -423,9 +476,11 @@ export default function OrdersAdminPage() {
                     const phone = (c?.phone || "").trim();
                     const hrefTel = telHref(phone);
                     const hrefWa = waHref(o.id, phone, clientName);
+                    const thumb = getOrderThumb(o as AnyObj);
 
                     return (
                       <tr key={o.id}>
+                        {/* ID */}
                         <td>
                           <button
                             className="btn btn-link link-dark p-0"
@@ -434,13 +489,43 @@ export default function OrdersAdminPage() {
                             {o.id}
                           </button>
                         </td>
+
+                        {/* ✅ Image */}
+                        <td>
+                          {thumb ? (
+                            <div
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 8,
+                                overflow: "hidden",
+                                background: "#f5f5f5",
+                              }}
+                            >
+                              <img
+                                src={thumb}
+                                alt={`Produit commande #${o.id}`}
+                                className="w-100 h-100 object-fit-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                          ) : (
+                            <span className="text-muted small">—</span>
+                          )}
+                        </td>
+
+                        {/* Date */}
                         <td>{dateTime(o.created_at)}</td>
+
+                        {/* Client */}
                         <td
                           className="text-truncate"
                           style={{ maxWidth: 220 }}
                         >
                           {clientName}
                         </td>
+
+                        {/* Contact */}
                         <td>
                           <div className="d-flex flex-column">
                             <small className="text-muted">
@@ -468,12 +553,18 @@ export default function OrdersAdminPage() {
                             </div>
                           </div>
                         </td>
+
+                        {/* Statut */}
                         <td>
                           <span className={`badge ${BADGE[o.status]}`}>
                             {o.status}
                           </span>
                         </td>
+
+                        {/* Total */}
                         <td className="text-end">{mad(o.total)}</td>
+
+                        {/* Actions */}
                         <td className="text-end">
                           <div className="btn-group">
                             <button
@@ -720,7 +811,7 @@ export default function OrdersAdminPage() {
                       </div>
                     </div>
 
-                    {/* Articles */}
+                    {/* Articles avec IMAGE */}
                     <div className="card border-0 shadow-sm mb-3">
                       <div className="card-body">
                         <h6 className="mb-2">Articles</h6>
@@ -734,17 +825,51 @@ export default function OrdersAdminPage() {
                             const unit = Number(
                               it?.unit_price ?? it?.price ?? 0
                             );
+                            const img = getItemImage(it);
+                            const lineTotal = unit * qty;
+
                             return (
                               <li
                                 key={i}
-                                className="list-group-item d-flex justify-content-between align-items-center"
+                                className="list-group-item d-flex justify-content-between align-items-center gap-2"
                               >
-                                <div className="text-truncate" title={name}>
-                                  <span className="fw-semibold">{name}</span>{" "}
-                                  <span className="text-muted">×{qty}</span>
+                                <div className="d-flex align-items-center gap-2 flex-grow-1">
+                                  {img ? (
+                                    <div
+                                      className="flex-shrink-0"
+                                      style={{
+                                        width: 48,
+                                        height: 48,
+                                        borderRadius: 8,
+                                        overflow: "hidden",
+                                        background: "#f5f5f5",
+                                      }}
+                                    >
+                                      <img
+                                        src={img}
+                                        alt={name}
+                                        className="w-100 h-100 object-fit-cover"
+                                        loading="lazy"
+                                      />
+                                    </div>
+                                  ) : null}
+                                  <div style={{ minWidth: 0 }}>
+                                    <div
+                                      className="fw-semibold text-truncate"
+                                      title={name}
+                                    >
+                                      {name}
+                                    </div>
+                                    <div className="small text-muted">
+                                      {mad(unit)}{" "}
+                                      <span className="text-muted">
+                                        ×{qty}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
-                                <span className="fw-semibold">
-                                  {mad(unit * qty)}
+                                <span className="fw-semibold ms-2">
+                                  {mad(lineTotal)}
                                 </span>
                               </li>
                             );
@@ -822,7 +947,6 @@ export default function OrdersAdminPage() {
                           value={search}
                           onChange={(e) => {
                             setSearch(e.target.value);
-                            // on ne touche pas prodPage ici : la recherche filtre seulement la page courante
                           }}
                         />
                         {searchErr && (

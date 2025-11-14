@@ -13,7 +13,8 @@ export type Product = {
   stock?: number | null;
   is_featured?: 0 | 1;
   promo_eligible?: 0 | 1;
-  sub_category?: "product" | "food";  // ← domaine strict
+  // 🔹 On autorise maintenant des canaux custom (et plus seulement "product" | "food")
+  sub_category?: string | null;
   created_at?: string;
   updated_at?: string;
   images?: { id: number; url: string; sort_order: number }[];
@@ -28,10 +29,12 @@ export type Paginated<T> = {
 type Channel = "african-food" | "african-market";
 
 /* ---------- Utils ---------- */
-function normalizeSubCategory(v?: string | null): "food" | "product" | undefined {
+// 🔹 On ne force plus à "product" / "food" : on garde ce que le front envoie
+function normalizeSubCategory(v?: string | null): string | undefined {
   if (v == null) return undefined;
-  const s = String(v).trim().toLowerCase();
-  return s === "food" || s === "product" ? (s as "food" | "product") : "product";
+  const s = String(v).trim();
+  if (!s) return undefined;
+  return s;
 }
 
 /* ---------- List ---------- */
@@ -81,7 +84,7 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
     fd.append("promo_eligible", String(v));
   }
 
-  const sub = normalizeSubCategory(draft.sub_category);
+  const sub = normalizeSubCategory(draft.sub_category ?? undefined);
   if (sub) fd.append("sub_category", sub);
 
   // images
@@ -91,7 +94,12 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
 }
 
 /* ---------- Update ---------- */
-export async function updateProduct(id: number, draft: Partial<Product>, files: File[], replaceImages = false) {
+export async function updateProduct(
+  id: number,
+  draft: Partial<Product>,
+  files: File[],
+  replaceImages = false
+) {
   const fd = new FormData();
   if (draft.name) fd.append("name", draft.name);
   if (draft.price != null) fd.append("price", String(draft.price));
@@ -108,7 +116,7 @@ export async function updateProduct(id: number, draft: Partial<Product>, files: 
     fd.append("promo_eligible", String(v));
   }
 
-  const sub = normalizeSubCategory(draft.sub_category);
+  const sub = normalizeSubCategory(draft.sub_category ?? undefined);
   if (sub) fd.append("sub_category", sub);
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));

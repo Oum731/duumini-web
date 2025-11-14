@@ -13,14 +13,19 @@ export type Shop = {
   country?: string | null;
   phone?: string | null;
   logo?: string | null;
+  cover?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   is_active?: boolean;
+  category_name?: string | null;
+  category_slug?: string | null;
   created_at?: string;
   updated_at?: string;
 };
 
 /** ======= Public / Vendor ======= */
 
-/** Liste paginée (publique / vendor) */
+/** Liste paginée publique (avec recherche optionnelle q) */
 export async function listShops(opts: { page?: number; pageSize?: number; q?: string } = {}) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
@@ -30,50 +35,50 @@ export async function listShops(opts: { page?: number; pageSize?: number; q?: st
   });
 }
 
-/** Mes boutiques (vendor) */
+/** Mes boutiques (vendor / admin) */
 export async function listMyShops() {
   return api.get<Shop[]>("/api/shops/mine");
 }
 
-/** Détail public (si jamais tu en as besoin côté vitrine) */
+/** Détail public d’une boutique */
 export async function getShop(id: number) {
   return api.get<Shop>(`/api/shops/${id}`);
 }
 
-/** ======= Admin ======= */
+/** ======= "Admin" (même endpoints, mais usage côté dashboard) ======= */
 
-/** Liste paginée (admin) — utile si ton back sépare les endpoints admin */
+/** Liste paginée pour l’admin */
 export async function listShopsAdmin(opts: { page?: number; pageSize?: number; q?: string } = {}) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
   const q = opts.q;
-  return api.get<Paginated<Shop>>("/api/admin/shops", {
+  return api.get<Paginated<Shop>>("/api/shops", {
     query: { page, pageSize, ...(q ? { q } : {}) },
   });
 }
 
-/** Détail (admin) */
+/** Détail pour l’admin */
 export async function getShopAdmin(id: number) {
-  return api.get<Shop>(`/api/admin/shops/${id}`);
+  return api.get<Shop>(`/api/shops/${id}`);
 }
 
-/** Création (admin) — JSON simple; passe en FormData si tu envoies un logo plus tard */
+/** Création (vendor ou admin) */
 export async function createShop(payload: Partial<Shop>) {
-  return api.post<Shop>("/api/admin/shops", {
+  return api.post<Shop>("/api/shops", {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
-/** Mise à jour (admin) */
+/** Mise à jour (vendor propriétaire ou admin) */
 export async function updateShop(id: number, payload: Partial<Shop>) {
-  return api.put<Shop>(`/api/admin/shops/${id}`, {
+  return api.put<Shop>(`/api/shops/${id}`, {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 }
 
-/** Suppression (admin) */
+/** Suppression (vendor propriétaire ou admin) */
 export async function removeShop(id: number) {
-  return api.delete<{ ok: true } | any>(`/api/admin/shops/${id}`);
+  return api.delete<{ ok: true }>(`/api/shops/${id}`);
 }

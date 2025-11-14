@@ -16,12 +16,10 @@ type ProductImage = { id: number; url: string; sort_order: number };
 // On étend Product pour pouvoir garder les images lors du preview/édition
 type FullProduct = Product & { images?: ProductImage[] };
 
+// 🔹 Draft = Product partiel + category_name (pour "Autre…" Market)
+// on ne redéfinit PAS sub_category / description / stock / currency ici
 type Draft = Partial<Product> & {
-  description?: string | null;
-  stock?: number | null;
-  currency?: string;
-  sub_category?: "product" | "food"; // plus de "other" ici
-  category_name?: string;            // pour "Autre…" (nouvelle catégorie)
+  category_name?: string;
 };
 
 function moneyMAD(n?: number | null) {
@@ -50,11 +48,18 @@ function ProductForm({
   onSubmit: (draft: Draft, files: File[], replaceImages: boolean) => Promise<void> | void;
   onCancel: () => void;
 }) {
+  // Pour savoir si le canal initial est custom ou pas
+  const isInitialCustomSubCategory =
+    !!initial?.sub_category &&
+    initial.sub_category !== "product" &&
+    initial.sub_category !== "food";
+
   const [draft, setDraft] = useState<Draft>(() => ({
     name: initial?.name || "",
-    price: initial?.price || 0,
+    // Prix / stock : pas de 0 forcé
+    price: initial?.price ?? undefined,
     description: initial?.description || "",
-    stock: initial?.stock ?? 0,
+    stock: initial?.stock ?? undefined,
     currency: initial?.currency || "MAD",
     sub_category: initial?.sub_category || "product",
     is_featured: initial?.is_featured ?? 0,
@@ -67,6 +72,9 @@ function ProductForm({
 
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState(draft.category_name || "");
+
+  // 🔹 Nouvel état pour "Canal" personnalisé (comme Autre…)
+  const [isCustomSubCategory, setIsCustomSubCategory] = useState(isInitialCustomSubCategory);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
@@ -110,6 +118,10 @@ function ProductForm({
 
   const hasExistingImages = (initial?.images?.length ?? 0) > 0;
 
+  // Canal pré-définis (pour l'affichage)
+  const predefinedSubCategoryValue =
+    isCustomSubCategory ? "__other__" : draft.sub_category || "product";
+
   return (
     <form onSubmit={submit}>
       <div className="row g-2">
@@ -128,21 +140,51 @@ function ProductForm({
               <label className="form-label">Canal</label>
               <select
                 className="form-select"
-                value={draft.sub_category || "product"}
-                onChange={(e) =>
-                  setDraft((d) => ({
-                    ...d,
-                    sub_category: e.target.value as Draft["sub_category"],
-                  }))
-                }
+                value={predefinedSubCategoryValue}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "__other__") {
+                    setIsCustomSubCategory(true);
+                    setDraft((d) => ({
+                      ...d,
+                      sub_category:
+                        d.sub_category &&
+                        d.sub_category !== "product" &&
+                        d.sub_category !== "food"
+                          ? d.sub_category
+                          : "",
+                    }));
+                  } else {
+                    setIsCustomSubCategory(false);
+                    setDraft((d) => ({
+                      ...d,
+                      sub_category: val || "product",
+                    }));
+                  }
+                }}
               >
                 <option value="product">Market (African Market)</option>
                 <option value="food">Food (African Food)</option>
+                <option value="__other__">Autre…</option>
               </select>
+
+              {isCustomSubCategory && (
+                <input
+                  className="form-control mt-1"
+                  placeholder="Ex: Service, Courses…"
+                  value={draft.sub_category || ""}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      sub_category: e.target.value || undefined,
+                    }))
+                  }
+                />
+              )}
             </div>
           </div>
 
-          {/* Sous-catégories Market (categories) */}
+          {/* Sous-catégories Market (categories) : seulement si canal = product */}
           {draft.sub_category === "product" && (
             <div className="row g-2 mt-1">
               <div className="col-6">
@@ -207,9 +249,12 @@ function ProductForm({
                 type="number"
                 step="0.01"
                 className="form-control"
-                value={Number(draft.price || 0)}
+                value={draft.price ?? ""}
                 onChange={(e) =>
-                  setDraft((d) => ({ ...d, price: Number(e.target.value) }))
+                  setDraft((d) => ({
+                    ...d,
+                    price: e.target.value === "" ? undefined : Number(e.target.value),
+                  }))
                 }
                 required
               />
@@ -229,9 +274,12 @@ function ProductForm({
               <input
                 type="number"
                 className="form-control"
-                value={Number(draft.stock || 0)}
+                value={draft.stock ?? ""}
                 onChange={(e) =>
-                  setDraft((d) => ({ ...d, stock: Number(e.target.value) }))
+                  setDraft((d) => ({
+                    ...d,
+                    stock: e.target.value === "" ? undefined : Number(e.target.value),
+                  }))
                 }
               />
             </div>
@@ -517,7 +565,7 @@ export default function ProductsAdminPage() {
     setError(null);
     setOk(null);
     try {
-      // 1) Gérer la création éventuelle d'une nouvelle catégorie via "Autre…"
+      // 1) Gérer la création éventuelle d'une nouvelle catégorie via "Autre…" (Market)
       let categoryId = draft.category_id ?? null;
       if (!categoryId && draft.category_name) {
         const created = await createCategory(draft.category_name);
@@ -867,7 +915,7 @@ export default function ProductsAdminPage() {
                         <strong>Stock :</strong> {(preview as any).stock ?? 0}
                       </li>
                       <li>
-                        <strong>Sous-cat :</strong> {preview.sub_category || "-"}
+                        <strong>Canal :</strong> {preview.sub_category || "-"}
                       </li>
                     </ul>
                     <div className="small text-muted">

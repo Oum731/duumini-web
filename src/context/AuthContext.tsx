@@ -21,8 +21,8 @@ import {
 
 import {
   initPush,
-  registerDeviceWithApi,
-  unregisterDeviceFromApi,
+  registerDevice,
+  unregisterDevice,
 } from "../services/push";
 
 type RegisterPayload = {
@@ -64,12 +64,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getCurrentUser());
   const [loading, setLoading] = useState<boolean>(true);
 
-  const applyRoleChangeIfNeeded = useCallback(async (prev: User | null, next: User | null) => {
-    const prevRole = (prev?.role || "").toString().trim().toUpperCase();
-    const nextRole = (next?.role || "").toString().trim().toUpperCase();
-    if (prevRole && nextRole && prevRole !== nextRole) {
-      try { await apiRefresh(); } catch {}
-      window.location.reload();
+  const applyRoleChangeIfNeeded = useCallback(
+    async (prev: User | null, next: User | null) => {
+      const prevRole = (prev?.role || "").toString().trim().toUpperCase();
+      const nextRole = (next?.role || "").toString().trim().toUpperCase();
+      if (prevRole && nextRole && prevRole !== nextRole) {
+        try {
+          await apiRefresh();
+        } catch {}
+        window.location.reload();
+      }
+    },
+    []
+  );
+
+  // Petit helper pour initialiser Pushy + enregistrer le device côté API
+  const setupPush = useCallback(async () => {
+    try {
+      const token = await initPush();
+      if (token) {
+        await registerDevice(token, "pushy");
+      }
+    } catch (e) {
+      console.warn("[Auth] init push failed", e);
     }
   }, []);
 
@@ -88,13 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u);
         await applyRoleChangeIfNeeded(before, u);
 
-        if (u && Notification.permission === "granted") {
-          try {
-            const t = await initPush();
-            if (t) await registerDeviceWithApi(t);
-          } catch (e) {
-            console.warn("[Auth] silent push init failed", e);
-          }
+        if (u) {
+          // Si l'utilisateur est connecté au chargement, on initialise Pushy
+          await setupPush();
         }
       } catch {
         if (!alive) return;
@@ -103,12 +116,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (alive) setLoading(false);
       }
     })();
-    return () => { alive = false; };
-  }, [applyRoleChangeIfNeeded]);
+    return () => {
+      alive = false;
+    };
+  }, [applyRoleChangeIfNeeded, setupPush]);
 
   useEffect(() => {
     const onFocus = () => refreshUser();
-    const onVis = () => { if (document.visibilityState === "visible") refreshUser(); };
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshUser();
+    };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
     const iv = window.setInterval(() => refreshUser(), 5 * 60 * 1000);
@@ -120,46 +137,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = useCallback(async (phone: string, password: string) => {
-    const before = getCurrentUser();
-    const u = await apiLogin(phone, password);
-    setUser(u);
-    await applyRoleChangeIfNeeded(before, u);
-    try {
-      const token = await initPush();
-      if (token) await registerDeviceWithApi(token);
-    } catch (e) {
-      console.warn("[Auth] init push failed", e);
-    }
-  }, [applyRoleChangeIfNeeded]);
+  const login = useCallback(
+    async (phone: string, password: string) => {
+      const before = getCurrentUser();
+      const u = await apiLogin(phone, password);
+      setUser(u);
+      await applyRoleChangeIfNeeded(before, u);
+
+      // Après login, on initialise Pushy + enregistre le device
+      await setupPush();
+    },
+    [applyRoleChangeIfNeeded, setupPush]
+  );
 
   const register = useCallback(async (data: RegisterPayload) => {
     await apiRegister(data);
   }, []);
 
   const logout = useCallback(async () => {
-    try { await unregisterDeviceFromApi(); } catch {}
+    try {
+      // Désenregistrer les devices pushy de cet utilisateur
+      await unregisterDevice();
+    } catch {}
     await apiLogout();
     setUser(null);
   }, []);
 
-  const refreshUser = useCallback(async () => {
-    try {
-      const before = getCurrentUser();
-      const u = await apiMe();
-      setUser(u);
-      await applyRoleChangeIfNeeded(before, u);
-    } catch {
-      setUser(null);
-    }
-  }, [applyRoleChangeIfNeeded]);
+  const refreshUser = useCallback(
+    async () => {
+      try {
+        const before = getCurrentUser();
+        const u = await apiMe();
+        setUser(u);
+        await applyRoleChangeIfNeeded(before, u);
+      } catch {
+        setUser(null);
+      }
+    },
+    [applyRoleChangeIfNeeded]
+  );
 
-  const updateProfile = useCallback(async (data: Partial<User>) => {
-    const before = getCurrentUser();
-    const updated = await apiUpdateProfile(data);
-    setUser(updated);
-    await applyRoleChangeIfNeeded(before, updated);
-  }, [applyRoleChangeIfNeeded]);
+  const updateProfile = useCallback(
+    async (data: Partial<User>) => {
+      const before = getCurrentUser();
+      const updated = await apiUpdateProfile(data);
+      setUser(updated);
+      await applyRoleChangeIfNeeded(before, updated);
+    },
+    [applyRoleChangeIfNeeded]
+  );
 
   return (
     <AuthContext.Provider

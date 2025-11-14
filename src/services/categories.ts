@@ -13,21 +13,8 @@ export async function listCategories(opts: { page?: number; pageSize?: number } 
 
 /* ---------- Création d'une nouvelle catégorie ---------- */
 export async function createCategory(name: string) {
-  const slug = slugify(name);
+  // On laisse le backend générer et dédupliquer le slug
   return api.post<{ id: number; name: string; slug: string }>("/api/categories", {
     name,
-    slug,
   });
-}
-
-/* ---------- Helper ---------- */
-function slugify(s: string) {
-  return (
-    s
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || Date.now().toString(36)
-  );
 }

@@ -5,6 +5,7 @@ import type { Product } from "../services/products";
 import { listProducts } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { API_BASE } from "../services/http";
+import ProductRating from "../components/ProductRating"; // ✅ NEW
 
 function imgUrl(u?: string | null) {
   if (!u) return "";
@@ -118,7 +119,8 @@ export default function ProductView() {
     };
   }, [product]);
 
-  // ✅ Si on a bien récupéré le produit, on redirige automatiquement
+  // ⚠️ NOTE : cet effet redirige vers la section, donc la vue détaillée est très peu utilisée.
+  // Si tu veux vraiment afficher la fiche + la note, tu pourras enlever cet effet plus tard.
   useEffect(() => {
     if (!product) return;
     const sub = (product.sub_category || "").toString().toLowerCase();
@@ -195,13 +197,18 @@ export default function ProductView() {
         </div>
 
         <div className="col-12 col-md-6">
-          <div className="d-flex align-items-center gap-2 mb-3">
+          <div className="d-flex align-items-center gap-2 mb-2">
             <div className="h5 m-0">{moneyMAD(product.price)}</div>
             {product.sub_category ? (
               <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
                 {product.sub_category === "food" ? "Food" : "Market"}
               </span>
             ) : null}
+          </div>
+
+          {/* ✅ Note du produit (étoiles) */}
+          <div className="mb-3">
+            <ProductRating productId={product.id} />
           </div>
 
           {product.description ? (

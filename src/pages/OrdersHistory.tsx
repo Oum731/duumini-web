@@ -4,13 +4,44 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   listOrders,
   getOrder,
-  cancelOrder,               // ✅ import annulation
+  cancelOrder,
   type Order,
   type OrderDetail,
   type OrderStatus,
   type OrderItem,
 } from "../services/orders";
 import { mad } from "../store/cart";
+import { API_BASE } from "../services/http";
+
+/* ===== Helpers image ===== */
+function imgUrl(u?: string | null) {
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("/")) return `${API_BASE}${u}`;
+  return u;
+}
+
+/** Image de produit robuste */
+function getItemImage(it: OrderItem): string {
+  const anyIt = it as any;
+  const raw =
+    it.product_cover ||        // ✅ rempli par l’API /api/orders/:id
+    it.image_url ||
+    it.cover ||
+    anyIt.product_image ||
+    anyIt.image ||
+    anyIt.thumb ||
+    anyIt.thumbnail ||
+    (anyIt.product &&
+      (anyIt.product.product_cover ||
+        anyIt.product.image_url ||
+        anyIt.product.cover ||
+        anyIt.product.image ||
+        anyIt.product.thumb)) ||
+    null;
+
+  return imgUrl(raw || "");
+}
 
 /* ===== UI helpers ===== */
 function statusBadge(s: OrderStatus) {
@@ -43,7 +74,7 @@ export default function OrdersHistoryPage() {
   const [orders, setOrders] = useState<ListOrDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [cancelingId, setCancelingId] = useState<number | null>(null); // ✅ état annulation
+  const [cancelingId, setCancelingId] = useState<number | null>(null);
   const [params] = useSearchParams();
 
   const selectedId = params.get("order") ? Number(params.get("order")) : null;
@@ -52,11 +83,9 @@ export default function OrdersHistoryPage() {
     try {
       setErr(null);
 
-      // 1) liste paginée minimale
       const res = await listOrders({ page: 1, pageSize: 20 });
       const baseList: Order[] = res?.items ?? [];
 
-      // 2) détails de chaque commande (items + totals + address)
       const detailed = await Promise.allSettled(
         baseList.map(async (o) => {
           const det = await getOrder(o.id);
@@ -87,7 +116,9 @@ export default function OrdersHistoryPage() {
   }, [fetchOrders]);
 
   const whatsappHref = (orderId: number) => {
-    const text = encodeURIComponent(`Bonjour, je souhaite avoir des infos sur ma commande #${orderId}. Merci.`);
+    const text = encodeURIComponent(
+      `Bonjour, je souhaite avoir des infos sur ma commande #${orderId}. Merci.`
+    );
     return `https://wa.me/212623677884?text=${text}`;
   };
 
@@ -102,14 +133,13 @@ export default function OrdersHistoryPage() {
   );
 
   async function onCancelOrder(id: number, status: OrderStatus | string | undefined) {
-    // On n'autorise l'annulation que si OPEN ou PREPARATION
     const s = (status || "OPEN").toUpperCase() as OrderStatus;
     const canCancel = s === "OPEN" || s === "PREPARATION";
     if (!canCancel) return;
 
     const ok = window.confirm(
       "Voulez-vous vraiment annuler cette commande ?\n\n" +
-      "Vous pouvez annuler tant que la commande n’est pas encore en statut « En livraison »."
+        "Vous pouvez annuler tant que la commande n’est pas encore en statut « En livraison »."
     );
     if (!ok) return;
 
@@ -137,13 +167,19 @@ export default function OrdersHistoryPage() {
     <section className="container-xxl py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h4 m-0">Mes commandes</h1>
-        <Link to="/" className="btn btn-outline-dark">Continuer mes achats</Link>
+        <Link to="/" className="btn btn-outline-dark">
+          Continuer mes achats
+        </Link>
       </div>
 
-      {/* ✅ Avertissement annulation avant “En livraison” */}
-      <div className="alert alert-warning" role="status" style={{ borderLeft: `4px solid var(--duu-red)` }}>
+      <div
+        className="alert alert-warning"
+        role="status"
+        style={{ borderLeft: `4px solid var(--duu-red)` }}
+      >
         <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en statut <em>En livraison</em>.
+          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en statut{" "}
+          <em>En livraison</em>.
         </div>
         <small className="text-muted">
           Une fois la commande passée en livraison, l’annulation n’est plus possible.
@@ -155,37 +191,59 @@ export default function OrdersHistoryPage() {
       {sorted.length === 0 ? (
         <div className="text-center text-muted py-5">
           <p className="mb-3">Vous n’avez pas encore de commande.</p>
-          <Link to="/" className="btn btn-dark">Parcourir les produits</Link>
+          <Link to="/" className="btn btn-dark">
+            Parcourir les produits
+          </Link>
         </div>
       ) : (
         <div className="vstack gap-3">
           {sorted.map((o) => {
-            const created = o?.created_at ? new Date(o.created_at).toLocaleString("fr-FR") : "";
-            const items: OrderItem[] = Array.isArray((o as any)?.items) ? (o as any).items : [];
+            const created = o?.created_at
+              ? new Date(o.created_at).toLocaleString("fr-FR")
+              : "";
+            const items: OrderItem[] = Array.isArray((o as any)?.items)
+              ? (o as any).items
+              : [];
 
-            // Sous-total (unit_price*qty ou price*qty en fallback)
-            const itemsAmount: number = items.reduce(
-              (sum, it) => sum + Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1),
-              0
-            );
+            const totals = (o as any)?.totals as
+              | OrderDetail["totals"]
+              | undefined;
 
-            // Totaux depuis l’API si présents, sinon calcul local
-            const totals = (o as any)?.totals as OrderDetail["totals"] | undefined;
+            const itemsAmount: number =
+              totals?.items_amount ??
+              items.reduce(
+                (sum, it) =>
+                  sum +
+                  Number(it?.unit_price ?? (it as any)?.price ?? 0) *
+                    Number(it?.qty ?? 1),
+                0
+              );
+
             const totalAmount =
-              typeof (o as any)?.total === "number" ? (o as any).total : totals?.amount ?? itemsAmount;
+              typeof (o as any)?.total === "number"
+                ? (o as any).total
+                : totals?.amount ?? itemsAmount;
 
-            const deliveryFee = totals?.delivery_fee ?? Math.max(0, totalAmount - itemsAmount);
-            const currency = (totals?.currency || (o as any)?.currency || "MAD").toUpperCase();
+            const deliveryFee =
+              totals?.delivery_fee ?? Math.max(0, totalAmount - itemsAmount);
+            const currency = (totals?.currency || (o as any)?.currency || "MAD")
+              .toUpperCase();
 
-            const address: any = (o as any)?.address || {};
             const isHighlighted = selectedId === o.id;
 
             const status = (o as any)?.status as OrderStatus;
-            const canCancel = status === "OPEN" || status === "PREPARATION";
+            const canCancel =
+              status === "OPEN" || status === "PREPARATION";
 
             return (
-              <div key={o.id} className={`card border-0 shadow-sm ${isHighlighted ? "border border-dark" : ""}`}>
+              <div
+                key={o.id}
+                className={`card border-0 shadow-sm ${
+                  isHighlighted ? "border border-dark" : ""
+                }`}
+              >
                 <div className="card-body">
+                  {/* En-tête commande */}
                   <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div className="d-flex align-items-center gap-2">
                       <div className="h6 m-0">Commande #{o.id}</div>
@@ -194,23 +252,63 @@ export default function OrdersHistoryPage() {
                     <div className="text-muted small">{created}</div>
                   </div>
 
-                  {/* Items : NOMS + MONTANT */}
-                  <ul className="list-group list-group-flush mt-2">
+                  {/* Produits : image + nom + qty + prix */}
+                  <h3 className="h6 mt-3 mb-2">Articles de la commande</h3>
+                  <ul className="list-group list-group-flush">
                     {items.map((it, idx) => {
                       const name = getItemName(it);
                       const qty = Number(it?.qty ?? 1);
-                      const unit = Number(it?.unit_price ?? (it as any)?.price ?? 0);
+                      const unit = Number(
+                        it?.unit_price ?? (it as any)?.price ?? 0
+                      );
+                      const img = getItemImage(it);
+                      const lineTotal = unit * qty;
 
                       return (
-                        <li key={idx} className="list-group-item d-flex justify-content-between align-items-center">
-                          <div className="text-truncate" title={name}>
-                            <span className="fw-semibold">{name}</span>{" "}
-                            <span className="text-muted">×{qty}</span>
+                        <li
+                          key={idx}
+                          className="list-group-item d-flex justify-content-between align-items-center gap-2"
+                        >
+                          <div className="d-flex align-items-center gap-2 flex-grow-1">
+                            {img ? (
+                              <div
+                                className="flex-shrink-0"
+                                style={{
+                                  width: 48,
+                                  height: 48,
+                                  borderRadius: 8,
+                                  overflow: "hidden",
+                                  background: "#f5f5f5",
+                                }}
+                              >
+                                <img
+                                  src={img}
+                                  alt={name}
+                                  className="w-100 h-100 object-fit-cover"
+                                  loading="lazy"
+                                />
+                              </div>
+                            ) : null}
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                className="fw-semibold text-truncate"
+                                title={name}
+                              >
+                                {name}
+                              </div>
+                              <div className="small text-muted">
+                                {mad(unit)}{" "}
+                                <span className="text-muted">×{qty}</span>
+                              </div>
+                            </div>
                           </div>
-                          <span className="fw-semibold">{mad(unit * qty)}</span>
+                          <span className="fw-semibold ms-2">
+                            {mad(lineTotal)}
+                          </span>
                         </li>
                       );
                     })}
+
                     {deliveryFee > 0 && (
                       <li className="list-group-item d-flex justify-content-between align-items-center">
                         <span className="text-muted">Livraison</span>
@@ -221,45 +319,14 @@ export default function OrdersHistoryPage() {
 
                   {/* Totaux */}
                   <div className="d-flex justify-content-between align-items-center mt-3">
-                    <div className="text-muted">Sous-total</div>
+                    <div className="text-muted">Sous-total articles</div>
                     <div className="fw-semibold">{mad(itemsAmount)}</div>
                   </div>
                   <div className="d-flex justify-content-between align-items-center">
                     <div className="text-muted">Total</div>
                     <div className="h6 m-0">
-                      {mad(totalAmount)} <span className="text-muted small">{currency}</span>
-                    </div>
-                  </div>
-
-                  {/* Adresse & Paiement */}
-                  <div className="row g-3 mt-2">
-                    <div className="col-12 col-md-6">
-                      <div className="small text-muted">Adresse de livraison</div>
-                      <div>
-                        {address?.city || address?.ville || "-"}
-                        {address?.commune ? `, ${address.commune}` : ""}
-                        {(address?.district || address?.quartier) ? `, ${address.district ?? address.quartier}` : ""}
-                        {address?.gps ? (
-                          <>
-                            <br />
-                            <span className="text-muted">
-                              GPS: {address.gps.lat?.toFixed?.(5)}, {address.gps.lng?.toFixed?.(5)}
-                            </span>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="col-12 col-md-6">
-                      <div className="small text-muted">Paiement</div>
-                      <div>
-                        {(o as any)?.payment?.method === "COD" ? "À la livraison" : (o as any)?.payment?.method || "-"}
-                        {(o as any)?.payment?.note ? (
-                          <>
-                            <br />
-                            <span className="text-muted small">{(o as any).payment.note}</span>
-                          </>
-                        ) : null}
-                      </div>
+                      {mad(totalAmount)}{" "}
+                      <span className="text-muted small">{currency}</span>
                     </div>
                   </div>
 
@@ -275,11 +342,13 @@ export default function OrdersHistoryPage() {
                       WhatsApp Support
                     </a>
 
-                    <Link to={`/orders?order=${o.id}`} className="btn btn-outline-dark">
+                    <Link
+                      to={`/orders?order=${o.id}`}
+                      className="btn btn-outline-dark"
+                    >
                       Actualiser l’état
                     </Link>
 
-                    {/* ✅ Bouton annuler : visible seulement si OPEN | PREPARATION */}
                     {canCancel && (
                       <button
                         className="btn btn-outline-danger"
@@ -287,7 +356,9 @@ export default function OrdersHistoryPage() {
                         onClick={() => onCancelOrder(o.id, status)}
                         title="Annuler la commande"
                       >
-                        {cancelingId === o.id ? "Annulation…" : "Annuler la commande"}
+                        {cancelingId === o.id
+                          ? "Annulation…"
+                          : "Annuler la commande"}
                       </button>
                     )}
                   </div>
