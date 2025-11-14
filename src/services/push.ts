@@ -45,7 +45,7 @@ export async function initPush(): Promise<string | null> {
     const title = data?.payload?.title || "Duumini";
     const body = data?.payload?.body || "";
     // @ts-ignore — toast global défini dans ton HTML/app
-    window?.duuminiToast?.({ title, message: body });
+    (window as any)?.duuminiToast?.({ title, message: body });
   });
 
   return deviceToken;
@@ -57,6 +57,11 @@ export async function initPush(): Promise<string | null> {
 export async function registerDevice(push_token: string, provider = "pushy") {
   return api.post<{ ok: true }>("/api/devices", { push_token, provider });
 }
+
+/**
+ * Alias pour compatibilité avec l'ancien nom utilisé dans EnableNotificationsButton
+ */
+export const registerDeviceWithApi = registerDevice;
 
 /**
  * Désenregistre le device côté API.
