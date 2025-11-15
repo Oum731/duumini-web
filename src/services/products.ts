@@ -3,7 +3,7 @@ import { api } from "./http";
 
 export type Product = {
   id: number;
-  shop_id: number | null;            // ← peut être NULL côté ADMIN
+  shop_id: number | null; // ← peut être NULL côté ADMIN
   category_id?: number | null;
   name: string;
   slug: string;
@@ -19,6 +19,11 @@ export type Product = {
   updated_at?: string;
   images?: { id: number; url: string; sort_order: number }[];
   cover?: string | null;
+
+  // 🔹 Champs supplémentaires renvoyés par certaines routes (facultatifs)
+  total_qty?: number;       // pour /top-ordered
+  avg_rating?: number;      // pour /top-rated
+  rating_count?: number;    // pour /top-rated
 };
 
 export type Paginated<T> = {
@@ -76,11 +81,17 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
 
   if (draft.is_featured != null) {
     // accepte 0|1 ou boolean
-    const v = typeof draft.is_featured === "number" ? draft.is_featured : draft.is_featured ? 1 : 0;
+    const v =
+      typeof draft.is_featured === "number" ? draft.is_featured : draft.is_featured ? 1 : 0;
     fd.append("is_featured", String(v));
   }
   if (draft.promo_eligible != null) {
-    const v = typeof draft.promo_eligible === "number" ? draft.promo_eligible : draft.promo_eligible ? 1 : 0;
+    const v =
+      typeof draft.promo_eligible === "number"
+        ? draft.promo_eligible
+        : draft.promo_eligible
+        ? 1
+        : 0;
     fd.append("promo_eligible", String(v));
   }
 
@@ -108,11 +119,17 @@ export async function updateProduct(
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
   if (draft.is_featured != null) {
-    const v = typeof draft.is_featured === "number" ? draft.is_featured : draft.is_featured ? 1 : 0;
+    const v =
+      typeof draft.is_featured === "number" ? draft.is_featured : draft.is_featured ? 1 : 0;
     fd.append("is_featured", String(v));
   }
   if (draft.promo_eligible != null) {
-    const v = typeof draft.promo_eligible === "number" ? draft.promo_eligible : draft.promo_eligible ? 1 : 0;
+    const v =
+      typeof draft.promo_eligible === "number"
+        ? draft.promo_eligible
+        : draft.promo_eligible
+        ? 1
+        : 0;
     fd.append("promo_eligible", String(v));
   }
 
@@ -130,4 +147,20 @@ export async function updateProduct(
 /* ---------- Delete ---------- */
 export async function removeProduct(id: number) {
   return api.delete<{ ok: true }>(`/api/products/${id}`);
+}
+
+/* ---------- Top produits : les plus commandés ---------- */
+export async function listTopOrderedProducts(limit = 8) {
+  return api.get<Product[]>("/api/products/top-ordered", {
+    query: { limit },
+  });
+}
+
+/* ---------- Top produits : les mieux notés ---------- */
+export async function listTopRatedProducts(opts: { limit?: number; minCount?: number } = {}) {
+  const limit = opts.limit ?? 8;
+  const minCount = opts.minCount ?? 2;
+  return api.get<Product[]>("/api/products/top-rated", {
+    query: { limit, minCount },
+  });
 }

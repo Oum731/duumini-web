@@ -1,11 +1,10 @@
-// src/pages/ProductView.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import type { Product } from "../services/products";
 import { listProducts } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { API_BASE } from "../services/http";
-import ProductRating from "../components/ProductRating"; // ✅ NEW
+import ProductRating from "../components/ProductRating"; // ✅ Note
 
 function imgUrl(u?: string | null) {
   if (!u) return "";
@@ -119,14 +118,8 @@ export default function ProductView() {
     };
   }, [product]);
 
-  // ⚠️ NOTE : cet effet redirige vers la section, donc la vue détaillée est très peu utilisée.
-  // Si tu veux vraiment afficher la fiche + la note, tu pourras enlever cet effet plus tard.
-  useEffect(() => {
-    if (!product) return;
-    const sub = (product.sub_category || "").toString().toLowerCase();
-    const path = sub === "food" ? "/african-food" : "/african-market";
-    nav(path, { replace: true });
-  }, [product, nav]);
+  // ⛔️ Ancien effet de redirection automatique supprimé
+  // pour permettre d'afficher réellement la fiche produit + la note.
 
   if (loading) {
     return (
@@ -168,8 +161,7 @@ export default function ProductView() {
     );
   }
 
-  // En théorie, on ne devrait presque jamais arriver ici,
-  // car l'effet de redirection nav() va nous envoyer sur la section.
+  // Vue détaillée du produit
   return (
     <div className="container-xxl py-4">
       {/* Barre d’actions */}

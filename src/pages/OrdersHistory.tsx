@@ -21,11 +21,11 @@ function imgUrl(u?: string | null) {
   return u;
 }
 
-/** Image de produit robuste */
+/** Image de produit robuste (pour l’UI, PAS WhatsApp) */
 function getItemImage(it: OrderItem): string {
   const anyIt = it as any;
   const raw =
-    it.product_cover ||        // ✅ rempli par l’API /api/orders/:id
+    it.product_cover || // ✅ rempli par l’API /api/orders/:id
     it.image_url ||
     it.cover ||
     anyIt.product_image ||
@@ -43,7 +43,15 @@ function getItemImage(it: OrderItem): string {
   return imgUrl(raw || "");
 }
 
-/* ===== UI helpers ===== */
+/* ===== UI helpers statut ===== */
+const STATUS_LABEL: Record<OrderStatus, string> = {
+  OPEN: "Ouverte",
+  PREPARATION: "Préparation",
+  DELIVERY: "En livraison",
+  DONE: "Livrée",
+  CANCELLED: "Annulée",
+};
+
 function statusBadge(s: OrderStatus) {
   const map: Record<OrderStatus, string> = {
     OPEN: "secondary",
@@ -52,15 +60,14 @@ function statusBadge(s: OrderStatus) {
     DONE: "success",
     CANCELLED: "danger",
   };
-  const label: Record<OrderStatus, string> = {
-    OPEN: "Ouverte",
-    PREPARATION: "Préparation",
-    DELIVERY: "En livraison",
-    DONE: "Livrée",
-    CANCELLED: "Annulée",
-  };
+  const label = STATUS_LABEL[s] || s;
   const cls = map[s] || "secondary";
-  return <span className={`badge text-bg-${cls}`}>{label[s] || s}</span>;
+  return <span className={`badge text-bg-${cls}`}>{label}</span>;
+}
+
+function getStatusLabel(s?: OrderStatus) {
+  if (!s) return "Inconnu";
+  return STATUS_LABEL[s] || s;
 }
 
 /** Nom de produit robuste */
@@ -69,6 +76,119 @@ function getItemName(it: OrderItem): string {
 }
 
 type ListOrDetail = Order & Partial<OrderDetail>;
+
+/* ===== Helper: construction du message WhatsApp (sans image) ===== */
+function buildWhatsappText(opts: {
+  order: ListOrDetail;
+  items: OrderItem[];
+  itemsAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  currency: string;
+  status?: OrderStatus;
+}) {
+  const { order, items, itemsAmount, deliveryFee, totalAmount, currency, status } =
+    opts;
+
+  const anyOrder = order as any;
+  const contact = anyOrder.contact || {};
+  const address = anyOrder.address || {};
+
+  const created = order?.created_at
+    ? new Date(order.created_at).toLocaleString("fr-FR")
+    : anyOrder.date
+    ? new Date(anyOrder.date).toLocaleString("fr-FR")
+    : "";
+
+  // 📝 liste des produits
+  const linesText =
+    items.length === 0
+      ? "- (détails indisponibles)"
+      : items
+          .map((it) => {
+            const name = getItemName(it);
+            const qty = Number(it?.qty ?? 1);
+            const unit = Number(it?.unit_price ?? (it as any)?.price ?? 0);
+            const lineTotal = unit * qty;
+            return `* ${name} x${qty} = ${mad(lineTotal)}`;
+          })
+          .join("\n");
+
+  const contactName = [contact.first_name, contact.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const phone = contact.phone || anyOrder.phone || "";
+
+  const ville = address.ville || anyOrder.address_city || "";
+  const commune = address.commune || anyOrder.address_commune || "";
+  const quartier = address.quartier || anyOrder.address_district || "";
+
+  const statusLabel = getStatusLabel(status);
+
+  const parts: string[] = [];
+
+  // 🔢 numéro + date
+  parts.push(`Bonjour, je souhaite avoir des infos sur ma commande #${order.id}.`);
+  if (created) {
+    parts.push(`Date de la commande : ${created}`);
+  }
+
+  // 📦 produits
+  parts.push("");
+  parts.push("📦 Récapitulatif de la commande");
+  parts.push(linesText);
+
+  // 💰 totaux
+  parts.push("");
+  parts.push(`Sous-total articles: ${mad(itemsAmount)}`);
+  if (deliveryFee > 0) {
+    parts.push(`Livraison: ${mad(deliveryFee)}`);
+  }
+  parts.push(`Total: ${mad(totalAmount)} (${currency})`);
+
+  // 👤 coordonnées
+  parts.push("");
+  parts.push("👤 Coordonnées");
+  if (contactName) parts.push(`Nom: ${contactName}`);
+  if (phone) parts.push(`Téléphone: ${phone}`);
+
+  // 📍 adresse
+  if (ville || commune || quartier) {
+    parts.push("");
+    parts.push("📍 Adresse de livraison");
+    if (ville) parts.push(`Ville: ${ville}`);
+    if (commune) parts.push(`Commune: ${commune}`);
+    if (quartier) parts.push(`Quartier: ${quartier}`);
+  }
+
+  // ✅ statut actuel
+  if (statusLabel) {
+    parts.push("");
+    parts.push(`Statut actuel: ${statusLabel}`);
+  }
+
+  parts.push("");
+  parts.push("Merci.");
+
+  return parts.join("\n");
+}
+
+/* ===== Helper: URL WhatsApp avec message détaillé ===== */
+function whatsappHref(opts: {
+  order: ListOrDetail;
+  items: OrderItem[];
+  itemsAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  currency: string;
+  status?: OrderStatus;
+}) {
+  const text = encodeURIComponent(buildWhatsappText(opts));
+  // Numéro WhatsApp Duumini
+  return `https://wa.me/212623677884?text=${text}`;
+}
 
 export default function OrdersHistoryPage() {
   const [orders, setOrders] = useState<ListOrDetail[]>([]);
@@ -79,6 +199,7 @@ export default function OrdersHistoryPage() {
 
   const selectedId = params.get("order") ? Number(params.get("order")) : null;
 
+  /* ---------- Chargement des commandes (sans Promise.allSettled) ---------- */
   const fetchOrders = useCallback(async () => {
     try {
       setErr(null);
@@ -86,22 +207,20 @@ export default function OrdersHistoryPage() {
       const res = await listOrders({ page: 1, pageSize: 20 });
       const baseList: Order[] = res?.items ?? [];
 
-      const detailed = await Promise.allSettled(
-        baseList.map(async (o) => {
+      const merged: ListOrDetail[] = [];
+
+      // On essaie de charger le détail pour chaque commande,
+      // si ça plante, on garde au moins la commande de base
+      for (const o of baseList) {
+        try {
           const det = await getOrder(o.id);
-          return { ...o, ...det } as ListOrDetail;
-        })
-      );
+          merged.push({ ...o, ...det } as ListOrDetail);
+        } catch {
+          merged.push(o as ListOrDetail);
+        }
+      }
 
-      const ok = detailed
-        .filter((p): p is PromiseFulfilledResult<ListOrDetail> => p.status === "fulfilled")
-        .map((p) => p.value);
-
-      const fallback = detailed
-        .map((p, idx) => (p.status === "rejected" ? baseList[idx] : null))
-        .filter(Boolean) as Order[];
-
-      setOrders([...ok, ...fallback]);
+      setOrders(merged);
     } catch (e: any) {
       setErr(e?.message || "Impossible de charger vos commandes.");
     } finally {
@@ -115,24 +234,24 @@ export default function OrdersHistoryPage() {
     return () => clearInterval(t);
   }, [fetchOrders]);
 
-  const whatsappHref = (orderId: number) => {
-    const text = encodeURIComponent(
-      `Bonjour, je souhaite avoir des infos sur ma commande #${orderId}. Merci.`
-    );
-    return `https://wa.me/212623677884?text=${text}`;
-  };
-
   const sorted = useMemo(
     () =>
       [...orders].sort((a, b) => {
-        const da = new Date(a?.created_at || (a as any)?.date || 0).getTime();
-        const db = new Date(b?.created_at || (b as any)?.date || 0).getTime();
+        const da = new Date(
+          a?.created_at || (a as any)?.date || 0
+        ).getTime();
+        const db = new Date(
+          b?.created_at || (b as any)?.date || 0
+        ).getTime();
         return db - da;
       }),
     [orders]
   );
 
-  async function onCancelOrder(id: number, status: OrderStatus | string | undefined) {
+  async function onCancelOrder(
+    id: number,
+    status: OrderStatus | string | undefined
+  ) {
     const s = (status || "OPEN").toUpperCase() as OrderStatus;
     const canCancel = s === "OPEN" || s === "PREPARATION";
     if (!canCancel) return;
@@ -226,14 +345,24 @@ export default function OrdersHistoryPage() {
 
             const deliveryFee =
               totals?.delivery_fee ?? Math.max(0, totalAmount - itemsAmount);
-            const currency = (totals?.currency || (o as any)?.currency || "MAD")
-              .toUpperCase();
+            const currency = (
+              totals?.currency || (o as any)?.currency || "MAD"
+            ).toUpperCase();
 
             const isHighlighted = selectedId === o.id;
 
             const status = (o as any)?.status as OrderStatus;
-            const canCancel =
-              status === "OPEN" || status === "PREPARATION";
+            const canCancel = status === "OPEN" || status === "PREPARATION";
+
+            const waUrl = whatsappHref({
+              order: o,
+              items,
+              itemsAmount,
+              deliveryFee,
+              totalAmount,
+              currency,
+              status,
+            });
 
             return (
               <div
@@ -252,7 +381,7 @@ export default function OrdersHistoryPage() {
                     <div className="text-muted small">{created}</div>
                   </div>
 
-                  {/* Produits : image + nom + qty + prix */}
+                  {/* Articles de la commande */}
                   <h3 className="h6 mt-3 mb-2">Articles de la commande</h3>
                   <ul className="list-group list-group-flush">
                     {items.map((it, idx) => {
@@ -267,9 +396,9 @@ export default function OrdersHistoryPage() {
                       return (
                         <li
                           key={idx}
-                          className="list-group-item d-flex justify-content-between align-items-center gap-2"
+                          className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2"
                         >
-                          <div className="d-flex align-items-center gap-2 flex-grow-1">
+                          <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 0 }}>
                             {img ? (
                               <div
                                 className="flex-shrink-0"
@@ -302,29 +431,49 @@ export default function OrdersHistoryPage() {
                               </div>
                             </div>
                           </div>
-                          <span className="fw-semibold ms-2">
+
+                          {/* Montant total de la ligne, sans débordement */}
+                          <div
+                            className="fw-semibold text-end"
+                            style={{ minWidth: 90, fontSize: "0.9rem" }}
+                          >
                             {mad(lineTotal)}
-                          </span>
+                          </div>
                         </li>
                       );
                     })}
 
                     {deliveryFee > 0 && (
-                      <li className="list-group-item d-flex justify-content-between align-items-center">
+                      <li className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <span className="text-muted">Livraison</span>
-                        <span className="fw-semibold">{mad(deliveryFee)}</span>
+                        <div
+                          className="text-end"
+                          style={{ minWidth: 90, fontSize: "0.9rem" }}
+                        >
+                          <span className="fw-semibold">
+                            {mad(deliveryFee)}
+                          </span>
+                        </div>
                       </li>
                     )}
                   </ul>
 
                   {/* Totaux */}
-                  <div className="d-flex justify-content-between align-items-center mt-3">
+                  <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
                     <div className="text-muted">Sous-total articles</div>
-                    <div className="fw-semibold">{mad(itemsAmount)}</div>
+                    <div
+                      className="fw-semibold"
+                      style={{ minWidth: 90, textAlign: "right" }}
+                    >
+                      {mad(itemsAmount)}
+                    </div>
                   </div>
-                  <div className="d-flex justify-content-between align-items-center">
+                  <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div className="text-muted">Total</div>
-                    <div className="h6 m-0">
+                    <div
+                      className="h6 m-0"
+                      style={{ minWidth: 90, textAlign: "right", fontSize: "1rem" }}
+                    >
                       {mad(totalAmount)}{" "}
                       <span className="text-muted small">{currency}</span>
                     </div>
@@ -333,7 +482,7 @@ export default function OrdersHistoryPage() {
                   {/* Actions */}
                   <div className="d-flex flex-wrap gap-2 mt-3">
                     <a
-                      href={whatsappHref(o.id)}
+                      href={waUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-success"

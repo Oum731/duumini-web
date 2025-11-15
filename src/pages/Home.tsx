@@ -1,4 +1,3 @@
-// src/pages/Home.tsx
 import { Link } from "react-router-dom";
 import { ChevronRight, Bell } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -196,7 +195,8 @@ export default function Home() {
           </div>
         </div>
       </section>
-
+{/* PRODUITS LES PLUS COMMANDÉS / MIEUX NOTÉS */}
+     {/* <HighlightedProducts />*/}
       {/* CATÉGORIES */}
       <section className="container-xxl mt-4">
         <div className="d-flex align-items-end justify-content-between mb-3">
@@ -217,6 +217,8 @@ export default function Home() {
           />
         </div>
       </section>
+
+      
     </div>
   );
 }

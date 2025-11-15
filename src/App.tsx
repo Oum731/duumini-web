@@ -43,6 +43,7 @@ import {
   type PendingProductRating,
   rateProduct,
 } from "./services/productRatings";
+import TopProductsPage from "./pages/TopProductsPage";
 
 function Page({ title }: { title: string }) {
   return (
@@ -164,7 +165,11 @@ function GlobalRatingModal(props: {
     setError(null);
     setSuccess(null);
     try {
-      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
+      await rateProduct(
+        pending.product_id,
+        rating,
+        comment.trim() || undefined
+      );
       setSuccess("Merci pour votre avis !");
       // on ferme après un petit délai visuel
       setTimeout(() => {
@@ -239,9 +244,7 @@ function GlobalRatingModal(props: {
                 <div className="alert alert-danger py-1 small">{error}</div>
               )}
               {success && (
-                <div className="alert alert-success py-1 small">
-                  {success}
-                </div>
+                <div className="alert alert-success py-1 small">{success}</div>
               )}
             </div>
             <div className="modal-footer">
@@ -330,7 +333,7 @@ export default function App() {
               <Route path="/african-food" element={<AfricanFood />} />
               <Route path="/african-market" element={<AfricanMarket />} />
               <Route path="/products/:idOrSlug" element={<ProductView />} />
-
+              <Route path="/top-products" element={<TopProductsPage />} />
               {/* ✅ Pages légales */}
               <Route path="/legal/privacy" element={<PrivacyPolicy />} />
               <Route path="/legal/terms" element={<Terms />} />

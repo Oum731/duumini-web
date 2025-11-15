@@ -1,9 +1,8 @@
-// src/components/ProductCard.tsx
 import { useMemo, useState } from "react";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
-import ProductRating from "./ProductRating"; // ✅ NEW
+import ProductRating from "./ProductRating"; // ✅ Note
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -140,7 +139,7 @@ export default function ProductCard({ product, onAdd }: Props) {
             className={`badge position-absolute top-0 start-0 m-2 border ${tag.cls}`}
             style={{ backdropFilter: "blur(4px)" }}
           >
-            {/* tu peux mettre un texte ici si tu veux (Food / Market) */}
+            {/* éventuellement texte ici */}
           </span>
         </div>
 
@@ -231,7 +230,7 @@ export default function ProductCard({ product, onAdd }: Props) {
                       <span className={`badge border ${tag.cls}`}></span>
                     </div>
 
-                    {/* ✅ Note aussi dans la modale, sous le prix (optionnel mais sympa) */}
+                    {/* ✅ Note dans la modale */}
                     <div className="mb-2">
                       <ProductRating productId={product.id} />
                     </div>

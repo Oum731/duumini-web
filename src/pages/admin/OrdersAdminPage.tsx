@@ -1,3 +1,4 @@
+// src/pages/admin/OrdersAdminPage.tsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   listOrders,
@@ -72,19 +73,150 @@ function telHref(phone?: string) {
   const normalized = normalizePhoneTel(phone);
   return normalized ? `tel:${normalized}` : undefined;
 }
-function waHref(orderId: number | string, toPhone?: string, customerName?: string) {
-  const recipient = normalizePhoneTel(toPhone) || "212623677884";
-  const text = encodeURIComponent(
-    `Bonjour ${customerName || ""}, au sujet de votre commande #${orderId} :`
-  );
-  return `https://wa.me/${recipient}?text=${text}`;
-}
 
 /* ====== Petit util prix ====== */
 const mad = (n?: number | null) =>
   new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(
     Number(n || 0)
   );
+
+/* ===== Message WhatsApp complet pour le client (confirmation + détails) ===== */
+function buildAdminWhatsappMessage(order: AnyObj) {
+  const items: AnyObj[] = Array.isArray(order.items) ? order.items : [];
+  const hasItems = items.length > 0;
+
+  const created = order.created_at
+    ? new Date(order.created_at).toLocaleString("fr-FR")
+    : "";
+
+  const address = order.address || {};
+  const contact = order.contact || order.user || {};
+  const fullName =
+    `${contact.first_name || ""} ${contact.last_name || ""}`.trim() ||
+    "cher(e) client(e)";
+
+  const phone = contact.phone || order.phone || "";
+
+  // ===== Calcul des montants =====
+  const itemsAmountFromLines = items.reduce(
+    (sum, it) =>
+      sum +
+      Number(it.unit_price ?? it.price ?? 0) * Number(it.qty ?? 1),
+    0
+  );
+
+  let itemsAmount = hasItems ? itemsAmountFromLines : 0;
+  let total = 0;
+  let deliveryFee = 0;
+
+  if (order.totals) {
+    itemsAmount = order.totals.items_amount ?? itemsAmount;
+    total =
+      typeof order.total === "number"
+        ? order.total
+        : order.totals.amount ?? itemsAmount;
+    deliveryFee =
+      order.totals.delivery_fee ?? Math.max(0, total - itemsAmount);
+  } else if (hasItems) {
+    itemsAmount = itemsAmountFromLines;
+    total =
+      typeof order.total === "number"
+        ? order.total
+        : itemsAmount;
+    deliveryFee = Math.max(0, total - itemsAmount);
+  } else {
+    total = typeof order.total === "number" ? order.total : 0;
+    deliveryFee = 0;
+  }
+
+  // ===== Liste des articles =====
+  const lines = hasItems
+    ? items
+        .map((it) => {
+          const name =
+            it.product_name || it.name || `Produit #${it.product_id ?? ""}`;
+          const qty = Number(it.qty ?? 1);
+          const unit = Number(it.unit_price ?? it.price ?? 0);
+          const lineTotal = unit * qty;
+          return `• ${name} ×${qty} = ${mad(lineTotal)}`;
+        })
+        .join("\n")
+    : "• Détails des articles indisponibles";
+
+  const ville = address.ville || address.city || "";
+  const commune = address.commune || "";
+  const quartier = address.quartier || address.district || "";
+
+  const status: OrderStatus | string = order.status || "OPEN";
+
+  const statusText =
+    status === "OPEN"
+      ? "Nous avons bien reçu votre commande. Elle vient d’être prise en charge par notre équipe."
+      : status === "PREPARATION"
+      ? "Votre commande est en cours de préparation."
+      : status === "DELIVERY"
+      ? "Votre commande est en cours de livraison vers votre adresse."
+      : status === "DONE"
+      ? "Votre commande a été livrée. Nous espérons qu’elle vous plaira !"
+      : status === "CANCELLED"
+      ? "Votre commande a été annulée. N’hésitez pas à nous contacter pour plus d’informations."
+      : "Voici un récapitulatif de votre commande.";
+
+  const blocs: string[] = [];
+
+  // En-tête
+  blocs.push(`Bonjour ${fullName},`);
+  blocs.push("");
+  blocs.push(`Merci pour votre commande chez *Duumini* `);
+  blocs.push(statusText);
+  blocs.push("");
+
+  // Détails commande
+  blocs.push(`*Détails de la commande #${order.id}*`);
+  if (created) {
+    blocs.push(`Date : ${created}`);
+  }
+  blocs.push("");
+
+  // Articles
+  blocs.push("*Articles*");
+  blocs.push(lines);
+  blocs.push("");
+
+  // Montants
+  if (hasItems) {
+    blocs.push(`Sous-total : ${mad(itemsAmount)}`);
+    if (deliveryFee > 0) {
+      blocs.push(`Livraison : ${mad(deliveryFee)}`);
+    }
+  }
+  blocs.push(`Total : ${mad(total)}`);
+  blocs.push("");
+
+  // Adresse
+  blocs.push("*Adresse de livraison*");
+  if (ville) blocs.push(`Ville : ${ville}`);
+  if (commune) blocs.push(`Commune : ${commune}`);
+  if (quartier) blocs.push(`Quartier : ${quartier}`);
+  blocs.push("");
+
+  // Contact
+  blocs.push(`Téléphone : ${phone || "—"}`);
+  blocs.push("");
+  blocs.push("Nous restons disponibles pour toute question.");
+  blocs.push("Merci pour votre confiance ");
+
+  return blocs.join("\n");
+}
+
+/** Construit seulement l'URL WhatsApp pour un ordre COMPLET */
+function waHref(order: AnyObj) {
+  const recipient =
+    normalizePhoneTel(order.contact?.phone || order.user?.phone) ||
+    "212623677884"; // fallback support Duumini
+  const text = encodeURIComponent(buildAdminWhatsappMessage(order));
+  return `https://wa.me/${recipient}?text=${text}`;
+}
 
 /* ===================== Page ===================== */
 export default function OrdersAdminPage() {
@@ -226,6 +358,17 @@ export default function OrdersAdminPage() {
       await refresh();
     } catch (e: any) {
       setError(e?.message || String(e));
+    }
+  }
+
+  // 👉 Nouveau : bouton WhatsApp dans la liste = fetch complet puis ouverture
+  async function onWhatsappClick(id: number) {
+    try {
+      const full = await getOrder(id);
+      const url = waHref(full as AnyObj);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      alert("Impossible de préparer le message WhatsApp pour cette commande.");
     }
   }
 
@@ -458,7 +601,7 @@ export default function OrdersAdminPage() {
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>Image</th>{/* ✅ nouvelle colonne */}
+                    <th>Image</th>
                     <th>Date</th>
                     <th>Client</th>
                     <th>Contact</th>
@@ -475,7 +618,6 @@ export default function OrdersAdminPage() {
                     const clientName = (fn || ln) ? `${fn} ${ln}`.trim() : "—";
                     const phone = (c?.phone || "").trim();
                     const hrefTel = telHref(phone);
-                    const hrefWa = waHref(o.id, phone, clientName);
                     const thumb = getOrderThumb(o as AnyObj);
 
                     return (
@@ -490,7 +632,7 @@ export default function OrdersAdminPage() {
                           </button>
                         </td>
 
-                        {/* ✅ Image */}
+                        {/* Image */}
                         <td>
                           {thumb ? (
                             <div
@@ -532,15 +674,14 @@ export default function OrdersAdminPage() {
                               {phone || "—"}
                             </small>
                             <div className="d-flex gap-1 mt-1">
-                              <a
+                              <button
+                                type="button"
                                 className="btn btn-sm btn-outline-secondary"
-                                href={hrefWa}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                                onClick={() => onWhatsappClick(o.id)}
                                 aria-label="WhatsApp"
                               >
                                 WhatsApp
-                              </a>
+                              </button>
                               {hrefTel ? (
                                 <a
                                   className="btn btn-sm btn-outline-dark"
@@ -753,11 +894,7 @@ export default function OrdersAdminPage() {
                           <div className="d-flex gap-2">
                             <a
                               className="btn btn-sm btn-success"
-                              href={waHref(
-                                viewId!,
-                                client.phone,
-                                client.fullName
-                              )}
+                              href={waHref(detail as AnyObj)}
                               target="_blank"
                               rel="noopener noreferrer"
                             >

@@ -103,8 +103,11 @@ export default function CheckoutPage() {
   // Indique si on a un token (user potentiellement connecté)
   const hasToken = !!getAccessToken?.();
 
-  // ✅ état local : l’utilisateur a explicitement choisi "invité"
+  // ✅ l’utilisateur a explicitement choisi "invité"
   const [guestConfirmed, setGuestConfirmed] = useState(false);
+
+  // ✅ modale de succès pour commande invitée
+  const [showGuestSuccess, setShowGuestSuccess] = useState(false);
 
   /* ---------- Pré-remplissage optionnel, sans obliger le login ---------- */
   useEffect(() => {
@@ -213,6 +216,14 @@ export default function CheckoutPage() {
   // Soumission commande (connecté OU invité)
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
+
+    // ⚠️ Optionnel : si tu veux FORCER le clic sur "Continuer en tant qu'invité"
+    // quand il n’est pas connecté :
+    // if (!hasToken && !guestConfirmed) {
+    //   setErr("Merci de confirmer que vous commandez en tant qu’invité.");
+    //   return;
+    // }
+
     try {
       setErr(null);
       setSubmitting(true);
@@ -268,15 +279,17 @@ export default function CheckoutPage() {
         ? await createOrder(payload)
         : await createGuestOrder(payload);
 
-      const orderId = result.id;
+      const orderId = (result as any).id;
       clear();
 
       if (hasToken) {
         // Client connecté : historique
         nav(`/orders?order=${orderId}`);
       } else {
-        // Invité : il a fini sa commande sans compte
-        nav("/");
+        // ✅ Invité : on affiche une modale de confirmation
+        setShowGuestSuccess(true);
+        // Optionnel : remonter en haut pour bien voir la modale
+        window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (e: any) {
       setErr(
@@ -304,6 +317,7 @@ export default function CheckoutPage() {
     nav,
     quartier,
     hasToken,
+    // guestConfirmed, // si tu actives la condition plus haut
   ]);
 
   const headerRight = useMemo(
@@ -327,7 +341,8 @@ export default function CheckoutPage() {
     );
   }
 
-  if (!lines.length) {
+  // ⚠️ On ne montre "panier vide" que si on n'est PAS dans l'écran de succès invité
+  if (!lines.length && !showGuestSuccess) {
     return (
       <div className="container-xxl py-4">
         <div className="text-center text-muted py-5">
@@ -343,6 +358,82 @@ export default function CheckoutPage() {
   return (
     <section className="container-xxl py-4 checkout">
       <FocusAndLoadingStyle />
+
+      {/* ✅ Modale de succès pour commande INVITÉ */}
+      {showGuestSuccess && (
+        <>
+          <div
+            className="modal fade show d-block"
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    Commande envoyée <span aria-hidden="true">🎉</span>
+                  </h5>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Fermer"
+                    onClick={() => {
+                      setShowGuestSuccess(false);
+                      nav("/");
+                    }}
+                  />
+                </div>
+                <div className="modal-body">
+                  <p className="mb-2">
+                    Merci&nbsp;! Votre commande a bien été envoyée.
+                  </p>
+                  <p className="mb-2">
+                    Un membre de l’équipe Duumini va vous{" "}
+                    <strong>contacter très bientôt par téléphone</strong> pour
+                    confirmer la prise en charge de votre commande.
+                  </p>
+                  <p className="mb-0 small text-muted">
+                    Pour <strong>voir l’historique de vos commandes</strong> et
+                    <strong> suivre l’évolution de vos futures commandes en temps réel</strong>,
+                    vous pouvez vous connecter ou créer un compte Duumini.
+                  </p>
+                </div>
+                <div className="modal-footer d-flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={() => {
+                      setShowGuestSuccess(false);
+                      nav("/");
+                    }}
+                  >
+                    Retour à l’accueil
+                  </button>
+
+                  <Link
+                    to="/profile?tab=login&next=/orders"
+                    className="btn btn-outline-dark"
+                    onClick={() => setShowGuestSuccess(false)}
+                  >
+                    Se connecter
+                  </Link>
+
+                  <Link
+                    to="/profile?tab=register&next=/orders"
+                    className="btn btn-duu"
+                    onClick={() => setShowGuestSuccess(false)}
+                  >
+                    Créer un compte
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Fond sombre de la modale */}
+          <div className="modal-backdrop fade show" />
+        </>
+      )}
 
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
@@ -368,7 +459,7 @@ export default function CheckoutPage() {
             besoin.
           </p>
           <div className="d-flex flex-wrap gap-2">
-            {/* 🔓 Maintenant actif : confirme le mode invité */}
+            {/* 🔓 confirme le mode invité */}
             <button
               type="button"
               className="btn btn-sm btn-dark"
@@ -470,7 +561,7 @@ export default function CheckoutPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                   />
-                {phone && !rePhoneMA.test(phone) && (
+                  {phone && !rePhoneMA.test(phone) && (
                     <div className="invalid-feedback">
                       Format attendu: +2126XXXXXXXX
                     </div>
