@@ -27,16 +27,13 @@ function shortText(s?: string | null, max = 200) {
 }
 
 function buildProductUrl(p: Product) {
-  const base =
-    typeof window !== "undefined" && window.location.origin
-      ? window.location.origin
-      : "https://duumini.com";
+  // Domaine de l'API (Render)
+  const base = (API_BASE || "https://duumini-api.onrender.com").replace(/\/+$/, "");
 
-  const sub = (p.sub_category || "").toString().toLowerCase();
-  const path = sub === "food" ? "/african-food" : "/african-market";
+  // on partage toujours l’URL backend /share/product/:slug_ou_id
+  const idOrSlug = encodeURIComponent(p.slug || String(p.id));
 
-  // ✅ Le lien partagé envoie directement vers la rubrique (pas la fiche produit)
-  return `${base}${path}`;
+  return `${base}/share/product/${idOrSlug}`;
 }
 
 /* ===== Component ===== */
