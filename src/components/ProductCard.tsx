@@ -32,11 +32,10 @@ function buildProductUrl(p: Product) {
       ? window.location.origin
       : "https://duumini.com";
 
-  const sub = (p.sub_category || "").toString().toLowerCase();
-  const path = sub === "food" ? "/african-food" : "/african-market";
+  // On partage toujours l’URL /share/product/:slug_or_id
+  const idOrSlug = encodeURIComponent(p.slug || String(p.id));
 
-  // ✅ Le lien partagé envoie directement vers la rubrique (pas la fiche produit)
-  return `${base}${path}`;
+  return `${base}/share/product/${idOrSlug}`;
 }
 
 /* ===== Component ===== */
