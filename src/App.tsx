@@ -45,6 +45,10 @@ import {
 } from "./services/productRatings";
 import TopProductsPage from "./pages/TopProductsPage";
 
+// ✅ Imports pour notifications push
+import { initPush } from "./services/push";
+import { registerDevice } from "./services/devices";
+
 function Page({ title }: { title: string }) {
   return (
     <div className="container-xxl py-4">
@@ -276,6 +280,32 @@ export default function App() {
   const { user } = useAuth();
   const [pendingRating, setPendingRating] =
     useState<PendingProductRating | null>(null);
+
+  // ✅ Init notifications push quand l'utilisateur est connecté
+  useEffect(() => {
+    if (!user) return;
+
+    let cancelled = false;
+
+    async function setupPush() {
+      try {
+        const token = await initPush();
+        if (!token || cancelled) return;
+
+        // Enregistre le device côté API (table user_devices)
+        await registerDevice(token, "pushy");
+        console.log("[Push] Device registered", token);
+      } catch (e) {
+        console.error("[Push] init/register failed", e);
+      }
+    }
+
+    setupPush();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   // Vérifie au chargement s'il y a un produit à noter (commande livrée > 24h)
   useEffect(() => {

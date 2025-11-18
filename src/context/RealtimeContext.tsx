@@ -38,11 +38,23 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
     // ===== WebSocket (Socket.IO) =====
     const token = getAccessToken();
-    const socket = io(import.meta.env.VITE_API_BASE, {
+    const API_BASE = import.meta.env.VITE_API_BASE as string;
+    const base = API_BASE.replace(/\/$/, "");
+
+    const socket = io(base, {
       transports: ["websocket"],
       auth: { token },
     });
+
     socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("[WS] connected", socket.id);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("[WS] disconnected", reason);
+    });
 
     socket.on("welcome", (d) => {
       console.log("[WS] welcome", d);
@@ -57,9 +69,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       });
     });
 
-    // ===== SSE =====
-    const sub = subscribeSSE("/api/events/stream", (evt: ServerEvent) => {
+    // ===== SSE (Server-Sent Events) =====
+    const sseUrl = `${base}/api/events/stream`;
+
+    const sub = subscribeSSE(sseUrl, (evt: ServerEvent) => {
       console.log("[SSE] event", evt);
+
       if (evt.type === "ORDER_CREATED") {
         // @ts-ignore
         window?.duuminiToast?.({
@@ -67,10 +82,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
           message: evt.payload?.body || "",
         });
       }
+
       if (evt.type === "ORDER_STATUS") {
         // Ici tu peux plus tard rafraîchir une liste, etc.
       }
     });
+
     sseRef.current = sub;
 
     return () => {
