@@ -26,27 +26,21 @@ function shortText(s?: string | null, max = 200) {
   return t.slice(0, max - 1) + "…";
 }
 
-/** ✅ Base URL du site (front SPA) */
-function getSiteBaseUrl() {
-  const env = import.meta.env.VITE_PUBLIC_SITE_URL as string | undefined;
-  if (env) return env.replace(/\/+$/, "");
-  if (typeof window !== "undefined" && window.location.origin) {
-    return window.location.origin.replace(/\/+$/, "");
-  }
-  return "https://duumini.com";
-}
+function buildProductUrl(p: Product) {
+  const base =
+    typeof window !== "undefined" && window.location.origin
+      ? window.location.origin
+      : "https://duumini.com";
 
-/** ✅ URL serveur de partage (avec balises OG) */
-function buildShareUrl(p: Product) {
-  const base = getSiteBaseUrl();
-  const idOrSlug = p.slug || p.id;
-  return `${base}/share/product/${idOrSlug}`;
+  const sub = (p.sub_category || "").toString().toLowerCase();
+  const path = sub === "food" ? "/african-food" : "/african-market";
+
+  // ✅ Le lien partagé envoie directement vers la rubrique (pas la fiche produit)
+  return `${base}${path}`;
 }
 
 /* ===== Component ===== */
 type Props = { product: Product; onAdd?: (p: Product) => void };
-
-type ShareNetwork = "whatsapp" | "facebook" | "instagram" | "tiktok";
 
 export default function ProductCard({ product, onAdd }: Props) {
   const cover = product.cover || product.images?.[0]?.url || null;
@@ -64,8 +58,7 @@ export default function ProductCard({ product, onAdd }: Props) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // 👉 On utilise maintenant l’URL de la page serveur /share/product/:id
-  const shareUrl = useMemo(() => buildShareUrl(product), [product]);
+  const shareUrl = useMemo(() => buildProductUrl(product), [product]);
   const shareText = useMemo(
     () => `${product.name} — ${moneyMAD(product.price)} sur Duumini`,
     [product.name, product.price]
@@ -73,7 +66,6 @@ export default function ProductCard({ product, onAdd }: Props) {
 
   const handleAdd = () => (onAdd ? onAdd(product) : add(product, 1));
 
-  /** ✅ Logique actuelle de partage (Web Share + image), mais avec la nouvelle URL */
   async function shareProductWithImage() {
     try {
       if (coverUrl && typeof navigator !== "undefined" && "share" in navigator) {
@@ -98,7 +90,7 @@ export default function ProductCard({ product, onAdd }: Props) {
           await navigator.share({
             title: product.name,
             text: shareText,
-            url: shareUrl, // ✅ URL serveur qui a les OG tags
+            url: shareUrl,
             files: [file],
           });
           return;
@@ -113,46 +105,6 @@ export default function ProductCard({ product, onAdd }: Props) {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // ignore
-    }
-  }
-
-  /** ✅ Partage ciblé réseaux sociaux (même URL /share/product/:id) */
-  async function shareVia(network: ShareNetwork) {
-    if (typeof window === "undefined") return;
-
-    const url = encodeURIComponent(shareUrl);
-    const text = encodeURIComponent(shareText);
-
-    if (network === "whatsapp") {
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const waUrl = isMobile
-        ? `https://wa.me/?text=${text}%20${url}`
-        : `https://web.whatsapp.com/send?text=${text}%20${url}`;
-      window.open(waUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    if (network === "facebook") {
-      const fb = `https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${text}`;
-      window.open(fb, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    // Instagram & TikTok : on copie le lien puis on ouvre le site/app
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(shareUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    } catch {
-      // ignore
-    }
-
-    if (network === "instagram") {
-      window.open("https://www.instagram.com/", "_blank", "noopener,noreferrer");
-    } else if (network === "tiktok") {
-      window.open("https://www.tiktok.com/", "_blank", "noopener,noreferrer");
     }
   }
 
@@ -295,48 +247,12 @@ export default function ProductCard({ product, onAdd }: Props) {
                       <button className="btn btn-dark" onClick={handleAdd}>
                         + Ajouter au panier
                       </button>
-                      {/* Bouton générique (Web Share + image) */}
                       <button
                         className="btn btn-outline-secondary"
                         onClick={shareProductWithImage}
                       >
                         {copied ? "Lien copié" : "Partager"}
                       </button>
-
-                      {/* Boutons réseaux sociaux dédiés */}
-                      <div className="d-flex flex-wrap align-items-center gap-2">
-                        <span className="text-muted small me-1">
-                          Ou partager via :
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn-outline-success btn-sm"
-                          onClick={() => shareVia("whatsapp")}
-                        >
-                          WhatsApp
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline-primary btn-sm"
-                          onClick={() => shareVia("facebook")}
-                        >
-                          Facebook
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline-dark btn-sm"
-                          onClick={() => shareVia("instagram")}
-                        >
-                          Instagram
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline-dark btn-sm"
-                          onClick={() => shareVia("tiktok")}
-                        >
-                          TikTok
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
