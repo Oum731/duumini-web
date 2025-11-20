@@ -116,6 +116,13 @@ export default function CheckoutPage() {
   // ✅ l’utilisateur a explicitement choisi "invité"
   const [guestConfirmed, setGuestConfirmed] = useState(false);
 
+  // ✅ auto-sélection invité quand pas connecté
+  useEffect(() => {
+    if (!hasToken) {
+      setGuestConfirmed(true);
+    }
+  }, [hasToken]);
+
   // ✅ modale de succès pour commande invitée
   const [showGuestSuccess, setShowGuestSuccess] = useState(false);
 
@@ -245,7 +252,6 @@ export default function CheckoutPage() {
   }, []);
 
   // Soumission commande (connecté OU invité)
-    // Soumission commande (connecté OU invité)
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
 
@@ -326,6 +332,13 @@ export default function CheckoutPage() {
 
       const orderId = (result as any).id;
 
+      // 🕒 Date réelle de création renvoyée par l'API (fallback sur now)
+      const createdAtStr =
+        (result as any).created_at ||
+        (result as any).created ||
+        new Date().toISOString();
+      const createdAt = new Date(createdAtStr);
+
       // ✅ Code alphanumérique pour UI (id brut gardé pour le backend)
       const numericId =
         typeof orderId === "number" ? orderId : Number(orderId) || 0;
@@ -333,33 +346,36 @@ export default function CheckoutPage() {
         ? numericId.toString(36).toUpperCase()
         : String(orderId ?? "").toUpperCase();
 
-      if (!hasToken) {
-        const now = new Date();
-        const minStart = delivery === "EXPRESS" ? 15 : 60;
-        const minEnd = delivery === "EXPRESS" ? 45 : 120;
+      // 🕒 Fenêtre ETA basée sur l'heure de création (ex: commande créée à 18h53)
+      const minStart = delivery === "EXPRESS" ? 15 : 60;
+      const minEnd = delivery === "EXPRESS" ? 45 : 120;
 
-        const etaStart = new Date(now.getTime() + minStart * 60_000);
-        const etaEnd = new Date(now.getTime() + minEnd * 60_000);
-        const etaTarget = etaEnd;
+      const etaStart = new Date(createdAt.getTime() + minStart * 60_000);
+      const etaEnd = new Date(createdAt.getTime() + minEnd * 60_000);
+      const etaTarget = etaEnd;
 
-        try {
-          window.localStorage.setItem(
-            "duumini:lastOrderInfo",
-            JSON.stringify({
-              id: numericId || orderId,
-              displayCode,
-              createdAt: now.toISOString(),
-              deliveryMode: delivery,
-              etaStart: etaStart.toISOString(),
-              etaEnd: etaEnd.toISOString(),
-              etaTarget: etaTarget.toISOString(),
-              guest: true,
-            })
-          );
+      try {
+        // ✅ Sauvegarde pour tous (invité + connecté)
+        window.localStorage.setItem(
+          "duumini:lastOrderInfo",
+          JSON.stringify({
+            id: numericId || orderId,
+            displayCode,
+            createdAt: createdAt.toISOString(),
+            deliveryMode: delivery,
+            etaStart: etaStart.toISOString(),
+            etaEnd: etaEnd.toISOString(),
+            etaTarget: etaTarget.toISOString(),
+            guest: !hasToken,
+          })
+        );
+
+        // Widget spécifique invité
+        if (!hasToken) {
           window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
-        } catch {
-          // silencieux
         }
+      } catch {
+        // silencieux
       }
 
       clear();
@@ -399,7 +415,6 @@ export default function CheckoutPage() {
     quartier,
     hasToken,
   ]);
-
 
   const headerRight = useMemo(
     () => (
@@ -540,7 +555,7 @@ export default function CheckoutPage() {
             besoin.
           </p>
           <div className="d-flex flex-wrap gap-2">
-            {/* 🔓 confirme le mode invité */}
+            {/* 🔓 confirme le mode invité (déjà auto-activé) */}
             <button
               type="button"
               className="btn btn-sm btn-dark"

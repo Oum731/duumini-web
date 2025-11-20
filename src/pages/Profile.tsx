@@ -402,7 +402,7 @@ export default function ProfilePage() {
       errors.phone = "Téléphone requis.";
     } else if (!isValidPhoneIntl(phoneVal)) {
       errors.phone =
-        "Numéro invalide. Utilisez le format international ex : +2126…, +22507…, +22360…, +1415…";
+        "Numéro invalide. Utilisez le format international ex : +212";
     }
     if (!loginPassword) {
       errors.password = "Mot de passe requis.";
@@ -938,7 +938,7 @@ export default function ProfilePage() {
                       className={`form-control ${
                         loginErrors.phone ? "is-invalid" : ""
                       }`}
-                      placeholder="+212..., +225..., +223..., +1..."
+                      placeholder="+212..."
                       value={loginPhone}
                       onChange={(e) => {
                         const v = normalizePhoneInput(e.target.value);

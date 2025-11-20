@@ -1,3 +1,4 @@
+// src/pages/OrdersHistoryPage.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
@@ -77,7 +78,9 @@ function getItemName(it: OrderItem): string {
 type ListOrDetail = Order & Partial<OrderDetail>;
 
 /* ===== Helper: code alphanumérique pour affichage ===== */
-function getOrderDisplayCode(orderOrId: { id: number | string } | number | string): string {
+function getOrderDisplayCode(
+  orderOrId: { id: number | string } | number | string
+): string {
   const rawId =
     typeof orderOrId === "number" || typeof orderOrId === "string"
       ? orderOrId
@@ -101,8 +104,15 @@ function buildWhatsappText(opts: {
   currency: string;
   status?: OrderStatus;
 }) {
-  const { order, items, itemsAmount, deliveryFee, totalAmount, currency, status } =
-    opts;
+  const {
+    order,
+    items,
+    itemsAmount,
+    deliveryFee,
+    totalAmount,
+    currency,
+    status,
+  } = opts;
 
   const anyOrder = order as any;
 
@@ -140,20 +150,10 @@ function buildWhatsappText(opts: {
   const phone = contact.phone || anyOrder.phone || "";
 
   // ✅ Adresse : compat nouvelle structure (city/district) + anciens champs éventuels
-  const ville =
-    address.city ||
-    address.ville ||
-    anyOrder.address_city ||
-    "";
-  const commune =
-    address.commune ||
-    anyOrder.address_commune ||
-    "";
+  const ville = address.city || address.ville || anyOrder.address_city || "";
+  const commune = address.commune || anyOrder.address_commune || "";
   const quartier =
-    address.district ||
-    address.quartier ||
-    anyOrder.address_district ||
-    "";
+    address.district || address.quartier || anyOrder.address_district || "";
 
   const statusLabel = getStatusLabel(status);
 
@@ -396,11 +396,12 @@ export default function OrdersHistoryPage() {
         style={{ borderLeft: `4px solid var(--duu-red)` }}
       >
         <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en statut{" "}
-          <em>En livraison</em>.
+          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en
+          statut <em>En livraison</em>.
         </div>
         <small className="text-muted">
-          Une fois la commande passée en livraison, l’annulation n’est plus possible.
+          Une fois la commande passée en livraison, l’annulation n’est plus
+          possible.
         </small>
       </div>
 
@@ -489,19 +490,36 @@ export default function OrdersHistoryPage() {
             if (status === "DELIVERY" && createdAtDate) {
               const anyOrder = o as any;
               const deliveryObj = anyOrder.delivery || {};
+
+              // Point de départ du compte à rebours :
+              // - idéalement heure de passage en livraison
+              // - sinon heure de création de la commande
+              const deliveryStart: Date =
+                deliveryObj.started_at
+                  ? new Date(deliveryObj.started_at)
+                  : anyOrder.delivery_started_at
+                  ? new Date(anyOrder.delivery_started_at)
+                  : createdAtDate;
+
               const driverEtaSeconds =
                 typeof deliveryObj.driver_eta_seconds === "number"
                   ? deliveryObj.driver_eta_seconds
                   : null;
 
               let remainingMs: number | null = null;
+
               if (driverEtaSeconds && driverEtaSeconds > 0) {
-                remainingMs = driverEtaSeconds * 1000;
+                // ETA exact envoyé par le backend
+                const etaTarget = new Date(
+                  deliveryStart.getTime() + driverEtaSeconds * 1000
+                );
+                remainingMs = etaTarget.getTime() - nowTs;
               } else {
+                // Estimation: EXPRESS 45min / SIMPLE 120min après le début de la livraison
                 const defaultTarget =
                   deliveryMode === "EXPRESS"
-                    ? new Date(createdAtDate.getTime() + 45 * 60_000)
-                    : new Date(createdAtDate.getTime() + 120 * 60_000);
+                    ? new Date(deliveryStart.getTime() + 45 * 60_000)
+                    : new Date(deliveryStart.getTime() + 120 * 60_000);
                 remainingMs = defaultTarget.getTime() - nowTs;
               }
 
@@ -522,9 +540,7 @@ export default function OrdersHistoryPage() {
                   <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div className="d-flex align-items-center gap-2">
                       {/* ✅ Affichage code alphanumérique */}
-                      <div className="h6 m-0">
-                        Commande #{displayCode}
-                      </div>
+                      <div className="h6 m-0">Commande #{displayCode}</div>
                       {statusBadge(status)}
                     </div>
                     <div className="text-muted small">{created}</div>

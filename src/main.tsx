@@ -12,60 +12,38 @@ import { RealtimeProvider } from "./context/RealtimeContext"; // ✅
 
 import { registerSW } from "virtual:pwa-register";
 
-// Petit helper: toast Bootstrap "Nouvelle version"
-function showUpdateToast(onReload: () => void) {
-  const bs = (window as any).bootstrap;
-  if (!bs?.Toast) {
-    if (confirm("Une nouvelle version de Duumini est disponible. Recharger maintenant ?")) {
-      onReload();
-    }
-    return;
-  }
+// ⚠️ Ancien toast conservé mais NON utilisé (tu peux le supprimer si tu veux)
 
-  let container = document.getElementById("pwa-toast-container");
-  if (!container) {
-    container = document.createElement("div");
-    container.id = "pwa-toast-container";
-    container.className = "position-fixed bottom-0 end-0 p-3";
-    container.style.zIndex = "1080";
-    document.body.appendChild(container);
-  }
+/* =========
+ * PWA + actualisation auto silencieuse
+ * ========= */
 
-  const el = document.createElement("div");
-  el.className = "toast align-items-center text-bg-dark border-0";
-  el.setAttribute("role", "alert");
-  el.setAttribute("aria-live", "assertive");
-  el.setAttribute("aria-atomic", "true");
-  el.innerHTML = `
-    <div class="d-flex">
-      <div class="toast-body">
-        Nouvelle version de <strong>Duumini</strong> disponible.
-      </div>
-      <div class="d-flex align-items-center gap-2 me-2">
-        <button type="button" class="btn btn-light btn-sm" data-pwa-reload>Recharger</button>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Fermer"></button>
-      </div>
-    </div>
-  `;
-  container.appendChild(el);
-
-  el.querySelector<HTMLButtonElement>("[data-pwa-reload]")?.addEventListener("click", () => {
-    onReload();
-  });
-
-  const toast = new bs.Toast(el, { autohide: false });
-  toast.show();
-}
+// flag interne pour savoir qu’une nouvelle version est prête
+let refreshPending = false;
 
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    showUpdateToast(() => updateSW(true));
+    // 👉 Une nouvelle version du service worker est prête
+    // On ne montre PAS de toast, on déclenche juste un flag.
+    refreshPending = true;
   },
   onOfflineReady() {
-    // optionnel
+    // rien de visible, tu peux loguer si tu veux
+    // console.log("[PWA] Offline ready");
   },
 });
+
+// ⏱️ Vérifie toutes les 20 secondes si une MAJ est prête, et recharge silencieusement
+if (typeof window !== "undefined") {
+  window.setInterval(() => {
+    if (refreshPending) {
+      // recharge l’app avec la nouvelle version, sans popup
+      updateSW(true);
+      refreshPending = false;
+    }
+  }, 20_000); // 20 secondes (tu peux mettre 10_000 pour 10s)
+}
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
