@@ -1,4 +1,3 @@
-// src/pages/OrdersHistory.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
@@ -77,7 +76,21 @@ function getItemName(it: OrderItem): string {
 
 type ListOrDetail = Order & Partial<OrderDetail>;
 
-/* ===== Helper: construction du message WhatsApp (sans image) ===== */
+/* ===== Helper: code alphanumérique pour affichage ===== */
+function getOrderDisplayCode(orderOrId: { id: number | string } | number | string): string {
+  const rawId =
+    typeof orderOrId === "number" || typeof orderOrId === "string"
+      ? orderOrId
+      : orderOrId.id;
+
+  const num = typeof rawId === "number" ? rawId : Number(rawId);
+  if (Number.isFinite(num) && num > 0) {
+    // base36 → 1Z, 2A, etc. puis en majuscules
+    return num.toString(36).toUpperCase();
+  }
+  return String(rawId ?? "").toUpperCase();
+}
+
 /* ===== Helper: construction du message WhatsApp (sans image) ===== */
 function buildWhatsappText(opts: {
   order: ListOrDetail;
@@ -101,6 +114,9 @@ function buildWhatsappText(opts: {
     : anyOrder.date
     ? new Date(anyOrder.date).toLocaleString("fr-FR")
     : "";
+
+  // 🧾 Code alphanumérique pour affichage
+  const displayCode = getOrderDisplayCode(order);
 
   // 📝 liste des produits
   const linesText =
@@ -143,8 +159,10 @@ function buildWhatsappText(opts: {
 
   const parts: string[] = [];
 
-  // 🔢 numéro + date
-  parts.push(`Bonjour, je souhaite avoir des infos sur ma commande #${order.id}.`);
+  // 🔢 numéro + date (avec code alphanumérique)
+  parts.push(
+    `Bonjour, je souhaite avoir des infos sur ma commande #${displayCode}.`
+  );
   if (created) {
     parts.push(`Date de la commande : ${created}`);
   }
@@ -188,7 +206,6 @@ function buildWhatsappText(opts: {
 
   return parts.join("\n");
 }
-
 
 /* ===== Helper: URL WhatsApp avec message détaillé ===== */
 function whatsappHref(opts: {
@@ -399,6 +416,8 @@ export default function OrdersHistoryPage() {
       ) : (
         <div className="vstack gap-3">
           {sorted.map((o) => {
+            const displayCode = getOrderDisplayCode(o);
+
             const created = o?.created_at
               ? new Date(o.created_at).toLocaleString("fr-FR")
               : "";
@@ -470,8 +489,6 @@ export default function OrdersHistoryPage() {
             if (status === "DELIVERY" && createdAtDate) {
               const anyOrder = o as any;
               const deliveryObj = anyOrder.delivery || {};
-              // Si l’API renvoie un ETA dynamique basé sur la localisation du livreur,
-              // on le prend en priorité (driver_eta_seconds).
               const driverEtaSeconds =
                 typeof deliveryObj.driver_eta_seconds === "number"
                   ? deliveryObj.driver_eta_seconds
@@ -479,10 +496,8 @@ export default function OrdersHistoryPage() {
 
               let remainingMs: number | null = null;
               if (driverEtaSeconds && driverEtaSeconds > 0) {
-                // ETA "en direct" calculé côté serveur à partir de la map du livreur
                 remainingMs = driverEtaSeconds * 1000;
               } else {
-                // Fallback : ETA approximatif basé sur la création
                 const defaultTarget =
                   deliveryMode === "EXPRESS"
                     ? new Date(createdAtDate.getTime() + 45 * 60_000)
@@ -506,7 +521,10 @@ export default function OrdersHistoryPage() {
                   {/* En-tête commande */}
                   <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div className="d-flex align-items-center gap-2">
-                      <div className="h6 m-0">Commande #{o.id}</div>
+                      {/* ✅ Affichage code alphanumérique */}
+                      <div className="h6 m-0">
+                        Commande #{displayCode}
+                      </div>
                       {statusBadge(status)}
                     </div>
                     <div className="text-muted small">{created}</div>
@@ -661,7 +679,7 @@ export default function OrdersHistoryPage() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-success"
-                      aria-label={`Contacter via WhatsApp pour la commande #${o.id}`}
+                      aria-label={`Contacter via WhatsApp pour la commande #${displayCode}`}
                     >
                       WhatsApp Support
                     </a>

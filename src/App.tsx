@@ -358,7 +358,7 @@ export default function App() {
           </React.Suspense>
         </main>
 
-        {/* ✅ Widget invité global */}
+        {/* ✅ Widget invité global (s'auto-masque si user connecté) */}
         <GuestOrderWidget />
 
         <ScrollTopButton threshold={380} offsetBottom={84} offsetRight={16} />

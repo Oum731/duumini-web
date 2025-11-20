@@ -14,7 +14,13 @@ import { Link } from "react-router-dom";
 import { subscribeSSE, type ServerEvent } from "../../services/events";
 import { API_BASE } from "../../services/http";
 
-const STATUSES: OrderStatus[] = ["OPEN", "PREPARATION", "DELIVERY", "DONE", "CANCELLED"];
+const STATUSES: OrderStatus[] = [
+  "OPEN",
+  "PREPARATION",
+  "DELIVERY",
+  "DONE",
+  "CANCELLED",
+];
 
 const BADGE: Record<OrderStatus, string> = {
   OPEN: "bg-secondary",
@@ -80,6 +86,28 @@ const mad = (n?: number | null) =>
     Number(n || 0)
   );
 
+/* ===== Helper: code alphanumérique pour affichage ===== */
+function getOrderDisplayCode(
+  orderOrId: string | number | { id?: string | number }
+): string {
+  let rawId: string | number | undefined;
+
+  if (typeof orderOrId === "number" || typeof orderOrId === "string") {
+    rawId = orderOrId;
+  } else {
+    rawId = orderOrId?.id;
+  }
+
+  if (rawId == null) return "";
+
+  const num = typeof rawId === "number" ? rawId : Number(rawId);
+  if (Number.isFinite(num) && num > 0) {
+    return num.toString(36).toUpperCase();
+  }
+  return String(rawId ?? "").toUpperCase();
+}
+
+
 /* ===== Message WhatsApp complet pour le client (confirmation + détails) ===== */
 function buildAdminWhatsappMessage(order: AnyObj) {
   const items: AnyObj[] = Array.isArray(order.items) ? order.items : [];
@@ -96,6 +124,9 @@ function buildAdminWhatsappMessage(order: AnyObj) {
     "cher(e) client(e)";
 
   const phone = contact.phone || order.phone || "";
+
+  // Code alphanumérique pour affichage
+  const displayCode = getOrderDisplayCode(order);
 
   // ===== Calcul des montants =====
   const itemsAmountFromLines = items.reduce(
@@ -183,8 +214,8 @@ function buildAdminWhatsappMessage(order: AnyObj) {
   blocs.push(statusText);
   blocs.push("");
 
-  // Détails commande
-  blocs.push(`*Détails de la commande #${order.id}*`);
+  // Détails commande (affiche le code alphanumérique)
+  blocs.push(`*Détails de la commande #${displayCode}*`);
   if (created) {
     blocs.push(`Date : ${created}`);
   }
@@ -503,9 +534,7 @@ export default function OrdersAdminPage() {
   const filteredResults = useMemo(() => {
     const ql = search.trim().toLowerCase();
     if (!ql) return results;
-    return results.filter((p) =>
-      (p.name || "").toLowerCase().includes(ql)
-    );
+    return results.filter((p) => (p.name || "").toLowerCase().includes(ql));
   }, [results, search]);
 
   async function submitCreate() {
@@ -567,6 +596,15 @@ export default function OrdersAdminPage() {
     }
   }
 
+  // Codes d'affichage pour les modales
+  const editDisplayCode = editId !== null ? getOrderDisplayCode(editId) : "";
+  const viewDisplayCode =
+    viewId !== null
+      ? detail
+        ? getOrderDisplayCode(detail as AnyObj)
+        : getOrderDisplayCode(viewId)
+      : "";
+
   return (
     <div className="container-xxl py-4">
       {/* Titre */}
@@ -627,20 +665,22 @@ export default function OrdersAdminPage() {
                     const c = (o as any)?.contact || (o as any)?.user || {};
                     const fn = (c?.first_name || "").trim();
                     const ln = (c?.last_name || "").trim();
-                    const clientName = (fn || ln) ? `${fn} ${ln}`.trim() : "—";
+                    const clientName = fn || ln ? `${fn} ${ln}`.trim() : "—";
                     const phone = (c?.phone || "").trim();
                     const hrefTel = telHref(phone);
                     const thumb = getOrderThumb(o as AnyObj);
+                    const displayCode = getOrderDisplayCode(o);
 
                     return (
                       <tr key={o.id}>
-                        {/* ID */}
+                        {/* ID (code alphanumérique) */}
                         <td>
                           <button
                             className="btn btn-link link-dark p-0"
                             onClick={() => onView(o.id)}
+                            aria-label={`Voir commande #${displayCode}`}
                           >
-                            {o.id}
+                            {displayCode}
                           </button>
                         </td>
 
@@ -658,7 +698,7 @@ export default function OrdersAdminPage() {
                             >
                               <img
                                 src={thumb}
-                                alt={`Produit commande #${o.id}`}
+                                alt={`Produit commande #${displayCode}`}
                                 className="w-100 h-100 object-fit-cover"
                                 loading="lazy"
                               />
@@ -732,14 +772,15 @@ export default function OrdersAdminPage() {
                             >
                               Modifier
                             </button>
-                            {o.status !== "CANCELLED" && o.status !== "DONE" && (
-                              <button
-                                className="btn btn-sm btn-outline-danger"
-                                onClick={() => onCancel(o.id)}
-                              >
-                                Annuler
-                              </button>
-                            )}
+                            {o.status !== "CANCELLED" &&
+                              o.status !== "DONE" && (
+                                <button
+                                  className="btn btn-sm btn-outline-danger"
+                                  onClick={() => onCancel(o.id)}
+                                >
+                                  Annuler
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -787,7 +828,10 @@ export default function OrdersAdminPage() {
           <div className="modal-dialog" role="document">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Commande #{editId}</h5>
+                {/* Affiche aussi le code alphanumérique */}
+                <h5 className="modal-title">
+                  Commande #{editDisplayCode}
+                </h5>
                 <button className="btn-close" onClick={() => setEditId(null)} />
               </div>
               <div className="modal-body">
@@ -839,7 +883,10 @@ export default function OrdersAdminPage() {
           <div className="modal-dialog modal-lg" role="document">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Commande #{viewId}</h5>
+                {/* Affiche le code alphanumérique si dispo */}
+                <h5 className="modal-title">
+                  Commande #{viewDisplayCode}
+                </h5>
                 <button className="btn-close" onClick={() => setViewId(null)} />
               </div>
 
@@ -898,7 +945,9 @@ export default function OrdersAdminPage() {
                         <h6 className="mb-2">Client</h6>
                         <div className="d-flex flex-wrap justify-content-between align-items-center">
                           <div>
-                            <div className="fw-semibold">{client.fullName}</div>
+                            <div className="fw-semibold">
+                              {client.fullName}
+                            </div>
                             <div className="text-muted small">
                               {client.phone || "—"}
                             </div>

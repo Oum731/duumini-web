@@ -44,6 +44,18 @@ function buildProductUrl(p: Product) {
 type Props = { product: Product; onAdd?: (p: Product) => void };
 
 export default function ProductCard({ product, onAdd }: Props) {
+  // 🔹 Gestion statut actif / stock
+  const stock = (product as any).stock;
+  const isOutOfStock = stock === 0; // 0 = "en rupture"
+  const isActive =
+    ((product as any).is_active ?? (product as any).active ?? 1) ? true : false;
+  const isAvailable = isActive && !isOutOfStock;
+
+  // ⛔️ Produit désactivé → on ne l'affiche pas du tout
+  if (!isActive) {
+    return null;
+  }
+
   const cover = product.cover || product.images?.[0]?.url || null;
   const coverUrl = imgUrl(cover);
   const tag =
@@ -54,13 +66,6 @@ export default function ProductCard({ product, onAdd }: Props) {
       : {
           cls: "bg-primary-subtle text-primary-emphasis border-primary-subtle",
         };
-
-  // 🔹 Gestion disponibilité
-  const stock = (product as any).stock;
-  const isOutOfStock = stock === 0; // 0 = "en rupture"
-  const isActive =
-    ((product as any).is_active ?? (product as any).active ?? 1) ? true : false;
-  const isAvailable = isActive && !isOutOfStock;
 
   const { add } = useCart();
   const [open, setOpen] = useState(false);

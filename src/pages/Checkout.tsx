@@ -77,8 +77,14 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
+  // 👤 Utilisateur connecté
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+
+  // 👤 Invité
+  const [guestName, setGuestName] = useState("");
+  const [guestAddress, setGuestAddress] = useState("");
+
   const [phone, setPhone] = useState("");
 
   const [commune, setCommune] = useState<(typeof COMMUNES)[number]>(
@@ -153,16 +159,29 @@ export default function CheckoutPage() {
 
   const validPhone = isValidPhoneIntl(phone);
   const communeVal = commune === "__other__" ? communeOther.trim() : commune;
-  const hasName =
-    firstName.trim().length > 0 || lastName.trim().length > 0; // ✅ au moins un nom (invité = "son nom")
+
+  // ✅ conditions de nom :
+  // - connecté : prénom ou nom
+  // - invité   : Nom complet
+  const hasName = hasToken
+    ? firstName.trim().length > 0 || lastName.trim().length > 0
+    : guestName.trim().length > 0;
+
+  // ✅ conditions d'adresse :
+  // - connecté : commune + (quartier ou GPS)
+  // - invité   : adresse complète OU GPS
+  const addressOk = hasToken
+    ? !!communeVal &&
+      communeVal.length > 0 &&
+      (useGps ? !!coords : quartier.trim().length > 0)
+    : guestAddress.trim().length > 0 || !!coords;
 
   const canSubmit =
     lines.length > 0 &&
     hasName &&
     validPhone &&
-    !!communeVal &&
-    communeVal.length > 0 &&
-    (useGps ? !!coords : quartier.trim().length > 0);
+    addressOk &&
+    (hasToken || guestConfirmed);
 
   const askGps = useCallback(() => {
     setGpsErr(null);
@@ -226,6 +245,7 @@ export default function CheckoutPage() {
   }, []);
 
   // Soumission commande (connecté OU invité)
+    // Soumission commande (connecté OU invité)
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
 
@@ -235,20 +255,29 @@ export default function CheckoutPage() {
 
       const normalizedPhone = normalizePhoneInput(phone.trim());
 
-      const address = {
-        ville: VILLE_FIXE,
-        commune: communeVal || "",
-        quartier: useGps ? null : quartier.trim() || null,
-        gps: useGps && coords ? { lat: coords.lat, lng: coords.lng } : null,
-      };
+      // ✅ Adresse typée pour respecter CreateOrderPayload
+      const address: CreateOrderPayload["address"] = hasToken
+        ? {
+            ville: VILLE_FIXE,
+            // string ou undefined, pas de null
+            commune: communeVal ? String(communeVal) : undefined,
+            quartier: useGps ? null : quartier.trim() || null,
+            gps: useGps && coords ? { lat: coords.lat, lng: coords.lng } : null,
+          }
+        : {
+            ville: VILLE_FIXE,
+            // invité : on ne met PAS null, juste undefined
+            commune: undefined,
+            quartier: useGps ? null : guestAddress.trim() || null,
+            gps: useGps && coords ? { lat: coords.lat, lng: coords.lng } : null,
+          };
 
-      // ✅ Contact :
-      // - connecté : first_name / last_name / phone
-      // - invité   : name (nom complet) / phone
-      const fullName =
-        `${firstName.trim()} ${lastName.trim()}`.trim() ||
-        firstName.trim() ||
-        lastName.trim();
+      // Contact :
+      const fullName = hasToken
+        ? (`${firstName.trim()} ${lastName.trim()}`.trim() ||
+            firstName.trim() ||
+            lastName.trim())
+        : guestName.trim();
 
       const contact = {
         first_name: hasToken ? firstName.trim() || undefined : undefined,
@@ -257,13 +286,13 @@ export default function CheckoutPage() {
         phone: normalizedPhone,
       };
 
-      const payload = {
+      const payload: CreateOrderPayload = {
         contact,
         address,
         delivery: {
           mode: delivery,
           fee: deliveryFee,
-          currency: "MAD" as const,
+          currency: "MAD",
         },
         items: lines.map((l) => ({
           product_id: l.id,
@@ -283,23 +312,27 @@ export default function CheckoutPage() {
           note: "Paiement à la livraison. Aucun acompte requis.",
         },
 
-        // Champs à plat optionnels
+        // Champs à plat optionnels (on gère undefined → null ici)
         address_city: address.ville,
-        address_commune: address.commune || null,
+        address_commune: address.commune ?? null,
         address_district: address.quartier,
         address_gps_lat: address.gps?.lat ?? null,
         address_gps_lng: address.gps?.lng ?? null,
-      } satisfies CreateOrderPayload;
+      };
 
-      // Si connecté → /api/orders
-      // Sinon → /api/orders/guest (invité = nom + téléphone + adresse/GPS)
       const result = hasToken
         ? await createOrder(payload)
         : await createGuestOrder(payload);
 
       const orderId = (result as any).id;
 
-      // ✅ Si invité : on calcule et stocke une fenêtre ETA pour le widget flottant
+      // ✅ Code alphanumérique pour UI (id brut gardé pour le backend)
+      const numericId =
+        typeof orderId === "number" ? orderId : Number(orderId) || 0;
+      const displayCode = numericId
+        ? numericId.toString(36).toUpperCase()
+        : String(orderId ?? "").toUpperCase();
+
       if (!hasToken) {
         const now = new Date();
         const minStart = delivery === "EXPRESS" ? 15 : 60;
@@ -307,13 +340,14 @@ export default function CheckoutPage() {
 
         const etaStart = new Date(now.getTime() + minStart * 60_000);
         const etaEnd = new Date(now.getTime() + minEnd * 60_000);
-        const etaTarget = etaEnd; // on prend la fin comme cible
+        const etaTarget = etaEnd;
 
         try {
           window.localStorage.setItem(
             "duumini:lastOrderInfo",
             JSON.stringify({
-              id: orderId,
+              id: numericId || orderId,
+              displayCode,
               createdAt: now.toISOString(),
               deliveryMode: delivery,
               etaStart: etaStart.toISOString(),
@@ -322,7 +356,6 @@ export default function CheckoutPage() {
               guest: true,
             })
           );
-          // état minimisé remis à false
           window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
         } catch {
           // silencieux
@@ -332,10 +365,8 @@ export default function CheckoutPage() {
       clear();
 
       if (hasToken) {
-        // Client connecté : historique
         nav(`/orders?order=${orderId}`);
       } else {
-        // ✅ Invité : on affiche une modale de confirmation
         setShowGuestSuccess(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -351,6 +382,8 @@ export default function CheckoutPage() {
     submitting,
     firstName,
     lastName,
+    guestName,
+    guestAddress,
     phone,
     communeVal,
     useGps,
@@ -366,6 +399,7 @@ export default function CheckoutPage() {
     quartier,
     hasToken,
   ]);
+
 
   const headerRight = useMemo(
     () => (
@@ -577,163 +611,306 @@ export default function CheckoutPage() {
                 )}
               </div>
 
-              <div className="row g-3">
-                <div className="col-12 col-md-6">
-                  <label className="form-label">Prénom</label>
-                  <input
-                    className="form-control"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="Prénom"
-                  />
-                </div>
-                <div className="col-12 col-md-6">
-                  <label className="form-label">Nom</label>
-                  <input
-                    className="form-control"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Nom"
-                  />
-                </div>
+              {/* ✅ Formulaire différent selon connecté / invité */}
+              {hasToken ? (
+                <div className="row g-3">
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Prénom</label>
+                    <input
+                      className="form-control"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Prénom"
+                    />
+                  </div>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Nom</label>
+                    <input
+                      className="form-control"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Nom"
+                    />
+                  </div>
 
-                <div className="col-12 col-md-6">
-                  <label className="form-label">Téléphone</label>
-                  <input
-                    type="tel"
-                    className={`form-control ${
-                      phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
-                    }`}
-                    placeholder="+212..., +225..., +223..., +1..."
-                    value={phone}
-                    onChange={handlePhoneChange}
-                  />
-                  {phone && !isValidPhoneIntl(phone) && (
-                    <div className="invalid-feedback">
-                      Numéro invalide. Utilisez le format international, par exemple :
-                      +2126…, +22507…, +22360…, +1415…
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Téléphone</label>
+                    <input
+                      type="tel"
+                      className={`form-control ${
+                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
+                      }`}
+                      placeholder="+212..., +225..., +223..., +1..."
+                      value={phone}
+                      onChange={handlePhoneChange}
+                    />
+                    {phone && !isValidPhoneIntl(phone) && (
+                      <div className="invalid-feedback">
+                        Numéro invalide. Utilisez le format international, par exemple :
+                        +2126…, +22507…, +22360…, +1415…
+                      </div>
+                    )}
+                    <div className="form-text">
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>{" "}
+                      pour que nous puissions vous joindre et vous envoyer les
+                      informations de commande plus facilement.
                     </div>
-                  )}
-                  <div className="form-text">
-                    🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>{" "}
-                    pour que nous puissions vous joindre et vous envoyer les
-                    informations de commande plus facilement.
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Ville</label>
+                    <input className="form-control" value={VILLE_FIXE} disabled />
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Commune</label>
+                    <select
+                      className="form-select"
+                      value={commune}
+                      onChange={(e) => setCommune(e.target.value as any)}
+                    >
+                      {COMMUNES.map((c) => (
+                        <option key={c} value={c}>
+                          {c === "__other__" ? "Autre…" : c}
+                        </option>
+                      ))}
+                    </select>
+                    {commune === "__other__" && (
+                      <input
+                        className="form-control mt-2"
+                        placeholder="Saisir votre commune"
+                        value={communeOther}
+                        onChange={(e) => setCommuneOther(e.target.value)}
+                      />
+                    )}
+                  </div>
+
+                  {/* Quartier OU GPS */}
+                  <div className="col-12">
+                    <label className="form-label d-flex align-items-center justify-content-between">
+                      <span>Quartier / Localisation</span>
+                      <span className="small">
+                        {useGps && coords ? (
+                          <span className="text-success">
+                            GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={askGps}
+                            disabled={loadingGps}
+                            aria-busy={loadingGps}
+                          >
+                            {loadingGps ? (
+                              <>
+                                <span
+                                  className="spinner-border spinner-border-sm me-2"
+                                  role="status"
+                                  aria-hidden="true"
+                                />
+                                Activation…
+                                <span className="visually-hidden">
+                                  de la géolocalisation
+                                </span>
+                              </>
+                            ) : (
+                              "Utiliser ma position"
+                            )}
+                          </button>
+                        )}
+                      </span>
+                    </label>
+
+                    {!useGps ? (
+                      <>
+                        <input
+                          className="form-control"
+                          placeholder="Ex: Riad Oulfa, Terminus 20…"
+                          value={quartier}
+                          onChange={(e) => setQuartier(e.target.value)}
+                        />
+                        {gpsErr && (
+                          <div className="form-text text-danger mt-1">
+                            {gpsErr}
+                          </div>
+                        )}
+                        <div className="form-text">
+                          Vous pouvez soit saisir votre quartier, soit utiliser
+                          votre position GPS.
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="alert alert-info d-flex justify-content-between align-items-center">
+                          <span>
+                            Localisation GPS activée{" "}
+                            {coords
+                              ? `(${coords.lat.toFixed(
+                                  5
+                                )}, ${coords.lng.toFixed(5)})`
+                              : ""}
+                            .
+                          </span>
+                          <button
+                            className="btn btn-sm btn-outline-dark"
+                            type="button"
+                            onClick={() => {
+                              setUseGps(false);
+                              setCoords(null);
+                            }}
+                          >
+                            Changer
+                          </button>
+                        </div>
+                        {gpsErr && (
+                          <div className="form-text text-danger">{gpsErr}</div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
-
-                <div className="col-12 col-md-6">
-                  <label className="form-label">Ville</label>
-                  <input className="form-control" value={VILLE_FIXE} disabled />
-                </div>
-
-                <div className="col-12 col-md-6">
-                  <label className="form-label">Commune</label>
-                  <select
-                    className="form-select"
-                    value={commune}
-                    onChange={(e) => setCommune(e.target.value as any)}
-                  >
-                    {COMMUNES.map((c) => (
-                      <option key={c} value={c}>
-                        {c === "__other__" ? "Autre…" : c}
-                      </option>
-                    ))}
-                  </select>
-                  {commune === "__other__" && (
+              ) : (
+                // 🧾 Formulaire simplifié pour INVITÉ (Nom + Tel + Adresse OU GPS) :
+                <div className="row g-3">
+                  <div className="col-12">
+                    <label className="form-label">Nom complet</label>
                     <input
-                      className="form-control mt-2"
-                      placeholder="Saisir votre commune"
-                      value={communeOther}
-                      onChange={(e) => setCommuneOther(e.target.value)}
+                      className="form-control"
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      placeholder="Ex: Oumar Traoré"
                     />
-                  )}
-                </div>
+                  </div>
 
-                {/* Quartier OU GPS */}
-                <div className="col-12">
-                  <label className="form-label d-flex align-items-center justify-content-between">
-                    <span>Quartier / Localisation</span>
-                    <span className="small">
-                      {useGps && coords ? (
-                        <span className="text-success">
-                          GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-dark"
-                          onClick={askGps}
-                          disabled={loadingGps}
-                          aria-busy={loadingGps}
-                        >
-                          {loadingGps ? (
-                            <>
-                              <span
-                                className="spinner-border spinner-border-sm me-2"
-                                role="status"
-                                aria-hidden="true"
-                              />
-                              Activation…
-                              <span className="visually-hidden">
-                                de la géolocalisation
-                              </span>
-                            </>
-                          ) : (
-                            "Utiliser ma position"
-                          )}
-                        </button>
-                      )}
-                    </span>
-                  </label>
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Téléphone</label>
+                    <input
+                      type="tel"
+                      className={`form-control ${
+                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
+                      }`}
+                      placeholder="+212..., +225..., +223..., +1..."
+                      value={phone}
+                      onChange={handlePhoneChange}
+                    />
+                    {phone && !isValidPhoneIntl(phone) && (
+                      <div className="invalid-feedback">
+                        Numéro invalide. Utilisez le format international, par exemple :
+                        +2126…, +22507…, +22360…, +1415…
+                      </div>
+                    )}
+                    <div className="form-text">
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>{" "}
+                      pour que nous puissions vous joindre et vous envoyer les
+                      informations de commande plus facilement.
+                    </div>
+                  </div>
 
-                  {!useGps ? (
-                    <>
-                      <input
-                        className="form-control"
-                        placeholder="Ex: Riad Oulfa, Terminus 20…"
-                        value={quartier}
-                        onChange={(e) => setQuartier(e.target.value)}
-                      />
-                      {gpsErr && (
-                        <div className="form-text text-danger mt-1">
-                          {gpsErr}
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Ville</label>
+                    <input className="form-control" value={VILLE_FIXE} disabled />
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label d-flex align-items-center justify-content-between">
+                      <span>Adresse complète / Localisation</span>
+                      <span className="small">
+                        {useGps && coords ? (
+                          <span className="text-success">
+                            GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={askGps}
+                            disabled={loadingGps}
+                            aria-busy={loadingGps}
+                          >
+                            {loadingGps ? (
+                              <>
+                                <span
+                                  className="spinner-border spinner-border-sm me-2"
+                                  role="status"
+                                  aria-hidden="true"
+                                />
+                                Activation…
+                                <span className="visually-hidden">
+                                  de la géolocalisation
+                                </span>
+                              </>
+                            ) : (
+                              "Utiliser ma position"
+                            )}
+                          </button>
+                        )}
+                      </span>
+                    </label>
+
+                    {!useGps ? (
+                      <>
+                        <textarea
+                          className="form-control"
+                          rows={3}
+                          placeholder="Ex: Quartier Riad Oulfa, près du Terminus 20, immeuble B, appartement 3…"
+                          value={guestAddress}
+                          onChange={(e) => setGuestAddress(e.target.value)}
+                        />
+                        {gpsErr && (
+                          <div className="form-text text-danger mt-1">
+                            {gpsErr}
+                          </div>
+                        )}
+                        <div className="form-text">
+                          Vous pouvez renseigner votre adresse complète ou
+                          choisir d’utiliser votre position GPS.
                         </div>
-                      )}
-                      <div className="form-text">
-                        Vous pouvez soit saisir votre quartier, soit utiliser
-                        votre position GPS.
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="alert alert-info d-flex justify-content-between align-items-center">
-                        <span>
-                          Localisation GPS activée{" "}
-                          {coords
-                            ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(
-                                5
-                              )})`
-                            : ""}
-                          .
-                        </span>
-                        <button
-                          className="btn btn-sm btn-outline-dark"
-                          type="button"
-                          onClick={() => {
-                            setUseGps(false);
-                            setCoords(null);
-                          }}
-                        >
-                          Changer
-                        </button>
-                      </div>
-                      {gpsErr && (
-                        <div className="form-text text-danger">{gpsErr}</div>
-                      )}
-                    </>
-                  )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="alert alert-info d-flex justify-content-between align-items-center">
+                          <span>
+                            Localisation GPS activée{" "}
+                            {coords
+                              ? `(${coords.lat.toFixed(
+                                  5
+                                )}, ${coords.lng.toFixed(5)})`
+                              : ""}
+                            .
+                          </span>
+                          <button
+                            className="btn btn-sm btn-outline-dark"
+                            type="button"
+                            onClick={() => {
+                              setUseGps(false);
+                              setCoords(null);
+                            }}
+                          >
+                            Changer
+                          </button>
+                        </div>
+                        {gpsErr && (
+                          <div className="form-text text-danger">
+                            {gpsErr}
+                          </div>
+                        )}
+                        <div className="form-text">
+                          Vous pouvez ajouter quelques précisions ci-dessous si
+                          nécessaire (optionnel).
+                        </div>
+                        <textarea
+                          className="form-control mt-2"
+                          rows={2}
+                          placeholder="Repère, étage, porte… (optionnel)"
+                          value={guestAddress}
+                          onChange={(e) => setGuestAddress(e.target.value)}
+                        />
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 

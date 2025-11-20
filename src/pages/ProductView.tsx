@@ -1,3 +1,4 @@
+// src/pages/ProductView.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import type { Product } from "../services/products";
@@ -12,10 +13,18 @@ function imgUrl(u?: string | null) {
   if (u.startsWith("/")) return `${API_BASE}${u}`;
   return u;
 }
+
 function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(
-    Number(n || 0)
-  );
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "MAD",
+  }).format(Number(n || 0));
+}
+
+// Helper pour savoir si un produit est actif
+function isProductActive(p: Product | null | undefined): boolean {
+  if (!p) return false;
+  return ((p as any).is_active ?? (p as any).active ?? 1) ? true : false;
 }
 
 export default function ProductView() {
@@ -32,6 +41,8 @@ export default function ProductView() {
   const title = useMemo(() => product?.name || "Produit", [product]);
   const cover = product?.cover || product?.images?.[0]?.url || null;
   const coverUrl = imgUrl(cover);
+
+  const productIsActive = useMemo(() => isProductActive(product), [product]);
 
   // Choix de la rubrique (pour le bouton Explorer / fallback Retour)
   const sectionPath = useMemo(() => {
@@ -104,10 +115,20 @@ export default function ProductView() {
         const items: Product[] = Array.isArray((res as any)?.items)
           ? (res as any).items
           : [];
+
         const sameSub = (p: Product) =>
           (p?.sub_category || "").toString().toLowerCase() ===
           (product?.sub_category || "").toString().toLowerCase();
-        const rel = items.filter((p) => p.id !== product.id && sameSub(p)).slice(0, 8);
+
+        const rel = items
+          .filter(
+            (p) =>
+              p.id !== product.id &&
+              sameSub(p) &&
+              isProductActive(p) // ✅ seulement les actifs
+          )
+          .slice(0, 8);
+
         if (!stop) setRelated(rel);
       } catch {
         if (!stop) setRelated([]);
@@ -117,9 +138,6 @@ export default function ProductView() {
       stop = true;
     };
   }, [product]);
-
-  // ⛔️ Ancien effet de redirection automatique supprimé
-  // pour permettre d'afficher réellement la fiche produit + la note.
 
   if (loading) {
     return (
@@ -141,8 +159,8 @@ export default function ProductView() {
     );
   }
 
-  // Si on a une erreur ou aucun produit → message + boutons
-  if (error || !product) {
+  // ⛔️ Produit introuvable ou désactivé → message + boutons
+  if (error || !product || !productIsActive) {
     return (
       <div className="container-xxl py-4">
         <div className="d-flex flex-wrap gap-2 mb-3">
@@ -155,7 +173,11 @@ export default function ProductView() {
         </div>
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
-          <span>{error || "Produit introuvable"}</span>
+          <span>
+            {product && !productIsActive
+              ? "Ce produit n'est plus disponible."
+              : error || "Produit introuvable"}
+          </span>
         </div>
       </div>
     );

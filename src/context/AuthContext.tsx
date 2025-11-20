@@ -58,6 +58,36 @@ export const AuthContext = createContext<AuthContextType>({
   updateProfile: noopAsync,
 });
 
+/* ===== Helper: broadcast changement d’auth dans l’app + autres onglets ===== */
+function broadcastAuthChange(user: User | null) {
+  try {
+    if (typeof window === "undefined") return;
+
+    // Événement CustomEvent pour le même onglet (RealtimeContext, etc.)
+    window.dispatchEvent(
+      new CustomEvent("duumini:auth-changed", {
+        detail: {
+          user,
+        },
+      })
+    );
+
+    // Événement via localStorage pour les autres onglets
+    const payload = {
+      ts: Date.now(),
+      user: user
+        ? { id: user.id, role: user.role }
+        : null,
+    };
+    window.localStorage.setItem(
+      "duumini:auth-changed",
+      JSON.stringify(payload)
+    );
+  } catch {
+    // silencieux
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getCurrentUser());
   const [loading, setLoading] = useState<boolean>(true);
@@ -70,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await apiRefresh();
         } catch {}
+        // Changement de rôle → on recharge toute l’app (menus, droits, etc.)
         window.location.reload();
       }
     },
@@ -137,11 +168,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ Réaction aux changements d’auth dans les AUTRES onglets (localStorage)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "duumini:auth-changed" && e.newValue) {
+        // Un autre onglet a loggé / déloggé → on rafraîchit le user local
+        refreshUser();
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [/* eslint-disable-line react-hooks/exhaustive-deps */]);
+
   const login = useCallback(
     async (phone: string, password: string) => {
       const before = getCurrentUser();
       const u = await apiLogin(phone, password);
       setUser(u);
+
+      // 🔔 Broadcast dans l’app + autres onglets
+      broadcastAuthChange(u);
+
       await applyRoleChangeIfNeeded(before, u);
 
       // Après login, on initialise Pushy + enregistre le device
@@ -161,6 +211,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {}
     await apiLogout();
     setUser(null);
+
+    // 🔔 Broadcast logout (user = null)
+    broadcastAuthChange(null);
   }, []);
 
   const refreshUser = useCallback(
@@ -182,6 +235,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const before = getCurrentUser();
       const updated = await apiUpdateProfile(data);
       setUser(updated);
+
+      // 🔔 Si tu veux que certaines parties de l’app réagissent aussi
+      // aux changements de profil (ex: nom affiché dans header)
+      broadcastAuthChange(updated);
+
       await applyRoleChangeIfNeeded(before, updated);
     },
     [applyRoleChangeIfNeeded]

@@ -1,17 +1,24 @@
 // src/components/GuestOrderWidget.tsx
 import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "../context/AuthContext";
 
 const STORAGE_KEY = "duumini:lastOrderInfo";
 const MINIMIZED_KEY = "duumini:guestWidgetMinimized";
 
+type GuestOrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCELLED";
+
 type GuestOrderInfo = {
   id: number;
+  code: string; // ✅ code alphanumérique pour l'affichage
   etaStart: string;
   etaEnd: string;
   etaTarget: string;
   createdAt: string;
   deliveryMode: "EXPRESS" | "SIMPLE";
   guest: boolean;
+  status?: GuestOrderStatus; // ✅ statut optionnel de la commande
+  done?: boolean;            // ✅ flags éventuels venant du front
+  isDone?: boolean;
 };
 
 /* ------- Helpers format ------- */
@@ -37,46 +44,121 @@ function formatCountdown(target: Date): string | null {
 }
 
 export default function GuestOrderWidget() {
+  const { user } = useAuth();
   const [info, setInfo] = useState<GuestOrderInfo | null>(null);
   const [nowTs, setNowTs] = useState(Date.now());
   const [minimized, setMinimized] = useState(false);
 
-  // Tick pour le compte à rebours
-  useEffect(() => {
-    const t = window.setInterval(() => setNowTs(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  // Chargement initial des infos invité + état "minimisé"
-  useEffect(() => {
+  // 🧹 Helper global pour nettoyer les infos invité
+  const clearStorage = useCallback(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-
-      const parsed = JSON.parse(raw);
-      if (!parsed?.guest) return; // ✅ uniquement invité
-
-      const isMinimized = localStorage.getItem(MINIMIZED_KEY) === "1";
-
-      setInfo({
-        id: parsed.id,
-        createdAt: parsed.createdAt,
-        etaStart: parsed.etaStart,
-        etaEnd: parsed.etaEnd,
-        etaTarget: parsed.etaTarget,
-        deliveryMode: parsed.deliveryMode === "EXPRESS" ? "EXPRESS" : "SIMPLE",
-        guest: true,
-      });
-      setMinimized(isMinimized);
+      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(MINIMIZED_KEY);
     } catch {
       /* ignore */
     }
   }, []);
 
+  // ✅ Si un utilisateur se connecte → on masque immédiatement le widget invité
+  useEffect(() => {
+    if (user) {
+      clearStorage();
+      setInfo(null);
+    }
+  }, [user, clearStorage]);
+
+  // 🔁 Sync avec localStorage + tick pour le compte à rebours
+  useEffect(() => {
+    // En SSR ou si window n'existe pas (sécurité)
+    if (typeof window === "undefined") return;
+
+    function syncFromStorage() {
+      // Si user connecté → on ne montre rien, même si des données traînent
+      if (user) {
+        setInfo(null);
+        return;
+      }
+
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          setInfo(null);
+          return;
+        }
+
+        const parsed = JSON.parse(raw);
+
+        // pas un invité → on ignore
+        if (!parsed?.guest) {
+          setInfo(null);
+          return;
+        }
+
+        // Essaie de récupérer un statut depuis le stockage
+        const status: GuestOrderStatus | undefined =
+          parsed.status || parsed.orderStatus || parsed.state;
+
+        // ✅ Détection "commande terminée"
+        const doneFlag =
+          parsed.done === true ||
+          parsed.isDone === true ||
+          status === "DONE" ||
+          status === "CANCELLED";
+
+        // ✅ Si DONE ou CANCELLED (ou done=true) → on nettoie et on masque
+        if (doneFlag) {
+          clearStorage();
+          setInfo(null);
+          return;
+        }
+
+        const isMinimized = window.localStorage.getItem(MINIMIZED_KEY) === "1";
+
+        const numericId =
+          typeof parsed.id === "number" ? parsed.id : Number(parsed.id) || 0;
+        const code =
+          parsed.displayCode ||
+          parsed.code ||
+          (numericId
+            ? numericId.toString(36).toUpperCase()
+            : String(parsed.id ?? ""));
+
+        setInfo({
+          id: numericId,
+          code,
+          createdAt: parsed.createdAt,
+          etaStart: parsed.etaStart,
+          etaEnd: parsed.etaEnd,
+          etaTarget: parsed.etaTarget,
+          deliveryMode:
+            parsed.deliveryMode === "EXPRESS" ? "EXPRESS" : "SIMPLE",
+          guest: true,
+          status,
+          done: parsed.done === true,
+          isDone: parsed.isDone === true,
+        });
+        setMinimized(isMinimized);
+      } catch {
+        setInfo(null);
+      }
+    }
+
+    // Lecture initiale + boucle
+    syncFromStorage();
+    const t = window.setInterval(() => {
+      setNowTs(Date.now());
+      syncFromStorage(); // ✅ se met à jour tout seul régulièrement
+    }, 1000);
+
+    return () => {
+      window.clearInterval(t);
+    };
+  }, [user, clearStorage]);
+
   const handleClosePanel = useCallback(() => {
     setMinimized(true);
     try {
-      localStorage.setItem(MINIMIZED_KEY, "1");
+      window.localStorage.setItem(MINIMIZED_KEY, "1");
     } catch {
       /* ignore */
     }
@@ -85,11 +167,14 @@ export default function GuestOrderWidget() {
   const handleOpenPanel = useCallback(() => {
     setMinimized(false);
     try {
-      localStorage.setItem(MINIMIZED_KEY, "0");
+      window.localStorage.setItem(MINIMIZED_KEY, "0");
     } catch {
       /* ignore */
     }
   }, []);
+
+  // ✅ Si user connecté → on ne rend jamais le widget
+  if (user) return null;
 
   // Pas d'info → rien à afficher
   if (!info) return null;
@@ -98,16 +183,10 @@ export default function GuestOrderWidget() {
   const etaEnd = new Date(info.etaEnd);
   const etaTarget = new Date(info.etaTarget);
 
-  // Si la fenêtre de livraison est largement passée → on considère que c'est "done"
+  // Fallback : si la fenêtre de livraison est largement passée → on considère que c'est "done"
   const toleranceMs = 2 * 60 * 60 * 1000; // 2h après ETA cible
   if (nowTs - etaTarget.getTime() > toleranceMs) {
-    // 🧹 Nettoyage : commande considérée livrée
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem(MINIMIZED_KEY);
-    } catch {
-      /* ignore */
-    }
+    clearStorage();
     return null;
   }
 
@@ -183,13 +262,13 @@ export default function GuestOrderWidget() {
               className="small fw-semibold text-uppercase"
               style={{ color: "var(--duu-black)", fontSize: "0.7rem" }}
             >
-              Suivi commande invité
+              Suivi commande
             </div>
             <div
               className="small"
               style={{ color: "var(--duu-black)", opacity: 0.8 }}
             >
-              Commande #{info.id}
+              Commande #{info.code}
             </div>
           </div>
           <button
@@ -208,10 +287,7 @@ export default function GuestOrderWidget() {
         </div>
 
         {/* Contenu */}
-        <div
-          className="small mb-1"
-          style={{ color: "var(--duu-black)" }}
-        >
+        <div className="small mb-1" style={{ color: "var(--duu-black)" }}>
           Livraison estimée{" "}
           <strong style={{ color: "var(--duu-red)" }}>{intervalLabel}</strong>{" "}
           {info.deliveryMode === "EXPRESS" ? "(Express)" : ""}.

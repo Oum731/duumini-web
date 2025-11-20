@@ -56,15 +56,17 @@ export type CreateOrderPayload = {
 
 export type CreateOrderResult = {
   id: number;
+  display_code?: string;           // ✅ code alphanumérique
   status: OrderStatus | string;
   total?: number;
   currency?: string;
-  geo_link?: string | null; // 🔗 lien vers Google Maps si GPS fourni
+  geo_link?: string | null;        // 🔗 lien vers Google Maps si GPS fourni
 };
 
 /** Format minimal d’une commande dans la liste */
 export type Order = {
   id: number;
+  display_code?: string | null;    // ✅ affichage pour UI
   user_id?: number;
   contact?: {
     first_name?: string | null;
