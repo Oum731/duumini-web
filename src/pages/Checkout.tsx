@@ -640,7 +640,7 @@ export default function CheckoutPage() {
                       className={`form-control ${
                         phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
                       }`}
-                      placeholder="+212..., +225..., +223..., +1..."
+                      placeholder="+212..."
                       value={phone}
                       onChange={handlePhoneChange}
                     />

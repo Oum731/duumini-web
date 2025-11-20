@@ -611,7 +611,7 @@ export default function ProfilePage() {
                       className={`form-control ${
                         forgotErrors.phone ? "is-invalid" : ""
                       }`}
-                      placeholder="+212..., +225..., +223..., +1..."
+                      placeholder="+212..."
                       value={forgotPhone}
                       onChange={(e) => {
                         const v = normalizePhoneInput(e.target.value);
@@ -685,7 +685,7 @@ export default function ProfilePage() {
                           setEditErrors((prev) => ({ ...prev, phone: "" }));
                         }}
                         required
-                        placeholder="+212..., +225..., +223..., +1..."
+                        placeholder="+212..."
                         autoComplete="tel"
                       />
                       {editErrors.phone && (
@@ -996,7 +996,7 @@ export default function ProfilePage() {
                       className={`form-control ${
                         regErrors.phone ? "is-invalid" : ""
                       }`}
-                      placeholder="+212..., +225..., +223..., +1..."
+                      placeholder="+212..."
                       value={regPhone}
                       onChange={(e) => {
                         const v = normalizePhoneInput(e.target.value);
@@ -1231,7 +1231,7 @@ export default function ProfilePage() {
                       className={`form-control ${
                         forgotErrors.phone ? "is-invalid" : ""
                       }`}
-                      placeholder="+212..., +225..., +223..., +1..."
+                      placeholder="+212..."
                       value={forgotPhone}
                       onChange={(e) => {
                         const v = normalizePhoneInput(e.target.value);
