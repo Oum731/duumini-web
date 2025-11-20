@@ -17,7 +17,6 @@ type ProductImage = { id: number; url: string; sort_order: number };
 type FullProduct = Product & { images?: ProductImage[] };
 
 // 🔹 Draft = Product partiel + category_name (pour "Autre…" Market)
-// on ne redéfinit PAS sub_category / description / stock / currency ici
 type Draft = Partial<Product> & {
   category_name?: string;
 };
@@ -614,6 +613,41 @@ export default function ProductsAdminPage() {
     }
   }
 
+  // 🔁 Activer / désactiver un produit
+  async function onToggleActive(p: Product) {
+    const current =
+      ((p as any).active ?? (p as any).is_active ?? 1) ? 1 : 0;
+    const next = current ? 0 : 1;
+
+    setBusy(true);
+    setError(null);
+    setOk(null);
+    try {
+      const payload: any = { active: next, is_active: next };
+      // pas d’images / pas de remplacement
+      await updateProduct(p.id, payload, [], false);
+      setOk(next ? "Produit activé." : "Produit désactivé.");
+      // Mise à jour locale
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === p.id
+            ? ({ ...it, active: next, is_active: next } as any)
+            : it
+        )
+      );
+      // Si le produit est dans le preview, on le met aussi à jour
+      setPreview((prev) =>
+        prev && prev.id === p.id
+          ? ({ ...prev, active: next, is_active: next } as any)
+          : prev
+      );
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const filtered = items.filter((p) => {
     if (!q.trim()) return true;
     const t = q.toLowerCase();
@@ -702,75 +736,102 @@ export default function ProductsAdminPage() {
                     <th>Produit</th>
                     <th className="d-none d-sm-table-cell">Boutique</th>
                     <th className="d-none d-sm-table-cell">Stock</th>
+                    <th className="d-none d-sm-table-cell">Statut</th>
                     <th className="text-end">Prix</th>
                     <th className="text-end">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p) => (
-                    <tr key={p.id}>
-                      <td>{p.id}</td>
-                      <td className="text-truncate" style={{ maxWidth: 380 }}>
-                        <div className="d-flex align-items-center gap-2">
-                          {p.cover ? (
-                            <img
-                              src={imgUrl(p.cover)}
-                              alt={p.name}
-                              className="rounded border"
-                              style={{
-                                width: 42,
-                                height: 42,
-                                objectFit: "cover",
-                              }}
-                            />
-                          ) : (
-                            <div
-                              className="rounded border bg-light"
-                              style={{ width: 42, height: 42 }}
-                            />
-                          )}
+                  {filtered.map((p) => {
+                    const isActive =
+                      ((p as any).active ?? (p as any).is_active ?? 1) ? 1 : 0;
+                    return (
+                      <tr key={p.id}>
+                        <td>{p.id}</td>
+                        <td className="text-truncate" style={{ maxWidth: 380 }}>
                           <div className="d-flex align-items-center gap-2">
-                            <span
-                              className="text-truncate"
-                              title={p.name}
-                            >
-                              {p.name}
+                            {p.cover ? (
+                              <img
+                                src={imgUrl(p.cover)}
+                                alt={p.name}
+                                className="rounded border"
+                                style={{
+                                  width: 42,
+                                  height: 42,
+                                  objectFit: "cover",
+                                }}
+                              />
+                            ) : (
+                              <div
+                                className="rounded border bg-light"
+                                style={{ width: 42, height: 42 }}
+                              />
+                            )}
+                            <div className="d-flex align-items-center gap-2">
+                              <span
+                                className="text-truncate"
+                                title={p.name}
+                              >
+                                {p.name}
+                              </span>
+                              <button
+                                className="btn btn-link btn-sm p-0 align-baseline"
+                                title="Voir"
+                                onClick={() => openPreview(p.id)}
+                              >
+                                (voir)
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="d-none d-sm-table-cell">{p.shop_id}</td>
+                        <td className="d-none d-sm-table-cell">
+                          {(p as any).stock ?? 0}
+                        </td>
+                        <td className="d-none d-sm-table-cell">
+                          {isActive ? (
+                            <span className="badge bg-success-subtle text-success">
+                              Actif
                             </span>
+                          ) : (
+                            <span className="badge bg-secondary-subtle text-muted">
+                              Désactivé
+                            </span>
+                          )}
+                        </td>
+                        <td className="text-end">{moneyMAD(p.price)}</td>
+                        <td className="text-end">
+                          <div className="btn-group">
                             <button
-                              className="btn btn-link btn-sm p-0 align-baseline"
-                              title="Voir"
-                              onClick={() => openPreview(p.id)}
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => openEdit(p.id)}
+                              disabled={busy}
                             >
-                              (voir)
+                              Modifier
+                            </button>
+                            <button
+                              className={`btn btn-sm ${
+                                isActive
+                                  ? "btn-outline-warning"
+                                  : "btn-outline-success"
+                              }`}
+                              onClick={() => onToggleActive(p)}
+                              disabled={busy}
+                            >
+                              {isActive ? "Désactiver" : "Activer"}
+                            </button>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => onDelete(p.id)}
+                              disabled={busy}
+                            >
+                              Supprimer
                             </button>
                           </div>
-                        </div>
-                      </td>
-                      <td className="d-none d-sm-table-cell">{p.shop_id}</td>
-                      <td className="d-none d-sm-table-cell">
-                        {(p as any).stock ?? 0}
-                      </td>
-                      <td className="text-end">{moneyMAD(p.price)}</td>
-                      <td className="text-end">
-                        <div className="btn-group">
-                          <button
-                            className="btn btn-sm btn-outline-dark"
-                            onClick={() => openEdit(p.id)}
-                            disabled={busy}
-                          >
-                            Modifier
-                          </button>
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() => onDelete(p.id)}
-                            disabled={busy}
-                          >
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -916,6 +977,14 @@ export default function ProductsAdminPage() {
                       </li>
                       <li>
                         <strong>Canal :</strong> {preview.sub_category || "-"}
+                      </li>
+                      <li>
+                        <strong>Statut :</strong>{" "}
+                        {((preview as any).active ??
+                        (preview as any).is_active ??
+                        1)
+                          ? "Actif"
+                          : "Désactivé"}
                       </li>
                     </ul>
                     <div className="small text-muted">

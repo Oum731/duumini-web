@@ -36,7 +36,6 @@ import ScrollTopButton from "./components/ScrollTopButton";
 import { getCurrentUser } from "./services/auth";
 import ProductView from "./pages/ProductView";
 
-// 👇 nouveaux imports
 import { useAuth } from "./context/AuthContext";
 import {
   getPendingProductRating,
@@ -44,10 +43,7 @@ import {
   rateProduct,
 } from "./services/productRatings";
 import TopProductsPage from "./pages/TopProductsPage";
-
-// ✅ Imports pour notifications push
-import { initPush } from "./services/push";
-import { registerDevice } from "./services/devices";
+import GuestOrderWidget from "./components/GuestOrderWidget";
 
 function Page({ title }: { title: string }) {
   return (
@@ -175,7 +171,6 @@ function GlobalRatingModal(props: {
         comment.trim() || undefined
       );
       setSuccess("Merci pour votre avis !");
-      // on ferme après un petit délai visuel
       setTimeout(() => {
         onClose();
       }, 800);
@@ -187,7 +182,6 @@ function GlobalRatingModal(props: {
     }
   }
 
-  // Empêche scroll body quand le modal est ouvert
   useEffect(() => {
     document.body.classList.add("modal-open");
     return () => {
@@ -281,32 +275,6 @@ export default function App() {
   const [pendingRating, setPendingRating] =
     useState<PendingProductRating | null>(null);
 
-  // ✅ Init notifications push quand l'utilisateur est connecté
-  useEffect(() => {
-    if (!user) return;
-
-    let cancelled = false;
-
-    async function setupPush() {
-      try {
-        const token = await initPush();
-        if (!token || cancelled) return;
-
-        // Enregistre le device côté API (table user_devices)
-        await registerDevice(token, "pushy");
-        console.log("[Push] Device registered", token);
-      } catch (e) {
-        console.error("[Push] init/register failed", e);
-      }
-    }
-
-    setupPush();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
   // Vérifie au chargement s'il y a un produit à noter (commande livrée > 24h)
   useEffect(() => {
     if (!user) {
@@ -329,7 +297,6 @@ export default function App() {
     }
 
     checkPending();
-    // tu peux aussi relancer la vérif après certaines actions si tu veux
     return () => {
       cancelled = true;
     };
@@ -347,7 +314,6 @@ export default function App() {
             }
           >
             <Routes>
-              {/* 👇 ICI : route racine pilotée */}
               <Route path="/" element={<LandingRedirect />} />
 
               {/* Public */}
@@ -364,6 +330,7 @@ export default function App() {
               <Route path="/african-market" element={<AfricanMarket />} />
               <Route path="/products/:idOrSlug" element={<ProductView />} />
               <Route path="/top-products" element={<TopProductsPage />} />
+
               {/* ✅ Pages légales */}
               <Route path="/legal/privacy" element={<PrivacyPolicy />} />
               <Route path="/legal/terms" element={<Terms />} />
@@ -391,11 +358,13 @@ export default function App() {
           </React.Suspense>
         </main>
 
+        {/* ✅ Widget invité global */}
+        <GuestOrderWidget />
+
         <ScrollTopButton threshold={380} offsetBottom={84} offsetRight={16} />
         <FloatingCartGuard />
         <Footer />
 
-        {/* Modal global de demande d'avis */}
         {pendingRating && (
           <GlobalRatingModal
             pending={pendingRating}

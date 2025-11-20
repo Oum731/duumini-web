@@ -20,6 +20,9 @@ export type Product = {
   images?: { id: number; url: string; sort_order: number }[];
   cover?: string | null;
 
+  // 🔹 Activation / désactivation du produit
+  is_active?: 0 | 1;
+
   // 🔹 Champs supplémentaires renvoyés par certaines routes (facultatifs)
   total_qty?: number;       // pour /top-ordered
   avg_rating?: number;      // pour /top-rated
@@ -47,6 +50,7 @@ export async function listProducts(opts: {
   page?: number;
   pageSize?: number;
   channel?: Channel;
+  onlyActive?: boolean;   // ← filtre optionnel : seulement produits actifs
 } = {}) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
@@ -58,7 +62,12 @@ export async function listProducts(opts: {
       ? "/api/products/african-market"
       : "/api/products";
 
-  return api.get<Paginated<Product>>(base, { query: { page, pageSize } });
+  const query: Record<string, any> = { page, pageSize };
+  if (opts.onlyActive) {
+    query.onlyActive = 1;
+  }
+
+  return api.get<Paginated<Product>>(base, { query });
 }
 
 /* ---------- Read ---------- */
@@ -93,6 +102,13 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
         ? 1
         : 0;
     fd.append("promo_eligible", String(v));
+  }
+
+  // 🔹 Actif / inactif
+  if (draft.is_active != null) {
+    const v =
+      typeof draft.is_active === "number" ? draft.is_active : draft.is_active ? 1 : 0;
+    fd.append("is_active", String(v));
   }
 
   const sub = normalizeSubCategory(draft.sub_category ?? undefined);
@@ -131,6 +147,13 @@ export async function updateProduct(
         ? 1
         : 0;
     fd.append("promo_eligible", String(v));
+  }
+
+  // 🔹 Actif / inactif
+  if (draft.is_active != null) {
+    const v =
+      typeof draft.is_active === "number" ? draft.is_active : draft.is_active ? 1 : 0;
+    fd.append("is_active", String(v));
   }
 
   const sub = normalizeSubCategory(draft.sub_category ?? undefined);

@@ -44,7 +44,6 @@ export async function initPush(): Promise<string | null> {
   Pushy.setNotificationListener((data: any) => {
     const title = data?.payload?.title || "Duumini";
     const body = data?.payload?.body || "";
-    // @ts-ignore — toast global défini dans ton HTML/app
     (window as any)?.duuminiToast?.({ title, message: body });
   });
 
@@ -76,4 +75,22 @@ export async function unregisterDevice(
     push_token,
     provider,
   });
+}
+
+/**
+ * 🔔 Helper complet :
+ * - lance initPush()
+ * - enregistre le token côté API pour l'utilisateur connecté
+ */
+export async function enablePushForCurrentUser(): Promise<string | null> {
+  const token = await initPush();
+  if (!token) return null;
+
+  try {
+    await registerDevice(token, "pushy");
+  } catch (e) {
+    console.error("[Push] Erreur lors de l'enregistrement du device", e);
+  }
+
+  return token;
 }

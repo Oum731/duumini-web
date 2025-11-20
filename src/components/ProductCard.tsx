@@ -1,3 +1,4 @@
+// src/components/ProductCard.tsx
 import { useMemo, useState } from "react";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
@@ -54,6 +55,13 @@ export default function ProductCard({ product, onAdd }: Props) {
           cls: "bg-primary-subtle text-primary-emphasis border-primary-subtle",
         };
 
+  // 🔹 Gestion disponibilité
+  const stock = (product as any).stock;
+  const isOutOfStock = stock === 0; // 0 = "en rupture"
+  const isActive =
+    ((product as any).is_active ?? (product as any).active ?? 1) ? true : false;
+  const isAvailable = isActive && !isOutOfStock;
+
   const { add } = useCart();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -64,7 +72,10 @@ export default function ProductCard({ product, onAdd }: Props) {
     [product.name, product.price]
   );
 
-  const handleAdd = () => (onAdd ? onAdd(product) : add(product, 1));
+  const handleAdd = () => {
+    if (!isAvailable) return;
+    onAdd ? onAdd(product) : add(product, 1);
+  };
 
   async function shareProductWithImage() {
     try {
@@ -135,8 +146,20 @@ export default function ProductCard({ product, onAdd }: Props) {
               }}
             />
           )}
+
+          {/* 🔴 Badge rupture de stock */}
+          {isOutOfStock && (
+            <span
+              className="badge bg-danger position-absolute top-0 start-0 m-2"
+              style={{ backdropFilter: "blur(4px)" }}
+            >
+              En rupture
+            </span>
+          )}
+
+          {/* Badge canal (Food / Market) → côté droit */}
           <span
-            className={`badge position-absolute top-0 start-0 m-2 border ${tag.cls}`}
+            className={`badge position-absolute top-0 end-0 m-2 border ${tag.cls}`}
             style={{ backdropFilter: "blur(4px)" }}
           >
             {/* éventuellement texte ici */}
@@ -172,9 +195,10 @@ export default function ProductCard({ product, onAdd }: Props) {
             <button
               className="btn btn-dark btn-sm flex-fill"
               onClick={handleAdd}
-              title="Ajouter au panier"
+              title={isOutOfStock ? "En rupture de stock" : "Ajouter au panier"}
+              disabled={!isAvailable}
             >
-              + Panier
+              {isOutOfStock ? "En rupture" : "+ Panier"}
             </button>
           </div>
         </div>
@@ -228,6 +252,9 @@ export default function ProductCard({ product, onAdd }: Props) {
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <span className="h5 m-0">{moneyMAD(product.price)}</span>
                       <span className={`badge border ${tag.cls}`}></span>
+                      {isOutOfStock && (
+                        <span className="badge bg-danger">En rupture</span>
+                      )}
                     </div>
 
                     {/* ✅ Note dans la modale */}
@@ -244,8 +271,12 @@ export default function ProductCard({ product, onAdd }: Props) {
                     )}
 
                     <div className="mt-auto d-grid gap-2">
-                      <button className="btn btn-dark" onClick={handleAdd}>
-                        + Ajouter au panier
+                      <button
+                        className="btn btn-dark"
+                        onClick={handleAdd}
+                        disabled={!isAvailable}
+                      >
+                        {isOutOfStock ? "En rupture" : "+ Ajouter au panier"}
                       </button>
                       <button
                         className="btn btn-outline-secondary"

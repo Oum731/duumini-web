@@ -48,8 +48,6 @@ type AuthContextType = {
 
 const noopAsync = async () => {};
 
-// ⚠️ Exports stables et nommés (pas d’export default)
-// Garder exactement ces deux exports: AuthProvider, useAuth
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
@@ -78,18 +76,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  // Petit helper pour initialiser Pushy + enregistrer le device côté API
+  // 🔔 Init Pushy + enregistrement device pour l'utilisateur courant
   const setupPush = useCallback(async () => {
     try {
       const token = await initPush();
       if (token) {
         await registerDevice(token, "pushy");
+        console.log("[Auth] device registered", token);
       }
     } catch (e) {
       console.warn("[Auth] init push failed", e);
     }
   }, []);
 
+  // Chargement initial : récupérer le user si token présent
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -106,7 +106,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await applyRoleChangeIfNeeded(before, u);
 
         if (u) {
-          // Si l'utilisateur est connecté au chargement, on initialise Pushy
           await setupPush();
         }
       } catch {
@@ -121,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applyRoleChangeIfNeeded, setupPush]);
 
+  // Refresh user sur focus / visibilité / intervalle
   useEffect(() => {
     const onFocus = () => refreshUser();
     const onVis = () => {

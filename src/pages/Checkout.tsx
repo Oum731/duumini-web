@@ -1,3 +1,4 @@
+// src/pages/Checkout.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
@@ -7,6 +8,10 @@ import {
   createGuestOrder,
   type CreateOrderPayload,
 } from "../services/orders";
+import {
+  normalizePhoneInput,
+  isValidPhoneIntl,
+} from "../utils/phone";
 
 /* ——— Style local : focus rouge + état loading ——— */
 const FocusAndLoadingStyle = () => (
@@ -61,7 +66,6 @@ const COMMUNES = [
   "__other__",
 ] as const;
 
-const rePhoneMA = /^\+2126\d{8}$/; // +2126XXXXXXXX
 type DeliveryMode = "EXPRESS" | "SIMPLE";
 const FEES: Record<DeliveryMode, number> = { EXPRESS: 50, SIMPLE: 25 };
 
@@ -124,7 +128,7 @@ export default function CheckoutPage() {
         if (u) {
           setFirstName((u as any).first_name || "");
           setLastName((u as any).last_name || "");
-          setPhone((u as any).phone || "");
+          setPhone(normalizePhoneInput((u as any).phone || ""));
           const c = (u as any).commune as
             | (typeof COMMUNES)[number]
             | string
@@ -147,12 +151,14 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasToken, location.pathname]);
 
-  const validPhone = rePhoneMA.test(phone.trim());
+  const validPhone = isValidPhoneIntl(phone);
   const communeVal = commune === "__other__" ? communeOther.trim() : commune;
+  const hasName =
+    firstName.trim().length > 0 || lastName.trim().length > 0; // ✅ au moins un nom (invité = "son nom")
+
   const canSubmit =
     lines.length > 0 &&
-    firstName.trim().length > 0 &&
-    lastName.trim().length > 0 &&
+    hasName &&
     validPhone &&
     !!communeVal &&
     communeVal.length > 0 &&
@@ -183,6 +189,12 @@ export default function CheckoutPage() {
     );
   }, []);
 
+  // ✅ Normalisation du téléphone (00 -> +, suppression des espaces, format international)
+  const handlePhoneChange = useCallback((e: any) => {
+    const v = normalizePhoneInput(e.target.value as string);
+    setPhone(v);
+  }, []);
+
   // Recharger les champs depuis /me à la demande (utile seulement si connecté)
   const refillFromProfile = useCallback(async () => {
     try {
@@ -192,7 +204,7 @@ export default function CheckoutPage() {
       if (u) {
         setFirstName((u as any).first_name || "");
         setLastName((u as any).last_name || "");
-        setPhone((u as any).phone || "");
+        setPhone(normalizePhoneInput((u as any).phone || ""));
         const c = (u as any).commune as
           | (typeof COMMUNES)[number]
           | string
@@ -217,16 +229,11 @@ export default function CheckoutPage() {
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
 
-    // ⚠️ Optionnel : si tu veux FORCER le clic sur "Continuer en tant qu'invité"
-    // quand il n’est pas connecté :
-    // if (!hasToken && !guestConfirmed) {
-    //   setErr("Merci de confirmer que vous commandez en tant qu’invité.");
-    //   return;
-    // }
-
     try {
       setErr(null);
       setSubmitting(true);
+
+      const normalizedPhone = normalizePhoneInput(phone.trim());
 
       const address = {
         ville: VILLE_FIXE,
@@ -235,12 +242,23 @@ export default function CheckoutPage() {
         gps: useGps && coords ? { lat: coords.lat, lng: coords.lng } : null,
       };
 
+      // ✅ Contact :
+      // - connecté : first_name / last_name / phone
+      // - invité   : name (nom complet) / phone
+      const fullName =
+        `${firstName.trim()} ${lastName.trim()}`.trim() ||
+        firstName.trim() ||
+        lastName.trim();
+
+      const contact = {
+        first_name: hasToken ? firstName.trim() || undefined : undefined,
+        last_name: hasToken ? lastName.trim() || undefined : undefined,
+        name: !hasToken ? (fullName || undefined) : undefined,
+        phone: normalizedPhone,
+      };
+
       const payload = {
-        contact: {
-          first_name: firstName.trim(),
-          last_name: lastName.trim(),
-          phone: phone.trim(),
-        },
+        contact,
         address,
         delivery: {
           mode: delivery,
@@ -274,12 +292,43 @@ export default function CheckoutPage() {
       } satisfies CreateOrderPayload;
 
       // Si connecté → /api/orders
-      // Sinon → /api/orders/guest
+      // Sinon → /api/orders/guest (invité = nom + téléphone + adresse/GPS)
       const result = hasToken
         ? await createOrder(payload)
         : await createGuestOrder(payload);
 
       const orderId = (result as any).id;
+
+      // ✅ Si invité : on calcule et stocke une fenêtre ETA pour le widget flottant
+      if (!hasToken) {
+        const now = new Date();
+        const minStart = delivery === "EXPRESS" ? 15 : 60;
+        const minEnd = delivery === "EXPRESS" ? 45 : 120;
+
+        const etaStart = new Date(now.getTime() + minStart * 60_000);
+        const etaEnd = new Date(now.getTime() + minEnd * 60_000);
+        const etaTarget = etaEnd; // on prend la fin comme cible
+
+        try {
+          window.localStorage.setItem(
+            "duumini:lastOrderInfo",
+            JSON.stringify({
+              id: orderId,
+              createdAt: now.toISOString(),
+              deliveryMode: delivery,
+              etaStart: etaStart.toISOString(),
+              etaEnd: etaEnd.toISOString(),
+              etaTarget: etaTarget.toISOString(),
+              guest: true,
+            })
+          );
+          // état minimisé remis à false
+          window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
+        } catch {
+          // silencieux
+        }
+      }
+
       clear();
 
       if (hasToken) {
@@ -288,7 +337,6 @@ export default function CheckoutPage() {
       } else {
         // ✅ Invité : on affiche une modale de confirmation
         setShowGuestSuccess(true);
-        // Optionnel : remonter en haut pour bien voir la modale
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (e: any) {
@@ -317,7 +365,6 @@ export default function CheckoutPage() {
     nav,
     quartier,
     hasToken,
-    // guestConfirmed, // si tu actives la condition plus haut
   ]);
 
   const headerRight = useMemo(
@@ -555,17 +602,23 @@ export default function CheckoutPage() {
                   <input
                     type="tel"
                     className={`form-control ${
-                      phone && !rePhoneMA.test(phone) ? "is-invalid" : ""
+                      phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
                     }`}
-                    placeholder="+2126..."
+                    placeholder="+212..., +225..., +223..., +1..."
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={handlePhoneChange}
                   />
-                  {phone && !rePhoneMA.test(phone) && (
+                  {phone && !isValidPhoneIntl(phone) && (
                     <div className="invalid-feedback">
-                      Format attendu: +2126XXXXXXXX
+                      Numéro invalide. Utilisez le format international, par exemple :
+                      +2126…, +22507…, +22360…, +1415…
                     </div>
                   )}
+                  <div className="form-text">
+                    🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>{" "}
+                    pour que nous puissions vous joindre et vous envoyer les
+                    informations de commande plus facilement.
+                  </div>
                 </div>
 
                 <div className="col-12 col-md-6">

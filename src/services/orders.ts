@@ -14,15 +14,19 @@ export type OrderItemInput = {
 
 export type CreateOrderPayload = {
   contact: {
-    first_name: string;
-    last_name: string;
-    phone: string; // +2126XXXXXXXX
+    // Pour user connecté : on peut envoyer first/last
+    first_name?: string;
+    last_name?: string;
+    // Pour invité : on peut simplement envoyer "name"
+    name?: string;
+    phone: string; // +2126XXXXXXXX (obligatoire pour invité ET connecté)
   };
   address: {
-    ville: string;                  // "Casablanca"
-    commune: string;                // requis (string, pas null)
-    quartier: string | null;        // null si GPS fourni
-    gps: { lat: number; lng: number } | null;
+    // Pour user connecté : tu peux continuer à envoyer tout
+    ville?: string;                  // "Casablanca" (optionnel si GPS seul)
+    commune?: string;                // optionnel si GPS seul
+    quartier?: string | null;        // null si GPS fourni
+    gps?: { lat: number; lng: number } | null; // localisation si l'user l'indique
   };
   delivery: {
     mode: "EXPRESS" | "SIMPLE";
@@ -55,6 +59,7 @@ export type CreateOrderResult = {
   status: OrderStatus | string;
   total?: number;
   currency?: string;
+  geo_link?: string | null; // 🔗 lien vers Google Maps si GPS fourni
 };
 
 /** Format minimal d’une commande dans la liste */

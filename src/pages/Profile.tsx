@@ -19,6 +19,10 @@ import {
   updateProfile,
 } from "../services/auth";
 import { http } from "../services/http";
+import {
+  normalizePhoneInput,
+  isValidPhoneIntl,
+} from "../utils/phone";
 
 /* ====== Données (Casablanca) ====== */
 const VILLE_FIXE = "Casablanca";
@@ -81,8 +85,7 @@ function Avatar({ user, size = 64 }: { user: User | null; size?: number }) {
   );
 }
 
-/* ====== Validation ====== */
-const rePhoneMA = /^\+2126\d{8}$/; // +2126XXXXXXXX
+/* ====== Validation & mot de passe ====== */
 const rePassword = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/; // min 8, 1 lettre, 1 chiffre
 
 function validateRegisterForm(params: {
@@ -92,11 +95,15 @@ function validateRegisterForm(params: {
   commune: string;
 }) {
   const errors: Record<string, string> = {};
-  if (!params.phone.trim()) {
+  const phoneVal = normalizePhoneInput(params.phone.trim());
+
+  if (!phoneVal) {
     errors.phone = "Téléphone requis.";
-  } else if (!rePhoneMA.test(params.phone.trim())) {
-    errors.phone = "Format attendu: +2126XXXXXXXX (ex: +212600000000)";
+  } else if (!isValidPhoneIntl(phoneVal)) {
+    errors.phone =
+      "Numéro invalide. Utilisez le format international ex : +2126…, +22507…, +22360…, +1415…";
   }
+
   if (!params.password) {
     errors.password = "Mot de passe requis.";
   } else if (!rePassword.test(params.password)) {
@@ -117,10 +124,13 @@ function validateEditForm(params: {
   commune: string;
 }) {
   const errors: Record<string, string> = {};
-  if (!params.phone.trim()) {
+  const phoneVal = normalizePhoneInput(params.phone.trim());
+
+  if (!phoneVal) {
     errors.phone = "Téléphone requis.";
-  } else if (!rePhoneMA.test(params.phone.trim())) {
-    errors.phone = "Format attendu: +2126XXXXXXXX (ex: +212600000000)";
+  } else if (!isValidPhoneIntl(phoneVal)) {
+    errors.phone =
+      "Numéro invalide. Utilisez le format international ex : +2126…, +22507…, +22360…, +1415…";
   }
   if (!params.quartierText.trim()) {
     errors.quartier = "Veuillez préciser votre quartier.";
@@ -281,7 +291,10 @@ function PasswordField({
 }
 
 /* ====== API Helpers locaux (OTP start) ====== */
-async function apiOtpStart(phone: string, purpose: "signup" | "login" | "reset" = "reset") {
+async function apiOtpStart(
+  phone: string,
+  purpose: "signup" | "login" | "reset" = "reset"
+) {
   return http<{ ok: true; message?: string }>("/api/auth/otp/start", {
     method: "POST",
     body: JSON.stringify({ phone, purpose }),
@@ -311,14 +324,16 @@ export default function ProfilePage() {
   const [regPassword, setRegPassword] = useState("");
   const [regFirstName, setRegFirstName] = useState("");
   const [regLastName, setRegLastName] = useState("");
-  const [regCommune, setRegCommune] = useState<(typeof COMMUNES)[number]>(COMMUNES[0]);
+  const [regCommune, setRegCommune] = useState<(typeof COMMUNES)[number]>(
+    COMMUNES[0]
+  );
   const [regCommuneOther, setRegCommuneOther] = useState("");
   const [regQuartierText, setRegQuartierText] = useState(""); // ← libre
   const [regSexe, setRegSexe] = useState<"M" | "F">("M");
   const [regAccept, setRegAccept] = useState(false); // ✅ Acceptation CGU/Privacy
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
   const communeRegisterValue =
-    regCommune === "__other__" ? (regCommuneOther.trim() || "") : regCommune;
+    regCommune === "__other__" ? regCommuneOther.trim() || "" : regCommune;
 
   /* ====== Forms: Forgot ====== */
   const [forgotPhone, setForgotPhone] = useState("");
@@ -333,13 +348,15 @@ export default function ProfilePage() {
     (user as any)?.commune || COMMUNES[0]
   );
   const [editCommuneOther, setEditCommuneOther] = useState("");
-  const [editQuartierText, setEditQuartierText] = useState<string>((user as any)?.quartier || ""); // ← libre
+  const [editQuartierText, setEditQuartierText] = useState<string>(
+    (user as any)?.quartier || ""
+  ); // ← libre
   const [editSexe, setEditSexe] = useState<"M" | "F">(
     ((user as any)?.sexe as "M" | "F") || "M"
   );
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const communeEditValue =
-    editCommune === "__other__" ? (editCommuneOther.trim() || "") : editCommune;
+    editCommune === "__other__" ? editCommuneOther.trim() || "" : editCommune;
 
   /* ====== Modals (uniquement Commune) ====== */
   const [openRegCommune, setOpenRegCommune] = useState(false);
@@ -353,7 +370,8 @@ export default function ProfilePage() {
           setUser(u);
           setEditQuartierText((u as any).quartier || "");
           setEditCommune((u as any).commune || COMMUNES[0]);
-          if ((u as any).sexe === "M" || (u as any).sexe === "F") setEditSexe((u as any).sexe);
+          if ((u as any).sexe === "M" || (u as any).sexe === "F")
+            setEditSexe((u as any).sexe);
         }
       } catch {
         // pas grave si non loggé
@@ -369,7 +387,8 @@ export default function ProfilePage() {
     setPhone(user?.phone || "");
     if ((user as any)?.quartier) setEditQuartierText((user as any).quartier);
     if ((user as any)?.commune) setEditCommune((user as any).commune);
-    if ((user as any)?.sexe === "M" || (user as any)?.sexe === "F") setEditSexe((user as any).sexe);
+    if ((user as any)?.sexe === "M" || (user as any)?.sexe === "F")
+      setEditSexe((user as any).sexe);
   }, [user]);
 
   /* ================== Handlers ================== */
@@ -378,10 +397,12 @@ export default function ProfilePage() {
     setErr(null);
     const errors: Record<string, string> = {};
 
-    if (!loginPhone.trim()) {
+    const phoneVal = normalizePhoneInput(loginPhone.trim());
+    if (!phoneVal) {
       errors.phone = "Téléphone requis.";
-    } else if (!rePhoneMA.test(loginPhone.trim())) {
-      errors.phone = "Format attendu: +2126XXXXXXXX (ex: +212600000000)";
+    } else if (!isValidPhoneIntl(phoneVal)) {
+      errors.phone =
+        "Numéro invalide. Utilisez le format international ex : +2126…, +22507…, +22360…, +1415…";
     }
     if (!loginPassword) {
       errors.password = "Mot de passe requis.";
@@ -395,7 +416,7 @@ export default function ProfilePage() {
 
     setLoginErrors({});
     try {
-      const u = await login(loginPhone.trim(), loginPassword);
+      const u = await login(phoneVal, loginPassword);
       setUser(u);
       navigate("/", { replace: true });
     } catch (e: any) {
@@ -428,9 +449,10 @@ export default function ProfilePage() {
     }
 
     setRegErrors({});
+    const phoneVal = normalizePhoneInput(regPhone.trim());
     try {
       await register({
-        phone: regPhone.trim(),
+        phone: phoneVal,
         password: regPassword,
         first_name: regFirstName || undefined,
         last_name: regLastName || undefined,
@@ -439,7 +461,7 @@ export default function ProfilePage() {
         quartier: regQuartierText.trim(),
         sexe: regSexe,
       } as any);
-      const u = await login(regPhone.trim(), regPassword);
+      const u = await login(phoneVal, regPassword);
       setUser(u);
       navigate("/", { replace: true });
     } catch (e: any) {
@@ -470,11 +492,12 @@ export default function ProfilePage() {
     }
 
     setEditErrors({});
+    const phoneVal = normalizePhoneInput(phone.trim());
     try {
       const u = await updateProfile({
         first_name: firstName,
         last_name: lastName,
-        phone: phone.trim(),
+        phone: phoneVal,
         ville: VILLE_FIXE,
         commune: communeEditValue || null,
         quartier: editQuartierText.trim(),
@@ -491,12 +514,14 @@ export default function ProfilePage() {
   async function handleForgot(e: FormEvent) {
     e.preventDefault();
     setErr(null);
-    const phoneVal = forgotPhone.trim();
+    const phoneVal = normalizePhoneInput(forgotPhone.trim());
     const errors: Record<string, string> = {};
+
     if (!phoneVal) {
       errors.phone = "Téléphone requis.";
-    } else if (!rePhoneMA.test(phoneVal)) {
-      errors.phone = "Téléphone invalide. Format attendu: +2126XXXXXXXX";
+    } else if (!isValidPhoneIntl(phoneVal)) {
+      errors.phone =
+        "Téléphone invalide. Utilisez le format international ex : +2126…, +22507…, +22360…, +1415…";
     }
 
     if (Object.keys(errors).length) {
@@ -583,11 +608,14 @@ export default function ProfilePage() {
                     </label>
                     <input
                       type="tel"
-                      className={`form-control ${forgotErrors.phone ? "is-invalid" : ""}`}
-                      placeholder="+2126..."
+                      className={`form-control ${
+                        forgotErrors.phone ? "is-invalid" : ""
+                      }`}
+                      placeholder="+212..., +225..., +223..., +1..."
                       value={forgotPhone}
                       onChange={(e) => {
-                        setForgotPhone(e.target.value);
+                        const v = normalizePhoneInput(e.target.value);
+                        setForgotPhone(v);
                         setForgotErrors((prev) => ({ ...prev, phone: "" }));
                       }}
                       required
@@ -601,7 +629,8 @@ export default function ProfilePage() {
                       </button>
                     </div>
                     <div className="form-text mt-2">
-                      Nous t’enverrons un code par SMS. Tu le renseigneras sur la page suivante.
+                      Nous t’enverrons un code par SMS. Tu le renseigneras sur la page
+                      suivante.
                     </div>
                   </form>
                 </div>
@@ -640,19 +669,23 @@ export default function ProfilePage() {
 
                     <div className="col-12 col-md-6">
                       <label className="form-label d-flex align-items-center gap-2">
-                        <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                        <Phone size={16} /> Téléphone{" "}
+                        <span className="text-danger">*</span>
                       </label>
                       <input
                         type="tel"
                         inputMode="tel"
-                        className={`form-control ${editErrors.phone ? "is-invalid" : ""}`}
+                        className={`form-control ${
+                          editErrors.phone ? "is-invalid" : ""
+                        }`}
                         value={phone}
                         onChange={(e) => {
-                          setPhone(e.target.value);
+                          const v = normalizePhoneInput(e.target.value);
+                          setPhone(v);
                           setEditErrors((prev) => ({ ...prev, phone: "" }));
                         }}
                         required
-                        placeholder="+2126XXXXXXXX"
+                        placeholder="+212..., +225..., +223..., +1..."
                         autoComplete="tel"
                       />
                       {editErrors.phone && (
@@ -736,7 +769,9 @@ export default function ProfilePage() {
                       {editErrors.quartier && (
                         <div className="invalid-feedback">{editErrors.quartier}</div>
                       )}
-                      <div className="form-text">Saisissez librement votre quartier.</div>
+                      <div className="form-text">
+                        Saisissez librement votre quartier.
+                      </div>
                     </div>
 
                     {/* Sexe (M/F) */}
@@ -813,13 +848,17 @@ export default function ProfilePage() {
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="text-muted small">Ville</div>
-                      <div className="fw-semibold">{(user as any).ville || VILLE_FIXE}</div>
+                      <div className="fw-semibold">
+                        {(user as any).ville || VILLE_FIXE}
+                      </div>
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="text-muted small">Commune</div>
                       <div className="fw-semibold">
                         {(user as any).commune ||
-                          (editCommune === "__other__" ? editCommuneOther : editCommune) ||
+                          (editCommune === "__other__"
+                            ? editCommuneOther
+                            : editCommune) ||
                           "—"}
                       </div>
                     </div>
@@ -831,7 +870,9 @@ export default function ProfilePage() {
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="text-muted small">Sexe</div>
-                      <div className="fw-semibold">{(user as any).sexe || "—"}</div>
+                      <div className="fw-semibold">
+                        {(user as any).sexe || "—"}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -889,21 +930,27 @@ export default function ProfilePage() {
                 <form onSubmit={handleLogin} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                      <Phone size={16} /> Téléphone{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
-                      className={`form-control ${loginErrors.phone ? "is-invalid" : ""}`}
-                      placeholder="+2126..."
+                      className={`form-control ${
+                        loginErrors.phone ? "is-invalid" : ""
+                      }`}
+                      placeholder="+212..., +225..., +223..., +1..."
                       value={loginPhone}
                       onChange={(e) => {
-                        setLoginPhone(e.target.value);
+                        const v = normalizePhoneInput(e.target.value);
+                        setLoginPhone(v);
                         setLoginErrors((prev) => ({ ...prev, phone: "" }));
                       }}
                       required
                     />
                     {loginErrors.phone && (
-                      <div className="invalid-feedback">{loginErrors.phone}</div>
+                      <div className="invalid-feedback">
+                        {loginErrors.phone}
+                      </div>
                     )}
                   </div>
                   <div className="col-12">
@@ -941,21 +988,27 @@ export default function ProfilePage() {
                 <form onSubmit={handleRegister} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                      <Phone size={16} /> Téléphone{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
-                      className={`form-control ${regErrors.phone ? "is-invalid" : ""}`}
-                      placeholder="+2126..."
+                      className={`form-control ${
+                        regErrors.phone ? "is-invalid" : ""
+                      }`}
+                      placeholder="+212..., +225..., +223..., +1..."
                       value={regPhone}
                       onChange={(e) => {
-                        setRegPhone(e.target.value);
+                        const v = normalizePhoneInput(e.target.value);
+                        setRegPhone(v);
                         setRegErrors((prev) => ({ ...prev, phone: "" }));
                       }}
                       required
                     />
                     {regErrors.phone && (
-                      <div className="invalid-feedback">{regErrors.phone}</div>
+                      <div className="invalid-feedback">
+                        {regErrors.phone}
+                      </div>
                     )}
                   </div>
 
@@ -980,7 +1033,9 @@ export default function ProfilePage() {
                       Min 8 caractères, inclure au moins 1 lettre et 1 chiffre.
                     </div>
                     {regErrors.password && (
-                      <div className="invalid-feedback d-block">{regErrors.password}</div>
+                      <div className="invalid-feedback d-block">
+                        {regErrors.password}
+                      </div>
                     )}
                   </div>
 
@@ -1041,7 +1096,9 @@ export default function ProfilePage() {
                       />
                     )}
                     {regErrors.commune && (
-                      <div className="text-danger small mt-1">{regErrors.commune}</div>
+                      <div className="text-danger small mt-1">
+                        {regErrors.commune}
+                      </div>
                     )}
 
                     <Modal
@@ -1083,7 +1140,9 @@ export default function ProfilePage() {
                       required
                     />
                     {regErrors.quartier && (
-                      <div className="invalid-feedback">{regErrors.quartier}</div>
+                      <div className="invalid-feedback">
+                        {regErrors.quartier}
+                      </div>
                     )}
                   </div>
 
@@ -1147,8 +1206,8 @@ export default function ProfilePage() {
                       </label>
                     </div>
                     <div className="form-text">
-                      Tu peux les consulter en cliquant sur les liens ci-dessus avant de
-                      continuer.
+                      Tu peux les consulter en cliquant sur les liens ci-dessus
+                      avant de continuer.
                     </div>
                   </div>
 
@@ -1164,21 +1223,27 @@ export default function ProfilePage() {
                 <form onSubmit={handleForgot} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                      <Phone size={16} /> Téléphone{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
-                      className={`form-control ${forgotErrors.phone ? "is-invalid" : ""}`}
-                      placeholder="+2126..."
+                      className={`form-control ${
+                        forgotErrors.phone ? "is-invalid" : ""
+                      }`}
+                      placeholder="+212..., +225..., +223..., +1..."
                       value={forgotPhone}
                       onChange={(e) => {
-                        setForgotPhone(e.target.value);
+                        const v = normalizePhoneInput(e.target.value);
+                        setForgotPhone(v);
                         setForgotErrors((prev) => ({ ...prev, phone: "" }));
                       }}
                       required
                     />
                     {forgotErrors.phone && (
-                      <div className="invalid-feedback">{forgotErrors.phone}</div>
+                      <div className="invalid-feedback">
+                        {forgotErrors.phone}
+                      </div>
                     )}
                   </div>
                   <div className="col-12 d-grid">
@@ -1208,7 +1273,8 @@ export default function ProfilePage() {
               <hr />
               <h2 className="h6">Déjà membre ?</h2>
               <p className="text-muted">
-                Utilisez votre numéro de téléphone et votre mot de passe pour vous connecter.
+                Utilisez votre numéro de téléphone et votre mot de passe pour vous
+                connecter.
               </p>
             </div>
           </div>

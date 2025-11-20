@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { io, type Socket } from "socket.io-client";
@@ -22,6 +23,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
   const sseRef = useRef<{ close: () => void } | null>(null);
 
+  // 👇 état exposé dans le contexte (pour forcer le rerender des consumers)
+  const [socketState, setSocketState] = useState<Socket | null>(null);
+
   useEffect(() => {
     // Pas d'utilisateur connecté → on ferme tout
     if (!user) {
@@ -33,20 +37,22 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         sseRef.current.close();
         sseRef.current = null;
       }
+      setSocketState(null);
       return;
     }
 
-    // ===== WebSocket (Socket.IO) =====
     const token = getAccessToken();
     const API_BASE = import.meta.env.VITE_API_BASE as string;
     const base = API_BASE.replace(/\/$/, "");
 
+    // ===== WebSocket (Socket.IO) =====
     const socket = io(base, {
       transports: ["websocket"],
       auth: { token },
     });
 
     socketRef.current = socket;
+    setSocketState(socket);
 
     socket.on("connect", () => {
       console.log("[WS] connected", socket.id);
@@ -84,7 +90,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       }
 
       if (evt.type === "ORDER_STATUS") {
-        // Ici tu peux plus tard rafraîchir une liste, etc.
+        // Ici tu pourras plus tard déclencher un refresh des listes de commandes
       }
     });
 
@@ -93,11 +99,14 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     return () => {
       socket.disconnect();
       sub.close();
+      socketRef.current = null;
+      sseRef.current = null;
+      setSocketState(null);
     };
   }, [user]);
 
   return (
-    <RealtimeContext.Provider value={{ socket: socketRef.current }}>
+    <RealtimeContext.Provider value={{ socket: socketState }}>
       {children}
     </RealtimeContext.Provider>
   );

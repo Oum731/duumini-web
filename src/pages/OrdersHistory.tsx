@@ -78,6 +78,7 @@ function getItemName(it: OrderItem): string {
 type ListOrDetail = Order & Partial<OrderDetail>;
 
 /* ===== Helper: construction du message WhatsApp (sans image) ===== */
+/* ===== Helper: construction du message WhatsApp (sans image) ===== */
 function buildWhatsappText(opts: {
   order: ListOrDetail;
   items: OrderItem[];
@@ -91,6 +92,7 @@ function buildWhatsappText(opts: {
     opts;
 
   const anyOrder = order as any;
+
   const contact = anyOrder.contact || {};
   const address = anyOrder.address || {};
 
@@ -121,9 +123,21 @@ function buildWhatsappText(opts: {
 
   const phone = contact.phone || anyOrder.phone || "";
 
-  const ville = address.ville || anyOrder.address_city || "";
-  const commune = address.commune || anyOrder.address_commune || "";
-  const quartier = address.quartier || anyOrder.address_district || "";
+  // ✅ Adresse : compat nouvelle structure (city/district) + anciens champs éventuels
+  const ville =
+    address.city ||
+    address.ville ||
+    anyOrder.address_city ||
+    "";
+  const commune =
+    address.commune ||
+    anyOrder.address_commune ||
+    "";
+  const quartier =
+    address.district ||
+    address.quartier ||
+    anyOrder.address_district ||
+    "";
 
   const statusLabel = getStatusLabel(status);
 
@@ -175,6 +189,7 @@ function buildWhatsappText(opts: {
   return parts.join("\n");
 }
 
+
 /* ===== Helper: URL WhatsApp avec message détaillé ===== */
 function whatsappHref(opts: {
   order: ListOrDetail;
@@ -190,6 +205,64 @@ function whatsappHref(opts: {
   return `https://wa.me/212623677884?text=${text}`;
 }
 
+/* ===== Helpers ETA & compte à rebours ===== */
+
+type DeliveryMode = "EXPRESS" | "SIMPLE";
+
+function inferDeliveryMode(order: ListOrDetail): DeliveryMode {
+  const anyOrder = order as any;
+  const raw =
+    (anyOrder.delivery && anyOrder.delivery.mode) ||
+    anyOrder.delivery_mode ||
+    "";
+  const mode = String(raw).toUpperCase();
+  return mode === "EXPRESS" ? "EXPRESS" : "SIMPLE";
+}
+
+/** Calcule une fenêtre ETA à partir de la date de création */
+function computeEtaWindow(createdAt: Date, mode: DeliveryMode): {
+  start: Date;
+  end: Date;
+} {
+  const minStart = mode === "EXPRESS" ? 15 : 60; // min
+  const minEnd = mode === "EXPRESS" ? 45 : 120; // min
+
+  const start = new Date(createdAt.getTime() + minStart * 60_000);
+  const end = new Date(createdAt.getTime() + minEnd * 60_000);
+  return { start, end };
+}
+
+/** Format "13h" ou "13h15" */
+function formatTimeLabel(d: Date): string {
+  const s = d.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return s.replace(":", "h");
+}
+
+/** Format de la plage horaire "13h - 14h" */
+function formatTimeRange(start: Date, end: Date): string {
+  return `${formatTimeLabel(start)} et ${formatTimeLabel(end)}`;
+}
+
+/** X min, X min Y s, etc. */
+function formatCountdownMs(ms: number): string | null {
+  if (ms <= 0) return null;
+  const totalSec = Math.round(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+
+  if (h > 0) {
+    return `${h}h ${String(m).padStart(2, "0")}min`;
+  }
+  if (m > 0) {
+    return s > 0 ? `${m}min ${s}s` : `${m}min`;
+  }
+  return `${s}s`;
+}
+
 export default function OrdersHistoryPage() {
   const [orders, setOrders] = useState<ListOrDetail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -199,7 +272,16 @@ export default function OrdersHistoryPage() {
 
   const selectedId = params.get("order") ? Number(params.get("order")) : null;
 
-  /* ---------- Chargement des commandes (sans Promise.allSettled) ---------- */
+  // Tick global pour les comptes à rebours des commandes en livraison
+  const [nowTs, setNowTs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      setNowTs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  /* ---------- Chargement des commandes ---------- */
   const fetchOrders = useCallback(async () => {
     try {
       setErr(null);
@@ -320,6 +402,12 @@ export default function OrdersHistoryPage() {
             const created = o?.created_at
               ? new Date(o.created_at).toLocaleString("fr-FR")
               : "";
+            const createdAtDate = o?.created_at
+              ? new Date(o.created_at)
+              : (o as any)?.date
+              ? new Date((o as any).date)
+              : null;
+
             const items: OrderItem[] = Array.isArray((o as any)?.items)
               ? (o as any).items
               : [];
@@ -364,6 +452,49 @@ export default function OrdersHistoryPage() {
               status,
             });
 
+            // 🔍 Mode de livraison pour l’ETA (Express / Simple)
+            const deliveryMode: DeliveryMode = inferDeliveryMode(o);
+
+            // 🕒 ETA approximatif basé sur la date de création
+            let etaRangeLabel: string | null = null;
+            if (createdAtDate) {
+              const { start, end } = computeEtaWindow(
+                createdAtDate,
+                deliveryMode
+              );
+              etaRangeLabel = formatTimeRange(start, end);
+            }
+
+            // ⏱️ Compte à rebours pour statut EN LIVRAISON
+            let countdownText: string | null = null;
+            if (status === "DELIVERY" && createdAtDate) {
+              const anyOrder = o as any;
+              const deliveryObj = anyOrder.delivery || {};
+              // Si l’API renvoie un ETA dynamique basé sur la localisation du livreur,
+              // on le prend en priorité (driver_eta_seconds).
+              const driverEtaSeconds =
+                typeof deliveryObj.driver_eta_seconds === "number"
+                  ? deliveryObj.driver_eta_seconds
+                  : null;
+
+              let remainingMs: number | null = null;
+              if (driverEtaSeconds && driverEtaSeconds > 0) {
+                // ETA "en direct" calculé côté serveur à partir de la map du livreur
+                remainingMs = driverEtaSeconds * 1000;
+              } else {
+                // Fallback : ETA approximatif basé sur la création
+                const defaultTarget =
+                  deliveryMode === "EXPRESS"
+                    ? new Date(createdAtDate.getTime() + 45 * 60_000)
+                    : new Date(createdAtDate.getTime() + 120 * 60_000);
+                remainingMs = defaultTarget.getTime() - nowTs;
+              }
+
+              if (remainingMs && remainingMs > 0) {
+                countdownText = formatCountdownMs(remainingMs);
+              }
+            }
+
             return (
               <div
                 key={o.id}
@@ -380,6 +511,43 @@ export default function OrdersHistoryPage() {
                     </div>
                     <div className="text-muted small">{created}</div>
                   </div>
+
+                  {/* 🔔 Message ETA / Suivi livraison */}
+                  {etaRangeLabel &&
+                    (status === "OPEN" || status === "PREPARATION") && (
+                      <div className="alert alert-info py-2 px-3 mt-2 mb-0 small">
+                        <span className="fw-semibold">
+                          Estimation de livraison :
+                        </span>{" "}
+                        Votre commande sera livrée entre{" "}
+                        <strong>{etaRangeLabel}</strong>
+                        {deliveryMode === "EXPRESS"
+                          ? " (mode Express)."
+                          : "."}
+                      </div>
+                    )}
+
+                  {status === "DELIVERY" && (
+                    <div className="alert alert-info py-2 px-3 mt-2 mb-0 small">
+                      <span className="fw-semibold">
+                        Votre commande vient d’être récupérée par le livreur.
+                      </span>{" "}
+                      {countdownText ? (
+                        <>
+                          Il devrait arriver dans{" "}
+                          <strong style={{ color: "var(--duu-red)" }}>
+                            {countdownText}
+                          </strong>
+                          .
+                        </>
+                      ) : (
+                        <>
+                          Elle devrait arriver{" "}
+                          <strong>dans quelques instants</strong>.
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Articles de la commande */}
                   <h3 className="h6 mt-3 mb-2">Articles de la commande</h3>
@@ -398,7 +566,10 @@ export default function OrdersHistoryPage() {
                           key={idx}
                           className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2"
                         >
-                          <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 0 }}>
+                          <div
+                            className="d-flex align-items-center gap-2 flex-grow-1"
+                            style={{ minWidth: 0 }}
+                          >
                             {img ? (
                               <div
                                 className="flex-shrink-0"
@@ -472,7 +643,11 @@ export default function OrdersHistoryPage() {
                     <div className="text-muted">Total</div>
                     <div
                       className="h6 m-0"
-                      style={{ minWidth: 90, textAlign: "right", fontSize: "1rem" }}
+                      style={{
+                        minWidth: 90,
+                        textAlign: "right",
+                        fontSize: "1rem",
+                      }}
                     >
                       {mad(totalAmount)}{" "}
                       <span className="text-muted small">{currency}</span>

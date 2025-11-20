@@ -129,6 +129,22 @@ function buildAdminWhatsappMessage(order: AnyObj) {
     deliveryFee = 0;
   }
 
+  // ===== Adresse : utilise la structure normalisée + anciens champs éventuels =====
+  const ville =
+    address.city ||
+    address.ville ||
+    order.address_city ||
+    "";
+  const commune =
+    address.commune ||
+    order.address_commune ||
+    "";
+  const quartier =
+    address.district ||
+    address.quartier ||
+    order.address_district ||
+    "";
+
   // ===== Liste des articles =====
   const lines = hasItems
     ? items
@@ -142,10 +158,6 @@ function buildAdminWhatsappMessage(order: AnyObj) {
         })
         .join("\n")
     : "• Détails des articles indisponibles";
-
-  const ville = address.ville || address.city || "";
-  const commune = address.commune || "";
-  const quartier = address.quartier || address.district || "";
 
   const status: OrderStatus | string = order.status || "OPEN";
 
