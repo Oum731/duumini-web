@@ -58,6 +58,11 @@ export default function ProductCard({ product, onAdd }: Props) {
 
   const cover = product.cover || product.images?.[0]?.url || null;
   const coverUrl = imgUrl(cover);
+
+  // 🔹 Image de la boutique (logo prioritaire, sinon cover)
+  const shopImage = imgUrl(product.shop_logo || product.shop_cover || null);
+  const hasShopImage = !!(product.shop_logo || product.shop_cover);
+
   const tag =
     product.sub_category === "food"
       ? {
@@ -169,6 +174,26 @@ export default function ProductCard({ product, onAdd }: Props) {
           >
             {/* éventuellement texte ici */}
           </span>
+
+          {/* 🔹 Avatar boutique en bas à gauche */}
+          {hasShopImage && (
+            <div
+              className="position-absolute"
+              style={{ bottom: 8, left: 8 }}
+            >
+              <img
+                src={shopImage}
+                alt={product.shop_name || "Boutique"}
+                className="rounded-circle border border-white"
+                style={{
+                  width: 36,
+                  height: 36,
+                  objectFit: "cover",
+                  boxShadow: "0 0 0 2px rgba(0,0,0,.1)",
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="card-body d-flex flex-column">
@@ -180,6 +205,13 @@ export default function ProductCard({ product, onAdd }: Props) {
           >
             {product.name}
           </h3>
+
+          {/* Nom boutique sous le titre (optionnel) */}
+          {product.shop_name && (
+            <div className="small text-muted mb-1">
+              {product.shop_name}
+            </div>
+          )}
 
           {/* ✅ Prix sans décimales */}
           <div className="fw-semibold mb-1">{moneyMAD(product.price)}</div>
@@ -227,7 +259,14 @@ export default function ProductCard({ product, onAdd }: Props) {
           >
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">{product.name}</h5>
+                <h5 className="modal-title">
+                  {product.name}
+                  {product.shop_name && (
+                    <span className="ms-2 small text-muted">
+                      — {product.shop_name}
+                    </span>
+                  )}
+                </h5>
                 <button
                   className="btn-close"
                   aria-label="Fermer"
@@ -237,7 +276,7 @@ export default function ProductCard({ product, onAdd }: Props) {
 
               <div className="modal-body">
                 <div className="row g-3 align-items-start">
-                  <div className="col-12 col-md-6">
+                  <div className="col-12 col-md-6 position-relative">
                     {coverUrl ? (
                       <img
                         src={coverUrl}
@@ -250,6 +289,26 @@ export default function ProductCard({ product, onAdd }: Props) {
                         className="bg-light rounded"
                         style={{ width: "100%", paddingTop: "100%" }}
                       />
+                    )}
+
+                    {/* Avatar boutique dans la modale */}
+                    {hasShopImage && (
+                      <div
+                        className="position-absolute"
+                        style={{ bottom: 12, left: 12 }}
+                      >
+                        <img
+                          src={shopImage}
+                          alt={product.shop_name || "Boutique"}
+                          className="rounded-circle border border-white"
+                          style={{
+                            width: 44,
+                            height: 44,
+                            objectFit: "cover",
+                            boxShadow: "0 0 0 2px rgba(0,0,0,.1)",
+                          }}
+                        />
+                      </div>
                     )}
                   </div>
 

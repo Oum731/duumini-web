@@ -44,9 +44,7 @@ export async function getProductRatingSummary(productId: number) {
 }
 
 export async function listProductRatings(productId: number) {
-  return api.get<ProductRatingItem[]>(
-    `/api/products/${productId}/ratings/list`
-  );
+  return api.get<ProductRatingItem[]>(`/api/products/${productId}/ratings/list`);
 }
 
 export async function rateProduct(
@@ -61,7 +59,6 @@ export async function rateProduct(
 }
 
 export async function deleteProductRating(productId: number) {
-  // selon ton wrapper api : api.delete ou api.del
   return api.delete<DeleteProductRatingResponse>(
     `/api/products/${productId}/rate`
   );
@@ -69,7 +66,5 @@ export async function deleteProductRating(productId: number) {
 
 // 👇 Appelé au démarrage de l'app pour savoir si un produit doit être noté
 export async function getPendingProductRating() {
-  return api.get<PendingProductRating | null>(
-    "/api/products/pending-rating"
-  );
+  return api.get<PendingProductRating | null>("/api/products/pending-rating");
 }

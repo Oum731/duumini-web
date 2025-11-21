@@ -9,12 +9,20 @@ import {
   removeProduct,
 } from "../../services/products";
 import { listCategories, type Category, createCategory } from "../../services/categories";
-import { API_BASE } from "../../services/http";
+import { API_BASE, api } from "../../services/http";
 
 type ProductImage = { id: number; url: string; sort_order: number };
 
 // On étend Product pour pouvoir garder les images lors du preview/édition
 type FullProduct = Product & { images?: ProductImage[] };
+
+// 🔹 Type minimal pour une boutique
+type Shop = {
+  id: number;
+  name: string;
+  logo?: string | null;
+  cover?: string | null;
+};
 
 // 🔹 Draft = Product partiel + category_name (pour "Autre…" Market)
 type Draft = Partial<Product> & {
@@ -39,11 +47,13 @@ function imgUrl(u?: string | null) {
 function ProductForm({
   initial,
   categories,
+  shops,
   onSubmit,
   onCancel,
 }: {
   initial?: Draft & { images?: ProductImage[] };
   categories: Category[];
+  shops: Shop[];
   onSubmit: (draft: Draft, files: File[], replaceImages: boolean) => Promise<void> | void;
   onCancel: () => void;
 }) {
@@ -64,6 +74,7 @@ function ProductForm({
     is_featured: initial?.is_featured ?? 0,
     promo_eligible: initial?.promo_eligible ?? 0,
     category_id: initial?.category_id ?? undefined,
+    shop_id: initial?.shop_id ?? undefined,
   }));
   const [files, setFiles] = useState<File[]>([]);
   const [replaceImages, setReplaceImages] = useState<boolean>(false);
@@ -120,6 +131,9 @@ function ProductForm({
   // Canal pré-définis (pour l'affichage)
   const predefinedSubCategoryValue =
     isCustomSubCategory ? "__other__" : draft.sub_category || "product";
+
+  // Boutique sélectionnée (pour éventuel preview de logo)
+  const selectedShop = shops.find((s) => s.id === draft.shop_id);
 
   return (
     <form onSubmit={submit}>
@@ -180,6 +194,45 @@ function ProductForm({
                   }
                 />
               )}
+            </div>
+          </div>
+
+          {/* Sélecteur de boutique */}
+          <div className="row g-2 mt-1">
+            <div className="col-12">
+              <label className="form-label">Boutique</label>
+              <div className="d-flex align-items-center gap-2">
+                <select
+                  className="form-select"
+                  value={draft.shop_id != null ? String(draft.shop_id) : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDraft((d) => ({
+                      ...d,
+                      shop_id: v ? Number(v) : undefined,
+                    }));
+                  }}
+                >
+                  <option value="">(Sélectionner une boutique)</option>
+                  {shops.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedShop?.logo && (
+                  <img
+                    src={imgUrl(selectedShop.logo)}
+                    alt={selectedShop.name}
+                    className="rounded-circle border d-none d-md-inline-block"
+                    style={{ width: 40, height: 40, objectFit: "cover" }}
+                  />
+                )}
+              </div>
+              <small className="text-muted">
+                Pour un admin, la boutique est obligatoire. Pour un vendeur, sa boutique
+                sera utilisée automatiquement côté API.
+              </small>
             </div>
           </div>
 
@@ -478,6 +531,7 @@ export default function ProductsAdminPage() {
   const [q, setQ] = useState("");
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
 
   const [showForm, setShowForm] = useState(false);
   const [edit, setEdit] = useState<FullProduct | null>(null);
@@ -511,8 +565,20 @@ export default function ProductsAdminPage() {
     }
   }
 
+  async function refreshShops() {
+    try {
+      const res = await api.get<{ items: Shop[] }>(`/api/shops`, {
+        query: { page: 1, pageSize: 200 },
+      });
+      setShops(res.items || []);
+    } catch (e) {
+      console.error("Erreur chargement boutiques", e);
+    }
+  }
+
   useEffect(() => {
     refreshCategories();
+    refreshShops();
   }, []);
 
   useEffect(() => {
@@ -651,7 +717,11 @@ export default function ProductsAdminPage() {
   const filtered = items.filter((p) => {
     if (!q.trim()) return true;
     const t = q.toLowerCase();
-    return (p.name || "").toLowerCase().includes(t) || String(p.id).includes(t);
+    return (
+      (p.name || "").toLowerCase().includes(t) ||
+      String(p.id).includes(t) ||
+      (p.shop_name || "").toLowerCase().includes(t)
+    );
   });
 
   function resetSearch() {
@@ -684,7 +754,7 @@ export default function ProductsAdminPage() {
         <div className="input-group" style={{ maxWidth: 420 }}>
           <input
             className="form-control"
-            placeholder="Recherche par nom ou ID…"
+            placeholder="Recherche par nom, boutique ou ID…"
             value={q}
             onChange={(e) => {
               setPage(1);
@@ -767,24 +837,33 @@ export default function ProductsAdminPage() {
                                 style={{ width: 42, height: 42 }}
                               />
                             )}
-                            <div className="d-flex align-items-center gap-2">
-                              <span
-                                className="text-truncate"
-                                title={p.name}
-                              >
-                                {p.name}
-                              </span>
-                              <button
-                                className="btn btn-link btn-sm p-0 align-baseline"
-                                title="Voir"
-                                onClick={() => openPreview(p.id)}
-                              >
-                                (voir)
-                              </button>
+                            <div className="d-flex flex-column">
+                              <div className="d-flex align-items-center gap-2">
+                                <span
+                                  className="text-truncate"
+                                  title={p.name}
+                                >
+                                  {p.name}
+                                </span>
+                                <button
+                                  className="btn btn-link btn-sm p-0 align-baseline"
+                                  title="Voir"
+                                  onClick={() => openPreview(p.id)}
+                                >
+                                  (voir)
+                                </button>
+                              </div>
+                              {p.shop_name && (
+                                <small className="text-muted">
+                                  {p.shop_name}
+                                </small>
+                              )}
                             </div>
                           </div>
                         </td>
-                        <td className="d-none d-sm-table-cell">{p.shop_id}</td>
+                        <td className="d-none d-sm-table-cell">
+                          {p.shop_name || p.shop_id || "-"}
+                        </td>
                         <td className="d-none d-sm-table-cell">
                           {(p as any).stock ?? 0}
                         </td>
@@ -887,6 +966,7 @@ export default function ProductsAdminPage() {
                 <ProductForm
                   initial={edit || undefined}
                   categories={categories}
+                  shops={shops}
                   onSubmit={onSave}
                   onCancel={closeForm}
                 />
@@ -967,7 +1047,7 @@ export default function ProductsAdminPage() {
                         <strong>ID :</strong> {preview.id}
                       </li>
                       <li>
-                        <strong>Boutique :</strong> {preview.shop_id}
+                        <strong>Boutique :</strong> {preview.shop_name || preview.shop_id}
                       </li>
                       <li>
                         <strong>Prix :</strong> {moneyMAD(preview.price)}

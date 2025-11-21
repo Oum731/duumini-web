@@ -276,7 +276,7 @@ export default function App() {
     useState<PendingProductRating | null>(null);
 
   // Vérifie au chargement s'il y a un produit à noter (commande livrée > 24h)
-  useEffect(() => {
+    useEffect(() => {
     if (!user) {
       setPendingRating(null);
       return;
@@ -287,12 +287,25 @@ export default function App() {
     async function checkPending() {
       try {
         const res = await getPendingProductRating();
-        const data = (res as any).data ?? res;
-        if (!cancelled) {
-          setPendingRating(data || null);
+
+        if (cancelled) return;
+
+        let data: PendingProductRating | null = null;
+
+        // Cas 1 : wrapper de type { data: ... }
+        if (res && typeof res === "object" && "data" in (res as any)) {
+          data = ((res as any).data ?? null) as PendingProductRating | null;
+        } else {
+          // Cas 2 : wrapper renvoie directement l'objet ou null
+          data = (res as PendingProductRating | null) ?? null;
         }
+
+        setPendingRating(data);
       } catch (e) {
         console.error("Erreur pending rating:", e);
+        if (!cancelled) {
+          setPendingRating(null);
+        }
       }
     }
 
@@ -301,6 +314,7 @@ export default function App() {
       cancelled = true;
     };
   }, [user]);
+
 
   return (
     <CartProvider>

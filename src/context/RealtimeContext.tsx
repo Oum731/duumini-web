@@ -45,6 +45,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     const API_BASE = import.meta.env.VITE_API_BASE as string;
     const base = API_BASE.replace(/\/$/, "");
 
+    if (!token) {
+      // utilisateur en mémoire mais pas de token → on ne tente pas les connexions protégées
+      console.warn("[Realtime] user défini mais aucun access token trouvé");
+      return;
+    }
+
     // ===== WebSocket (Socket.IO) =====
     const socket = io(base, {
       transports: ["websocket"],
@@ -76,7 +82,10 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     });
 
     // ===== SSE (Server-Sent Events) =====
-    const sseUrl = `${base}/api/events/stream`;
+    // On passe le token en query string pour que le backend authRequired puisse l’utiliser
+    const sseUrl = `${base}/api/events/stream?access_token=${encodeURIComponent(
+      token
+    )}`;
 
     const sub = subscribeSSE(sseUrl, (evt: ServerEvent) => {
       console.log("[SSE] event", evt);
@@ -97,8 +106,12 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     sseRef.current = sub;
 
     return () => {
-      socket.disconnect();
-      sub.close();
+      try {
+        socket.disconnect();
+      } catch {}
+      try {
+        sub.close();
+      } catch {}
       socketRef.current = null;
       sseRef.current = null;
       setSocketState(null);

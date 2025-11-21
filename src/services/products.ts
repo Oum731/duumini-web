@@ -3,7 +3,7 @@ import { api } from "./http";
 
 export type Product = {
   id: number;
-  shop_id: number | null; // ← peut être NULL côté ADMIN
+  shop_id: number | null; // ← boutique associée (obligatoire côté ADMIN)
   category_id?: number | null;
   name: string;
   slug: string;
@@ -19,6 +19,11 @@ export type Product = {
   updated_at?: string;
   images?: { id: number; url: string; sort_order: number }[];
   cover?: string | null;
+
+  // 🔹 Infos boutique (jointure shops)
+  shop_name?: string | null;
+  shop_logo?: string | null;
+  shop_cover?: string | null;
 
   // 🔹 Activation / désactivation du produit
   is_active?: 0 | 1;
@@ -76,9 +81,9 @@ export async function getProduct(id: number) {
 }
 
 /* ---------- Create ---------- */
-/** Création: shop_id/category_id gérés au backend.
- *  - VENDEUR: shop_id déduit de l'utilisateur connecté
- *  - ADMIN: shop_id = NULL
+/** Création: 
+ *  - VENDEUR: shop_id déduit de l'utilisateur connecté côté API
+ *  - ADMIN: shop_id doit être fourni (sélect "Boutique" dans le back-office)
  */
 export async function createProduct(draft: Partial<Product>, files: File[]) {
   const fd = new FormData();
@@ -113,6 +118,11 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
 
   const sub = normalizeSubCategory(draft.sub_category ?? undefined);
   if (sub) fd.append("sub_category", sub);
+
+  // 🔹 Boutique (ADMIN doit en choisir une)
+  if (draft.shop_id != null) {
+    fd.append("shop_id", String(draft.shop_id));
+  }
 
   // images
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
@@ -160,6 +170,12 @@ export async function updateProduct(
   if (sub) fd.append("sub_category", sub);
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
+
+  // 🔹 Possibilité de changer de boutique (ADMIN uniquement côté API)
+  if (draft.shop_id != null) {
+    fd.append("shop_id", String(draft.shop_id));
+  }
+
   if (replaceImages) fd.append("replace_images", "true");
 
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
