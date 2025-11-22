@@ -6,17 +6,28 @@ import { listProducts } from "../services/products";
 import { listShops, type Shop } from "../services/shops";
 import { listUsers, type User } from "../services/users";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
 } from "recharts";
-import { subscribeSSE } from "../services/events";
+import { subscribeSSE, type ServerEvent } from "../services/events";
+import { getAccessToken } from "../services/auth";
 
 export type SalesPoint = { date: string; revenue: number; orders: number };
 
 /* ======= Utils ======= */
 function mad(n?: number | null) {
   const v = typeof n === "number" && !isNaN(n) ? n : 0;
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(v);
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "MAD",
+  }).format(v);
 }
 function shortDate(iso?: string | null) {
   if (!iso) return "";
@@ -26,7 +37,9 @@ function shortDate(iso?: string | null) {
 }
 function safeTotal(o: any): number {
   const candidates = [o?.total, o?.total_amount, o?.amount];
-  const v = candidates.find((x) => typeof x === "number") ?? Number(candidates.find((x) => x != null));
+  const v =
+    candidates.find((x) => typeof x === "number") ??
+    Number(candidates.find((x) => x != null));
   return Number.isFinite(v) ? Number(v) : 0;
 }
 function normStatus(s: any): string {
@@ -64,7 +77,8 @@ function useChartHeight() {
 
 /* ======= Flag mobile (pour micro-ajustements d'affichage) ======= */
 function useIsMobile(breakpoint = 576) {
-  const pick = () => (typeof window !== "undefined" ? window.innerWidth < breakpoint : false);
+  const pick = () =>
+    typeof window !== "undefined" ? window.innerWidth < breakpoint : false;
   const [m, setM] = useState<boolean>(pick);
   useEffect(() => {
     const onR = () => setM(pick());
@@ -84,9 +98,9 @@ function dateKeyTZ(d: Date, timeZone = "Africa/Casablanca") {
     day: "2-digit",
   });
   const parts = fmt.formatToParts(d);
-  const y = parts.find(p => p.type === "year")?.value ?? "0000";
-  const m = parts.find(p => p.type === "month")?.value ?? "01";
-  const day = parts.find(p => p.type === "day")?.value ?? "01";
+  const y = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const m = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
   return `${y}-${m}-${day}`;
 }
 function weekdayNameTZ(d: Date, timeZone = "Africa/Casablanca") {
@@ -107,7 +121,7 @@ function getStartOfWeekTZ(today: Date, timeZone = "Africa/Casablanca") {
   return new Date(today); // fallback
 }
 function getStartOfMonthTZ(today: Date, _timeZone = "Africa/Casablanca") {
-  // 1er jour du mois courant (en gardant le repère calendrier, l’agrégation se fait via dateKeyTZ)
+  // 1er jour du mois courant
   const d = new Date(today);
   d.setDate(1);
   return d;
@@ -115,7 +129,6 @@ function getStartOfMonthTZ(today: Date, _timeZone = "Africa/Casablanca") {
 
 /* ======= 🔁 Helpers DONE date ======= */
 // Retourne la date effective de comptabilisation (date de DONE).
-// On privilégie les champs explicites s’ils existent, sinon `updated_at`, puis `created_at`.
 function doneDate(o: any): Date | null {
   if (normStatus(o?.status) !== "DONE") return null;
   const iso =
@@ -146,8 +159,8 @@ type Summary = {
 
 /** Pagination front pour charger suffisamment de commandes afin d’agréger jour/semaine/mois. */
 async function fetchOrdersPaginatedForAggregation() {
-  const maxPages = 20;   // garde-fou
-  const pageSize = 200;  // large pour couvrir un mois même si beaucoup de commandes
+  const maxPages = 20;
+  const pageSize = 200;
   const all: Order[] = [];
 
   for (let page = 1; page <= maxPages; page++) {
@@ -155,20 +168,20 @@ async function fetchOrdersPaginatedForAggregation() {
     const items: Order[] = Array.isArray(res?.items) ? res.items : [];
     if (!items.length) break;
     all.push(...items);
-    if (items.length < pageSize) break; // dernière page
+    if (items.length < pageSize) break;
   }
   return all;
 }
 
 async function buildSummary(): Promise<Summary> {
-  // 1) Pages courtes pour totaux entités (on lit pageInfo.total)
+  // 1) Pages courtes pour totaux entités
   const [productsRes, shopsRes, usersRes] = await Promise.all([
     listProducts({ page: 1, pageSize: 1 }),
     listShops({ page: 1, pageSize: 1 }),
     listUsers({ page: 1, pageSize: 1 }),
   ]);
 
-  // 2) Chargement paginé pour l’agrégation fiable (CA & co)
+  // 2) Chargement paginé pour l’agrégation
   const ordersAll: Order[] = await fetchOrdersPaginatedForAggregation();
 
   const TZ = "Africa/Casablanca";
@@ -197,7 +210,7 @@ async function buildSummary(): Promise<Summary> {
   let revenue_week = 0;
   let revenue_month = 0;
 
-  // 🔁 Comptabiliser par date de DONE (jour/semaine/mois)
+  // Comptabiliser par date de DONE
   for (const o of ordersAll) {
     const key = doneKey(o, TZ);
     if (!key) continue;
@@ -213,12 +226,11 @@ async function buildSummary(): Promise<Summary> {
     return n + (st === "OPEN" || st === "PREPARATION" ? 1 : 0);
   }, 0);
 
-  // ✅ Totaux depuis la page de données (pageInfo.total)
   const products_active = readTotalFromPaged(productsRes);
   const shops_total = readTotalFromPaged(shopsRes);
   const users_total = readTotalFromPaged(usersRes);
 
-  // 🔁 Séries 30 jours (CA + nb cmd / jour) par date DONE
+  // Séries 30 jours (CA + nb cmd / jour)
   const days = 30;
   const map = new Map<string, { revenue: number; orders: number }>();
   for (let i = days - 1; i >= 0; i--) {
@@ -234,11 +246,13 @@ async function buildSummary(): Promise<Summary> {
     bucket.orders += 1;
     bucket.revenue += safeTotal(o as any);
   }
-  const sales_series: SalesPoint[] = Array.from(map.entries()).map(([k, v]) => ({
-    date: k.slice(5), // "MM-DD"
-    revenue: v.revenue,
-    orders: v.orders,
-  }));
+  const sales_series: SalesPoint[] = Array.from(map.entries()).map(
+    ([k, v]) => ({
+      date: k.slice(5), // "MM-DD"
+      revenue: v.revenue,
+      orders: v.orders,
+    })
+  );
 
   return {
     revenue_today,
@@ -275,10 +289,22 @@ export default function AdminHome() {
     setLoading(true);
     try {
       const results = await Promise.allSettled([
-        (async () => ({ kind: "sum" as const,    val: await buildSummary() }))(),
-        (async () => ({ kind: "orders" as const, val: await listOrders({ page: 1, pageSize: 6 }) }))(),
-        (async () => ({ kind: "shops" as const,  val: await listShops({ page: 1, pageSize: 6 }) }))(),
-        (async () => ({ kind: "users" as const,  val: await listUsers({ page: 1, pageSize: 6 }) }))(),
+        (async () => ({
+          kind: "sum" as const,
+          val: await buildSummary(),
+        }))(),
+        (async () => ({
+          kind: "orders" as const,
+          val: await listOrders({ page: 1, pageSize: 6 }),
+        }))(),
+        (async () => ({
+          kind: "shops" as const,
+          val: await listShops({ page: 1, pageSize: 6 }),
+        }))(),
+        (async () => ({
+          kind: "users" as const,
+          val: await listUsers({ page: 1, pageSize: 6 }),
+        }))(),
       ]);
 
       let sum: Summary = {
@@ -299,12 +325,17 @@ export default function AdminHome() {
       for (const r of results) {
         if (r.status === "fulfilled") {
           const { kind, val } = (r as any).value as any;
-          if (kind === "sum")    sum = val as Summary;
-          if (kind === "orders") oItems = Array.isArray(val?.items) ? val.items : [];
-          if (kind === "shops")  sItems = Array.isArray(val?.items) ? val.items : [];
-          if (kind === "users")  uItems = Array.isArray(val?.items) ? val.items : [];
+          if (kind === "sum") sum = val as Summary;
+          if (kind === "orders")
+            oItems = Array.isArray(val?.items) ? val.items : [];
+          if (kind === "shops")
+            sItems = Array.isArray(val?.items) ? val.items : [];
+          if (kind === "users")
+            uItems = Array.isArray(val?.items) ? val.items : [];
         } else {
-          firstErr ||= ((r as any).reason?.message || String((r as any).reason) || null);
+          firstErr ||= (r as any).reason?.message ||
+            String((r as any).reason) ||
+            null;
         }
       }
 
@@ -342,29 +373,52 @@ export default function AdminHome() {
 
   // SSE : rafraîchir à la volée sur ORDER_CREATED / ORDER_STATUS
   useEffect(() => {
-    const sse = subscribeSSE("/api/notify/stream", (evt) => {
+    const token = getAccessToken();
+    if (!token) {
+      console.warn("[AdminHome] pas de token → pas de SSE admin");
+      return;
+    }
+
+    const API_BASE = import.meta.env.VITE_API_BASE as string;
+    const base = API_BASE.replace(/\/$/, "");
+    const url = `${base}/api/events/stream?access_token=${encodeURIComponent(
+      token
+    )}`;
+
+    const sse = subscribeSSE(url, (evt: ServerEvent) => {
       if (evt?.type === "ORDER_CREATED" || evt?.type === "ORDER_STATUS") {
         refresh();
       }
     });
     sseRef.current = sse;
+
     return () => {
-      try { sseRef.current?.close(); } catch {}
+      try {
+        sseRef.current?.close();
+      } catch {}
       sseRef.current = null;
     };
   }, [refresh]);
 
-  const series = useMemo<SalesPoint[]>(() => kpi?.sales_series || [], [kpi]);
+  const series = useMemo<SalesPoint[]>(
+    () => kpi?.sales_series || [],
+    [kpi]
+  );
 
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
       {/* Barre d’actions */}
       <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
         <div className="text-muted small">
-          Dernière mise à jour&nbsp;{lastUpdate ? lastUpdate.toLocaleTimeString("fr-FR") : "—"}
+          Dernière mise à jour&nbsp;
+          {lastUpdate ? lastUpdate.toLocaleTimeString("fr-FR") : "—"}
         </div>
         <div className="d-flex gap-2">
-          <button className="btn btn-sm btn-outline-dark" onClick={() => refresh()} disabled={loading}>
+          <button
+            className="btn btn-sm btn-outline-dark"
+            onClick={() => refresh()}
+            disabled={loading}
+          >
             {loading ? "Actualisation…" : "Actualiser"}
           </button>
         </div>
@@ -377,7 +431,9 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">CA (aujourd&apos;hui)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">{mad(kpi?.revenue_today)}</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+                {mad(kpi?.revenue_today)}
+              </div>
               <div className="text-muted small">Commandes DONE du jour</div>
             </div>
           </div>
@@ -387,7 +443,9 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">CA (semaine)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">{mad(kpi?.revenue_week)}</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+                {mad(kpi?.revenue_week)}
+              </div>
               <div className="text-muted small">Lun → aujourd’hui</div>
             </div>
           </div>
@@ -397,7 +455,9 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">CA (mois)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">{mad(kpi?.revenue_month)}</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+                {mad(kpi?.revenue_month)}
+              </div>
               <div className="text-muted small">1 → aujourd’hui</div>
             </div>
           </div>
@@ -407,7 +467,9 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Cmd en attente</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">{kpi?.orders_pending ?? 0}</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+                {kpi?.orders_pending ?? 0}
+              </div>
               <div className="text-muted small">OPEN + PREPARATION</div>
             </div>
           </div>
@@ -417,7 +479,9 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Produits actifs</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">{kpi?.products_active ?? 0}</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+                {kpi?.products_active ?? 0}
+              </div>
               <div className="text-muted small">Total catalogue</div>
             </div>
           </div>
@@ -427,7 +491,9 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Boutiques</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">{kpi?.shops_total ?? 0}</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+                {kpi?.shops_total ?? 0}
+              </div>
               <div className="text-muted small">Enregistrées</div>
             </div>
           </div>
@@ -437,7 +503,9 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Utilisateurs</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">{kpi?.users_total ?? 0}</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+                {kpi?.users_total ?? 0}
+              </div>
               <div className="text-muted small">Inscrits</div>
             </div>
           </div>
@@ -450,12 +518,21 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate">Évolution du CA (30 jours)</h2>
-                <span className="text-muted small text-truncate">Somme des commandes DONE</span>
+                <h2 className="h6 mb-0 text-truncate">
+                  Évolution du CA (30 jours)
+                </h2>
+                <span className="text-muted small text-truncate">
+                  Somme des commandes DONE
+                </span>
               </div>
-              <div style={{ width: "100%", height: chartHeight, minHeight: 200 }}>
+              <div
+                style={{ width: "100%", height: chartHeight, minHeight: 200 }}
+              >
                 {loading ? (
-                  <div className="placeholder-glow w-100 h-100 rounded" style={{ background: "#eee" }} />
+                  <div
+                    className="placeholder-glow w-100 h-100 rounded"
+                    style={{ background: "#eee" }}
+                  />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -468,13 +545,25 @@ export default function AdminHome() {
                       }}
                     >
                       {!isMobile && <CartesianGrid strokeDasharray="3 3" />}
-                      <XAxis dataKey="date" tick={{ fontSize: isMobile ? 10 : 12 }} />
-                      <YAxis
-                        tickFormatter={(v) => `${Math.round((Number(v) || 0) / 1000)}k`}
+                      <XAxis
+                        dataKey="date"
                         tick={{ fontSize: isMobile ? 10 : 12 }}
                       />
-                      <Tooltip formatter={(v: any) => [mad(Number(v)), "CA"]} />
-                      <Line type="monotone" dataKey="revenue" dot={false} strokeWidth={2} />
+                      <YAxis
+                        tickFormatter={(v) =>
+                          `${Math.round((Number(v) || 0) / 1000)}k`
+                        }
+                        tick={{ fontSize: isMobile ? 10 : 12 }}
+                      />
+                      <Tooltip
+                        formatter={(v: any) => [mad(Number(v)), "CA"]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        dot={false}
+                        strokeWidth={2}
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
@@ -487,9 +576,14 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <h2 className="h6 mb-2 text-truncate">Commandes / jour</h2>
-              <div style={{ width: "100%", height: chartHeight, minHeight: 200 }}>
+              <div
+                style={{ width: "100%", height: chartHeight, minHeight: 200 }}
+              >
                 {loading ? (
-                  <div className="placeholder-glow w-100 h-100 rounded" style={{ background: "#eee" }} />
+                  <div
+                    className="placeholder-glow w-100 h-100 rounded"
+                    style={{ background: "#eee" }}
+                  />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -502,10 +596,16 @@ export default function AdminHome() {
                       }}
                     >
                       {!isMobile && <CartesianGrid strokeDasharray="3 3" />}
-                      <XAxis dataKey="date" tick={{ fontSize: isMobile ? 10 : 12 }} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: isMobile ? 10 : 12 }}
+                      />
                       <YAxis tick={{ fontSize: isMobile ? 10 : 12 }} />
                       <Tooltip />
-                      <Bar dataKey="orders" maxBarSize={isMobile ? 18 : 28} />
+                      <Bar
+                        dataKey="orders"
+                        maxBarSize={isMobile ? 18 : 28}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -522,8 +622,15 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate">Dernières commandes</h2>
-                <Link to="/admin/orders" className="btn btn-sm btn-outline-dark w-100 w-sm-auto">Tout voir</Link>
+                <h2 className="h6 mb-0 text-truncate">
+                  Dernières commandes
+                </h2>
+                <Link
+                  to="/admin/orders"
+                  className="btn btn-sm btn-outline-dark w-100 w-sm-auto"
+                >
+                  Tout voir
+                </Link>
               </div>
 
               {!orders ? (
@@ -531,7 +638,10 @@ export default function AdminHome() {
               ) : orders.length === 0 ? (
                 <div className="text-muted small">Aucune commande.</div>
               ) : (
-                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
+                <div
+                  className="table-responsive"
+                  style={{ WebkitOverflowScrolling: "touch" }}
+                >
                   <table className="table table-sm align-middle mb-0">
                     <thead className="sticky-top bg-white">
                       <tr>
@@ -544,12 +654,28 @@ export default function AdminHome() {
                     <tbody>
                       {orders.map((o) => (
                         <tr key={(o as any).id}>
-                          <td className="text-truncate" style={{ maxWidth: 120 }}>
-                            <Link to={`/admin/orders/${(o as any).id}`} className="link-dark">{(o as any).id}</Link>
+                          <td
+                            className="text-truncate"
+                            style={{ maxWidth: 120 }}
+                          >
+                            <Link
+                              to={`/admin/orders/${(o as any).id}`}
+                              className="link-dark"
+                            >
+                              {(o as any).id}
+                            </Link>
                           </td>
-                          <td className="d-none d-sm-table-cell">{shortDate((o as any).created_at)}</td>
-                          <td><span className="badge bg-secondary">{normStatus((o as any).status)}</span></td>
-                          <td className="text-end">{mad(safeTotal(o as any))}</td>
+                          <td className="d-none d-sm-table-cell">
+                            {shortDate((o as any).created_at)}
+                          </td>
+                          <td>
+                            <span className="badge bg-secondary">
+                              {normStatus((o as any).status)}
+                            </span>
+                          </td>
+                          <td className="text-end">
+                            {mad(safeTotal(o as any))}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -566,7 +692,12 @@ export default function AdminHome() {
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
                 <h2 className="h6 mb-0 text-truncate">Boutiques récentes</h2>
-                <Link to="/admin/shops" className="btn btn-sm btn-outline-dark w-100 w-sm-auto">Gérer</Link>
+                <Link
+                  to="/admin/shops"
+                  className="btn btn-sm btn-outline-dark w-100 w-sm-auto"
+                >
+                  Gérer
+                </Link>
               </div>
 
               {!shops ? (
@@ -574,7 +705,10 @@ export default function AdminHome() {
               ) : shops.length === 0 ? (
                 <div className="text-muted small">Aucune boutique.</div>
               ) : (
-                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
+                <div
+                  className="table-responsive"
+                  style={{ WebkitOverflowScrolling: "touch" }}
+                >
                   <table className="table table-sm align-middle mb-0">
                     <thead className="sticky-top bg-white">
                       <tr>
@@ -585,12 +719,20 @@ export default function AdminHome() {
                     <tbody>
                       {shops.map((s) => (
                         <tr key={(s as any).id}>
-                          <td className="text-truncate" style={{ maxWidth: 240 }}>
-                            <Link to={`/admin/shops/${(s as any).id}`} className="link-dark">
+                          <td
+                            className="text-truncate"
+                            style={{ maxWidth: 240 }}
+                          >
+                            <Link
+                              to={`/admin/shops/${(s as any).id}`}
+                              className="link-dark"
+                            >
                               {(s as any).name}
                             </Link>
                           </td>
-                          <td className="d-none d-sm-table-cell">{shortDate((s as any).created_at)}</td>
+                          <td className="d-none d-sm-table-cell">
+                            {shortDate((s as any).created_at)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -606,8 +748,15 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate">Derniers utilisateurs inscrits</h2>
-                <Link to="/admin/users" className="btn btn-sm btn-outline-dark w-100 w-sm-auto">Gérer</Link>
+                <h2 className="h6 mb-0 text-truncate">
+                  Derniers utilisateurs inscrits
+                </h2>
+                <Link
+                  to="/admin/users"
+                  className="btn btn-sm btn-outline-dark w-100 w-sm-auto"
+                >
+                  Gérer
+                </Link>
               </div>
 
               {!users ? (
@@ -615,7 +764,10 @@ export default function AdminHome() {
               ) : users.length === 0 ? (
                 <div className="text-muted small">Aucun utilisateur.</div>
               ) : (
-                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
+                <div
+                  className="table-responsive"
+                  style={{ WebkitOverflowScrolling: "touch" }}
+                >
                   <table className="table table-sm align-middle mb-0">
                     <thead className="sticky-top bg-white">
                       <tr>
@@ -628,16 +780,33 @@ export default function AdminHome() {
                     <tbody>
                       {users.map((u) => (
                         <tr key={(u as any).id}>
-                          <td className="text-truncate" style={{ maxWidth: 280 }}>
-                            <Link to={`/admin/users/${(u as any).id}`} className="link-dark">
-                              {((u as any).first_name || (u as any).last_name)
-                                ? `${(u as any).first_name ?? ""} ${(u as any).last_name ?? ""}`.trim()
-                                : ((u as any).phone || `#${(u as any).id}`)}
+                          <td
+                            className="text-truncate"
+                            style={{ maxWidth: 280 }}
+                          >
+                            <Link
+                              to={`/admin/users/${(u as any).id}`}
+                              className="link-dark"
+                            >
+                              {((u as any).first_name ||
+                              (u as any).last_name
+                                ? `${(u as any).first_name ?? ""} ${
+                                    (u as any).last_name ?? ""
+                                  }`.trim()
+                                : (u as any).phone || `#${(u as any).id}`)}
                             </Link>
                           </td>
-                          <td className="d-none d-md-table-cell">{(u as any).phone}</td>
-                          <td className="d-none d-lg-table-cell"><span className="badge bg-secondary">{(u as any).role}</span></td>
-                          <td className="d-none d-sm-table-cell">{shortDate((u as any).created_at)}</td>
+                          <td className="d-none d-md-table-cell">
+                            {(u as any).phone}
+                          </td>
+                          <td className="d-none d-lg-table-cell">
+                            <span className="badge bg-secondary">
+                              {(u as any).role}
+                            </span>
+                          </td>
+                          <td className="d-none d-sm-table-cell">
+                            {shortDate((u as any).created_at)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -649,7 +818,11 @@ export default function AdminHome() {
         </div>
       </div>
 
-      {error ? <div className="alert alert-danger mt-3 mb-0" role="alert">{error}</div> : null}
+      {error ? (
+        <div className="alert alert-danger mt-3 mb-0" role="alert">
+          {error}
+        </div>
+      ) : null}
     </div>
   );
 }
