@@ -138,12 +138,32 @@ export type OrderDetail = Order & {
   };
 };
 
+/* ===== Types pour la liste ===== */
+
+export type ListOrdersOptions = {
+  page?: number;
+  pageSize?: number;
+  status?: OrderStatus | "ALL";
+  /** ✅ Si true, on demande explicitement "mes commandes uniquement" */
+  mineOnly?: boolean;
+};
+
 /* ===== API ===== */
 
-export async function listOrders(opts: { page?: number; pageSize?: number } = {}) {
+export async function listOrders(opts: ListOrdersOptions = {}) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
-  return api.get<Paginated<Order>>("/api/orders", { query: { page, pageSize } });
+
+  const query: Record<string, any> = { page, pageSize };
+
+  if (opts.status && opts.status !== "ALL") {
+    query.status = opts.status;
+  }
+  if (opts.mineOnly) {
+    query.mine = 1; // flag qui sera lu par le backend
+  }
+
+  return api.get<Paginated<Order>>("/api/orders", { query });
 }
 
 export async function getOrder(id: number) {
