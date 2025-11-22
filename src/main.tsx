@@ -8,42 +8,35 @@ import "./theme.css";
 
 import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
-import { RealtimeProvider } from "./context/RealtimeContext"; // ✅
+import { RealtimeProvider } from "./context/RealtimeContext";
 
 import { registerSW } from "virtual:pwa-register";
 
-// ⚠️ Ancien toast conservé mais NON utilisé (tu peux le supprimer si tu veux)
-
 /* =========
- * PWA + actualisation auto silencieuse
+ * PWA + actualisation auto (une seule fois quand nouvelle version dispo)
  * ========= */
 
 // flag interne pour savoir qu’une nouvelle version est prête
 let refreshPending = false;
 
 const updateSW = registerSW({
-  immediate: true,
+  immediate: true, // SW chargé dès le début
   onNeedRefresh() {
     // 👉 Une nouvelle version du service worker est prête
-    // On ne montre PAS de toast, on déclenche juste un flag.
-    refreshPending = true;
+    // On marque juste le flag et on recharge une seule fois.
+    if (!refreshPending) {
+      refreshPending = true;
+      // on déclenche directement la mise à jour + reload
+      updateSW(true); // true = recharge la page après update
+    }
   },
   onOfflineReady() {
-    // rien de visible, tu peux loguer si tu veux
+    // pas de toast, juste prêt hors-ligne
     // console.log("[PWA] Offline ready");
   },
 });
 
-// ⏱️ Vérifie toutes les 20 secondes si une MAJ est prête, et recharge silencieusement
-if (typeof window !== "undefined") {
-  window.setInterval(() => {
-    if (refreshPending) {
-      // recharge l’app avec la nouvelle version, sans popup
-      updateSW(true);
-      refreshPending = false;
-    }
-  }, 20_000); // 20 secondes (tu peux mettre 10_000 pour 10s)
-}
+// ❌ Plus de setInterval → plus de reload périodique
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

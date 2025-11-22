@@ -11,7 +11,7 @@ try {
 }
 
 /* 2) App Shell + Offline Cache */
-const SW_VERSION = "duumini-sw-v2";
+const SW_VERSION = "duumini-sw-v2.5";
 const CORE_ASSETS = [
   "/", // SPA entry (Vite sert index.html au /)
   "/index.html",
@@ -60,26 +60,27 @@ self.addEventListener("fetch", (event) => {
 
   // Navigations → Network-First (fallback /index.html)
   if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(SW_VERSION).then((cache) => cache.put("/", copy));
-          return res;
-        })
-        .catch(async () => {
-          const cached = await caches.match("/index.html");
-          return (
-            cached ||
-            new Response("<h1>Offline</h1>", {
-              status: 503,
-              headers: { "Content-Type": "text/html; charset=utf-8" },
-            })
-          );
-        })
-    );
-    return;
-  }
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(SW_VERSION).then((cache) => cache.put("/index.html", copy));
+        return res;
+      })
+      .catch(async () => {
+        const cached = await caches.match("/index.html");
+        return (
+          cached ||
+          new Response("<h1>Offline</h1>", {
+            status: 503,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          })
+        );
+      })
+  );
+  return;
+}
+
 
   // Assets (js/css/img/font) → Cache-First
   const dest = req.destination;
