@@ -303,7 +303,7 @@ export default function OrdersHistoryPage() {
     try {
       setErr(null);
 
-      const res = await listOrders({ page: 1, pageSize: 20 });
+      const res = await listOrders({ page: 1, pageSize: 20 , mineOnly: true,});
       const baseList: Order[] = res?.items ?? [];
 
       const merged: ListOrDetail[] = [];
