@@ -1,5 +1,6 @@
 // src/components/ProductCard.tsx
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";              // 👈 AJOUT
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
@@ -27,6 +28,7 @@ function shortText(s?: string | null, max = 200) {
   return t.slice(0, max - 1) + "…";
 }
 
+/** URL de partage (rubrique) */
 function buildProductUrl(p: Product) {
   const base =
     typeof window !== "undefined" && window.location.origin
@@ -36,8 +38,13 @@ function buildProductUrl(p: Product) {
   const sub = (p.sub_category || "").toString().toLowerCase();
   const path = sub === "food" ? "/african-food" : "/african-market";
 
-  // ✅ Le lien partagé envoie directement vers la rubrique (pas la fiche produit)
   return `${base}${path}`;
+}
+
+/** URL interne de la fiche produit (ProductView) */
+function buildProductDetailPath(p: Product) {
+  const idOrSlug = (p as any).slug || p.id;
+  return `/products/${idOrSlug}`;
 }
 
 /* ===== Component ===== */
@@ -95,7 +102,7 @@ export default function ProductCard({ product, onAdd }: Props) {
         const ext = blob.type.split("/")[1] || "jpg";
         const file = new File(
           [blob],
-          `${product.slug || `product-${product.id}`}.${ext}`,
+          `${(product as any).slug || `product-${product.id}`}.${ext}`,
           {
             type: blob.type || "image/jpeg",
             lastModified: Date.now(),
@@ -171,9 +178,7 @@ export default function ProductCard({ product, onAdd }: Props) {
           <span
             className={`badge position-absolute top-0 end-0 m-2 border ${tag.cls}`}
             style={{ backdropFilter: "blur(4px)" }}
-          >
-            {/* éventuellement texte ici */}
-          </span>
+          ></span>
 
           {/* 🔹 Avatar boutique en bas à gauche */}
           {hasShopImage && (
@@ -197,13 +202,18 @@ export default function ProductCard({ product, onAdd }: Props) {
         </div>
 
         <div className="card-body d-flex flex-column">
-          {/* ✅ Titre avec retour à la ligne */}
+          {/* ✅ Titre cliquable → fiche produit */}
           <h3
             className="h6 mb-1"
             title={product.name}
             style={{ wordWrap: "break-word", whiteSpace: "normal" }}
           >
-            {product.name}
+            <Link
+              to={buildProductDetailPath(product)}
+              className="text-decoration-none text-dark"
+            >
+              {product.name}
+            </Link>
           </h3>
 
           {/* Nom boutique sous le titre (optionnel) */}
