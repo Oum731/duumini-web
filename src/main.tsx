@@ -10,33 +10,9 @@ import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
 
-import { registerSW } from "virtual:pwa-register";
-
-/* =========
- * PWA + actualisation auto (une seule fois quand nouvelle version dispo)
- * ========= */
-
-// flag interne pour savoir qu’une nouvelle version est prête
-let refreshPending = false;
-
-const updateSW = registerSW({
-  immediate: true, // SW chargé dès le début
-  onNeedRefresh() {
-    // 👉 Une nouvelle version du service worker est prête
-    // On marque juste le flag et on recharge une seule fois.
-    if (!refreshPending) {
-      refreshPending = true;
-      // on déclenche directement la mise à jour + reload
-      updateSW(true); // true = recharge la page après update
-    }
-  },
-  onOfflineReady() {
-    // pas de toast, juste prêt hors-ligne
-    // console.log("[PWA] Offline ready");
-  },
-});
-
-// ❌ Plus de setInterval → plus de reload périodique
+// ❌ On retire complètement registerSW :
+// import { registerSW } from "virtual:pwa-register";
+// et tout le bloc PWA / actualisation auto
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
