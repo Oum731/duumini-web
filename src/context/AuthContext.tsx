@@ -120,6 +120,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshUser = useCallback(
+    async () => {
+      try {
+        const before = getCurrentUser();
+        const u = await apiMe();
+        setUser(u);
+        await applyRoleChangeIfNeeded(before, u);
+      } catch {
+        setUser(null);
+      }
+    },
+    [applyRoleChangeIfNeeded]
+  );
+
+  // 🔁 Keep-alive: maintenir la connexion vivante (refresh silencieux régulier)
+  const keepAlive = useCallback(
+    async () => {
+      try {
+        const token = getAccessToken();
+        if (!token) return; // pas connecté → rien à faire
+
+        // On rafraîchit le token côté backend (si refresh cookie dispo)
+        await apiRefresh();
+
+        // Puis on met à jour le user (au cas où rôle ou infos changent)
+        await refreshUser();
+      } catch (e) {
+        console.warn("[Auth] keep-alive failed", e);
+        // En cas d’erreur, on ne déconnecte pas brutalement ici.
+      }
+    },
+    [refreshUser]
+  );
+
   // Chargement initial : récupérer le user si token présent
   useEffect(() => {
     let alive = true;
@@ -168,6 +202,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ✅ Keep-alive régulier pour garder la connexion vivante (token + user)
+  useEffect(() => {
+    // ex: toutes les 10 minutes (à ajuster selon l’expiration du token)
+    const iv = window.setInterval(() => {
+      keepAlive();
+    }, 10 * 60 * 1000);
+
+    return () => {
+      clearInterval(iv);
+    };
+  }, [keepAlive]);
+
   // ✅ Réaction aux changements d’auth dans les AUTRES onglets (localStorage)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -181,7 +227,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, [/* eslint-disable-line react-hooks/exhaustive-deps */]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const login = useCallback(
     async (phone: string, password: string) => {
@@ -196,8 +243,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Après login, on initialise Pushy + enregistre le device
       await setupPush();
+
+      // On force un keep-alive immédiat après connexion pour partir sur un token fresh
+      keepAlive().catch(() => {});
     },
-    [applyRoleChangeIfNeeded, setupPush]
+    [applyRoleChangeIfNeeded, setupPush, keepAlive]
   );
 
   const register = useCallback(async (data: RegisterPayload) => {
@@ -215,20 +265,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 🔔 Broadcast logout (user = null)
     broadcastAuthChange(null);
   }, []);
-
-  const refreshUser = useCallback(
-    async () => {
-      try {
-        const before = getCurrentUser();
-        const u = await apiMe();
-        setUser(u);
-        await applyRoleChangeIfNeeded(before, u);
-      } catch {
-        setUser(null);
-      }
-    },
-    [applyRoleChangeIfNeeded]
-  );
 
   const updateProfile = useCallback(
     async (data: Partial<User>) => {

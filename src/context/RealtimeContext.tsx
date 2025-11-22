@@ -27,14 +27,20 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   const [socketState, setSocketState] = useState<Socket | null>(null);
 
   useEffect(() => {
-    // Pas d'utilisateur connecté → on ferme tout
-    if (!user) {
+    const userId = user?.id;
+
+    // 👉 Pas d'utilisateur connecté → on ferme tout
+    if (!userId) {
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        try {
+          socketRef.current.disconnect();
+        } catch {}
         socketRef.current = null;
       }
       if (sseRef.current) {
-        sseRef.current.close();
+        try {
+          sseRef.current.close();
+        } catch {}
         sseRef.current = null;
       }
       setSocketState(null);
@@ -116,7 +122,8 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       sseRef.current = null;
       setSocketState(null);
     };
-  }, [user]);
+    // 🟢 On dépend UNIQUEMENT de l'id user (login / logout / changement user)
+  }, [user?.id]);
 
   return (
     <RealtimeContext.Provider value={{ socket: socketState }}>
