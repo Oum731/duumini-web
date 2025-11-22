@@ -1,5 +1,5 @@
 // src/pages/admin/ProductsAdminPage.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   listProducts,
   getProduct,
@@ -8,7 +8,11 @@ import {
   updateProduct,
   removeProduct,
 } from "../../services/products";
-import { listCategories, type Category, createCategory } from "../../services/categories";
+import {
+  listCategories,
+  type Category,
+  createCategory,
+} from "../../services/categories";
 import { API_BASE, api } from "../../services/http";
 
 type ProductImage = { id: number; url: string; sort_order: number };
@@ -29,10 +33,19 @@ type Draft = Partial<Product> & {
   category_name?: string;
 };
 
+type ListResponse = {
+  items: Product[];
+  pageInfo: { total: number; page: number; pageSize: number };
+};
+
+type Mode = "default" | "top-ordered" | "top-rated";
+type Channel = "all" | "african-food" | "african-market";
+
 function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(
-    Number(n || 0)
-  );
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "MAD",
+  }).format(Number(n || 0));
 }
 
 // Construit l’URL absolue pour les images relatives (ex: /uploads/..)
@@ -75,6 +88,7 @@ function ProductForm({
     promo_eligible: initial?.promo_eligible ?? 0,
     category_id: initial?.category_id ?? undefined,
     shop_id: initial?.shop_id ?? undefined,
+    category_name: initial?.category_name,
   }));
   const [files, setFiles] = useState<File[]>([]);
   const [replaceImages, setReplaceImages] = useState<boolean>(false);
@@ -84,10 +98,11 @@ function ProductForm({
   const [newCategoryName, setNewCategoryName] = useState(draft.category_name || "");
 
   // 🔹 Nouvel état pour "Canal" personnalisé (comme Autre…)
-  const [isCustomSubCategory, setIsCustomSubCategory] = useState(isInitialCustomSubCategory);
+  const [isCustomSubCategory, setIsCustomSubCategory] =
+    useState(isInitialCustomSubCategory);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const [galleryInput, setGalleryInput] = useState<HTMLInputElement | null>(null);
+  const [cameraInput, setCameraInput] = useState<HTMLInputElement | null>(null);
 
   function addFiles(list: FileList | null) {
     if (!list || !list.length) return;
@@ -99,10 +114,10 @@ function ProductForm({
     setFiles(current.slice(0, 8));
   }
   function onPickFromGallery() {
-    fileInputRef.current?.click();
+    galleryInput?.click();
   }
   function onOpenCamera() {
-    cameraInputRef.current?.click();
+    cameraInput?.click();
   }
   function removeAt(i: number) {
     const arr = [...files];
@@ -305,7 +320,8 @@ function ProductForm({
                 onChange={(e) =>
                   setDraft((d) => ({
                     ...d,
-                    price: e.target.value === "" ? undefined : Number(e.target.value),
+                    price:
+                      e.target.value === "" ? undefined : Number(e.target.value),
                   }))
                 }
                 required
@@ -330,7 +346,8 @@ function ProductForm({
                 onChange={(e) =>
                   setDraft((d) => ({
                     ...d,
-                    stock: e.target.value === "" ? undefined : Number(e.target.value),
+                    stock:
+                      e.target.value === "" ? undefined : Number(e.target.value),
                   }))
                 }
               />
@@ -442,7 +459,7 @@ function ProductForm({
           </div>
 
           <input
-            ref={fileInputRef}
+            ref={(el) => setGalleryInput(el)}
             type="file"
             accept="image/*"
             multiple
@@ -450,7 +467,7 @@ function ProductForm({
             onChange={(e) => addFiles(e.target.files)}
           />
           <input
-            ref={cameraInputRef}
+            ref={(el) => setCameraInput(el)}
             type="file"
             accept="image/*"
             capture="environment"
@@ -537,16 +554,53 @@ export default function ProductsAdminPage() {
   const [edit, setEdit] = useState<FullProduct | null>(null);
   const [preview, setPreview] = useState<FullProduct | null>(null);
 
+  const [mode, setMode] = useState<Mode>("default");
+  const [channel, setChannel] = useState<Channel>("all");
+  const [onlyActive, setOnlyActive] = useState<boolean>(false);
+
   const pages = useMemo(
-    () => Math.max(1, Math.ceil(total / pageSize)),
-    [total, pageSize]
+    () => (mode === "default" ? Math.max(1, Math.ceil(total / pageSize)) : 1),
+    [total, pageSize, mode]
   );
 
   async function refresh() {
     setLoading(true);
     setError(null);
     try {
-      const res = await listProducts({ page, pageSize });
+      // Modes TOP: routes /top-ordered et /top-rated
+      if (mode === "top-ordered" || mode === "top-rated") {
+        const endpoint =
+          mode === "top-ordered"
+            ? "/api/products/top-ordered"
+            : "/api/products/top-rated";
+        const res = await api.get<Product[]>(endpoint, {
+          query: { limit: 100, minCount: 2 },
+        });
+        setItems(res || []);
+        setTotal(Array.isArray(res) ? res.length : 0);
+        setLoading(false);
+        return;
+      }
+
+      // Mode listing normal (avec /, /african-food, /african-market)
+      const query: any = { page, pageSize };
+      if (onlyActive) query.onlyActive = 1;
+
+      let res: ListResponse;
+
+      if (channel === "all") {
+        // Utilise le service générique
+        const r = await listProducts(query);
+        res = r as ListResponse;
+      } else {
+        const path =
+          channel === "african-food"
+            ? "/api/products/african-food"
+            : "/api/products/african-market";
+        const r = await api.get<ListResponse>(path, { query });
+        res = r;
+      }
+
       setItems(res.items);
       setTotal(res.pageInfo.total);
     } catch (e: any) {
@@ -582,9 +636,9 @@ export default function ProductsAdminPage() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     refresh();
-  }, [page, pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, channel, onlyActive, mode]);
 
   function openCreate() {
     setEdit(null);
@@ -644,6 +698,11 @@ export default function ProductsAdminPage() {
       };
       delete (payload as any).category_name;
 
+      // is_active: par défaut actif à la création
+      if (edit == null && (payload as any).is_active == null) {
+        (payload as any).is_active = 1;
+      }
+
       if (edit == null) {
         await createProduct(payload, files);
         setOk("Produit créé avec succès.");
@@ -679,32 +738,40 @@ export default function ProductsAdminPage() {
     }
   }
 
-  // 🔁 Activer / désactiver un produit
+  // 🔁 Activer / désactiver un produit (PUT /api/products/:id)
   async function onToggleActive(p: Product) {
     const current =
       ((p as any).active ?? (p as any).is_active ?? 1) ? 1 : 0;
     const next = current ? 0 : 1;
 
+    if (
+      !confirm(
+        next
+          ? "Activer ce produit ? Il sera de nouveau visible sur Duumini."
+          : "Désactiver ce produit ? Il ne sera plus visible sur Duumini."
+      )
+    ) {
+      return;
+    }
+
     setBusy(true);
     setError(null);
     setOk(null);
     try {
-      const payload: any = { active: next, is_active: next };
+      const payload: any = { is_active: next };
       // pas d’images / pas de remplacement
       await updateProduct(p.id, payload, [], false);
       setOk(next ? "Produit activé." : "Produit désactivé.");
       // Mise à jour locale
       setItems((prev) =>
         prev.map((it) =>
-          it.id === p.id
-            ? ({ ...it, active: next, is_active: next } as any)
-            : it
+          it.id === p.id ? ({ ...it, is_active: next } as any) : it
         )
       );
       // Si le produit est dans le preview, on le met aussi à jour
       setPreview((prev) =>
         prev && prev.id === p.id
-          ? ({ ...prev, active: next, is_active: next } as any)
+          ? ({ ...prev, is_active: next } as any)
           : prev
       );
     } catch (e: any) {
@@ -729,6 +796,23 @@ export default function ProductsAdminPage() {
     setPage(1);
   }
 
+  function changeMode(newMode: Mode) {
+    setMode(newMode);
+    setPage(1);
+  }
+
+  function changeChannel(newChannel: Channel) {
+    setChannel(newChannel);
+    setMode("default");
+    setPage(1);
+  }
+
+  function toggleOnlyActive() {
+    setOnlyActive((prev) => !prev);
+    setMode("default");
+    setPage(1);
+  }
+
   return (
     <div className="container-xxl py-4">
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
@@ -750,7 +834,103 @@ export default function ProductsAdminPage() {
       {ok && <div className="alert alert-success py-2">{ok}</div>}
       {error && <div className="alert alert-danger py-2">{error}</div>}
 
-      <div className="d-flex align-items-center justify-content-between mb-3">
+      {/* Filtres / modes */}
+      <div className="card mb-3">
+        <div className="card-body d-flex flex-column flex-lg-row gap-3 align-items-lg-center justify-content-between">
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            <span className="text-muted small me-1">Canal :</span>
+            <div className="btn-group btn-group-sm" role="group">
+              <button
+                type="button"
+                className={
+                  "btn " +
+                  (channel === "all" && mode === "default"
+                    ? "btn-dark"
+                    : "btn-outline-dark")
+                }
+                onClick={() => changeChannel("all")}
+              >
+                Tous
+              </button>
+              <button
+                type="button"
+                className={
+                  "btn " +
+                  (channel === "african-food" && mode === "default"
+                    ? "btn-dark"
+                    : "btn-outline-dark")
+                }
+                onClick={() => changeChannel("african-food")}
+              >
+                African Food
+              </button>
+              <button
+                type="button"
+                className={
+                  "btn " +
+                  (channel === "african-market" && mode === "default"
+                    ? "btn-dark"
+                    : "btn-outline-dark")
+                }
+                onClick={() => changeChannel("african-market")}
+              >
+                African Market
+              </button>
+            </div>
+
+            <div className="form-check ms-3">
+              <input
+                id="onlyActive"
+                className="form-check-input"
+                type="checkbox"
+                checked={onlyActive}
+                onChange={toggleOnlyActive}
+                disabled={mode !== "default"}
+              />
+              <label htmlFor="onlyActive" className="form-check-label small">
+                Actifs uniquement
+              </label>
+            </div>
+          </div>
+
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            <span className="text-muted small me-1">Vue rapide :</span>
+            <div className="btn-group btn-group-sm" role="group">
+              <button
+                type="button"
+                className={
+                  "btn " +
+                  (mode === "top-ordered"
+                    ? "btn-warning"
+                    : "btn-outline-warning")
+                }
+                onClick={() =>
+                  changeMode(mode === "top-ordered" ? "default" : "top-ordered")
+                }
+              >
+                Top commandés
+              </button>
+              <button
+                type="button"
+                className={
+                  "btn " +
+                  (mode === "top-rated"
+                    ? "btn-success"
+                    : "btn-outline-success")
+                }
+                onClick={() =>
+                  changeMode(mode === "top-rated" ? "default" : "top-rated")
+                }
+              >
+                Mieux notés
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recherche & pagination */}
+      <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
         <div className="input-group" style={{ maxWidth: 420 }}>
           <input
             className="form-control"
@@ -770,25 +950,27 @@ export default function ProductsAdminPage() {
           </button>
         </div>
 
-        <div className="btn-group">
-          <button
-            className="btn btn-sm btn-outline-dark"
-            disabled={page <= 1 || busy}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            ◀
-          </button>
-          <span className="btn btn-sm btn-outline-dark disabled">
-            {page} / {pages}
-          </span>
-          <button
-            className="btn btn-sm btn-outline-dark"
-            disabled={page >= pages || busy}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            ▶
-          </button>
-        </div>
+        {mode === "default" && (
+          <div className="btn-group">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1 || busy}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              ◀
+            </button>
+            <span className="btn btn-sm btn-outline-dark disabled">
+              {page} / {pages}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pages || busy}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              ▶
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="card shadow-sm">
@@ -796,7 +978,13 @@ export default function ProductsAdminPage() {
           {loading ? (
             <div className="text-muted">Chargement…</div>
           ) : filtered.length === 0 ? (
-            <div className="text-muted">Aucun produit.</div>
+            <div className="text-muted">
+              {mode === "top-ordered"
+                ? "Aucun produit commandé."
+                : mode === "top-rated"
+                ? "Aucun produit noté."
+                : "Aucun produit."}
+            </div>
           ) : (
             <div className="table-responsive">
               <table className="table align-middle">
@@ -805,6 +993,7 @@ export default function ProductsAdminPage() {
                     <th>ID</th>
                     <th>Produit</th>
                     <th className="d-none d-sm-table-cell">Boutique</th>
+                    <th className="d-none d-md-table-cell">Canal</th>
                     <th className="d-none d-sm-table-cell">Stock</th>
                     <th className="d-none d-sm-table-cell">Statut</th>
                     <th className="text-end">Prix</th>
@@ -815,14 +1004,21 @@ export default function ProductsAdminPage() {
                   {filtered.map((p) => {
                     const isActive =
                       ((p as any).active ?? (p as any).is_active ?? 1) ? 1 : 0;
+                    const sub = String((p as any).sub_category || "").toLowerCase();
+                    const channelLabel =
+                      sub === "food"
+                        ? "African Food"
+                        : sub === "product"
+                        ? "African Market"
+                        : sub || "-";
                     return (
                       <tr key={p.id}>
                         <td>{p.id}</td>
                         <td className="text-truncate" style={{ maxWidth: 380 }}>
                           <div className="d-flex align-items-center gap-2">
-                            {p.cover ? (
+                            {(p as any).cover ? (
                               <img
-                                src={imgUrl(p.cover)}
+                                src={imgUrl((p as any).cover)}
                                 alt={p.name}
                                 className="rounded border"
                                 style={{
@@ -862,7 +1058,12 @@ export default function ProductsAdminPage() {
                           </div>
                         </td>
                         <td className="d-none d-sm-table-cell">
-                          {p.shop_name || p.shop_id || "-"}
+                          {p.shop_name || (p as any).shop_id || "-"}
+                        </td>
+                        <td className="d-none d-md-table-cell">
+                          <span className="badge bg-light text-dark">
+                            {channelLabel}
+                          </span>
                         </td>
                         <td className="d-none d-sm-table-cell">
                           {(p as any).stock ?? 0}
@@ -916,7 +1117,7 @@ export default function ProductsAdminPage() {
             </div>
           )}
 
-          {!loading && filtered.length > 0 ? (
+          {!loading && filtered.length > 0 && mode === "default" ? (
             <div className="d-flex justify-content-between align-items-center mt-2">
               <div className="text-muted small">{total} éléments</div>
               <div className="btn-group">
@@ -1006,9 +1207,9 @@ export default function ProductsAdminPage() {
                           objectFit: "cover",
                         }}
                       />
-                    ) : preview.cover ? (
+                    ) : (preview as any).cover ? (
                       <img
-                        src={imgUrl(preview.cover)}
+                        src={imgUrl((preview as any).cover)}
                         alt={preview.name}
                         className="img-fluid rounded border"
                         style={{
@@ -1047,7 +1248,8 @@ export default function ProductsAdminPage() {
                         <strong>ID :</strong> {preview.id}
                       </li>
                       <li>
-                        <strong>Boutique :</strong> {preview.shop_name || preview.shop_id}
+                        <strong>Boutique :</strong>{" "}
+                        {preview.shop_name || (preview as any).shop_id}
                       </li>
                       <li>
                         <strong>Prix :</strong> {moneyMAD(preview.price)}
@@ -1056,7 +1258,8 @@ export default function ProductsAdminPage() {
                         <strong>Stock :</strong> {(preview as any).stock ?? 0}
                       </li>
                       <li>
-                        <strong>Canal :</strong> {preview.sub_category || "-"}
+                        <strong>Canal :</strong>{" "}
+                        {(preview as any).sub_category || "-"}
                       </li>
                       <li>
                         <strong>Statut :</strong>{" "}

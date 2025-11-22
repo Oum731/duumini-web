@@ -40,30 +40,43 @@ function OfflineBanner() {
   );
 }
 
-/* === Carte catégorie avec carrousel auto d’images produits === */
+/* === Carte catégorie avec carrousel auto d’images produits (fondu) === */
 function CategoryCard(props: { to: string; title: string; images: string[] }) {
   const { to, title, images } = props;
 
   const hasMany = images && images.length > 1;
   const [index, setIndex] = useState(0);
+  const [fading, setFading] = useState(false);
 
   const currentImg =
     images && images.length > 0 ? images[index] : "/placeholder-category.png";
 
-  // Carrousel auto (toutes les 2,5s)
+  // Carrousel auto avec fondu
   useEffect(() => {
     if (!hasMany) return;
 
-    const id = window.setInterval(() => {
-      setIndex((prev) => (prev + 1) % images.length);
-    }, 2500);
+    let intervalId: number | null = null;
+    let timeoutId: number | null = null;
+
+    intervalId = window.setInterval(() => {
+      // On lance le fondu
+      setFading(true);
+      timeoutId = window.setTimeout(() => {
+        setIndex((prev) => {
+          if (!images.length) return 0;
+          return (prev + 1) % images.length;
+        });
+        setFading(false);
+      }, 250); // durée du fondu (doit matcher la transition CSS)
+    }, 3500); // délai entre deux images
 
     return () => {
-      window.clearInterval(id);
+      if (intervalId !== null) window.clearInterval(intervalId);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
     };
-  }, [hasMany, images.length]);
+  }, [hasMany, images.length, images]);
 
-  // Pré-chargement des images pour éviter les flashs
+  // Pré-chargement des images pour éviter les flashs de chargement
   useEffect(() => {
     images.forEach((src) => {
       if (!src) return;
@@ -88,8 +101,11 @@ function CategoryCard(props: { to: string; title: string; images: string[] }) {
                 width={1280}
                 height={720}
                 className="w-100 h-100 object-fit-cover"
-                loading="lazy"
                 decoding="async"
+                style={{
+                  opacity: fading ? 0 : 1,
+                  transition: "opacity 0.25s ease-in-out",
+                }}
               />
             )}
 
@@ -184,7 +200,7 @@ export default function Home() {
         });
 
         const toImageUrl = (p: Product): string => {
-          const raw = p.cover || p.images?.[0]?.url || null;
+          const raw = (p as any).cover || (p as any).images?.[0]?.url || null;
           return imgUrl(raw);
         };
 
