@@ -14,7 +14,6 @@ import {
   register as apiRegister,
   logout as apiLogout,
   me as apiMe,
-  refresh as apiRefresh,
   updateProfile as apiUpdateProfile,
   type User,
 } from "../services/auth";
@@ -66,18 +65,14 @@ function broadcastAuthChange(user: User | null) {
     // Événement CustomEvent pour le même onglet (RealtimeContext, etc.)
     window.dispatchEvent(
       new CustomEvent("duumini:auth-changed", {
-        detail: {
-          user,
-        },
+        detail: { user },
       })
     );
 
     // Événement via localStorage pour les autres onglets
     const payload = {
       ts: Date.now(),
-      user: user
-        ? { id: user.id, role: user.role }
-        : null,
+      user: user ? { id: user.id, role: user.role } : null,
     };
     window.localStorage.setItem(
       "duumini:auth-changed",
@@ -96,10 +91,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (prev: User | null, next: User | null) => {
       const prevRole = (prev?.role || "").toString().trim().toUpperCase();
       const nextRole = (next?.role || "").toString().trim().toUpperCase();
+
+      // 👉 On ne fait PLUS d’appel /auth/refresh ici, uniquement un reload si le rôle change vraiment
       if (prevRole && nextRole && prevRole !== nextRole) {
-        try {
-          await apiRefresh();
-        } catch {}
         // Changement de rôle → on recharge toute l’app (menus, droits, etc.)
         window.location.reload();
       }
@@ -124,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async () => {
       try {
         const before = getCurrentUser();
-        const u = await apiMe();
+        const u = await apiMe(); // utilise authFetch → fait déjà /auth/refresh si besoin
         setUser(u);
         await applyRoleChangeIfNeeded(before, u);
       } catch {
@@ -132,26 +126,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     [applyRoleChangeIfNeeded]
-  );
-
-  // 🔁 Keep-alive: maintenir la connexion vivante (refresh silencieux régulier)
-  const keepAlive = useCallback(
-    async () => {
-      try {
-        const token = getAccessToken();
-        if (!token) return; // pas connecté → rien à faire
-
-        // On rafraîchit le token côté backend (si refresh cookie dispo)
-        await apiRefresh();
-
-        // Puis on met à jour le user (au cas où rôle ou infos changent)
-        await refreshUser();
-      } catch (e) {
-        console.warn("[Auth] keep-alive failed", e);
-        // En cas d’erreur, on ne déconnecte pas brutalement ici.
-      }
-    },
-    [refreshUser]
   );
 
   // Chargement initial : récupérer le user si token présent
@@ -185,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applyRoleChangeIfNeeded, setupPush]);
 
-  // Refresh user sur focus / visibilité / intervalle
+  // Refresh user sur focus / visibilité / intervalle raisonnable
   useEffect(() => {
     const onFocus = () => refreshUser();
     const onVis = () => {
@@ -193,7 +167,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
+
+    // 👉 toutes les 5 minutes : suffisant pour garder les infos fraîches,
+    //    et authFetch se charge déjà de rafraîchir le token si besoin.
     const iv = window.setInterval(() => refreshUser(), 5 * 60 * 1000);
+
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVis);
@@ -201,18 +179,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ✅ Keep-alive régulier pour garder la connexion vivante (token + user)
-  useEffect(() => {
-    // ex: toutes les 10 minutes (à ajuster selon l’expiration du token)
-    const iv = window.setInterval(() => {
-      keepAlive();
-    }, 10 * 60 * 1000);
-
-    return () => {
-      clearInterval(iv);
-    };
-  }, [keepAlive]);
 
   // ✅ Réaction aux changements d’auth dans les AUTRES onglets (localStorage)
   useEffect(() => {
@@ -243,11 +209,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Après login, on initialise Pushy + enregistre le device
       await setupPush();
-
-      // On force un keep-alive immédiat après connexion pour partir sur un token fresh
-      keepAlive().catch(() => {});
     },
-    [applyRoleChangeIfNeeded, setupPush, keepAlive]
+    [applyRoleChangeIfNeeded, setupPush]
   );
 
   const register = useCallback(async (data: RegisterPayload) => {
@@ -272,8 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const updated = await apiUpdateProfile(data);
       setUser(updated);
 
-      // 🔔 Si tu veux que certaines parties de l’app réagissent aussi
-      // aux changements de profil (ex: nom affiché dans header)
+      // 🔔 propager le changement de profil (nom, etc.)
       broadcastAuthChange(updated);
 
       await applyRoleChangeIfNeeded(before, updated);
@@ -283,7 +245,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, refreshUser, updateProfile }}
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        logout,
+        refreshUser,
+        updateProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>
