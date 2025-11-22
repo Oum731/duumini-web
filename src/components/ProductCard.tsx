@@ -1,6 +1,5 @@
 // src/components/ProductCard.tsx
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";              // 👈 AJOUT
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
@@ -39,12 +38,6 @@ function buildProductUrl(p: Product) {
   const path = sub === "food" ? "/african-food" : "/african-market";
 
   return `${base}${path}`;
-}
-
-/** URL interne de la fiche produit (ProductView) */
-function buildProductDetailPath(p: Product) {
-  const idOrSlug = (p as any).slug || p.id;
-  return `/products/${idOrSlug}`;
 }
 
 /* ===== Component ===== */
@@ -202,18 +195,20 @@ export default function ProductCard({ product, onAdd }: Props) {
         </div>
 
         <div className="card-body d-flex flex-column">
-          {/* ✅ Titre cliquable → fiche produit */}
+          {/* ✅ Titre cliquable → ouvre la même modale que "Voir" */}
           <h3
             className="h6 mb-1"
             title={product.name}
             style={{ wordWrap: "break-word", whiteSpace: "normal" }}
           >
-            <Link
-              to={buildProductDetailPath(product)}
-              className="text-decoration-none text-dark"
+            <button
+              type="button"
+              className="btn btn-link p-0 text-start text-decoration-none text-dark"
+              onClick={() => setOpen(true)}
+              style={{ whiteSpace: "normal" }}
             >
               {product.name}
-            </Link>
+            </button>
           </h3>
 
           {/* Nom boutique sous le titre (optionnel) */}
