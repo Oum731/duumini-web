@@ -29,9 +29,9 @@ export type Product = {
   is_active?: 0 | 1;
 
   // 🔹 Champs supplémentaires renvoyés par certaines routes (facultatifs)
-  total_qty?: number;       // pour /top-ordered
-  avg_rating?: number;      // pour /top-rated
-  rating_count?: number;    // pour /top-rated
+  total_qty?: number; // pour /top-ordered
+  avg_rating?: number; // pour /top-rated
+  rating_count?: number; // pour /top-rated
 };
 
 export type Paginated<T> = {
@@ -55,7 +55,8 @@ export async function listProducts(opts: {
   page?: number;
   pageSize?: number;
   channel?: Channel;
-  onlyActive?: boolean;   // ← filtre optionnel : seulement produits actifs
+  /** seulement produits actifs (is_active = 1) */
+  onlyActive?: boolean;
 } = {}) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
@@ -81,7 +82,7 @@ export async function getProduct(id: number) {
 }
 
 /* ---------- Create ---------- */
-/** Création: 
+/** Création:
  *  - VENDEUR: shop_id déduit de l'utilisateur connecté côté API
  *  - ADMIN: shop_id doit être fourni (sélect "Boutique" dans le back-office)
  */
@@ -90,13 +91,23 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
   if (draft.name) fd.append("name", draft.name);
   if (draft.price != null) fd.append("price", String(draft.price));
   if (draft.currency) fd.append("currency", draft.currency);
-  if (draft.description != null) fd.append("description", String(draft.description || ""));
+  if (draft.description != null)
+    fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
+
+  // 🔹 Catégorie (Market)
+  if (draft.category_id != null) {
+    fd.append("category_id", String(draft.category_id));
+  }
 
   if (draft.is_featured != null) {
     // accepte 0|1 ou boolean
     const v =
-      typeof draft.is_featured === "number" ? draft.is_featured : draft.is_featured ? 1 : 0;
+      typeof draft.is_featured === "number"
+        ? draft.is_featured
+        : draft.is_featured
+        ? 1
+        : 0;
     fd.append("is_featured", String(v));
   }
   if (draft.promo_eligible != null) {
@@ -109,7 +120,7 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
     fd.append("promo_eligible", String(v));
   }
 
-  // 🔹 Actif / inactif
+  // 🔹 Actif / inactif (par défaut 1 côté API si non fourni)
   if (draft.is_active != null) {
     const v =
       typeof draft.is_active === "number" ? draft.is_active : draft.is_active ? 1 : 0;
@@ -141,12 +152,17 @@ export async function updateProduct(
   if (draft.name) fd.append("name", draft.name);
   if (draft.price != null) fd.append("price", String(draft.price));
   if (draft.currency) fd.append("currency", draft.currency);
-  if (draft.description != null) fd.append("description", String(draft.description || ""));
+  if (draft.description != null)
+    fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
   if (draft.is_featured != null) {
     const v =
-      typeof draft.is_featured === "number" ? draft.is_featured : draft.is_featured ? 1 : 0;
+      typeof draft.is_featured === "number"
+        ? draft.is_featured
+        : draft.is_featured
+        ? 1
+        : 0;
     fd.append("is_featured", String(v));
   }
   if (draft.promo_eligible != null) {
