@@ -47,29 +47,26 @@ type AuthContextType = {
 
 const noopAsync = async () => {};
 
-export const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  login: noopAsync,
-  register: noopAsync,
-  logout: noopAsync,
-  refreshUser: noopAsync,
-  updateProfile: noopAsync,
-});
+/* ===== Helper: hard reload (web + PWA) ===== */
+function hardReload() {
+  if (typeof window === "undefined") return;
+  // Reload complet de l’onglet / PWA
+  window.location.reload();
+}
 
 /* ===== Helper: broadcast changement d’auth dans l’app + autres onglets ===== */
 function broadcastAuthChange(user: User | null) {
   try {
     if (typeof window === "undefined") return;
 
-    // Événement CustomEvent pour le même onglet (RealtimeContext, etc.)
+    // Événement CustomEvent pour le même onglet (si besoin)
     window.dispatchEvent(
       new CustomEvent("duumini:auth-changed", {
         detail: { user },
       })
     );
 
-    // Événement via localStorage pour les autres onglets
+    // Événement via localStorage pour les autres onglets / PWA
     const payload = {
       ts: Date.now(),
       user: user ? { id: user.id, role: user.role } : null,
@@ -83,6 +80,16 @@ function broadcastAuthChange(user: User | null) {
   }
 }
 
+export const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  login: noopAsync,
+  register: noopAsync,
+  logout: noopAsync,
+  refreshUser: noopAsync,
+  updateProfile: noopAsync,
+});
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getCurrentUser());
   const [loading, setLoading] = useState<boolean>(true);
@@ -92,10 +99,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const prevRole = (prev?.role || "").toString().trim().toUpperCase();
       const nextRole = (next?.role || "").toString().trim().toUpperCase();
 
-      // 👉 On ne fait PLUS d’appel /auth/refresh ici, uniquement un reload si le rôle change vraiment
+      // On ne fait PLUS d’appel /auth/refresh ici,
+      // uniquement un reload si le rôle change vraiment
       if (prevRole && nextRole && prevRole !== nextRole) {
-        // Changement de rôle → on recharge toute l’app (menus, droits, etc.)
-        window.location.reload();
+        hardReload();
       }
     },
     []
@@ -168,8 +175,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
-    // 👉 toutes les 5 minutes : suffisant pour garder les infos fraîches,
-    //    et authFetch se charge déjà de rafraîchir le token si besoin.
     const iv = window.setInterval(() => refreshUser(), 5 * 60 * 1000);
 
     return () => {
@@ -180,14 +185,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Réaction aux changements d’auth dans les AUTRES onglets (localStorage)
+  // ✅ Réaction aux changements d’auth dans les AUTRES onglets / PWA
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === "duumini:auth-changed" && e.newValue) {
-        // Un autre onglet a loggé / déloggé → on rafraîchit le user local
-        refreshUser();
+        // Un autre onglet ou une autre fenêtre PWA a loggé / déloggé
+        // → on recharge complètement cette instance pour être 100% synchro
+        hardReload();
       }
     };
 
@@ -209,6 +215,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Après login, on initialise Pushy + enregistre le device
       await setupPush();
+
+      // 👉 Reload complet (web + PWA) pour recharger menus, routes protégées, etc.
+      hardReload();
     },
     [applyRoleChangeIfNeeded, setupPush]
   );
@@ -227,6 +236,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // 🔔 Broadcast logout (user = null)
     broadcastAuthChange(null);
+
+    // 👉 Reload complet pour nettoyer tout (web + PWA)
+    hardReload();
   }, []);
 
   const updateProfile = useCallback(

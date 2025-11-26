@@ -1,3 +1,4 @@
+// src/services/shops.ts
 import { api } from "./http";
 import type { Paginated } from "./types";
 
@@ -27,7 +28,34 @@ export type ShopFiles = {
   cover?: File | null;
 };
 
-/** ======= Public / Vendor ======= */
+/* ====== Stats d'une boutique (admin ou vendeur propriétaire) ====== */
+/**
+ * Structure renvoyée par GET /api/shops/:id/stats
+ * - turnover = CA basé sur le prix NORMAL du produit (products.price), hors frais de livraison
+ * - duumini  = commission Duumini (pourcentage du prix normal, selon la sous-catégorie)
+ * - top_products.total_amount = CA 30j pour ce produit (toujours sur le prix normal, hors livraison)
+ */
+export type ShopStats = {
+  turnover: {
+    day: number;   // CA (prix normal vendeur) du jour, hors livraison
+    month: number; // CA (prix normal vendeur) du mois
+    year: number;  // CA (prix normal vendeur) de l'année
+  };
+  duumini: {
+    day: number;   // Commission Duumini du jour (pourcentage du prix normal, hors livraison)
+    month: number; // Commission Duumini du mois
+    year: number;  // Commission Duumini de l'année
+  };
+  top_products: {
+    product_id: number;
+    name: string;
+    total_qty: number;
+    total_amount: number; // CA 30j pour ce produit (prix normal, hors livraison)
+    cover?: string | null;
+  }[];
+};
+
+/** ======= Public / Vendor / Admin ======= */
 
 /** Liste paginée publique (avec recherche optionnelle q) */
 export async function listShops(opts: { page?: number; pageSize?: number; q?: string } = {}) {
@@ -47,6 +75,12 @@ export async function listMyShops() {
 /** Détail public d’une boutique */
 export async function getShop(id: number) {
   return api.get<Shop>(`/api/shops/${id}`);
+}
+
+/** Stats complètes d'une boutique (admin ou vendeur propriétaire) */
+export async function getShopStats(id: number) {
+  // Backend: GET /api/shops/:id/stats (ADMIN ou VENDEUR)
+  return api.get<ShopStats>(`/api/shops/${id}/stats`);
 }
 
 /** ======= "Admin" (même endpoints, mais usage côté dashboard) ======= */

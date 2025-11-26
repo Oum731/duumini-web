@@ -7,13 +7,27 @@ export type Product = {
   category_id?: number | null;
   name: string;
   slug: string;
+
+  /**
+   * 💰 Prix affiché côté client (prix vendeur + commission Duumini)
+   * → C'est cette valeur qui doit être utilisée sur le site / app côté client.
+   */
   price: number;
+
+  /**
+   * 💼 Prix de base saisi par le vendeur/admin (hors commission Duumini).
+   * - Si présent, c’est cette valeur que le back-office doit éditer.
+   * - La commission est ensuite ajoutée côté backend pour calculer `price`.
+   */
+  vendor_price?: number | null;
+
   currency?: string;
   description?: string | null;
   stock?: number | null;
   is_featured?: 0 | 1;
   promo_eligible?: 0 | 1;
-  // 🔹 On autorise maintenant des canaux custom (et plus seulement "product" | "food")
+  // 🔹 Utilisé côté backend pour savoir si c'est FOOD (18%) ou MARKET (11%)
+  //    En pratique: 'food' | 'product'
   sub_category?: string | null;
   created_at?: string;
   updated_at?: string;
@@ -42,7 +56,7 @@ export type Paginated<T> = {
 type Channel = "african-food" | "african-market";
 
 /* ---------- Utils ---------- */
-// 🔹 On ne force plus à "product" / "food" : on garde ce que le front envoie
+// On laisse passer la valeur telle quelle, mais l’UI doit bien envoyer 'food' ou 'product'
 function normalizeSubCategory(v?: string | null): string | undefined {
   if (v == null) return undefined;
   const s = String(v).trim();
@@ -85,11 +99,23 @@ export async function getProduct(id: number) {
 /** Création:
  *  - VENDEUR: shop_id déduit de l'utilisateur connecté côté API
  *  - ADMIN: shop_id doit être fourni (sélect "Boutique" dans le back-office)
+ *
+ * 💡 IMPORTANT:
+ *  - `vendor_price` = prix base saisi par vendeur/admin
+ *  - `price` côté BDD = prix vendeur, la commission est ajoutée côté backend
+ *  - Le backend renvoie ensuite `price` (client) + `vendor_price` (base)
  */
 export async function createProduct(draft: Partial<Product>, files: File[]) {
   const fd = new FormData();
   if (draft.name) fd.append("name", draft.name);
-  if (draft.price != null) fd.append("price", String(draft.price));
+
+  // 💰 Prix base envoyé à l'API = vendor_price si dispo, sinon price
+  const basePrice =
+    draft.vendor_price != null ? draft.vendor_price : draft.price;
+  if (basePrice != null) {
+    fd.append("price", String(basePrice));
+  }
+
   if (draft.currency) fd.append("currency", draft.currency);
   if (draft.description != null)
     fd.append("description", String(draft.description || ""));
@@ -150,7 +176,17 @@ export async function updateProduct(
 ) {
   const fd = new FormData();
   if (draft.name) fd.append("name", draft.name);
-  if (draft.price != null) fd.append("price", String(draft.price));
+
+  // 💰 Même logique que create:
+  // - si vendor_price présent → c'est le prix base à jour
+  // - sinon on tombe en fallback sur draft.price (mais attention: c'est le prix client
+  //   si on ne met pas à jour l'UI backoffice pour éditer vendor_price).
+  const basePrice =
+    draft.vendor_price != null ? draft.vendor_price : draft.price;
+  if (basePrice != null) {
+    fd.append("price", String(basePrice));
+  }
+
   if (draft.currency) fd.append("currency", draft.currency);
   if (draft.description != null)
     fd.append("description", String(draft.description || ""));
@@ -212,7 +248,9 @@ export async function listTopOrderedProducts(limit = 8) {
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
-export async function listTopRatedProducts(opts: { limit?: number; minCount?: number } = {}) {
+export async function listTopRatedProducts(
+  opts: { limit?: number; minCount?: number } = {}
+) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
   return api.get<Product[]>("/api/products/top-rated", {

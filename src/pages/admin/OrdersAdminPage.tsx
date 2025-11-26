@@ -1,4 +1,3 @@
-// src/pages/admin/OrdersAdminPage.tsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   listOrders,
@@ -107,6 +106,41 @@ function getOrderDisplayCode(
   return String(rawId ?? "").toUpperCase();
 }
 
+/* ===== Helper montant d'une commande (liste) =====
+   → On travaille AVEC ce que renvoie le backend, mais en privilégiant :
+     - items_amount (CA hors livraison)
+     - delivery_fee (frais livraison)
+     - duumini_amount / commission (part Duumini) si dispo
+*/
+function computeOrderAmounts(order: AnyObj) {
+  const totals = order.totals || {};
+  const hasTotals = typeof totals === "object" && totals !== null;
+
+  const total = typeof order.total === "number"
+    ? order.total
+    : hasTotals && typeof totals.amount === "number"
+    ? totals.amount
+    : 0;
+
+  const deliveryFee =
+    hasTotals && typeof totals.delivery_fee === "number"
+      ? Number(totals.delivery_fee)
+      : 0;
+
+  const itemsAmount =
+    hasTotals && typeof totals.items_amount === "number"
+      ? Number(totals.items_amount)
+      : Math.max(0, Number(total) - Number(deliveryFee));
+
+  const duuShare =
+    (hasTotals && typeof totals.duumini_amount === "number"
+      ? Number(totals.duumini_amount)
+      : hasTotals && typeof totals.commission === "number"
+      ? Number(totals.commission)
+      : 0) || 0;
+
+  return { total, deliveryFee, itemsAmount, duuShare };
+}
 
 /* ===== Message WhatsApp complet pour le client (confirmation + détails) ===== */
 function buildAdminWhatsappMessage(order: AnyObj) {
@@ -128,37 +162,8 @@ function buildAdminWhatsappMessage(order: AnyObj) {
   // Code alphanumérique pour affichage
   const displayCode = getOrderDisplayCode(order);
 
-  // ===== Calcul des montants =====
-  const itemsAmountFromLines = items.reduce(
-    (sum, it) =>
-      sum +
-      Number(it.unit_price ?? it.price ?? 0) * Number(it.qty ?? 1),
-    0
-  );
-
-  let itemsAmount = hasItems ? itemsAmountFromLines : 0;
-  let total = 0;
-  let deliveryFee = 0;
-
-  if (order.totals) {
-    itemsAmount = order.totals.items_amount ?? itemsAmount;
-    total =
-      typeof order.total === "number"
-        ? order.total
-        : order.totals.amount ?? itemsAmount;
-    deliveryFee =
-      order.totals.delivery_fee ?? Math.max(0, total - itemsAmount);
-  } else if (hasItems) {
-    itemsAmount = itemsAmountFromLines;
-    total =
-      typeof order.total === "number"
-        ? order.total
-        : itemsAmount;
-    deliveryFee = Math.max(0, total - itemsAmount);
-  } else {
-    total = typeof order.total === "number" ? order.total : 0;
-    deliveryFee = 0;
-  }
+  // ===== Calcul des montants (on réutilise le helper) =====
+  const { itemsAmount, total, deliveryFee } = computeOrderAmounts(order);
 
   // ===== Adresse : utilise la structure normalisée + anciens champs éventuels =====
   const ville =
@@ -370,6 +375,24 @@ export default function OrdersAdminPage() {
       (contact?.phone || "").toLowerCase().includes(txt)
     );
   });
+
+  // 🔥 Stats globales (page courante) — CA sans livraison + Duumini
+  const globalStats = useMemo(() => {
+    let caNet = 0;        // CA hors livraison (montant produits)
+    let caDelivery = 0;   // Somme des frais de livraison
+    let caDuumini = 0;    // Somme de la part Duumini (si renvoyée par le backend)
+
+    items.forEach((o) => {
+      const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(
+        o as AnyObj
+      );
+      caNet += itemsAmount;
+      caDelivery += deliveryFee;
+      caDuumini += duuShare;
+    });
+
+    return { caNet, caDelivery, caDuumini };
+  }, [items]);
 
   // ====== Liste actions ======
   async function onEdit(id: number) {
@@ -626,6 +649,36 @@ export default function OrdersAdminPage() {
         </div>
       </div>
 
+      {/* 🔥 Stats CA sur la page courante */}
+      <div className="row g-2 mb-3">
+        <div className="col-12 col-md-4">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-body">
+              <div className="text-muted small mb-1">
+                CA (page) hors livraison
+              </div>
+              <div className="h6 m-0">{mad(globalStats.caNet)}</div>
+            </div>
+          </div>
+        </div>
+        <div className="col-12 col-md-4">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-body">
+              <div className="text-muted small mb-1">Frais de livraison (page)</div>
+              <div className="h6 m-0">{mad(globalStats.caDelivery)}</div>
+            </div>
+          </div>
+        </div>
+        <div className="col-12 col-md-4">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-body">
+              <div className="text-muted small mb-1">CA Duumini (page)</div>
+              <div className="h6 m-0">{mad(globalStats.caDuumini)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Recherche */}
       <div className="mb-3">
         <input
@@ -754,8 +807,8 @@ export default function OrdersAdminPage() {
                           </span>
                         </td>
 
-                        {/* Total */}
-                        <td className="text-end">{mad(o.total)}</td>
+                        {/* Total (montant payé par le client, avec livraison) */}
+                        <td className="text-end">{mad((o as any).total)}</td>
 
                         {/* Actions */}
                         <td className="text-end">

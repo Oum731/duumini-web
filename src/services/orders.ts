@@ -8,6 +8,11 @@ export type OrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCEL
 export type OrderItemInput = {
   product_id: number;
   name: string;
+  /**
+   * 💡 Prix indicatif envoyé au backend (pour logs / message WhatsApp).
+   * Le montant réellement facturé est recalculé côté serveur
+   * à partir du prix vendeur + commission Duumini.
+   */
   price: number;
   qty: number;
 };
@@ -33,6 +38,11 @@ export type CreateOrderPayload = {
     fee: number;
     currency: "MAD";
   };
+  /**
+   * Items envoyés par le front.
+   * - product_id / qty sont utilisés réellement pour créer la commande.
+   * - name / price servent uniquement à composer le message WhatsApp backoffice.
+   */
   items: OrderItemInput[];
   totals: {
     items_count: number;
@@ -80,11 +90,28 @@ export type Order = {
   } | null;
   address?: any | null;
   geo_link?: string | null;
+
+  /** 💰 Montant total payé par le client (produits + livraison) */
   total?: number | null;
   currency?: string | null;
+
   status: OrderStatus;
   created_at: string;
   updated_at?: string;
+
+  /** 🔹 Commission totale Duumini pour cette commande (ADMIN / VENDEUR) */
+  commission_duumini?: number | null;
+
+  /** 🔹 Montant total des articles (hors frais de livraison, côté client) */
+  items_amount?: number | null;
+
+  /** 🔹 Totaux pré-calculés par le backend (facultatif mais pratique) */
+  totals?: {
+    items_amount?: number;
+    delivery_fee?: number;
+    amount?: number;
+    currency?: string;
+  } | null;
 };
 
 /** Item détaillé renvoyé par GET /api/orders/:id (ex: avec image/noms) */
@@ -93,6 +120,10 @@ export type OrderItem = {
   order_id?: number;
   product_id: number;
   qty: number;
+
+  /**
+   * 💰 Prix unitaire payé par le client (inclut la commission Duumini, calculé côté backend)
+   */
   unit_price: number;
 
   // enrichissements
