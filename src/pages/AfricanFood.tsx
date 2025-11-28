@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ProductCard from "../components/ProductCard";
 import { listProducts, type Product } from "../services/products";
+import { useLocationCity } from "../context/LocationContext";
 
 function GridSkeleton() {
   return (
@@ -24,7 +25,23 @@ function GridSkeleton() {
   );
 }
 
+/**
+ * Normalise la ville utilisateur pour l'API:
+ *  - accepte "CASABLANCA", "casa", "Casablanca", ...
+ *  - accepte "MARRAKECH", "marrakech", "mar", ...
+ *  - renvoie "Casablanca" | "Marrakech" | undefined
+ */
+function normalizeCityForApi(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const t = String(raw).trim().toLowerCase();
+  if (t.startsWith("cas")) return "Casablanca";
+  if (t.startsWith("mar")) return "Marrakech";
+  return undefined;
+}
+
 export default function AfricanFood() {
+  const { city } = useLocationCity(); // 🔥 ville choisie par l'utilisateur ("CASABLANCA" | "MARRAKECH" | null)
+
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +58,10 @@ export default function AfricanFood() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+  const pages = useMemo(
+    () => Math.max(1, Math.ceil(total / pageSize)),
+    [total, pageSize]
+  );
 
   // Clamp page si nécessaire
   useEffect(() => {
@@ -58,7 +78,16 @@ export default function AfricanFood() {
     setLoading(true);
     setError(null);
     try {
-      const res = await listProducts({ page, pageSize, channel: "african-food" });
+      const cityApi = normalizeCityForApi(city); // ✅ string | undefined
+
+      const res = await listProducts({
+        page,
+        pageSize,
+        channel: "african-food",
+        onlyActive: true,
+        city: cityApi, // ✅ filtrage par ville de la boutique côté API
+      });
+
       if (ac.signal.aborted) return;
       setItems(res.items);
       setTotal(res.pageInfo.total);
@@ -73,7 +102,8 @@ export default function AfricanFood() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     refresh();
-  }, [page, pageSize]);
+    // 🔥 on recharge quand la ville change
+  }, [page, pageSize, city]);
 
   const filtered = useMemo(() => {
     if (!qDebounced) return items;
@@ -81,13 +111,17 @@ export default function AfricanFood() {
   }, [items, qDebounced]);
 
   const filteredCount = filtered.length;
-  const showCount = qDebounced ? `${filteredCount} / ${total} éléments` : `${total} éléments`;
+  const showCount = qDebounced
+    ? `${filteredCount} / ${total} éléments`
+    : `${total} éléments`;
 
   return (
     <section className="container-xxl py-4">
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
         <div>
-          <h1 className="h4 mb-1" style={{ color: "var(--duu-black)" }}>Duumini Food</h1>
+          <h1 className="h4 mb-1" style={{ color: "var(--duu-black)" }}>
+            Duumini Food
+          </h1>
         </div>
 
         <div className="input-group" style={{ maxWidth: 420 }}>
@@ -130,7 +164,7 @@ export default function AfricanFood() {
         <div className="row g-3">
           {filtered.map((p) => (
             <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={p.id}>
-              {/* ❌ ne pas passer onAdd → ProductCard utilise le contexte panier */}
+              {/* ProductCard gère déjà le filtrage par ville + le panier */}
               <ProductCard product={p} />
             </div>
           ))}

@@ -45,6 +45,8 @@ export type Product = {
   shop_name?: string | null;
   shop_logo?: string | null;
   shop_cover?: string | null;
+  shop_city?: string | null;        // ex: "Casablanca"
+  shop_city_code?: string | null;   // ex: "CASABLANCA" (optionnel, suivant ton API)
 
   // 🔹 Activation / désactivation du produit
   is_active?: 0 | 1;
@@ -71,6 +73,26 @@ function normalizeSubCategory(v?: string | null): string | undefined {
   return s;
 }
 
+/**
+ * Normalise un code ville / libellé pour l'API (?ville=)
+ *
+ * Accepte par ex. :
+ *  - "CASA", "CASABLANCA", "casa", "Casablanca" → "Casablanca"
+ *  - "MARRA", "MARRAKECH", "mar" → "Marrakech"
+ *  - sinon → renvoie la valeur telle quelle (trim).
+ */
+function normalizeCityFilterToVille(city?: string | null): string | undefined {
+  if (!city) return undefined;
+  const raw = String(city).trim();
+  if (!raw) return undefined;
+
+  const low = raw.toLowerCase();
+  if (low.startsWith("cas")) return "Casablanca";
+  if (low.startsWith("mar")) return "Marrakech";
+
+  return raw;
+}
+
 /* ---------- List ---------- */
 export async function listProducts(opts: {
   page?: number;
@@ -78,6 +100,13 @@ export async function listProducts(opts: {
   channel?: Channel;
   /** seulement produits actifs (is_active = 1) */
   onlyActive?: boolean;
+  /**
+   * Ville de l'utilisateur / ville de la boutique :
+   *  - peut être "CASABLANCA", "MARRAKECH", "casa", "Casablanca", ...
+   *  - sera normalisée côté service avant d'être envoyée à l'API en ?ville=
+   */
+  city?: string;
+  ville?: string; // alias possible
 } = {}) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
@@ -92,6 +121,12 @@ export async function listProducts(opts: {
   const query: Record<string, any> = { page, pageSize };
   if (opts.onlyActive) {
     query.onlyActive = 1;
+  }
+
+  // 🔹 Activation du filtre ville → on envoie ?ville=... à l'API
+  const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
+  if (ville) {
+    query.ville = ville;
   }
 
   return api.get<Paginated<Product>>(base, { query });
@@ -265,19 +300,79 @@ export async function removeProduct(id: number) {
 }
 
 /* ---------- Top produits : les plus commandés ---------- */
-export async function listTopOrderedProducts(limit = 8) {
+/**
+ * Utilisation possible :
+ *  - listTopOrderedProducts()                → limite 8, toutes villes
+ *  - listTopOrderedProducts(12)             → limite 12, toutes villes
+ *  - listTopOrderedProducts({ city: "CASABLANCA" })
+ *  - listTopOrderedProducts({ limit: 12, ville: "Casablanca" })
+ */
+export async function listTopOrderedProducts(
+  limit?: number
+): Promise<Product[]>;
+export async function listTopOrderedProducts(opts: {
+  limit?: number;
+  city?: string;
+  ville?: string;
+}): Promise<Product[]>;
+export async function listTopOrderedProducts(
+  limitOrOpts?: number | { limit?: number; city?: string; ville?: string }
+) {
+  let limit = 8;
+  let ville: string | undefined;
+
+  if (typeof limitOrOpts === "number") {
+    limit = limitOrOpts;
+  } else if (limitOrOpts && typeof limitOrOpts === "object") {
+    if (typeof limitOrOpts.limit === "number") {
+      limit = limitOrOpts.limit;
+    }
+    ville = normalizeCityFilterToVille(
+      limitOrOpts.city ?? limitOrOpts.ville ?? null
+    );
+  }
+
+  const query: Record<string, any> = { limit };
+  if (ville) {
+    query.ville = ville;
+  }
+
   return api.get<Product[]>("/api/products/top-ordered", {
-    query: { limit },
+    query,
   });
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
+/**
+ * Utilisation possible :
+ *  - listTopRatedProducts()
+ *  - listTopRatedProducts({ limit: 8, minCount: 2 })
+ *  - listTopRatedProducts({ city: "CASABLANCA" })
+ *  - listTopRatedProducts({ limit: 12, minCount: 3, ville: "Marrakech" })
+ */
 export async function listTopRatedProducts(
-  opts: { limit?: number; minCount?: number } = {}
+  opts?: { limit?: number; minCount?: number }
+): Promise<Product[]>;
+export async function listTopRatedProducts(opts: {
+  limit?: number;
+  minCount?: number;
+  city?: string;
+  ville?: string;
+}): Promise<Product[]>;
+export async function listTopRatedProducts(
+  opts: { limit?: number; minCount?: number; city?: string; ville?: string } = {}
 ) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
+
+  const query: Record<string, any> = { limit, minCount };
+
+  const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
+  if (ville) {
+    query.ville = ville;
+  }
+
   return api.get<Product[]>("/api/products/top-rated", {
-    query: { limit, minCount },
+    query,
   });
 }

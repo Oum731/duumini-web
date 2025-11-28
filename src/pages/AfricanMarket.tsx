@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ProductCard from "../components/ProductCard";
 import { listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
+import { useLocationCity } from "../context/LocationContext";
 
 function GridSkeleton() {
   return (
@@ -25,7 +26,23 @@ function GridSkeleton() {
   );
 }
 
+/**
+ * Normalise la ville utilisateur pour l'API:
+ *  - accepte "CASABLANCA", "casa", "Casablanca", ...
+ *  - accepte "MARRAKECH", "marrakech", "mar", ...
+ *  - renvoie "Casablanca" | "Marrakech" | undefined
+ */
+function normalizeCityForApi(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const t = String(raw).trim().toLowerCase();
+  if (t.startsWith("cas")) return "Casablanca";
+  if (t.startsWith("mar")) return "Marrakech";
+  return undefined;
+}
+
 export default function AfricanMarket() {
+  const { city } = useLocationCity(); // 🔥 ville choisie par l'utilisateur
+
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<string>("");
@@ -61,10 +78,19 @@ export default function AfricanMarket() {
     setLoading(true);
     setError(null);
     try {
+      const cityApi = normalizeCityForApi(city); // ✅ string | undefined
+
       const [resProducts, resCats] = await Promise.all([
-        listProducts({ page, pageSize, channel: "african-market" }),
+        listProducts({
+          page,
+          pageSize,
+          channel: "african-market",
+          onlyActive: true,
+          city: cityApi, // ✅ filtrage par ville de la boutique côté API
+        }),
         listCategories({ page: 1, pageSize: 100 }),
       ]);
+
       if (ac.signal.aborted) return;
       setItems(resProducts.items);
       setTotal(resProducts.pageInfo.total);
@@ -80,7 +106,8 @@ export default function AfricanMarket() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     refresh();
-  }, [page, pageSize]);
+    // 🔥 on recharge quand la ville change
+  }, [page, pageSize, city]);
 
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
