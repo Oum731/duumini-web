@@ -4,6 +4,7 @@ import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
 import ProductRating from "./ProductRating";
+import { useLocationCity, type CityCode } from "../context/LocationContext";
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -27,7 +28,11 @@ function shortText(s?: string | null, max = 200) {
   return t.slice(0, max - 1) + "…";
 }
 
-/** URL de partage → route /share/product/:id sur le domaine qui sert la page OG */
+/**
+ * URL de partage → route /share/product/:id
+ * 👉 Cette route côté API récupère l'image depuis la BDD (product_images / shop_cover / shop_logo)
+ *    et expose les meta OG / Twitter optimisées + redirige vers la vraie page produit.
+ */
 function buildProductUrl(p: Product) {
   const shareBase =
     // @ts-ignore
@@ -38,10 +43,58 @@ function buildProductUrl(p: Product) {
   return `${shareBase}/share/product/${p.id}`;
 }
 
+/* ===== Filtrage par ville de la BOUTIQUE ===== */
+
+function normalizeCityLabel(raw: string | null | undefined) {
+  if (!raw) return "";
+  return String(raw)
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // accents
+    .replace(/\s+/g, "")
+    .trim(); // CASABLANCA / MARRAKECH
+}
+
+/**
+ * Le tri se fait en fonction de la ville de la boutique du produit.
+ * On regarde en priorité :
+ *  - product.shop_city_code (ex: "CASABLANCA" | "MARRAKECH")
+ *  - sinon product.shop_city (ex: "Casablanca" | "Marrakech")
+ */
+function isProductAllowedForCity(product: Product, city: CityCode | null) {
+  if (!city) {
+    // Si la ville n'est pas encore choisie, on laisse passer (LocationGate se charge du reste)
+    return true;
+  }
+
+  const userCityNorm = normalizeCityLabel(city);
+  const anyP = product as any;
+
+  const rawShopCityCode = anyP.shop_city_code ?? null;
+  const rawShopCity = anyP.shop_city ?? null;
+
+  // 1) Code de ville prioritaire (CASABLANCA / MARRAKECH)
+  if (rawShopCityCode) {
+    const normCode = normalizeCityLabel(String(rawShopCityCode));
+    return normCode === userCityNorm;
+  }
+
+  // 2) Libellé texte de la ville de la boutique
+  if (rawShopCity) {
+    const normCity = normalizeCityLabel(String(rawShopCity));
+    return normCity === userCityNorm;
+  }
+
+  // 3) Aucune info sur la ville de la boutique → on laisse passer
+  return true;
+}
+
 /* ===== Component ===== */
 type Props = { product: Product; onAdd?: (p: Product) => void };
 
 export default function ProductCard({ product, onAdd }: Props) {
+  const { city } = useLocationCity();
+
   // Statut / stock
   const stock = (product as any).stock;
   const isOutOfStock = stock === 0;
@@ -49,8 +102,14 @@ export default function ProductCard({ product, onAdd }: Props) {
     ((product as any).is_active ?? (product as any).active ?? 1) ? true : false;
   const isAvailable = isActive && !isOutOfStock;
 
-  // Produit désactivé → ne pas l'afficher
-  if (!isActive) {
+  // Filtrage selon la VILLE DE LA BOUTIQUE
+  const isCityAllowed = useMemo(
+    () => isProductAllowedForCity(product, city),
+    [product, city]
+  );
+
+  // Produit désactivé ou boutique dans une autre ville → ne pas l'afficher
+  if (!isActive || !isCityAllowed) {
     return null;
   }
 
@@ -85,45 +144,16 @@ export default function ProductCard({ product, onAdd }: Props) {
     onAdd ? onAdd(product) : add(product, 1);
   };
 
-  async function shareProductWithImage() {
+  /**
+   * Partage produit :
+   *  - on partage seulement URL + texte
+   *  - l'image vient des meta OG/Twitter servies par /share/product/:id (BDD)
+   */
+  async function shareProduct() {
     const navAny: any =
       typeof navigator !== "undefined" ? (navigator as any) : null;
 
-    // 1) Essayer image + texte + URL (Web Share Level 2)
-    try {
-      if (
-        coverUrl &&
-        navAny &&
-        typeof navAny.share === "function" &&
-        typeof navAny.canShare === "function"
-      ) {
-        const resp = await fetch(coverUrl, { mode: "cors" });
-        const blob = await resp.blob();
-        const ext = blob.type.split("/")[1] || "jpg";
-        const file = new File(
-          [blob],
-          `${(product as any).slug || `product-${product.id}`}.${ext}`,
-          {
-            type: blob.type || "image/jpeg",
-            lastModified: Date.now(),
-          }
-        );
-
-        if (navAny.canShare({ files: [file] })) {
-          await navAny.share({
-            title: product.name,
-            text: shareText,
-            url: shareUrl,
-            files: [file],
-          });
-          return;
-        }
-      }
-    } catch {
-      // on tombe sur les fallbacks
-    }
-
-    // 2) Partage natif sans fichier
+    // 1) Partage natif (Web Share API)
     try {
       if (navAny && typeof navAny.share === "function") {
         await navAny.share({
@@ -134,10 +164,10 @@ export default function ProductCard({ product, onAdd }: Props) {
         return;
       }
     } catch {
-      // on continue
+      // fallback
     }
 
-    // 3) Fallback: on copie juste le lien
+    // 2) Fallback: copier le lien
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
@@ -350,13 +380,11 @@ export default function ProductCard({ product, onAdd }: Props) {
                         onClick={handleAdd}
                         disabled={!isAvailable}
                       >
-                        {isOutOfStock
-                          ? "En rupture"
-                          : "+ Ajouter au panier"}
+                        {isOutOfStock ? "En rupture" : "+ Ajouter au panier"}
                       </button>
                       <button
                         className="btn btn-outline-secondary"
-                        onClick={shareProductWithImage}
+                        onClick={shareProduct}
                       >
                         {copied ? "Lien copié" : "Partager"}
                       </button>
