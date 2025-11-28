@@ -3,6 +3,7 @@ const API = (import.meta as any).env?.VITE_API_BASE || "";
 
 export type Role = "MEMBER" | "VENDEUR" | "LIVREUR" | "ADMIN";
 export type Sexe = "M" | "F" | "AUTRE";
+export type CityCode = "CASABLANCA" | "MARRAKECH";
 
 export type User = {
   data?: any;
@@ -39,6 +40,15 @@ function normalizeRole(r: any): Role {
   return "MEMBER";
 }
 
+/* ===== Helper front: code ville → libellé DB ===== */
+export function mapCityCodeToVille(code?: string | null): string | null {
+  if (!code) return null;
+  const v = code.toString().trim().toUpperCase();
+  if (v === "CASABLANCA") return "Casablanca";
+  if (v === "MARRAKECH") return "Marrakech";
+  return null;
+}
+
 export function getAccessToken(): string | null {
   return localStorage.getItem(STORAGE_KEYS.access);
 }
@@ -55,7 +65,10 @@ export function getCurrentUser(): User | null {
   }
 }
 export function saveSession(data: LoginRes) {
-  const normalizedUser: User = { ...data.user, role: normalizeRole(data.user.role) };
+  const normalizedUser: User = {
+    ...data.user,
+    role: normalizeRole(data.user.role),
+  };
   localStorage.setItem(STORAGE_KEYS.access, data.access_token);
   localStorage.setItem(STORAGE_KEYS.refresh, data.refresh_token);
   localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalizedUser));

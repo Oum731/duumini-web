@@ -10,8 +10,15 @@ export type OrderItemInput = {
   name: string;
   /**
    * 💡 Prix indicatif envoyé au backend (pour logs / message WhatsApp).
-   * Le montant réellement facturé est recalculé côté serveur
-   * à partir du prix vendeur + commission Duumini.
+   *
+   * Le montant réellement facturé au client est toujours recalculé côté serveur
+   * à partir des données en BDD (prix produit + commission Duumini) et stocké
+   * dans order_items.unit_price.
+   *
+   * 👉 Donc côté front, ce champ "price" sert uniquement à :
+   *    - générer un récap texte lisible dans WhatsApp,
+   *    - éventuellement faire un affichage provisoire,
+   *    mais il n’est JAMAIS utilisé pour la facturation finale.
    */
   price: number;
   qty: number;
@@ -40,7 +47,8 @@ export type CreateOrderPayload = {
   };
   /**
    * Items envoyés par le front.
-   * - product_id / qty sont utilisés réellement pour créer la commande.
+   * - product_id / qty sont utilisés réellement pour créer la commande
+   *   + recalculer les vrais prix (unit_price) côté backend.
    * - name / price servent uniquement à composer le message WhatsApp backoffice.
    */
   items: OrderItemInput[];
@@ -102,14 +110,17 @@ export type Order = {
   /** 🔹 Commission totale Duumini pour cette commande (ADMIN / VENDEUR) */
   commission_duumini?: number | null;
 
-  /** 🔹 Montant total des articles (hors frais de livraison, côté client) */
+  /**
+   * 🔹 Montant total des articles (hors frais de livraison, côté client)
+   *     = somme(oi.qty * oi.unit_price) pour cette commande.
+   */
   items_amount?: number | null;
 
   /** 🔹 Totaux pré-calculés par le backend (facultatif mais pratique) */
   totals?: {
-    items_amount?: number;
+    items_amount?: number;   // sous-total articles (prix client, hors livraison)
     delivery_fee?: number;
-    amount?: number;
+    amount?: number;         // total TTC payé (articles + livraison)
     currency?: string;
   } | null;
 };
@@ -122,7 +133,11 @@ export type OrderItem = {
   qty: number;
 
   /**
-   * 💰 Prix unitaire payé par le client (inclut la commission Duumini, calculé côté backend)
+   * 💰 Prix unitaire payé par le client (inclut la commission Duumini).
+   *
+   * C'est la valeur calculée côté backend au moment de la commande, puis
+   * stockée dans order_items.unit_price (snapshot). Les éventuelles
+   * modifications futures du prix produit n'impactent PAS cette commande.
    */
   unit_price: number;
 

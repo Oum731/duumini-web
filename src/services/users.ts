@@ -52,13 +52,17 @@ export async function createUser(payload: {
   });
 }
 
-/** ❗ Edition des champs SANS rôle */
+/** ❗ Edition des champs SANS rôle (admin) */
 export async function updateUser(
   id: number,
   payload: {
     phone: string;
     first_name: string | null;
     last_name: string | null;
+    ville?: string | null;
+    commune?: string | null;
+    quartier?: string | null;
+    sexe?: "M" | "F" | null;
   }
 ) {
   return http<User>(`/api/user/${id}`, {

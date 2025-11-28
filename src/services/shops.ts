@@ -31,18 +31,23 @@ export type ShopFiles = {
 /* ====== Stats d'une boutique (admin ou vendeur propriétaire) ====== */
 /**
  * Structure renvoyée par GET /api/shops/:id/stats
- * - turnover = CA basé sur le prix NORMAL du produit (products.price), hors frais de livraison
- * - duumini  = commission Duumini (pourcentage du prix normal, selon la sous-catégorie)
- * - top_products.total_amount = CA 30j pour ce produit (toujours sur le prix normal, hors livraison)
+ *
+ * 🔹 Côté backend (voir api/routes/shops.js) :
+ * - order_items.unit_price = prix CLIENT payé (snapshot au moment de la commande)
+ * - turnover = CA basé sur le prix CLIENT (unit_price), hors frais de livraison
+ * - duumini  = commission Duumini calculée comme pourcentage du prix client,
+ *              selon la sous-catégorie du produit (18% food, 11% market/other)
+ * - top_products.total_amount = CA 30j pour ce produit (toujours sur le prix client,
+ *                               hors frais de livraison)
  */
 export type ShopStats = {
   turnover: {
-    day: number;   // CA (prix normal vendeur) du jour, hors livraison
-    month: number; // CA (prix normal vendeur) du mois
-    year: number;  // CA (prix normal vendeur) de l'année
+    day: number;   // CA client du jour (somme qty * unit_price), hors livraison
+    month: number; // CA client du mois
+    year: number;  // CA client de l'année
   };
   duumini: {
-    day: number;   // Commission Duumini du jour (pourcentage du prix normal, hors livraison)
+    day: number;   // Commission Duumini du jour (sur prix client, hors livraison)
     month: number; // Commission Duumini du mois
     year: number;  // Commission Duumini de l'année
   };
@@ -50,7 +55,7 @@ export type ShopStats = {
     product_id: number;
     name: string;
     total_qty: number;
-    total_amount: number; // CA 30j pour ce produit (prix normal, hors livraison)
+    total_amount: number; // CA 30j pour ce produit (prix client, hors livraison)
     cover?: string | null;
   }[];
 };

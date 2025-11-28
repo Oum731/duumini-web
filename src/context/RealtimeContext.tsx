@@ -11,40 +11,147 @@ import { io, type Socket } from "socket.io-client";
 import { subscribeSSE, type ServerEvent } from "../services/events";
 import { getAccessToken } from "../services/auth";
 import { useAuth } from "./AuthContext";
-import { API_BASE } from "../services/http"; // ✅ très important
+import { API_BASE } from "../services/http";
+
+type NotificationKind = "GENERIC" | "ORDER_CREATED" | "ORDER_STATUS";
 
 type RealtimeContextType = {
   socket: Socket | null;
+  lastNotification?: {
+    title: string;
+    message: string;
+    href?: string;
+  } | null;
+  clearNotification: () => void;
 };
 
-const RealtimeContext = createContext<RealtimeContextType>({ socket: null });
+const RealtimeContext = createContext<RealtimeContextType>({
+  socket: null,
+  lastNotification: null,
+  clearNotification: () => {},
+});
+
+// 🔊 Audios (lazy, pour éviter les soucis SSR)
+let audioGeneric: HTMLAudioElement | null = null;
+let audioOrderCreated: HTMLAudioElement | null = null;
+let audioOrderStatus: HTMLAudioElement | null = null;
+
+function getAudioForKind(kind: NotificationKind): HTMLAudioElement | null {
+  if (typeof Audio === "undefined") return null;
+
+  if (kind === "ORDER_CREATED") {
+    if (!audioOrderCreated) {
+      audioOrderCreated = new Audio("/sounds/notify-order-created.mp3");
+    }
+    return audioOrderCreated;
+  }
+
+  if (kind === "ORDER_STATUS") {
+    if (!audioOrderStatus) {
+      audioOrderStatus = new Audio("/sounds/notify-order-status.mp3");
+    }
+    return audioOrderStatus;
+  }
+
+  if (!audioGeneric) {
+    audioGeneric = new Audio("/sounds/notify-generic.mp3");
+  }
+  return audioGeneric;
+}
+
+/** 🔊 Joue un son selon le type de notification */
+function playSound(kind: NotificationKind) {
+  try {
+    const el = getAudioForKind(kind);
+    if (!el) return;
+    el.currentTime = 0;
+    el.volume = 0.9;
+    el.play().catch(() => {});
+  } catch {
+    // ignore
+  }
+}
+
+/** 📳 Vibre selon le type de notification (si supporté) */
+function vibrate(kind: NotificationKind) {
+  if (typeof navigator === "undefined") return;
+  const anyNav = navigator as any;
+  if (!anyNav.vibrate) return;
+
+  let pattern: number[] | number = 60;
+  if (kind === "ORDER_CREATED") {
+    // vibration plus forte pour nouvelle commande
+    pattern = [140, 80, 140];
+  } else if (kind === "ORDER_STATUS") {
+    // vibration double pour changement de statut
+    pattern = [90, 50, 90];
+  } else {
+    pattern = 60;
+  }
+
+  try {
+    anyNav.vibrate(pattern);
+  } catch {
+    // ignore
+  }
+}
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const sseRef = useRef<{ close: () => void } | null>(null);
 
-  // état exposé pour rerender
   const [socketState, setSocketState] = useState<Socket | null>(null);
+  const [lastNotification, setLastNotification] =
+    useState<RealtimeContextType["lastNotification"]>(null);
+
+  function clearNotification() {
+    setLastNotification(null);
+  }
+
+  /** Affiche la bulle + toast + son + vibration */
+  function showToast(data: {
+    title?: string;
+    body?: string;
+    href?: string;
+    kind?: NotificationKind;
+  }) {
+    const kind: NotificationKind = data.kind || "GENERIC";
+
+    playSound(kind);
+    vibrate(kind);
+
+    setLastNotification({
+      title: data.title || "Notification",
+      message: data.body || "",
+      href: data.href,
+    });
+
+    // Optionnel : toast Bootstrap globale si elle existe
+    // @ts-ignore
+    window?.duuminiToast?.({
+      title: data.title || "Notification",
+      message: data.body || "",
+    });
+  }
 
   useEffect(() => {
     const userId = user?.id;
 
-    // Pas d'utilisateur → on ferme tout
     if (!userId) {
-      if (socketRef.current) {
-        try {
-          socketRef.current.disconnect();
-        } catch {}
-        socketRef.current = null;
-      }
-      if (sseRef.current) {
-        try {
-          sseRef.current.close();
-        } catch {}
-        sseRef.current = null;
-      }
+      // 🔴 Pas d'utilisateur → on ferme tout
+      try {
+        socketRef.current?.disconnect();
+      } catch {}
+      socketRef.current = null;
+
+      try {
+        sseRef.current?.close();
+      } catch {}
+      sseRef.current = null;
+
       setSocketState(null);
+      setLastNotification(null);
       return;
     }
 
@@ -83,12 +190,22 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
         console.log("[WS] welcome", d);
       });
 
+      // 🔔 Notifs temps réel via WS
       socket.on("notify", (data: any) => {
         console.log("[WS] notify", data);
-        // @ts-ignore - toast global Bootstrap
-        window?.duuminiToast?.({
-          title: data.title || "Notification",
-          message: data.body || "",
+        const rawType = (data?.type || "").toString().toUpperCase();
+        const kind: NotificationKind =
+          rawType === "ORDER_CREATED"
+            ? "ORDER_CREATED"
+            : rawType === "ORDER_STATUS"
+            ? "ORDER_STATUS"
+            : "GENERIC";
+
+        showToast({
+          title: data.title,
+          body: data.body,
+          href: data.href,
+          kind,
         });
       });
     }
@@ -102,15 +219,23 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       console.log("[SSE] event", evt);
 
       if (evt.type === "ORDER_CREATED") {
-        // @ts-ignore
-        window?.duuminiToast?.({
+        showToast({
           title: evt.payload?.title || "Nouvelle commande",
-          message: evt.payload?.body || "",
+          body: evt.payload?.body || "",
+          href: "/orders",
+          kind: "ORDER_CREATED",
         });
       }
 
       if (evt.type === "ORDER_STATUS") {
-        // plus tard : refresh listes commandes
+        showToast({
+          title: evt.payload?.title || "Commande mise à jour",
+          body: evt.payload?.body || "",
+          href: evt.payload?.order_id
+            ? `/orders?id=${evt.payload.order_id}`
+            : "/orders",
+          kind: "ORDER_STATUS",
+        });
       }
     });
 
@@ -130,7 +255,9 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   return (
-    <RealtimeContext.Provider value={{ socket: socketState }}>
+    <RealtimeContext.Provider
+      value={{ socket: socketState, lastNotification, clearNotification }}
+    >
       {children}
     </RealtimeContext.Provider>
   );

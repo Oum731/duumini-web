@@ -9,10 +9,9 @@ import "./theme.css";
 import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
+import { LocationProvider } from "./context/LocationContext";
 
-// ❌ On retire complètement registerSW :
-// import { registerSW } from "virtual:pwa-register";
-// et tout le bloc PWA / actualisation auto
+// ❌ PWA retiré : plus de registerSW / actualisation auto ici
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -24,7 +23,9 @@ createRoot(document.getElementById("root")!).render(
     >
       <AuthProvider>
         <RealtimeProvider>
-          <App />
+          <LocationProvider>
+            <App />
+          </LocationProvider>
         </RealtimeProvider>
       </AuthProvider>
     </BrowserRouter>

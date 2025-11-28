@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
-import ProductRating from "./ProductRating"; // ✅ Note
+import ProductRating from "./ProductRating";
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -27,31 +27,29 @@ function shortText(s?: string | null, max = 200) {
   return t.slice(0, max - 1) + "…";
 }
 
-/** URL de partage (rubrique) */
+/** URL de partage → route /share/product/:id sur le domaine qui sert la page OG */
 function buildProductUrl(p: Product) {
-  const base =
-    typeof window !== "undefined" && window.location.origin
-      ? window.location.origin
-      : "https://duumini.com";
+  const shareBase =
+    // @ts-ignore
+    (typeof import.meta !== "undefined" &&
+      (import.meta as any).env?.VITE_SHARE_BASE_URL) ||
+    "https://duumini-api.onrender.com";
 
-  const sub = (p.sub_category || "").toString().toLowerCase();
-  const path = sub === "food" ? "/african-food" : "/african-market";
-
-  return `${base}${path}`;
+  return `${shareBase}/share/product/${p.id}`;
 }
 
 /* ===== Component ===== */
 type Props = { product: Product; onAdd?: (p: Product) => void };
 
 export default function ProductCard({ product, onAdd }: Props) {
-  // 🔹 Gestion statut actif / stock
+  // Statut / stock
   const stock = (product as any).stock;
-  const isOutOfStock = stock === 0; // 0 = "en rupture"
+  const isOutOfStock = stock === 0;
   const isActive =
     ((product as any).is_active ?? (product as any).active ?? 1) ? true : false;
   const isAvailable = isActive && !isOutOfStock;
 
-  // ⛔️ Produit désactivé → on ne l'affiche pas du tout
+  // Produit désactivé → ne pas l'afficher
   if (!isActive) {
     return null;
   }
@@ -59,7 +57,7 @@ export default function ProductCard({ product, onAdd }: Props) {
   const cover = product.cover || product.images?.[0]?.url || null;
   const coverUrl = imgUrl(cover);
 
-  // 🔹 Image de la boutique (logo prioritaire, sinon cover)
+  // Image boutique
   const shopImage = imgUrl(product.shop_logo || product.shop_cover || null);
   const hasShopImage = !!(product.shop_logo || product.shop_cover);
 
@@ -88,8 +86,17 @@ export default function ProductCard({ product, onAdd }: Props) {
   };
 
   async function shareProductWithImage() {
+    const navAny: any =
+      typeof navigator !== "undefined" ? (navigator as any) : null;
+
+    // 1) Essayer image + texte + URL (Web Share Level 2)
     try {
-      if (coverUrl && typeof navigator !== "undefined" && "share" in navigator) {
+      if (
+        coverUrl &&
+        navAny &&
+        typeof navAny.share === "function" &&
+        typeof navAny.canShare === "function"
+      ) {
         const resp = await fetch(coverUrl, { mode: "cors" });
         const blob = await resp.blob();
         const ext = blob.type.split("/")[1] || "jpg";
@@ -101,14 +108,9 @@ export default function ProductCard({ product, onAdd }: Props) {
             lastModified: Date.now(),
           }
         );
-        // @ts-ignore
-        if (
-          typeof navigator.canShare === "function" &&
-          // @ts-ignore
-          navigator.canShare({ files: [file] })
-        ) {
-          // @ts-ignore
-          await navigator.share({
+
+        if (navAny.canShare({ files: [file] })) {
+          await navAny.share({
             title: product.name,
             text: shareText,
             url: shareUrl,
@@ -118,14 +120,30 @@ export default function ProductCard({ product, onAdd }: Props) {
         }
       }
     } catch {
-      // ignore
+      // on tombe sur les fallbacks
     }
+
+    // 2) Partage natif sans fichier
+    try {
+      if (navAny && typeof navAny.share === "function") {
+        await navAny.share({
+          title: product.name,
+          text: shareText,
+          url: shareUrl,
+        });
+        return;
+      }
+    } catch {
+      // on continue
+    }
+
+    // 3) Fallback: on copie juste le lien
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // ignore
+      // rien de plus à faire
     }
   }
 
@@ -157,7 +175,6 @@ export default function ProductCard({ product, onAdd }: Props) {
             />
           )}
 
-          {/* 🔴 Badge rupture de stock */}
           {isOutOfStock && (
             <span
               className="badge bg-danger position-absolute top-0 start-0 m-2"
@@ -167,18 +184,13 @@ export default function ProductCard({ product, onAdd }: Props) {
             </span>
           )}
 
-          {/* Badge canal (Food / Market) → côté droit */}
           <span
             className={`badge position-absolute top-0 end-0 m-2 border ${tag.cls}`}
             style={{ backdropFilter: "blur(4px)" }}
           ></span>
 
-          {/* 🔹 Avatar boutique en bas à gauche */}
           {hasShopImage && (
-            <div
-              className="position-absolute"
-              style={{ bottom: 8, left: 8 }}
-            >
+            <div className="position-absolute" style={{ bottom: 8, left: 8 }}>
               <img
                 src={shopImage}
                 alt={product.shop_name || "Boutique"}
@@ -195,7 +207,6 @@ export default function ProductCard({ product, onAdd }: Props) {
         </div>
 
         <div className="card-body d-flex flex-column">
-          {/* ✅ Titre cliquable → ouvre la même modale que "Voir" */}
           <h3
             className="h6 mb-1"
             title={product.name}
@@ -211,17 +222,12 @@ export default function ProductCard({ product, onAdd }: Props) {
             </button>
           </h3>
 
-          {/* Nom boutique sous le titre (optionnel) */}
           {product.shop_name && (
-            <div className="small text-muted mb-1">
-              {product.shop_name}
-            </div>
+            <div className="small text-muted mb-1">{product.shop_name}</div>
           )}
 
-          {/* ✅ Prix sans décimales */}
           <div className="fw-semibold mb-1">{moneyMAD(product.price)}</div>
 
-          {/* ✅ Note du produit sous le prix */}
           <div className="mb-2">
             <ProductRating productId={product.id} />
           </div>
@@ -246,7 +252,6 @@ export default function ProductCard({ product, onAdd }: Props) {
         </div>
       </div>
 
-      {/* ===== Modal Voir ===== */}
       {open && (
         <div
           className="modal d-block"
@@ -296,7 +301,6 @@ export default function ProductCard({ product, onAdd }: Props) {
                       />
                     )}
 
-                    {/* Avatar boutique dans la modale */}
                     {hasShopImage && (
                       <div
                         className="position-absolute"
@@ -319,14 +323,15 @@ export default function ProductCard({ product, onAdd }: Props) {
 
                   <div className="col-12 col-md-6 d-flex flex-column">
                     <div className="d-flex align-items-center gap-2 mb-2">
-                      <span className="h5 m-0">{moneyMAD(product.price)}</span>
+                      <span className="h5 m-0">
+                        {moneyMAD(product.price)}
+                      </span>
                       <span className={`badge border ${tag.cls}`}></span>
                       {isOutOfStock && (
                         <span className="badge bg-danger">En rupture</span>
                       )}
                     </div>
 
-                    {/* ✅ Note dans la modale */}
                     <div className="mb-2">
                       <ProductRating productId={product.id} />
                     </div>
@@ -345,7 +350,9 @@ export default function ProductCard({ product, onAdd }: Props) {
                         onClick={handleAdd}
                         disabled={!isAvailable}
                       >
-                        {isOutOfStock ? "En rupture" : "+ Ajouter au panier"}
+                        {isOutOfStock
+                          ? "En rupture"
+                          : "+ Ajouter au panier"}
                       </button>
                       <button
                         className="btn btn-outline-secondary"

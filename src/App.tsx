@@ -45,6 +45,12 @@ import {
 import TopProductsPage from "./pages/TopProductsPage";
 import GuestOrderWidget from "./components/GuestOrderWidget";
 
+// ✅ Localisation (Casablanca / Marrakech)
+import LocationGate from "./components/LocationGate";
+
+// 🔔 Bulle de notification temps réel (socket/SSE)
+import NotificationBubble from "./components/NotificationBubble";
+
 function Page({ title }: { title: string }) {
   return (
     <div className="container-xxl py-4">
@@ -242,7 +248,9 @@ function GlobalRatingModal(props: {
                 <div className="alert alert-danger py-1 small">{error}</div>
               )}
               {success && (
-                <div className="alert alert-success py-1 small">{success}</div>
+                <div className="alert alert-success py-1 small">
+                  {success}
+                </div>
               )}
             </div>
             <div className="modal-footer">
@@ -276,7 +284,7 @@ export default function App() {
     useState<PendingProductRating | null>(null);
 
   // Vérifie au chargement s'il y a un produit à noter (commande livrée > 24h)
-    useEffect(() => {
+  useEffect(() => {
     if (!user) {
       setPendingRating(null);
       return;
@@ -315,77 +323,86 @@ export default function App() {
     };
   }, [user]);
 
-
   return (
     <CartProvider>
-      <div className="min-vh-100 d-flex flex-column">
-        <ScrollToTop />
-        <NavbarWithCount />
-        <main className="flex-fill">
-          <React.Suspense
-            fallback={
-              <div className="container-xxl py-5 text-muted">Chargement…</div>
-            }
-          >
-            <Routes>
-              <Route path="/" element={<LandingRedirect />} />
+      {/* 🔐 Gate de localisation : Casablanca / Marrakech
+          - Invite seulement
+          - 1 seule fois (localStorage) */}
+      <LocationGate>
+        <div className="min-vh-100 d-flex flex-column">
+          <ScrollToTop />
+          <NavbarWithCount />
+          <main className="flex-fill">
+            <React.Suspense
+              fallback={
+                <div className="container-xxl py-5 text-muted">
+                  Chargement…
+                </div>
+              }
+            >
+              <Routes>
+                <Route path="/" element={<LandingRedirect />} />
 
-              {/* Public */}
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/verify" element={<VerifyAndResetPage />} />
-              <Route path="/checkout" element={<CheckoutPage />} />
-              <Route path="/orders" element={<OrdersHistoryPage />} />
-              <Route path="/contact" element={<ContactPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/cart" element={<CartPage />} />
+                {/* Public */}
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/verify" element={<VerifyAndResetPage />} />
+                <Route path="/checkout" element={<CheckoutPage />} />
+                <Route path="/orders" element={<OrdersHistoryPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/cart" element={<CartPage />} />
 
-              {/* ✅ Vitrine */}
-              <Route path="/african-food" element={<AfricanFood />} />
-              <Route path="/african-market" element={<AfricanMarket />} />
-              <Route path="/products/:idOrSlug" element={<ProductView />} />
-              <Route path="/top-products" element={<TopProductsPage />} />
+                {/* ✅ Vitrine */}
+                <Route path="/african-food" element={<AfricanFood />} />
+                <Route path="/african-market" element={<AfricanMarket />} />
+                <Route path="/products/:idOrSlug" element={<ProductView />} />
+                <Route path="/top-products" element={<TopProductsPage />} />
 
-              {/* ✅ Pages légales */}
-              <Route path="/legal/privacy" element={<PrivacyPolicy />} />
-              <Route path="/legal/terms" element={<Terms />} />
-              <Route path="/legal/returns" element={<ReturnsPolicy />} />
+                {/* ✅ Pages légales */}
+                <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+                <Route path="/legal/terms" element={<Terms />} />
+                <Route path="/legal/returns" element={<ReturnsPolicy />} />
 
-              {/* Admin protégé */}
-              <Route path="/admin" element={<ProtectedAdmin />}>
-                <Route element={<AdminShell />}>
-                  <Route index element={<AdminHome />} />
-                  <Route path="orders" element={<OrdersAdminPage />} />
-                  <Route path="products" element={<ProductsAdminPage />} />
-                  <Route path="shops" element={<ShopsAdminPage />} />
-                  <Route path="users" element={<UsersAdminPage />} />
+                {/* Admin protégé */}
+                <Route path="/admin" element={<ProtectedAdmin />}>
+                  <Route element={<AdminShell />}>
+                    <Route index element={<AdminHome />} />
+                    <Route path="orders" element={<OrdersAdminPage />} />
+                    <Route path="products" element={<ProductsAdminPage />} />
+                    <Route path="shops" element={<ShopsAdminPage />} />
+                    <Route path="users" element={<UsersAdminPage />} />
+                  </Route>
                 </Route>
-              </Route>
 
-              {/* ✅ Vendeur protégé : ma boutique */}
-              <Route path="/ma-boutique" element={<ProtectedVendor />}>
-                <Route index element={<ShopsAdminPage />} />
-              </Route>
+                {/* ✅ Vendeur protégé : ma boutique */}
+                <Route path="/ma-boutique" element={<ProtectedVendor />}>
+                  <Route index element={<ShopsAdminPage />} />
+                </Route>
 
-              {/* Divers */}
-              <Route path="*" element={<Page title="Page introuvable" />} />
-            </Routes>
-          </React.Suspense>
-        </main>
+                {/* Divers */}
+                <Route path="*" element={<Page title="Page introuvable" />} />
+              </Routes>
+            </React.Suspense>
+          </main>
 
-        {/* ✅ Widget invité global (s'auto-masque si user connecté) */}
-        <GuestOrderWidget />
+          {/* ✅ Widget invité global (s'auto-masque si user connecté) */}
+          <GuestOrderWidget />
 
-        <ScrollTopButton threshold={380} offsetBottom={84} offsetRight={16} />
-        <FloatingCartGuard />
-        <Footer />
+          <ScrollTopButton threshold={380} offsetBottom={84} offsetRight={16} />
+          <FloatingCartGuard />
+          <Footer />
 
-        {pendingRating && (
-          <GlobalRatingModal
-            pending={pendingRating}
-            onClose={() => setPendingRating(null)}
-          />
-        )}
-      </div>
+          {/* 🔔 Bulle de notification temps réel (socket/SSE, PWA-friendly) */}
+          <NotificationBubble />
+
+          {pendingRating && (
+            <GlobalRatingModal
+              pending={pendingRating}
+              onClose={() => setPendingRating(null)}
+            />
+          )}
+        </div>
+      </LocationGate>
     </CartProvider>
   );
 }

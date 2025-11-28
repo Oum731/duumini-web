@@ -9,15 +9,22 @@ export type Product = {
   slug: string;
 
   /**
-   * 💰 Prix affiché côté client (prix vendeur + commission Duumini)
+   * 💰 Prix affiché côté client
+   * → C'est le prix saisi par le vendeur/admin (ex: 50).
    * → C'est cette valeur qui doit être utilisée sur le site / app côté client.
    */
   price: number;
 
   /**
-   * 💼 Prix de base saisi par le vendeur/admin (hors commission Duumini).
-   * - Si présent, c’est cette valeur que le back-office doit éditer.
-   * - La commission est ensuite ajoutée côté backend pour calculer `price`.
+   * 💼 Montant NET pour le vendeur (calculé côté backend).
+   *
+   * Exemple avec un produit FOOD (18%) :
+   *   - vendeur saisit 50  → price = 50
+   *   - commission Duumini = 50 * 0.18 = 9
+   *   - vendor_price       = 41
+   *
+   * → Ce champ est renvoyé par l'API, mais normalement
+   *   le front ne l'envoie PAS lors de la création / mise à jour.
    */
   vendor_price?: number | null;
 
@@ -96,24 +103,33 @@ export async function getProduct(id: number) {
 }
 
 /* ---------- Create ---------- */
-/** Création:
+/**
+ * Création:
  *  - VENDEUR: shop_id déduit de l'utilisateur connecté côté API
- *  - ADMIN: shop_id doit être fourni (sélect "Boutique" dans le back-office)
+ *  - ADMIN:   shop_id doit être fourni (sélect "Boutique" dans le back-office)
  *
  * 💡 IMPORTANT:
- *  - `vendor_price` = prix base saisi par vendeur/admin
- *  - `price` côté BDD = prix vendeur, la commission est ajoutée côté backend
- *  - Le backend renvoie ensuite `price` (client) + `vendor_price` (base)
+ *  - Le vendeur tape le prix FINAL client dans `price` (ex: 50).
+ *  - L'API stocke `price` tel quel.
+ *  - L'API calcule ensuite `vendor_price` = price - (price * taux Duumini)
+ *    et le renvoie au front.
+ *
+ * → Le back-office doit donc éditer le champ `price`.
  */
 export async function createProduct(draft: Partial<Product>, files: File[]) {
   const fd = new FormData();
   if (draft.name) fd.append("name", draft.name);
 
-  // 💰 Prix base envoyé à l'API = vendor_price si dispo, sinon price
-  const basePrice =
-    draft.vendor_price != null ? draft.vendor_price : draft.price;
-  if (basePrice != null) {
-    fd.append("price", String(basePrice));
+  // 💰 Prix envoyé à l'API = prix client saisi par le vendeur/admin
+  // (compat: si jamais quelqu'un utilise encore vendor_price, on le prend en fallback)
+  const finalPrice =
+    draft.price != null
+      ? draft.price
+      : draft.vendor_price != null
+      ? draft.vendor_price
+      : null;
+  if (finalPrice != null) {
+    fd.append("price", String(finalPrice));
   }
 
   if (draft.currency) fd.append("currency", draft.currency);
@@ -177,14 +193,22 @@ export async function updateProduct(
   const fd = new FormData();
   if (draft.name) fd.append("name", draft.name);
 
-  // 💰 Même logique que create:
-  // - si vendor_price présent → c'est le prix base à jour
-  // - sinon on tombe en fallback sur draft.price (mais attention: c'est le prix client
-  //   si on ne met pas à jour l'UI backoffice pour éditer vendor_price).
-  const basePrice =
-    draft.vendor_price != null ? draft.vendor_price : draft.price;
-  if (basePrice != null) {
-    fd.append("price", String(basePrice));
+  /**
+   * 💰 Même logique que create:
+   * - le champ édité dans le back-office doit être `price`
+   *   (prix client final saisi par le vendeur).
+   * - par compat, si `price` n'est pas renseigné mais `vendor_price` l'est,
+   *   on utilisera `vendor_price` comme valeur de `price` (mais l'idéal est
+   *   que l'UI n'envoie que `price`).
+   */
+  const finalPrice =
+    draft.price != null
+      ? draft.price
+      : draft.vendor_price != null
+      ? draft.vendor_price
+      : null;
+  if (finalPrice != null) {
+    fd.append("price", String(finalPrice));
   }
 
   if (draft.currency) fd.append("currency", draft.currency);

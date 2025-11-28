@@ -17,15 +17,17 @@ import {
   me,
   getCurrentUser,
   updateProfile,
+  mapCityCodeToVille, // ✅ helper ville (CASABLANCA/MARRAKECH → Casablanca/Marrakech)
 } from "../services/auth";
 import { http } from "../services/http";
 import {
   normalizePhoneInput,
   isValidPhoneIntl,
 } from "../utils/phone";
+import { useLocationCity } from "../context/LocationContext"; // ✅ ville choisie (CASABLANCA / MARRAKECH)
 
-/* ====== Données (Casablanca) ====== */
-const VILLE_FIXE = "Casablanca";
+/* ====== Données (ville par défaut) ====== */
+const DEFAULT_VILLE = "Casablanca";
 
 /** Communes/arrondissements courants de Casablanca */
 const COMMUNES = [
@@ -304,6 +306,13 @@ async function apiOtpStart(
 export default function ProfilePage() {
   const navigate = useNavigate();
   const [sp] = useSearchParams();
+  const { city } = useLocationCity(); // ✅ CASABLANCA / MARRAKECH
+
+  // Ville utilisée pour ce formulaire (non connecté ou fallback)
+  const villeFromContext = useMemo(
+    () => mapCityCodeToVille(city) || DEFAULT_VILLE,
+    [city]
+  );
 
   /* User state */
   const [user, setUser] = useState<User | null>(() => getCurrentUser());
@@ -456,7 +465,7 @@ export default function ProfilePage() {
         password: regPassword,
         first_name: regFirstName || undefined,
         last_name: regLastName || undefined,
-        ville: VILLE_FIXE,
+        ville: villeFromContext, // ✅ ville selon LocationGate (ex: Casablanca / Marrakech)
         commune: communeRegisterValue || null,
         quartier: regQuartierText.trim(),
         sexe: regSexe,
@@ -498,7 +507,9 @@ export default function ProfilePage() {
         first_name: firstName,
         last_name: lastName,
         phone: phoneVal,
-        ville: VILLE_FIXE,
+        // ✅ si l'utilisateur a déjà une ville en DB, on garde celle-là,
+        // sinon on utilise la ville du LocationGate (context)
+        ville: (user as any)?.ville || villeFromContext,
         commune: communeEditValue || null,
         quartier: editQuartierText.trim(),
         sexe: editSexe,
@@ -551,6 +562,8 @@ export default function ProfilePage() {
 
   // ——— CONNECTÉ ———
   if (user) {
+    const effectiveVille = (user as any)?.ville || villeFromContext;
+
     return (
       <div className="container-xxl py-4">
         {err && <div className="alert alert-danger">{err}</div>}
@@ -693,10 +706,14 @@ export default function ProfilePage() {
                       )}
                     </div>
 
-                    {/* Ville (figée) */}
+                    {/* Ville (figée sur la valeur utilisateur ou contexte) */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">Ville</label>
-                      <input className="form-control" value={VILLE_FIXE} disabled />
+                      <input
+                        className="form-control"
+                        value={effectiveVille}
+                        disabled
+                      />
                     </div>
 
                     {/* Commune (modal) */}
@@ -749,6 +766,7 @@ export default function ProfilePage() {
                     </div>
 
                     {/* Quartier (TEXTE LIBRE) */}
+
                     <div className="col-12 col-md-6">
                       <label className="form-label">
                         Quartier <span className="text-danger">*</span>
@@ -849,7 +867,7 @@ export default function ProfilePage() {
                     <div className="col-12 col-md-6">
                       <div className="text-muted small">Ville</div>
                       <div className="fw-semibold">
-                        {(user as any).ville || VILLE_FIXE}
+                        {(user as any).ville || villeFromContext}
                       </div>
                     </div>
                     <div className="col-12 col-md-6">
@@ -1063,10 +1081,10 @@ export default function ProfilePage() {
                     />
                   </div>
 
-                  {/* Ville (fixe) */}
+                  {/* Ville (dérivée du LocationGate) */}
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
-                    <input className="form-control" value={VILLE_FIXE} disabled />
+                    <input className="form-control" value={villeFromContext} disabled />
                   </div>
 
                   {/* Commune (modal) */}
