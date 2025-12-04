@@ -5,6 +5,7 @@ import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
 import ProductRating from "./ProductRating";
 import { useLocationCity, type CityCode } from "../context/LocationContext";
+import { trackAddToCart } from "../lib/analytics";
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -50,9 +51,9 @@ function normalizeCityLabel(raw: string | null | undefined) {
   return String(raw)
     .toUpperCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // accents
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, "")
-    .trim(); // CASABLANCA / MARRAKECH
+    .trim();
 }
 
 /**
@@ -63,7 +64,6 @@ function normalizeCityLabel(raw: string | null | undefined) {
  */
 function isProductAllowedForCity(product: Product, city: CityCode | null) {
   if (!city) {
-    // Si la ville n'est pas encore choisie, on laisse passer (LocationGate se charge du reste)
     return true;
   }
 
@@ -73,19 +73,16 @@ function isProductAllowedForCity(product: Product, city: CityCode | null) {
   const rawShopCityCode = anyP.shop_city_code ?? null;
   const rawShopCity = anyP.shop_city ?? null;
 
-  // 1) Code de ville prioritaire (CASABLANCA / MARRAKECH)
   if (rawShopCityCode) {
     const normCode = normalizeCityLabel(String(rawShopCityCode));
     return normCode === userCityNorm;
   }
 
-  // 2) Libellé texte de la ville de la boutique
   if (rawShopCity) {
     const normCity = normalizeCityLabel(String(rawShopCity));
     return normCity === userCityNorm;
   }
 
-  // 3) Aucune info sur la ville de la boutique → on laisse passer
   return true;
 }
 
@@ -95,20 +92,17 @@ type Props = { product: Product; onAdd?: (p: Product) => void };
 export default function ProductCard({ product, onAdd }: Props) {
   const { city } = useLocationCity();
 
-  // Statut / stock
   const stock = (product as any).stock;
   const isOutOfStock = stock === 0;
   const isActive =
     ((product as any).is_active ?? (product as any).active ?? 1) ? true : false;
   const isAvailable = isActive && !isOutOfStock;
 
-  // Filtrage selon la VILLE DE LA BOUTIQUE
   const isCityAllowed = useMemo(
     () => isProductAllowedForCity(product, city),
     [product, city]
   );
 
-  // Produit désactivé ou boutique dans une autre ville → ne pas l'afficher
   if (!isActive || !isCityAllowed) {
     return null;
   }
@@ -116,7 +110,6 @@ export default function ProductCard({ product, onAdd }: Props) {
   const cover = product.cover || product.images?.[0]?.url || null;
   const coverUrl = imgUrl(cover);
 
-  // Image boutique
   const shopImage = imgUrl(product.shop_logo || product.shop_cover || null);
   const hasShopImage = !!(product.shop_logo || product.shop_cover);
 
@@ -141,19 +134,29 @@ export default function ProductCard({ product, onAdd }: Props) {
 
   const handleAdd = () => {
     if (!isAvailable) return;
+
     onAdd ? onAdd(product) : add(product, 1);
+
+    const anyP = product as any;
+    const priceClient =
+      typeof anyP.price_client === "number" ? anyP.price_client : product.price;
+    const category =
+      anyP.category_name || anyP.sub_category || product.sub_category || "";
+
+    trackAddToCart({
+      productId: product.id,
+      name: product.name,
+      price: priceClient || 0,
+      quantity: 1,
+      currency: "MAD",
+      category,
+    });
   };
 
-  /**
-   * Partage produit :
-   *  - on partage seulement URL + texte
-   *  - l'image vient des meta OG/Twitter servies par /share/product/:id (BDD)
-   */
   async function shareProduct() {
     const navAny: any =
       typeof navigator !== "undefined" ? (navigator as any) : null;
 
-    // 1) Partage natif (Web Share API)
     try {
       if (navAny && typeof navAny.share === "function") {
         await navAny.share({
@@ -163,18 +166,13 @@ export default function ProductCard({ product, onAdd }: Props) {
         });
         return;
       }
-    } catch {
-      // fallback
-    }
+    } catch {}
 
-    // 2) Fallback: copier le lien
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // rien de plus à faire
-    }
+    } catch {}
   }
 
   return (

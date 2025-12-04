@@ -51,6 +51,9 @@ import LocationGate from "./components/LocationGate";
 // 🔔 Bulle de notification temps réel (socket/SSE)
 import NotificationBubble from "./components/NotificationBubble";
 
+// ✅ Analytics (Meta Pixel via GTM / dataLayer)
+import { trackPageView } from "./lib/analytics";
+
 function Page({ title }: { title: string }) {
   return (
     <div className="container-xxl py-4">
@@ -69,6 +72,19 @@ function ScrollToTop() {
     }
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname, search]);
+  return null;
+}
+
+/** 📊 Envoie un event page_view à chaque changement de route (SPA) */
+function PageViewTracker() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    // Exemple: "/african-food?page=2"
+    const path = `${pathname}${search || ""}`;
+    trackPageView(path);
+  }, [pathname, search]);
+
   return null;
 }
 
@@ -331,6 +347,8 @@ export default function App() {
       <LocationGate>
         <div className="min-vh-100 d-flex flex-column">
           <ScrollToTop />
+          {/* 📊 Tracking des pages (SPA) */}
+          <PageViewTracker />
           <NavbarWithCount />
           <main className="flex-fill">
             <React.Suspense

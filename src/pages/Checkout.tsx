@@ -12,6 +12,7 @@ import {
   normalizePhoneInput,
   isValidPhoneIntl,
 } from "../utils/phone";
+import { trackPurchase } from "../lib/analytics";
 
 /* ——— Style local : focus rouge + état loading ——— */
 const FocusAndLoadingStyle = () => (
@@ -345,6 +346,29 @@ export default function CheckoutPage() {
       const displayCode = numericId
         ? numericId.toString(36).toUpperCase()
         : String(orderId ?? "").toUpperCase();
+
+      // 🧾 Tracking Purchase (Meta Pixel via GTM / dataLayer)
+      try {
+        trackPurchase({
+          orderId: orderId ?? displayCode,
+          value: grandTotal,
+          currency: "MAD",
+          items: lines.map((l) => {
+            const anyL = l as any;
+            const category =
+              anyL.category_name || anyL.sub_category || "" ;
+            return {
+              id: l.id,
+              name: l.name,
+              price: l.price,
+              quantity: l.qty,
+              category,
+            };
+          }),
+        });
+      } catch {
+        // tracking non bloquant
+      }
 
       // 🕒 Fenêtre ETA basée sur l'heure de création (ex: commande créée à 18h53)
       const minStart = delivery === "EXPRESS" ? 15 : 60;
