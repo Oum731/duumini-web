@@ -14,6 +14,14 @@ function imgUrl(u?: string | null) {
   return u;
 }
 
+function moneyMAD(n?: number | null) {
+  const v = Number(n || 0);
+  return `${v.toLocaleString("fr-FR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })} MAD`;
+}
+
 /* === Bandeau hors-ligne (écoute online/offline) === */
 function OfflineBanner() {
   const [online, setOnline] = useState<boolean>(
@@ -40,88 +48,55 @@ function OfflineBanner() {
   );
 }
 
-/* === Carte catégorie avec carrousel auto d’images produits (fondu) === */
-function CategoryCard(props: { to: string; title: string; images: string[] }) {
-  const { to, title, images } = props;
+/* === Carte produit “teaser” pour la Home === */
+function HomeProductCard(props: { product: Product; to: string }) {
+  const { product, to } = props;
 
-  const hasMany = images && images.length > 1;
-  const [index, setIndex] = useState(0);
-  const [fading, setFading] = useState(false);
+  const imageSrc = (() => {
+    const raw =
+      (product as any).cover ||
+      (product as any).image ||
+      (product as any).images?.[0]?.url ||
+      null;
+    return imgUrl(raw);
+  })();
 
-  const currentImg =
-    images && images.length > 0 ? images[index] : "/placeholder-category.png";
-
-  // Carrousel auto avec fondu
-  useEffect(() => {
-    if (!hasMany) return;
-
-    let intervalId: number | null = null;
-    let timeoutId: number | null = null;
-
-    intervalId = window.setInterval(() => {
-      // On lance le fondu
-      setFading(true);
-      timeoutId = window.setTimeout(() => {
-        setIndex((prev) => {
-          if (!images.length) return 0;
-          return (prev + 1) % images.length;
-        });
-        setFading(false);
-      }, 250); // durée du fondu (doit matcher la transition CSS)
-    }, 3500); // délai entre deux images
-
-    return () => {
-      if (intervalId !== null) window.clearInterval(intervalId);
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-    };
-  }, [hasMany, images.length, images]);
-
-  // Pré-chargement des images pour éviter les flashs de chargement
-  useEffect(() => {
-    images.forEach((src) => {
-      if (!src) return;
-      const i = new Image();
-      i.src = src;
-    });
-  }, [images]);
+  const name = (product as any).name ?? (product as any).title ?? "Produit";
+  const price =
+    (product as any).price_client ??
+    (product as any).price ??
+    (product as any).client_price ??
+    0;
 
   return (
-    <div className="col-12 col-md-6">
+    <div className="col-6 col-md-3">
       <Link
         to={to}
-        className="text-decoration-none d-block h-100"
-        aria-label={`Aller à ${title}`}
+        className="text-decoration-none text-reset d-block h-100"
+        aria-label={name}
       >
-        <div className="card border-0 shadow-sm h-100 overflow-hidden">
-          <div className="position-relative ratio ratio-16x9">
-            {currentImg && (
+        <div className="card border-0 shadow-sm h-100">
+          <div className="ratio ratio-1x1">
+            {imageSrc ? (
               <img
-                src={currentImg}
-                alt={title}
-                width={1280}
-                height={720}
+                src={imageSrc}
+                alt={name}
                 className="w-100 h-100 object-fit-cover"
+                loading="lazy"
                 decoding="async"
-                style={{
-                  opacity: fading ? 0 : 1,
-                  transition: "opacity 0.25s ease-in-out",
-                }}
               />
-            )}
-
-            {/* Overlay texte centré sur l'image */}
-            <div
-              className="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center text-center text-white px-3"
-              style={{
-                background:
-                  "linear-gradient(180deg, rgba(0,0,0,.35), rgba(0,0,0,.7))",
-              }}
-            >
-              <h3 className="h4 mb-1 fw-semibold">{title}</h3>
-              <div className="d-flex align-items-center gap-1 small opacity-75">
-                <span>Découvrir la sélection</span>
-                <ChevronRight size={16} aria-hidden="true" />
+            ) : (
+              <div className="bg-light w-100 h-100 d-flex align-items-center justify-content-center small text-muted">
+                Image à venir
               </div>
+            )}
+          </div>
+          <div className="card-body p-2">
+            <div className="small fw-semibold text-truncate" title={name}>
+              {name}
+            </div>
+            <div className="small text-muted mt-1">
+              {moneyMAD(price as number)}
             </div>
           </div>
         </div>
@@ -169,8 +144,9 @@ function NotificationsCTA() {
 }
 
 export default function Home() {
-  const [foodImages, setFoodImages] = useState<string[]>([]);
-  const [marketImages, setMarketImages] = useState<string[]>([]);
+  const [featured, setFeatured] = useState<Product[]>([]);
+  const [foodProducts, setFoodProducts] = useState<Product[]>([]);
+  const [marketProducts, setMarketProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
   useEffect(() => {
@@ -180,18 +156,16 @@ export default function Home() {
       try {
         setLoadingProducts(true);
 
-        // On récupère une liste de produits (adapter les paramètres si besoin)
         const res = await (listProducts as any)({
           page: 1,
-          pageSize: 50,
+          pageSize: 60,
         });
         const data = (res as any).data ?? res;
         const items: Product[] = data.items ?? data;
 
-        if (!items || !Array.isArray(items)) return;
-        if (cancelled) return;
+        if (!items || !Array.isArray(items) || cancelled) return;
 
-        // On ne garde que les produits actifs (comme dans ProductCard)
+        // On garde uniquement les produits actifs
         const active = items.filter((p: any) => {
           const isActive =
             (p.is_active ?? p.active ?? 1) &&
@@ -199,30 +173,25 @@ export default function Home() {
           return !!isActive;
         });
 
-        const toImageUrl = (p: Product): string => {
-          const raw = (p as any).cover || (p as any).images?.[0]?.url || null;
-          return imgUrl(raw);
-        };
-
         const food = active.filter(
-          (p) => (p.sub_category || "").toLowerCase() === "food"
+          (p: any) => (p.sub_category || "").toLowerCase() === "food"
         );
         const market = active.filter(
-          (p) => (p.sub_category || "").toLowerCase() !== "food"
+          (p: any) => (p.sub_category || "").toLowerCase() !== "food"
         );
 
-        const uniq = (arr: string[]) =>
-          Array.from(new Set(arr.filter(Boolean)));
-
-        const foodImgs = uniq(food.map(toImageUrl)).slice(0, 20);
-        const marketImgs = uniq(market.map(toImageUrl)).slice(0, 20);
+        // Sélections pour la Home
+        const featuredSelection = active.slice(0, 8); // mix
+        const foodSelection = food.slice(0, 6);
+        const marketSelection = market.slice(0, 6);
 
         if (!cancelled) {
-          setFoodImages(foodImgs);
-          setMarketImages(marketImgs);
+          setFeatured(featuredSelection);
+          setFoodProducts(foodSelection);
+          setMarketProducts(marketSelection);
         }
       } catch (e) {
-        console.error("[Home] Erreur chargement produits pour carrousel", e);
+        console.error("[Home] Erreur chargement produits Home", e);
       } finally {
         if (!cancelled) {
           setLoadingProducts(false);
@@ -245,84 +214,137 @@ export default function Home() {
       {/* Bandeau installation PWA (Android + iOS tips) */}
       <section className="container-xxl pt-3">
         <InstallPWA />
+        {/* On conserve le CTA notifications à côté si tu veux */}
+        <NotificationsCTA />
       </section>
 
-      {/* HERO / BANNIÈRE */}
-      <section className="container-xxl pt-3">
-        <div className="card border-0 shadow-sm overflow-hidden">
-          <div className="row g-0 align-items-stretch">
-            {/* Image */}
-            <div className="col-12 col-lg-6 order-lg-1">
-              <div className="h-100 position-relative">
-                <div className="ratio ratio-4x3 ratio-lg-1x1">
-                  <img
-                    src="/accueil.jpeg"
-                    alt="Duumini — le marché des produits africains au Maroc"
-                    className="w-100 h-100 object-fit-cover"
-                    width={1200}
-                    height={900}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </div>
-              </div>
-            </div>
+      {/* SECTION 1 : Sélection Duumini */}
+      <section className="container-xxl mt-4">
+        <div className="d-flex align-items-end justify-content-between mb-2">
+          <div>
+            <h2 className="h5 m-0">La sélection Duumini</h2>
+            
+          </div>
+          <Link
+            to="/african-market"
+            className="small text-decoration-none d-flex align-items-center gap-1"
+          >
+            Voir tous les produits
+            <ChevronRight size={14} />
+          </Link>
+        </div>
 
-            {/* Texte */}
-            <div className="col-12 col-lg-6 order-lg-2">
-              <div className="h-100 p-3 p-lg-4 d-flex flex-column justify-content-center">
-                <h1 className="h3 mb-2" style={{ color: "var(--duu-black)" }}>
-                  Retrouve les saveurs de ton pays, où que tu sois au Maroc.
-                </h1>
+        {loadingProducts && featured.length === 0 ? (
+          <div className="small text-muted">Chargement des produits…</div>
+        ) : featured.length === 0 ? (
+          <div className="small text-muted">
+            Les produits seront bientôt disponibles.
+          </div>
+        ) : (
+          <div className="row g-3">
+            {featured.map((p) => {
+              const sub = ((p as any).sub_category || "").toLowerCase();
+              const to =
+                sub === "food" ? "/african-food" : "/african-market";
+              return (
+                <HomeProductCard
+                  key={(p as any).id ?? (p as any).slug}
+                  product={p}
+                  to={to}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
 
-                <div className="d-flex flex-wrap gap-2">
-                  <Link to="/african-food" className="btn btn-dark">
-                    Explorer Duumini Food
-                  </Link>
-                  <Link to="/african-market" className="btn btn-outline-dark">
-                    Explorer Duumini Market
-                  </Link>
-                </div>
-
-                <div className="mt-3 small text-muted">
-                  <span className="me-3">✅ Traçabilité & qualité</span>
-                  <span className="me-3">✅ Service client réactif</span>
-                  <span>✅ Paiement à la livraison</span>
-                </div>
-
-                {/* CTA Notifications (utile pour PWA) */}
-                <NotificationsCTA />
-              </div>
+      {/* SECTION 2 : Duumini Food */}
+      <section className="container-xxl mt-4">
+        <div className="d-flex align-items-end justify-content-between mb-2">
+          <div>
+            <h2 className="h5 m-0">Plats & Restaurants Africains</h2>
+            <div className="small text-muted">
+              Commandez vos plats préférés, prêts à être livrés.
             </div>
           </div>
+          <Link
+            to="/african-food"
+            className="small text-decoration-none d-flex align-items-center gap-1"
+          >
+            Voir tous les plats
+            <ChevronRight size={14} />
+          </Link>
         </div>
+
+        {foodProducts.length === 0 && !loadingProducts ? (
+          <div className="small text-muted">
+            Les plats seront bientôt disponibles.
+          </div>
+        ) : (
+          <div className="row g-3">
+            {foodProducts.map((p) => (
+              <HomeProductCard
+                key={(p as any).id ?? (p as any).slug}
+                product={p}
+                to="/african-food"
+              />
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* CATÉGORIES avec carrousel d’images produits */}
+      {/* SECTION 3 : Duumini Market */}
       <section className="container-xxl mt-4">
-        <div className="d-flex align-items-end justify-content-between mb-3">
-          <h2 className="h5 m-0">Catégories</h2>
-          <span className="small text-muted">
-            Choisissez une catégorie
-            {loadingProducts ? " — chargement des visuels…" : ""}
-          </span>
+        <div className="d-flex align-items-end justify-content-between mb-2">
+          <div>
+            <h2 className="h5 m-0">Épicerie africaine</h2>
+            <div className="small text-muted">
+              Épices, céréales, produits frais & plus encore.
+            </div>
+          </div>
+          <Link
+            to="/african-market"
+            className="small text-decoration-none d-flex align-items-center gap-1"
+          >
+            Voir toute l&apos;épicerie
+            <ChevronRight size={14} />
+          </Link>
         </div>
 
-        <div className="row g-3">
-          <CategoryCard
-            to="/african-food"
-            title="Restaurant Afro & Plats Africains"
-            images={
-              foodImages.length > 0 ? foodImages : ["/food.png"] // fallback si aucun produit
-            }
-          />
-          <CategoryCard
-            to="/african-market"
-            title="Épicerie Africaine & Produits Afro"
-            images={
-              marketImages.length > 0 ? marketImages : ["/market.png"] // fallback si aucun produit
-            }
-          />
+        {marketProducts.length === 0 && !loadingProducts ? (
+          <div className="small text-muted">
+            Les produits d&apos;épicerie seront bientôt disponibles.
+          </div>
+        ) : (
+          <div className="row g-3">
+            {marketProducts.map((p) => (
+              <HomeProductCard
+                key={(p as any).id ?? (p as any).slug}
+                product={p}
+                to="/african-market"
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* SECTION 4 : Bandeau “Pourquoi Duumini ?” */}
+      <section className="container-xxl mt-4">
+        <div className="card border-0 shadow-sm">
+          <div className="card-body d-flex flex-column flex-md-row gap-3">
+            <div className="flex-fill">
+              <div className="fw-semibold">Pourquoi choisir Duumini ?</div>
+              <div className="small text-muted">
+                La plateforme dédiée aux produits africains au Maroc.
+              </div>
+            </div>
+            <div className="d-flex flex-wrap gap-3 small">
+              <div>🚚 Livraison rapide Casablanca & Marrakech</div>
+              <div>✅ Produits authentiques d&apos;Afrique subsaharienne</div>
+              <div>💳 Paiement à la livraison</div>
+              <div>📞 Service client WhatsApp réactif</div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
