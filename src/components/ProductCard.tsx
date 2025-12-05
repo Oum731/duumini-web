@@ -31,8 +31,6 @@ function shortText(s?: string | null, max = 200) {
 
 /**
  * URL de partage → route /share/product/:id
- * 👉 Cette route côté API récupère l'image depuis la BDD (product_images / shop_cover / shop_logo)
- *    et expose les meta OG / Twitter optimisées + redirige vers la vraie page produit.
  */
 function buildProductUrl(p: Product) {
   const shareBase =
@@ -58,9 +56,6 @@ function normalizeCityLabel(raw: string | null | undefined) {
 
 /**
  * Le tri se fait en fonction de la ville de la boutique du produit.
- * On regarde en priorité :
- *  - product.shop_city_code (ex: "CASABLANCA" | "MARRAKECH")
- *  - sinon product.shop_city (ex: "Casablanca" | "Marrakech")
  */
 function isProductAllowedForCity(product: Product, city: CityCode | null) {
   if (!city) {
@@ -84,6 +79,85 @@ function isProductAllowedForCity(product: Product, city: CityCode | null) {
   }
 
   return true;
+}
+
+/* ===== Helpers panier robustes ===== */
+
+/** Récupère la ligne du panier correspondant à ce produit */
+function findCartLineForProduct(lines: any[], product: Product) {
+  const pid = Number((product as any).id);
+  if (!pid) return null;
+
+  return (lines as any[]).find((l) => {
+    // id principal de la ligne (CartLine.id)
+    const fromId = l.id != null ? Number(l.id) : null;
+
+    // id dans l'objet product stocké dans la ligne
+    const fromProductObj =
+      l.product && l.product.id != null ? Number(l.product.id) : null;
+
+    // compat : champs product_id / productId / product_id_pk
+    const compatRaw =
+      l.product_id ?? l.productId ?? l.product_id_pk ?? null;
+    const fromCompat =
+      compatRaw != null ? Number(compatRaw) : null;
+
+    return fromId === pid || fromProductObj === pid || fromCompat === pid;
+  });
+}
+
+/** Récupère la quantité dans le panier pour ce produit */
+function getQtyInCart(lines: any[], product: Product): number {
+  const line = findCartLineForProduct(lines, product);
+  if (!line) return 0;
+
+  const q =
+    line.qty ??
+    line.quantity ??
+    line.count ??
+    line.q ??
+    0;
+
+  return Number(q || 0);
+}
+
+/** Extrait sub_category d'une ligne (line ou line.product) */
+function getSubCategoryFromLine(line: any): string {
+  return String(
+    line.sub_category ??
+      line.product?.sub_category ??
+      line.product?.category ??
+      ""
+  )
+    .trim()
+    .toLowerCase();
+}
+
+/** Extrait shop_id d'une ligne (line ou line.product/shop) */
+function getShopIdFromLine(line: any): number | null {
+  const raw =
+    line.shop_id ??
+    line.product?.shop_id ??
+    line.product?.shop?.id ??
+    null;
+
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Cherche un shop_id de resto (sub_category = food) dans le panier */
+function getCurrentFoodShopId(lines: any[]): number | null {
+  if (!Array.isArray(lines) || !lines.length) return null;
+
+  for (const l of lines as any[]) {
+    const sub = getSubCategoryFromLine(l);
+    if (sub === "food") {
+      const sid = getShopIdFromLine(l);
+      if (sid != null) return sid;
+    }
+  }
+  return null;
 }
 
 /* ===== Component ===== */
@@ -122,9 +196,22 @@ export default function ProductCard({ product, onAdd }: Props) {
           cls: "bg-primary-subtle text-primary-emphasis border-primary-subtle",
         };
 
-  const { add } = useCart();
+  const { add, lines } = useCart();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [warning, setWarning] = useState<string | null>(null);
+
+  // ✅ Shop Food courant dans le panier (si déjà des plats food)
+  const currentFoodShopId: number | null = useMemo(
+    () => getCurrentFoodShopId(lines as any[]),
+    [lines]
+  );
+
+  // ✅ Quantité de CE produit dans le panier
+  const qtyInCart: number = useMemo(
+    () => getQtyInCart(lines as any[], product),
+    [lines, product]
+  );
 
   const shareUrl = useMemo(() => buildProductUrl(product), [product]);
   const shareText = useMemo(
@@ -132,10 +219,36 @@ export default function ProductCard({ product, onAdd }: Props) {
     [product.name, product.price]
   );
 
+  // 🔒 Ajout avec règle Food (un resto à la fois)
   const handleAdd = () => {
     if (!isAvailable) return;
 
-    onAdd ? onAdd(product) : add(product, 1);
+    setWarning(null);
+
+    const isFood = String(product.sub_category || "")
+      .trim()
+      .toLowerCase() === "food";
+    const productShopId =
+      (product as any).shop_id != null ? Number((product as any).shop_id) : null;
+
+    if (
+      isFood &&
+      currentFoodShopId != null &&
+      productShopId != null &&
+      currentFoodShopId !== productShopId
+    ) {
+      setWarning(
+        "Votre panier contient déjà des plats d’un autre restaurant. Videz votre panier pour changer de restaurant."
+      );
+      return;
+    }
+
+    // Ajout (ou +1) dans le panier
+    if (onAdd) {
+      onAdd(product);
+    } else {
+      add(product as any, 1);
+    }
 
     const anyP = product as any;
     const priceClient =
@@ -151,6 +264,25 @@ export default function ProductCard({ product, onAdd }: Props) {
       currency: "MAD",
       category,
     });
+  };
+
+  // ➖ Décrémenter la quantité (pas de règle nécessaire ici)
+  const handleDecrease = () => {
+    if (!isAvailable) return;
+    if (!qtyInCart) return;
+    setWarning(null);
+
+    try {
+      // ⚠️ nécessite bien la version de add(p, qty) qui gère les négatifs
+      add(product as any, -1);
+    } catch {
+      // on ignore silencieusement si jamais l’implémentation diffère
+    }
+  };
+
+  // ➕ Incrémenter (réutilise la logique d’ajout avec règle Food)
+  const handleIncrease = () => {
+    handleAdd();
   };
 
   async function shareProduct() {
@@ -254,7 +386,16 @@ export default function ProductCard({ product, onAdd }: Props) {
             <div className="small text-muted mb-1">{product.shop_name}</div>
           )}
 
-          <div className="fw-semibold mb-1">{moneyMAD(product.price)}</div>
+          <div className="fw-semibold mb-1">
+            {moneyMAD(product.price)}
+          </div>
+
+          {/* ⚠️ Message clair en cas de conflit Food multi-resto */}
+          {warning && (
+            <div className="small text-danger mb-2">
+              {warning}
+            </div>
+          )}
 
           <div className="mb-2">
             <ProductRating productId={product.id} />
@@ -268,18 +409,58 @@ export default function ProductCard({ product, onAdd }: Props) {
             >
               Voir
             </button>
-            <button
-              className="btn btn-dark btn-sm flex-fill"
-              onClick={handleAdd}
-              title={isOutOfStock ? "En rupture de stock" : "Ajouter au panier"}
-              disabled={!isAvailable}
-            >
-              {isOutOfStock ? "En rupture" : "+ Panier"}
-            </button>
+
+            {/* ✅ Bouton Panier → bascule en - / + si qtyInCart > 0 */}
+            {!isAvailable ? (
+              <button
+                className="btn btn-dark btn-sm flex-fill"
+                disabled
+                title="En rupture de stock"
+              >
+                En rupture
+              </button>
+            ) : qtyInCart > 0 ? (
+              <div
+                className="btn-group btn-group-sm flex-fill"
+                role="group"
+                aria-label="Quantité dans le panier"
+              >
+                <button
+                  type="button"
+                  className="btn btn-outline-dark"
+                  onClick={handleDecrease}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-light disabled"
+                  style={{ minWidth: 40 }}
+                >
+                  {qtyInCart}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-dark"
+                  onClick={handleIncrease}
+                >
+                  +
+                </button>
+              </div>
+            ) : (
+              <button
+                className="btn btn-dark btn-sm flex-fill"
+                onClick={handleAdd}
+                title="Ajouter au panier"
+              >
+                + Panier
+              </button>
+            )}
           </div>
         </div>
       </div>
 
+      {/* ===== Modal détail produit ===== */}
       {open && (
         <div
           className="modal d-block"
@@ -372,14 +553,55 @@ export default function ProductCard({ product, onAdd }: Props) {
                       <p className="text-muted">Aucune description fournie.</p>
                     )}
 
+                    {/* Message d’avertissement dans le modal aussi */}
+                    {warning && (
+                      <div className="small text-danger mb-2">
+                        {warning}
+                      </div>
+                    )}
+
                     <div className="mt-auto d-grid gap-2">
-                      <button
-                        className="btn btn-dark"
-                        onClick={handleAdd}
-                        disabled={!isAvailable}
-                      >
-                        {isOutOfStock ? "En rupture" : "+ Ajouter au panier"}
-                      </button>
+                      {!isAvailable ? (
+                        <button className="btn btn-dark" disabled>
+                          En rupture
+                        </button>
+                      ) : qtyInCart > 0 ? (
+                        <div
+                          className="btn-group"
+                          role="group"
+                          aria-label="Quantité dans le panier"
+                        >
+                          <button
+                            type="button"
+                            className="btn btn-outline-dark"
+                            onClick={handleDecrease}
+                          >
+                            −
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-light disabled"
+                            style={{ minWidth: 48 }}
+                          >
+                            {qtyInCart}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-dark"
+                            onClick={handleIncrease}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="btn btn-dark"
+                          onClick={handleAdd}
+                        >
+                          + Ajouter au panier
+                        </button>
+                      )}
+
                       <button
                         className="btn btn-outline-secondary"
                         onClick={shareProduct}

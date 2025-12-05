@@ -48,7 +48,7 @@ function OfflineBanner() {
   );
 }
 
-/* === Carte produit “teaser” pour la Home === */
+/* === Carte produit “teaser” pour la Home (vignettes plus petites) === */
 function HomeProductCard(props: { product: Product; to: string }) {
   const { product, to } = props;
 
@@ -68,34 +68,65 @@ function HomeProductCard(props: { product: Product; to: string }) {
     (product as any).client_price ??
     0;
 
+
   return (
-    <div className="col-6 col-md-3">
+    <div className="col-6 col-sm-4 col-md-3 col-lg-2">
       <Link
         to={to}
         className="text-decoration-none text-reset d-block h-100"
-        aria-label={name}
       >
-        <div className="card border-0 shadow-sm h-100">
-          <div className="ratio ratio-1x1">
+        <div
+          className="card border-0 shadow-sm h-100"
+          style={{
+            borderRadius: "1rem",
+            overflow: "hidden",
+            background: "#fff",
+          }}
+        >
+          <div
+            className="position-relative bg-light d-flex align-items-center justify-content-center"
+            style={{
+              height: 130, // 🔹 image plus petite
+            }}
+          >
             {imageSrc ? (
               <img
                 src={imageSrc}
                 alt={name}
-                className="w-100 h-100 object-fit-cover"
+                className="img-fluid"
                 loading="lazy"
                 decoding="async"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
               />
             ) : (
-              <div className="bg-light w-100 h-100 d-flex align-items-center justify-content-center small text-muted">
+              <div className="w-100 h-100 d-flex align-items-center justify-content-center small text-muted">
                 Image à venir
               </div>
             )}
+
+            {/* petit tag en haut à gauche */}
+          
           </div>
+
           <div className="card-body p-2">
-            <div className="small fw-semibold text-truncate" title={name}>
+            <div
+              className="small fw-semibold mb-1"
+              title={name}
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                minHeight: "2.4em",
+              }}
+            >
               {name}
             </div>
-            <div className="small text-muted mt-1">
+            <div className="small fw-semibold" style={{ color: "#111" }}>
               {moneyMAD(price as number)}
             </div>
           </div>
@@ -207,14 +238,13 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="pb-4">
+    <div className="pb-4" style={{ background: "#fafafa" }}>
       {/* Bandeau offline */}
       <OfflineBanner />
 
       {/* Bandeau installation PWA (Android + iOS tips) */}
       <section className="container-xxl pt-3">
         <InstallPWA />
-        {/* On conserve le CTA notifications à côté si tu veux */}
         <NotificationsCTA />
       </section>
 
@@ -223,7 +253,9 @@ export default function Home() {
         <div className="d-flex align-items-end justify-content-between mb-2">
           <div>
             <h2 className="h5 m-0">La sélection Duumini</h2>
-            
+            <div className="small text-muted">
+              Un aperçu des produits disponibles près de chez vous.
+            </div>
           </div>
           <Link
             to="/african-market"
@@ -234,28 +266,29 @@ export default function Home() {
           </Link>
         </div>
 
-        {loadingProducts && featured.length === 0 ? (
-          <div className="small text-muted">Chargement des produits…</div>
-        ) : featured.length === 0 ? (
-          <div className="small text-muted">
-            Les produits seront bientôt disponibles.
-          </div>
-        ) : (
-          <div className="row g-3">
-            {featured.map((p) => {
-              const sub = ((p as any).sub_category || "").toLowerCase();
-              const to =
-                sub === "food" ? "/african-food" : "/african-market";
-              return (
-                <HomeProductCard
-                  key={(p as any).id ?? (p as any).slug}
-                  product={p}
-                  to={to}
-                />
-              );
-            })}
-          </div>
-        )}
+        <div className="bg-white rounded-4 shadow-sm p-3">
+          {loadingProducts && featured.length === 0 ? (
+            <div className="small text-muted">Chargement des produits…</div>
+          ) : featured.length === 0 ? (
+            <div className="small text-muted">
+              Les produits seront bientôt disponibles.
+            </div>
+          ) : (
+            <div className="row g-3">
+              {featured.map((p) => {
+                const sub = ((p as any).sub_category || "").toLowerCase();
+                const to = sub === "food" ? "/african-food" : "/african-market";
+                return (
+                  <HomeProductCard
+                    key={(p as any).id ?? (p as any).slug}
+                    product={p}
+                    to={to}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* SECTION 2 : Duumini Food */}
@@ -276,21 +309,23 @@ export default function Home() {
           </Link>
         </div>
 
-        {foodProducts.length === 0 && !loadingProducts ? (
-          <div className="small text-muted">
-            Les plats seront bientôt disponibles.
-          </div>
-        ) : (
-          <div className="row g-3">
-            {foodProducts.map((p) => (
-              <HomeProductCard
-                key={(p as any).id ?? (p as any).slug}
-                product={p}
-                to="/african-food"
-              />
-            ))}
-          </div>
-        )}
+        <div className="bg-white rounded-4 shadow-sm p-3">
+          {foodProducts.length === 0 && !loadingProducts ? (
+            <div className="small text-muted">
+              Les plats seront bientôt disponibles.
+            </div>
+          ) : (
+            <div className="row g-3">
+              {foodProducts.map((p) => (
+                <HomeProductCard
+                  key={(p as any).id ?? (p as any).slug}
+                  product={p}
+                  to="/african-food"
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* SECTION 3 : Duumini Market */}
@@ -311,26 +346,28 @@ export default function Home() {
           </Link>
         </div>
 
-        {marketProducts.length === 0 && !loadingProducts ? (
-          <div className="small text-muted">
-            Les produits d&apos;épicerie seront bientôt disponibles.
-          </div>
-        ) : (
-          <div className="row g-3">
-            {marketProducts.map((p) => (
-              <HomeProductCard
-                key={(p as any).id ?? (p as any).slug}
-                product={p}
-                to="/african-market"
-              />
-            ))}
-          </div>
-        )}
+        <div className="bg-white rounded-4 shadow-sm p-3">
+          {marketProducts.length === 0 && !loadingProducts ? (
+            <div className="small text-muted">
+              Les produits d&apos;épicerie seront bientôt disponibles.
+            </div>
+          ) : (
+            <div className="row g-3">
+              {marketProducts.map((p) => (
+                <HomeProductCard
+                  key={(p as any).id ?? (p as any).slug}
+                  product={p}
+                  to="/african-market"
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* SECTION 4 : Bandeau “Pourquoi Duumini ?” */}
       <section className="container-xxl mt-4">
-        <div className="card border-0 shadow-sm">
+        <div className="card border-0 shadow-sm rounded-4">
           <div className="card-body d-flex flex-column flex-md-row gap-3">
             <div className="flex-fill">
               <div className="fw-semibold">Pourquoi choisir Duumini ?</div>
