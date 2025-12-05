@@ -14,26 +14,26 @@ export default function LocationGate({
   const { city, setCity, isReady } = useLocationCity();
   const [showModal, setShowModal] = useState(false);
 
-  const currentCityLabel =
-    CITY_OPTIONS.find((c) => c.code === city)?.label || "Choisir ma ville";
+  // 👉 Label courant (si besoin plus tard)
 
+  // 👉 Au premier chargement : si pas de ville, on force l'ouverture
   useEffect(() => {
     if (!isReady) return;
-
     if (!city) {
       setShowModal(true);
-    } else {
-      setShowModal(false);
     }
   }, [isReady, city]);
+
+  // 👉 Écoute un évènement global "city:open" pour ouvrir depuis ailleurs si besoin
+  useEffect(() => {
+    const handler = () => setShowModal(true);
+    window.addEventListener("city:open", handler);
+    return () => window.removeEventListener("city:open", handler);
+  }, []);
 
   function handleSelect(c: CityCode) {
     setCity(c);
     setShowModal(false);
-  }
-
-  function reopenModal() {
-    setShowModal(true);
   }
 
   if (!isReady) {
@@ -48,37 +48,34 @@ export default function LocationGate({
 
   return (
     <>
+      {/* 🌍 Contenu normal de l'app */}
       {children}
 
-      {/* 🔁 Bouton flottant pour changer de ville (TOUJOURS visible) */}
-      <button
-        type="button"
-        onClick={reopenModal}
-        className="position-fixed d-inline-flex align-items-center gap-1 shadow-sm"
-        style={{
-          right: 16,
-          bottom: 16,
-          // ⬇️ zIndex plus haut que le modal Bootstrap (1055)
-          zIndex: 2000,
-          borderRadius: 999,
-          border: "1px solid rgba(0,0,0,.08)",
-          background: "#fff",
-          padding: "8px 14px",
-          fontSize: ".85rem",
-          color: "var(--duu-black, #111)",
-        }}
-      >
-        <span style={{ fontSize: "1rem" }}>📍</span>
-        <span className="fw-semibold">{currentCityLabel}</span>
-        <span
-          className="text-muted"
-          style={{ fontSize: ".75rem", marginLeft: 4 }}
+      {/* 📍 Bouton flottant PROPRE, en bas à GAUCHE pour ne pas gêner le panier */}
+      {!showModal && (
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="position-fixed d-inline-flex align-items-center gap-2 shadow-sm"
+          style={{
+            left: 16,              // ✅ plus à droite → on passe à gauche
+            bottom: 16,
+            zIndex: 1050,
+            borderRadius: 999,
+            border: "1px solid rgba(0,0,0,.06)",
+            background: "#fff",
+            padding: "8px 14px",
+            fontSize: ".85rem",
+            color: "var(--duu-black, #111)",
+          }}
+          aria-label="Changer ma ville de livraison"
         >
-          – changer
-        </span>
-      </button>
+          <span style={{ fontSize: "1rem" }}>📍</span>
+          <span className="fw-semibold">Changer ma ville</span>
+        </button>
+      )}
 
-      {/* 🟡 Modal */}
+      {/* 🟡 Modal de sélection de ville */}
       {showModal && (
         <>
           <div className="modal-backdrop fade show" />
@@ -101,6 +98,11 @@ export default function LocationGate({
                     <span>📍</span>
                     <span>Choisissez votre ville</span>
                   </h5>
+                  <button
+                    className="btn-close"
+                    aria-label="Fermer"
+                    onClick={() => setShowModal(false)}
+                  />
                 </div>
 
                 <div className="modal-body">
@@ -135,7 +137,7 @@ export default function LocationGate({
                   <p className="small text-muted mt-3 mb-0">
                     La ville sélectionnée reste active même si vous êtes
                     connecté(e). Elle remplace celle enregistrée dans votre
-                    profil pour toutes les suggestions.
+                    profil pour l’affichage.
                   </p>
                 </div>
               </div>
