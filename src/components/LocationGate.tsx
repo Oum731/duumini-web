@@ -63,7 +63,7 @@ export default function LocationGate({
             zIndex: 1050,
             borderRadius: 999,
             border: "1px solid rgba(0,0,0,.06)",
-            background: "#fff",
+            background: "#FFD54F",
             padding: "8px 14px",
             fontSize: ".85rem",
             color: "var(--duu-black, #111)",
