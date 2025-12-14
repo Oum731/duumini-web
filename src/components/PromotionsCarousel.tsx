@@ -5,6 +5,11 @@ import type { Product } from "../services/products";
 
 type PromoDiscountType = "PERCENT" | "AMOUNT";
 
+/* =========================
+   CONFIG CAN
+   ========================= */
+const PROMO_END_ISO = "2026-01-22T23:59:59+01:00"; // ✅ fin 22 janvier (heure Maroc)
+
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
   if (!u) return "";
@@ -50,6 +55,25 @@ function useBlink(ms = 650) {
   return on;
 }
 
+/** compte à rebours */
+function useCountdown(endIso: string) {
+  const end = useMemo(() => new Date(endIso).getTime(), [endIso]);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const diff = Math.max(0, end - now);
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const mins = Math.floor((diff / (1000 * 60)) % 60);
+  const secs = Math.floor((diff / 1000) % 60);
+
+  return { diff, days, hours, mins, secs, isOver: diff <= 0 };
+}
+
 export default function PromotionsCarousel({
   limit = 10,
   intervalMs = 3200,
@@ -67,6 +91,7 @@ export default function PromotionsCarousel({
   const navigate = useNavigate();
 
   const blink = useBlink(650);
+  const cd = useCountdown(PROMO_END_ISO);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +140,8 @@ export default function PromotionsCarousel({
       const isCan =
         Boolean(p?.promo_can) ||
         name.includes("can") ||
+        name.includes("coupe") ||
+        name.includes("afrique") ||
         name.includes("canette") ||
         name.includes("boisson") ||
         name.includes("soda");
@@ -123,7 +150,7 @@ export default function PromotionsCarousel({
     });
   }, [items]);
 
-  // ✅ auto-scroll (désactivé si l’utilisateur scroll/drag)
+  // ✅ auto-scroll (pause si user drag/scroll)
   useEffect(() => {
     if (!scrollerRef.current || computed.length <= 1) return;
 
@@ -164,21 +191,40 @@ export default function PromotionsCarousel({
 
   if (loading || computed.length === 0) return null;
 
+  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
+    2,
+    "0"
+  )}:${String(cd.secs).padStart(2, "0")}`;
+
   return (
     <section className="container-xxl mt-4">
       <style>{`
-        .duu-promo-wrap{
+        .duu-can-wrap{
+          position: relative;
           border: 1px solid rgba(0,0,0,.06);
-          border-radius: 18px;
-          background:
-            radial-gradient(1200px 220px at 20% 0%, rgba(255,213,79,.35), transparent 60%),
-            radial-gradient(900px 240px at 85% 10%, rgba(229,57,53,.10), transparent 55%),
-            linear-gradient(180deg, rgba(17,17,17,.02), rgba(17,17,17,0));
+          border-radius: 20px;
           padding: 14px;
+          overflow: hidden;
+          background:
+            radial-gradient(1100px 320px at 10% 0%, rgba(255,213,79,.35), transparent 60%),
+            radial-gradient(900px 280px at 90% 10%, rgba(229,57,53,.16), transparent 55%),
+            radial-gradient(700px 240px at 70% 90%, rgba(0,150,80,.08), transparent 60%),
+            linear-gradient(180deg, rgba(17,17,17,.02), rgba(17,17,17,0));
+        }
+        .duu-can-wrap:before{
+          content:"";
+          position:absolute; inset:0;
+          background:
+            linear-gradient(135deg, rgba(229,57,53,.08) 0%, transparent 40%),
+            linear-gradient(45deg, rgba(255,213,79,.08) 0%, transparent 40%),
+            repeating-linear-gradient(90deg, rgba(0,0,0,.04), rgba(0,0,0,.04) 1px, transparent 1px, transparent 18px);
+          opacity:.55;
+          pointer-events:none;
         }
 
-        /* HEADER mobile-first: pas de bouton, tout est cliquable */
-        .duu-promo-head{
+        /* Header cliquable */
+        .duu-can-head{
+          position: relative;
           display:flex;
           gap:10px;
           align-items:flex-start;
@@ -186,18 +232,21 @@ export default function PromotionsCarousel({
           cursor:pointer;
           user-select:none;
         }
-        .duu-promo-title{
+
+        .duu-can-title{
           margin:0;
-          font-weight: 950;
+          font-weight: 980;
           color: var(--duu-black);
-          line-height: 1.15;
+          line-height: 1.1;
+          letter-spacing: .2px;
         }
-        .duu-promo-sub{
+        .duu-can-sub{
           color: rgba(0,0,0,.62);
-          font-weight: 700;
+          font-weight: 780;
           line-height: 1.2;
         }
-        .duu-promo-chevron{
+
+        .duu-can-chevron{
           flex: 0 0 auto;
           width: 34px;
           height: 34px;
@@ -206,38 +255,28 @@ export default function PromotionsCarousel({
           align-items:center;
           justify-content:center;
           border: 1px solid rgba(0,0,0,.10);
-          background: rgba(255,255,255,.75);
+          background: rgba(255,255,255,.78);
         }
 
-        /* Ruban CAN + clignotement visible */
+        /* Ruban CAN */
         .duu-can-ribbon{
+          display:flex;
+          align-items:center;
+          gap:8px;
+          flex-wrap:wrap;
+          max-width: 100%;
+          margin-bottom: 8px;
+        }
+
+        .duu-can-pill{
           display:inline-flex;
           align-items:center;
           gap:8px;
-          padding:6px 10px;
+          padding:7px 10px;
           border-radius:999px;
           border: 1px dashed rgba(0,0,0,.18);
-          background: rgba(255,255,255,.72);
-          font-weight: 900;
-          max-width: 100%;
-        }
-        .duu-can-ribbon .pill{
-          background: var(--duu-red);
-          color:#fff;
-          padding:2px 8px;
-          border-radius:999px;
-          font-size:.75rem;
+          background: rgba(255,255,255,.74);
           font-weight: 950;
-          letter-spacing: .3px;
-          white-space: nowrap;
-        }
-        .duu-can-ribbon .pill.blink{
-          animation: duuPillBlink .85s infinite;
-        }
-        @keyframes duuPillBlink{
-          0%{ filter: brightness(1); transform: scale(1); }
-          50%{ filter: brightness(1.25); transform: scale(1.03); }
-          100%{ filter: brightness(1); transform: scale(1); }
         }
 
         .duu-dot{
@@ -245,17 +284,59 @@ export default function PromotionsCarousel({
           background: rgba(229,57,53,1);
           box-shadow: 0 0 0 3px rgba(229,57,53,.18);
         }
-        .duu-dot.blink{
-          animation: duuBlink 0.7s infinite;
-        }
+        .duu-dot.blink{ animation: duuBlink 0.7s infinite; }
         @keyframes duuBlink{
           0%{ opacity: 1; transform: scale(1); }
           50%{ opacity: .25; transform: scale(.75); }
           100%{ opacity: 1; transform: scale(1); }
         }
 
-        /* Scroller: mobile friendly (scroll-snap + overflow auto) */
-        .duu-promo-scroller{
+        .duu-can-tag{
+          background: var(--duu-red);
+          color:#fff;
+          padding:2px 8px;
+          border-radius:999px;
+          font-size:.78rem;
+          font-weight: 980;
+          letter-spacing: .35px;
+          white-space: nowrap;
+        }
+        .duu-can-tag.blink{ animation: duuPillBlink .85s infinite; }
+        @keyframes duuPillBlink{
+          0%{ filter: brightness(1); transform: scale(1); }
+          50%{ filter: brightness(1.25); transform: scale(1.03); }
+          100%{ filter: brightness(1); transform: scale(1); }
+        }
+
+        .duu-can-meta{
+          display:flex;
+          gap:8px;
+          flex-wrap: wrap;
+          align-items:center;
+        }
+        .duu-chip{
+          display:inline-flex;
+          align-items:center;
+          gap:6px;
+          padding:6px 10px;
+          border-radius:999px;
+          font-weight:900;
+          font-size:.82rem;
+          background: rgba(255,255,255,.76);
+          border: 1px solid rgba(0,0,0,.10);
+          color: rgba(0,0,0,.78);
+        }
+        .duu-chip-strong{
+          background: linear-gradient(90deg, rgba(229,57,53,.18), rgba(255,213,79,.20));
+          border: 1px solid rgba(0,0,0,.10);
+        }
+        .duu-chip-green{
+          background: rgba(0,150,80,.10);
+        }
+
+        /* Scroller */
+        .duu-can-scroller{
+          position: relative;
           display:flex;
           gap:12px;
           overflow-x:auto;
@@ -264,16 +345,15 @@ export default function PromotionsCarousel({
           scroll-snap-type: x mandatory;
           padding-bottom: 2px;
           -webkit-overflow-scrolling: touch;
+          margin-top: 10px;
         }
-        .duu-promo-scroller::-webkit-scrollbar{
-          height: 6px;
-        }
-        .duu-promo-scroller::-webkit-scrollbar-thumb{
+        .duu-can-scroller::-webkit-scrollbar{ height: 6px; }
+        .duu-can-scroller::-webkit-scrollbar-thumb{
           background: rgba(0,0,0,.12);
           border-radius: 999px;
         }
 
-        .duu-promo-card{
+        .duu-card{
           width: 220px;
           flex: 0 0 auto;
           border-radius: 16px;
@@ -284,55 +364,35 @@ export default function PromotionsCarousel({
           box-shadow: 0 .35rem 1.25rem rgba(0,0,0,.06);
           background: #fff;
         }
-        .duu-promo-card:hover{
+        .duu-card:hover{
           transform: translateY(-2px);
           box-shadow: 0 .75rem 1.5rem rgba(0,0,0,.10);
         }
 
-        .duu-promo-img{
+        .duu-img{
           width:100%;
           height: 160px;
           object-fit: cover;
           background: rgba(0,0,0,.05);
         }
 
-        /* Badges: sur desktop on garde séparé, sur mobile on empile (stack) pour éviter gêne */
-        .duu-badge-stack{
-          position:absolute; top:10px; left:10px;
-          display:flex; flex-direction:column;
-          gap:6px;
-          max-width: calc(100% - 20px);
-        }
+        /* ✅ Un seul badge promo (pas de livraison sur l'image) */
         .duu-badge{
+          position:absolute; top:10px; left:10px;
           display:inline-flex;
           align-items:center;
           gap:6px;
           background: var(--duu-red);
           color:#fff;
-          font-weight:950;
+          font-weight:980;
           padding:6px 10px;
           border-radius:999px;
           font-size:.75rem;
           letter-spacing:.2px;
-          width: fit-content;
-          white-space: nowrap;
-        }
-        .duu-badge-free{
-          display:inline-flex;
-          align-items:center;
-          gap:6px;
-          background: var(--duu-yellow);
-          color:#111;
-          font-weight:950;
-          padding:6px 10px;
-          border-radius:999px;
-          font-size:.75rem;
-          border: 1px solid rgba(0,0,0,.08);
-          width: fit-content;
+          max-width: calc(100% - 20px);
           white-space: nowrap;
         }
 
-        /* Badge CAN produit */
         .duu-badge-can{
           position:absolute;
           left: 10px;
@@ -343,119 +403,114 @@ export default function PromotionsCarousel({
           padding:6px 10px;
           border-radius:999px;
           font-size:.75rem;
-          font-weight:950;
+          font-weight:980;
           color:#fff;
           background: linear-gradient(90deg, rgba(229,57,53,1), rgba(255,213,79,1));
           border: 1px solid rgba(0,0,0,.12);
           box-shadow: 0 .5rem 1.25rem rgba(0,0,0,.12);
+          max-width: calc(100% - 20px);
+          white-space: nowrap;
         }
 
-        .duu-price-old{
+        .duu-old{
           text-decoration: line-through;
           color: rgba(0,0,0,.45);
           font-weight: 800;
           font-size: .9rem;
         }
 
-        /* ✅ Mobile optimisations */
+        .duu-note{
+          margin-top: 6px;
+          color: rgba(0,0,0,.56);
+          font-size: .85rem;
+          font-weight: 700;
+        }
+
         @media (max-width: 576px){
-          .duu-promo-wrap{ padding: 12px; border-radius: 16px; }
-          .duu-promo-title{ font-size: 1.02rem; }
-          .duu-promo-sub{ font-size: .86rem; }
-          .duu-promo-card{ width: 172px; border-radius: 14px; }
-          .duu-promo-img{ height: 132px; }
-
-          .duu-badge, .duu-badge-free, .duu-badge-can{
-            font-size: .70rem;
-            padding: 5px 9px;
-          }
-
-          /* Empêcher “Promo / Livraison” de se gêner */
-          .duu-badge-stack{ gap: 5px; }
+          .duu-can-wrap{ padding: 12px; border-radius: 18px; }
+          .duu-can-title{ font-size: 1.04rem; }
+          .duu-can-sub{ font-size: .88rem; }
+          .duu-card{ width: 172px; border-radius: 14px; }
+          .duu-img{ height: 132px; }
+          .duu-badge, .duu-badge-can{ font-size: .70rem; padding: 5px 9px; }
+          .duu-chip{ font-size: .78rem; padding: 6px 9px; }
         }
       `}</style>
 
-      <div className="duu-promo-wrap">
-        {/* ✅ Pas de bouton: header cliquable */}
+      <div className="duu-can-wrap">
         <div
-          className="duu-promo-head mb-2"
+          className="duu-can-head"
           role="button"
           tabIndex={0}
           onClick={() => navigate(toAllLink)}
           onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
-          title="Voir toutes les promos"
+          title="Découvrir toutes les Offres CAN"
         >
-          <div style={{ minWidth: 0 }}>
-            <div className="duu-can-ribbon mb-2">
-              <span className={`duu-dot ${blink ? "blink" : ""}`} />
-              <span className={`pill ${blink ? "blink" : ""}`}>OFFRE CAN 🇲🇦</span>
-              <span
-                className="small"
-                style={{
-                  color: "rgba(0,0,0,.70)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: "100%",
-                  display: "block",
-                }}
-              >
-                Promos + livraison offerte (produits éligibles)
+          <div style={{ minWidth: 0, position: "relative" }}>
+            <div className="duu-can-ribbon">
+              <span className="duu-can-pill">
+                <span className={`duu-dot ${blink ? "blink" : ""}`} />
+                <span className={`duu-can-tag ${blink ? "blink" : ""}`}>
+                  OFFRE CAN 🇲🇦
+                </span>
+                <span style={{ fontWeight: 900, color: "rgba(0,0,0,.75)" }}>
+                  CAN 2025 • Maroc • Ambiance supporters 🔥
+                </span>
               </span>
             </div>
 
-            <h2 className="duu-promo-title">🔥 Offres spéciales CAN</h2>
-            <div className="duu-promo-sub">
-              Promo immédiate • Livraison offerte sur les promos
+            <h2 className="duu-can-title">🏆 Spécial CAN 2025 — Promos en mode “stade”</h2>
+            <div className="duu-can-sub">
+              Sélection Duumini pour vibrer la Coupe d’Afrique • Fin le 22 janvier
             </div>
+
+            <div className="duu-can-meta mt-2">
+              <span className="duu-chip duu-chip-strong">
+                ⏳ {cd.isOver ? "Offre terminée" : `Reste ${cd.days}j ${timeStr}`}
+              </span>
+              <span className="duu-chip duu-chip-green">🇲🇦 Maroc</span>
+              <span className="duu-chip">🚚 Livraison offerte*</span>
+              <span className="duu-chip">🎉 Prix supporters</span>
+            </div>
+
+            <div className="duu-note">*Livraison offerte sur les produits éligibles.</div>
           </div>
 
-          <div className="duu-promo-chevron" aria-hidden="true">
+          <div className="duu-can-chevron" aria-hidden="true">
             ›
           </div>
         </div>
 
         <div
           ref={scrollerRef}
-          className="duu-promo-scroller"
+          className="duu-can-scroller"
           role="button"
           tabIndex={0}
           onClick={() => navigate(toAllLink)}
           onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
-          title="Voir toutes les offres"
+          title="Découvrir toutes les offres CAN"
         >
           {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
             const saved =
-              type === "PERCENT"
-                ? `-${Math.round(value)}%`
-                : `-${moneyMAD(value)}`;
+              type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
 
             return (
-              <div className="card border-0 duu-promo-card" data-promo-card key={p.id}>
+              <div className="card border-0 duu-card" data-promo-card key={p.id}>
                 <div className="position-relative">
                   {cover ? (
-                    <img
-                      className="duu-promo-img"
-                      src={imgUrl(cover)}
-                      alt={p.name}
-                      loading="lazy"
-                    />
+                    <img className="duu-img" src={imgUrl(cover)} alt={p.name} loading="lazy" />
                   ) : (
-                    <div className="duu-promo-img d-flex align-items-center justify-content-center text-muted">
+                    <div className="duu-img d-flex align-items-center justify-content-center text-muted">
                       Image
                     </div>
                   )}
 
-                  {/* ✅ Stack: “Promo” + “Livraison offerte” sans se gêner */}
-                  <div className="duu-badge-stack">
-                    <span className="duu-badge">PROMO {saved}</span>
-                    <span className="duu-badge-free">🚚 Livraison offerte</span>
-                  </div>
+                  <span className="duu-badge">PROMO {saved}</span>
 
                   {isCan && (
                     <span className="duu-badge-can">
                       <span className={`duu-dot ${blink ? "blink" : ""}`} />
-                      Offre CAN 🇲🇦
+                      CAN 🇲🇦
                     </span>
                   )}
                 </div>
@@ -476,11 +531,15 @@ export default function PromotionsCarousel({
 
                   <div className="d-flex align-items-baseline gap-2">
                     <div className="fw-bold">{moneyMAD(promoPrice)}</div>
-                    <div className="duu-price-old">{moneyMAD(p.price)}</div>
+                    <div className="duu-old">{moneyMAD(p.price)}</div>
                   </div>
 
                   <div className="small text-muted mt-1">
-                    {isCan ? <>⚡ Offre CAN limitée — profitez maintenant</> : <>✅ Promo valide sur produit éligible</>}
+                    {cd.isOver
+                      ? "⏳ Offre CAN terminée"
+                      : isCan
+                      ? "🔥 Ambiance CAN — profite maintenant"
+                      : "🎉 Promo du moment"}
                   </div>
                 </div>
               </div>
