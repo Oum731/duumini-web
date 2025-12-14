@@ -1,60 +1,50 @@
 // src/services/products.ts
 import { api } from "./http";
 
+export type PromoDiscountType = "PERCENT" | "AMOUNT";
+
 export type Product = {
   id: number;
-  shop_id: number | null; // ← boutique associée (obligatoire côté ADMIN)
+  shop_id: number | null;
   category_id?: number | null;
   name: string;
   slug: string;
 
-  /**
-   * 💰 Prix affiché côté client
-   * → C'est le prix saisi par le vendeur/admin (ex: 50).
-   * → C'est cette valeur qui doit être utilisée sur le site / app côté client.
-   */
   price: number;
-
-  /**
-   * 💼 Montant NET pour le vendeur (calculé côté backend).
-   *
-   * Exemple avec un produit FOOD (18%) :
-   *   - vendeur saisit 50  → price = 50
-   *   - commission Duumini = 50 * 0.18 = 9
-   *   - vendor_price       = 41
-   *
-   * → Ce champ est renvoyé par l'API, mais normalement
-   *   le front ne l'envoie PAS lors de la création / mise à jour.
-   */
   vendor_price?: number | null;
 
   currency?: string;
   description?: string | null;
   stock?: number | null;
   is_featured?: 0 | 1;
+
   promo_eligible?: 0 | 1;
-  // 🔹 Utilisé côté backend pour savoir si c'est FOOD (18%) ou MARKET (11%)
-  //    En pratique: 'food' | 'product'
+
+  // ✅ Promo
+  promo_discount_type?: PromoDiscountType | null;
+  promo_discount_value?: number | null;
+  promo_free_delivery?: 0 | 1;
+
   sub_category?: string | null;
+
   created_at?: string;
   updated_at?: string;
   images?: { id: number; url: string; sort_order: number }[];
   cover?: string | null;
 
-  // 🔹 Infos boutique (jointure shops)
   shop_name?: string | null;
   shop_logo?: string | null;
   shop_cover?: string | null;
-  shop_city?: string | null;        // ex: "Casablanca"
-  shop_city_code?: string | null;   // ex: "CASABLANCA" (optionnel, suivant ton API)
+  shop_city?: string | null;
+  shop_city_code?: string | null;
 
-  // 🔹 Activation / désactivation du produit
   is_active?: 0 | 1;
 
-  // 🔹 Champs supplémentaires renvoyés par certaines routes (facultatifs)
-  total_qty?: number; // pour /top-ordered
-  avg_rating?: number; // pour /top-rated
-  rating_count?: number; // pour /top-rated
+  cities?: string[] | null;
+
+  total_qty?: number;
+  avg_rating?: number;
+  rating_count?: number;
 };
 
 export type Paginated<T> = {
@@ -65,7 +55,6 @@ export type Paginated<T> = {
 type Channel = "african-food" | "african-market";
 
 /* ---------- Utils ---------- */
-// On laisse passer la valeur telle quelle, mais l’UI doit bien envoyer 'food' ou 'product'
 function normalizeSubCategory(v?: string | null): string | undefined {
   if (v == null) return undefined;
   const s = String(v).trim();
@@ -73,14 +62,6 @@ function normalizeSubCategory(v?: string | null): string | undefined {
   return s;
 }
 
-/**
- * Normalise un code ville / libellé pour l'API (?ville=)
- *
- * Accepte par ex. :
- *  - "CASA", "CASABLANCA", "casa", "Casablanca" → "Casablanca"
- *  - "MARRA", "MARRAKECH", "mar" → "Marrakech"
- *  - sinon → renvoie la valeur telle quelle (trim).
- */
 function normalizeCityFilterToVille(city?: string | null): string | undefined {
   if (!city) return undefined;
   const raw = String(city).trim();
@@ -93,21 +74,88 @@ function normalizeCityFilterToVille(city?: string | null): string | undefined {
   return raw;
 }
 
+function normalizeCityLabel(city?: string | null): string | null {
+  if (!city) return null;
+  const raw = String(city).trim();
+  if (!raw) return null;
+  const low = raw.toLowerCase();
+  if (low.startsWith("cas")) return "Casablanca";
+  if (low.startsWith("mar")) return "Marrakech";
+  return raw;
+}
+
+function uniqCities(input: any): string[] | null {
+  if (input == null) return null;
+
+  let arr: any[] = [];
+  if (Array.isArray(input)) arr = input;
+  else {
+    const s = String(input || "").trim();
+    if (!s) return [];
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(s);
+        arr = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        arr = [];
+      }
+    } else if (s.includes(",")) {
+      arr = s.split(",").map((x) => x.trim());
+    } else {
+      arr = [s];
+    }
+  }
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const it of arr) {
+    const v = normalizeCityLabel(it);
+    if (!v) continue;
+    const k = v.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(v);
+  }
+  return out;
+}
+
+/** ✅ Normalise type promo */
+function normalizePromoType(v: any): PromoDiscountType | null {
+  const s = String(v || "").trim().toUpperCase();
+  if (s === "AMOUNT") return "AMOUNT";
+  if (s === "PERCENT") return "PERCENT";
+  return null;
+}
+
+/** ✅ Normalise valeur promo */
+function normalizePromoValue(v: any): number | null {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+/** ✅ Convertit bool/number => 0|1 (ou null si absent) */
+function to01(v: any): 0 | 1 | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v === "number") return v ? 1 : 0;
+  const s = String(v).trim().toLowerCase();
+  if (s === "1" || s === "true" || s === "yes" || s === "on") return 1;
+  if (s === "0" || s === "false" || s === "no" || s === "off") return 0;
+  return null;
+}
+
 /* ---------- List ---------- */
-export async function listProducts(opts: {
-  page?: number;
-  pageSize?: number;
-  channel?: Channel;
-  /** seulement produits actifs (is_active = 1) */
-  onlyActive?: boolean;
-  /**
-   * Ville de l'utilisateur / ville de la boutique :
-   *  - peut être "CASABLANCA", "MARRAKECH", "casa", "Casablanca", ...
-   *  - sera normalisée côté service avant d'être envoyée à l'API en ?ville=
-   */
-  city?: string;
-  ville?: string; // alias possible
-} = {}) {
+export async function listProducts(
+  opts: {
+    page?: number;
+    pageSize?: number;
+    channel?: Channel;
+    onlyActive?: boolean;
+    city?: string;
+    ville?: string;
+  } = {}
+) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
 
@@ -119,17 +167,35 @@ export async function listProducts(opts: {
       : "/api/products";
 
   const query: Record<string, any> = { page, pageSize };
-  if (opts.onlyActive) {
-    query.onlyActive = 1;
-  }
+  if (opts.onlyActive) query.onlyActive = 1;
 
-  // 🔹 Activation du filtre ville → on envoie ?ville=... à l'API
   const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
-  if (ville) {
-    query.ville = ville;
-  }
+  if (ville) query.ville = ville;
 
   return api.get<Paginated<Product>>(base, { query });
+}
+
+/* ---------- Promotions ---------- */
+export async function listPromotions(
+  opts: {
+    limit?: number;
+    channel?: "all" | Channel;
+    onlyActive?: boolean;
+    city?: string;
+    ville?: string;
+  } = {}
+) {
+  const limit = opts.limit ?? 12;
+
+  const query: Record<string, any> = { limit };
+  if (opts.onlyActive) query.onlyActive = 1;
+
+  const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
+  if (ville) query.ville = ville;
+
+  if (opts.channel && opts.channel !== "all") query.channel = opts.channel;
+
+  return api.get<Product[]>("/api/products/promotions", { query });
 }
 
 /* ---------- Read ---------- */
@@ -138,81 +204,66 @@ export async function getProduct(id: number) {
 }
 
 /* ---------- Create ---------- */
-/**
- * Création:
- *  - VENDEUR: shop_id déduit de l'utilisateur connecté côté API
- *  - ADMIN:   shop_id doit être fourni (sélect "Boutique" dans le back-office)
- *
- * 💡 IMPORTANT:
- *  - Le vendeur tape le prix FINAL client dans `price` (ex: 50).
- *  - L'API stocke `price` tel quel.
- *  - L'API calcule ensuite `vendor_price` = price - (price * taux Duumini)
- *    et le renvoie au front.
- *
- * → Le back-office doit donc éditer le champ `price`.
- */
 export async function createProduct(draft: Partial<Product>, files: File[]) {
   const fd = new FormData();
+
   if (draft.name) fd.append("name", draft.name);
 
-  // 💰 Prix envoyé à l'API = prix client saisi par le vendeur/admin
-  // (compat: si jamais quelqu'un utilise encore vendor_price, on le prend en fallback)
   const finalPrice =
     draft.price != null
       ? draft.price
       : draft.vendor_price != null
       ? draft.vendor_price
       : null;
-  if (finalPrice != null) {
-    fd.append("price", String(finalPrice));
-  }
+  if (finalPrice != null) fd.append("price", String(finalPrice));
 
   if (draft.currency) fd.append("currency", draft.currency);
   if (draft.description != null)
     fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
-  // 🔹 Catégorie (Market)
-  if (draft.category_id != null) {
+  if (draft.category_id != null)
     fd.append("category_id", String(draft.category_id));
-  }
 
   if (draft.is_featured != null) {
-    // accepte 0|1 ou boolean
-    const v =
-      typeof draft.is_featured === "number"
-        ? draft.is_featured
-        : draft.is_featured
-        ? 1
-        : 0;
-    fd.append("is_featured", String(v));
-  }
-  if (draft.promo_eligible != null) {
-    const v =
-      typeof draft.promo_eligible === "number"
-        ? draft.promo_eligible
-        : draft.promo_eligible
-        ? 1
-        : 0;
-    fd.append("promo_eligible", String(v));
+    const v = to01(draft.is_featured);
+    if (v != null) fd.append("is_featured", String(v));
   }
 
-  // 🔹 Actif / inactif (par défaut 1 côté API si non fourni)
+  // ✅ promo_eligible (IMPORTANT: ne pas faire un "truthy" sur "0")
+  const promoEligible = to01(draft.promo_eligible);
+  if (promoEligible != null) fd.append("promo_eligible", String(promoEligible));
+
+  // ✅ promo_free_delivery
+  const promoFree = to01((draft as any).promo_free_delivery);
+  if (promoFree != null) fd.append("promo_free_delivery", String(promoFree));
+
+  // ✅ promo_discount_* (seulement si promo=1)
+  if (promoEligible === 1) {
+    const t = normalizePromoType((draft as any).promo_discount_type);
+    const v = normalizePromoValue((draft as any).promo_discount_value);
+
+    if (t) fd.append("promo_discount_type", t);
+    if (v != null) fd.append("promo_discount_value", String(v));
+  } else if (promoEligible === 0) {
+    // ✅ reset promo côté API (elle purge si promo_eligible=0)
+    fd.append("promo_discount_type", "");
+    fd.append("promo_discount_value", "");
+  }
+
   if (draft.is_active != null) {
-    const v =
-      typeof draft.is_active === "number" ? draft.is_active : draft.is_active ? 1 : 0;
-    fd.append("is_active", String(v));
+    const v = to01(draft.is_active);
+    if (v != null) fd.append("is_active", String(v));
   }
 
   const sub = normalizeSubCategory(draft.sub_category ?? undefined);
   if (sub) fd.append("sub_category", sub);
 
-  // 🔹 Boutique (ADMIN doit en choisir une)
-  if (draft.shop_id != null) {
-    fd.append("shop_id", String(draft.shop_id));
-  }
+  if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
-  // images
+  const cities = uniqCities(draft.cities);
+  if (cities != null) fd.append("cities", JSON.stringify(cities));
+
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
   return api.post<{ id: number; channel: Channel }>("/api/products", fd);
@@ -226,25 +277,16 @@ export async function updateProduct(
   replaceImages = false
 ) {
   const fd = new FormData();
+
   if (draft.name) fd.append("name", draft.name);
 
-  /**
-   * 💰 Même logique que create:
-   * - le champ édité dans le back-office doit être `price`
-   *   (prix client final saisi par le vendeur).
-   * - par compat, si `price` n'est pas renseigné mais `vendor_price` l'est,
-   *   on utilisera `vendor_price` comme valeur de `price` (mais l'idéal est
-   *   que l'UI n'envoie que `price`).
-   */
   const finalPrice =
     draft.price != null
       ? draft.price
       : draft.vendor_price != null
       ? draft.vendor_price
       : null;
-  if (finalPrice != null) {
-    fd.append("price", String(finalPrice));
-  }
+  if (finalPrice != null) fd.append("price", String(finalPrice));
 
   if (draft.currency) fd.append("currency", draft.currency);
   if (draft.description != null)
@@ -252,40 +294,45 @@ export async function updateProduct(
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
   if (draft.is_featured != null) {
-    const v =
-      typeof draft.is_featured === "number"
-        ? draft.is_featured
-        : draft.is_featured
-        ? 1
-        : 0;
-    fd.append("is_featured", String(v));
-  }
-  if (draft.promo_eligible != null) {
-    const v =
-      typeof draft.promo_eligible === "number"
-        ? draft.promo_eligible
-        : draft.promo_eligible
-        ? 1
-        : 0;
-    fd.append("promo_eligible", String(v));
+    const v = to01(draft.is_featured);
+    if (v != null) fd.append("is_featured", String(v));
   }
 
-  // 🔹 Actif / inactif
+  // ✅ promo_eligible
+  const promoEligible = to01(draft.promo_eligible);
+  if (promoEligible != null) fd.append("promo_eligible", String(promoEligible));
+
+  // ✅ promo_free_delivery
+  const promoFree = to01((draft as any).promo_free_delivery);
+  if (promoFree != null) fd.append("promo_free_delivery", String(promoFree));
+
+  // ✅ promo_discount_* (seulement si promo)
+  if (promoEligible === 1) {
+    const t = normalizePromoType((draft as any).promo_discount_type);
+    const v = normalizePromoValue((draft as any).promo_discount_value);
+
+    if (t) fd.append("promo_discount_type", t);
+    if (v != null) fd.append("promo_discount_value", String(v));
+  } else if (promoEligible === 0) {
+    // ✅ reset promo
+    fd.append("promo_discount_type", "");
+    fd.append("promo_discount_value", "");
+  }
+
   if (draft.is_active != null) {
-    const v =
-      typeof draft.is_active === "number" ? draft.is_active : draft.is_active ? 1 : 0;
-    fd.append("is_active", String(v));
+    const v = to01(draft.is_active);
+    if (v != null) fd.append("is_active", String(v));
   }
 
   const sub = normalizeSubCategory(draft.sub_category ?? undefined);
   if (sub) fd.append("sub_category", sub);
 
-  if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
+  if (draft.category_id != null)
+    fd.append("category_id", String(draft.category_id));
+  if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
-  // 🔹 Possibilité de changer de boutique (ADMIN uniquement côté API)
-  if (draft.shop_id != null) {
-    fd.append("shop_id", String(draft.shop_id));
-  }
+  const cities = uniqCities(draft.cities);
+  if (cities != null) fd.append("cities", JSON.stringify(cities));
 
   if (replaceImages) fd.append("replace_images", "true");
 
@@ -300,16 +347,7 @@ export async function removeProduct(id: number) {
 }
 
 /* ---------- Top produits : les plus commandés ---------- */
-/**
- * Utilisation possible :
- *  - listTopOrderedProducts()                → limite 8, toutes villes
- *  - listTopOrderedProducts(12)             → limite 12, toutes villes
- *  - listTopOrderedProducts({ city: "CASABLANCA" })
- *  - listTopOrderedProducts({ limit: 12, ville: "Casablanca" })
- */
-export async function listTopOrderedProducts(
-  limit?: number
-): Promise<Product[]>;
+export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
 export async function listTopOrderedProducts(opts: {
   limit?: number;
   city?: string;
@@ -324,32 +362,17 @@ export async function listTopOrderedProducts(
   if (typeof limitOrOpts === "number") {
     limit = limitOrOpts;
   } else if (limitOrOpts && typeof limitOrOpts === "object") {
-    if (typeof limitOrOpts.limit === "number") {
-      limit = limitOrOpts.limit;
-    }
-    ville = normalizeCityFilterToVille(
-      limitOrOpts.city ?? limitOrOpts.ville ?? null
-    );
+    if (typeof limitOrOpts.limit === "number") limit = limitOrOpts.limit;
+    ville = normalizeCityFilterToVille(limitOrOpts.city ?? limitOrOpts.ville ?? null);
   }
 
   const query: Record<string, any> = { limit };
-  if (ville) {
-    query.ville = ville;
-  }
+  if (ville) query.ville = ville;
 
-  return api.get<Product[]>("/api/products/top-ordered", {
-    query,
-  });
+  return api.get<Product[]>("/api/products/top-ordered", { query });
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
-/**
- * Utilisation possible :
- *  - listTopRatedProducts()
- *  - listTopRatedProducts({ limit: 8, minCount: 2 })
- *  - listTopRatedProducts({ city: "CASABLANCA" })
- *  - listTopRatedProducts({ limit: 12, minCount: 3, ville: "Marrakech" })
- */
 export async function listTopRatedProducts(
   opts?: { limit?: number; minCount?: number }
 ): Promise<Product[]>;
@@ -368,11 +391,7 @@ export async function listTopRatedProducts(
   const query: Record<string, any> = { limit, minCount };
 
   const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
-  if (ville) {
-    query.ville = ville;
-  }
+  if (ville) query.ville = ville;
 
-  return api.get<Product[]>("/api/products/top-rated", {
-    query,
-  });
+  return api.get<Product[]>("/api/products/top-rated", { query });
 }

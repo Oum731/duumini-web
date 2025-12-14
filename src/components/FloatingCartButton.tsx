@@ -18,26 +18,31 @@ export default function FloatingCartButton() {
     prev.current = totalItems;
   }, [totalItems]);
 
+  // ✅ Tant que panier non vide => commande non finalisée => bouton visible
   if (totalItems <= 0) return null;
 
   return (
     <Link
       to="/cart"
       aria-label="Aller au panier"
-      className={`d-lg-none position-fixed rounded-pill shadow ${bump ? "cart-bump" : ""}`}
+      className={`d-lg-none rounded-pill shadow ${bump ? "cart-bump" : ""}`}
       style={{
+        position: "fixed", // ✅ ne dépend plus de Bootstrap
         right: 16,
         bottom: 16,
         background: "var(--duu-black)",
         color: "#fff",
         padding: "12px 16px",
-        zIndex: 1050,
+        zIndex: 2000,
       }}
     >
       <div className="d-flex align-items-center gap-2">
         <ShoppingCart size={18} />
         <span>Panier</span>
-        <span className="badge rounded-pill" style={{ background: "var(--duu-red)" }}>
+        <span
+          className="badge rounded-pill"
+          style={{ background: "var(--duu-red)" }}
+        >
           {totalItems > 99 ? "99+" : totalItems}
         </span>
       </div>

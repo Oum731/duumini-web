@@ -1,5 +1,5 @@
 // src/components/LocationGate.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useLocationCity,
   CITY_OPTIONS,
@@ -14,14 +14,16 @@ export default function LocationGate({
   const { city, setCity, isReady } = useLocationCity();
   const [showModal, setShowModal] = useState(false);
 
-  // 👉 Label courant (si besoin plus tard)
+  // ✅ Label courant (au cas où tu veux l’afficher plus tard)
+  const currentLabel = useMemo(() => {
+    const found = CITY_OPTIONS.find((c) => c.code === city);
+    return found?.label ?? "";
+  }, [city]);
 
   // 👉 Au premier chargement : si pas de ville, on force l'ouverture
   useEffect(() => {
     if (!isReady) return;
-    if (!city) {
-      setShowModal(true);
-    }
+    if (!city) setShowModal(true);
   }, [isReady, city]);
 
   // 👉 Écoute un évènement global "city:open" pour ouvrir depuis ailleurs si besoin
@@ -30,6 +32,13 @@ export default function LocationGate({
     window.addEventListener("city:open", handler);
     return () => window.removeEventListener("city:open", handler);
   }, []);
+
+  // ✅ Bonus : comportement "modal bootstrap" (lock scroll)
+  useEffect(() => {
+    if (!showModal) return;
+    document.body.classList.add("modal-open");
+    return () => document.body.classList.remove("modal-open");
+  }, [showModal]);
 
   function handleSelect(c: CityCode) {
     setCity(c);
@@ -56,11 +65,12 @@ export default function LocationGate({
         <button
           type="button"
           onClick={() => setShowModal(true)}
-          className="position-fixed d-inline-flex align-items-center gap-2 shadow-sm"
+          className="d-inline-flex align-items-center gap-2 shadow-sm"
           style={{
-            left: 16,              // ✅ plus à droite → on passe à gauche
+            position: "fixed", // ✅ IMPORTANT : ne dépend plus de Bootstrap
+            left: 16,
             bottom: 16,
-            zIndex: 1050,
+            zIndex: 2000, // ✅ au-dessus de la plupart des overlays
             borderRadius: 999,
             border: "1px solid rgba(0,0,0,.06)",
             background: "#FFD54F",
@@ -69,6 +79,7 @@ export default function LocationGate({
             color: "var(--duu-black, #111)",
           }}
           aria-label="Changer ma ville de livraison"
+          title={currentLabel ? `Ville actuelle : ${currentLabel}` : undefined}
         >
           <span style={{ fontSize: "1rem" }}>📍</span>
           <span className="fw-semibold">Changer ma ville</span>
@@ -99,6 +110,7 @@ export default function LocationGate({
                     <span>Choisissez votre ville</span>
                   </h5>
                   <button
+                    type="button"
                     className="btn-close"
                     aria-label="Fermer"
                     onClick={() => setShowModal(false)}

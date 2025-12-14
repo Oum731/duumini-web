@@ -15,6 +15,9 @@ import ProductsAdminPage from "./pages/admin/ProductsAdminPage";
 import ShopsAdminPage from "./pages/admin/ShopsAdminPage";
 import UsersAdminPage from "./pages/admin/UsersAdminPage";
 
+// ✅ Nouvelle page IA (Admin)
+import AiToolsAdminPage from "./pages/admin/AiToolsAdminPage";
+
 // ✅ Vitrine
 import AfricanFood from "./pages/AfricanFood";
 import AfricanMarket from "./pages/AfricanMarket";
@@ -53,6 +56,8 @@ import NotificationBubble from "./components/NotificationBubble";
 
 // ✅ Analytics (Meta Pixel via GTM / dataLayer)
 import { trackPageView } from "./lib/analytics";
+import PromotionsPage from "./pages/PromotionsPage";
+import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
 
 function Page({ title }: { title: string }) {
   return (
@@ -80,7 +85,6 @@ function PageViewTracker() {
   const { pathname, search } = useLocation();
 
   useEffect(() => {
-    // Exemple: "/african-food?page=2"
     const path = `${pathname}${search || ""}`;
     trackPageView(path);
   }, [pathname, search]);
@@ -193,9 +197,7 @@ function GlobalRatingModal(props: {
         comment.trim() || undefined
       );
       setSuccess("Merci pour votre avis !");
-      setTimeout(() => {
-        onClose();
-      }, 800);
+      setTimeout(() => onClose(), 800);
     } catch (e) {
       console.error("Erreur enregistrement avis commande:", e);
       setError("Impossible d'enregistrer votre avis.");
@@ -264,9 +266,7 @@ function GlobalRatingModal(props: {
                 <div className="alert alert-danger py-1 small">{error}</div>
               )}
               {success && (
-                <div className="alert alert-success py-1 small">
-                  {success}
-                </div>
+                <div className="alert alert-success py-1 small">{success}</div>
               )}
             </div>
             <div className="modal-footer">
@@ -299,7 +299,7 @@ export default function App() {
   const [pendingRating, setPendingRating] =
     useState<PendingProductRating | null>(null);
 
-  // Vérifie au chargement s'il y a un produit à noter (commande livrée > 24h)
+  // ✅ Avec ton http.ts : getPendingProductRating() renvoie directement l’objet JSON (pas axios {data})
   useEffect(() => {
     if (!user) {
       setPendingRating(null);
@@ -314,22 +314,11 @@ export default function App() {
 
         if (cancelled) return;
 
-        let data: PendingProductRating | null = null;
-
-        // Cas 1 : wrapper de type { data: ... }
-        if (res && typeof res === "object" && "data" in (res as any)) {
-          data = ((res as any).data ?? null) as PendingProductRating | null;
-        } else {
-          // Cas 2 : wrapper renvoie directement l'objet ou null
-          data = (res as PendingProductRating | null) ?? null;
-        }
-
-        setPendingRating(data);
+        // res est soit PendingProductRating soit null
+        setPendingRating((res as PendingProductRating | null) ?? null);
       } catch (e) {
         console.error("Erreur pending rating:", e);
-        if (!cancelled) {
-          setPendingRating(null);
-        }
+        if (!cancelled) setPendingRating(null);
       }
     }
 
@@ -341,21 +330,16 @@ export default function App() {
 
   return (
     <CartProvider>
-      {/* 🔐 Gate de localisation : Casablanca / Marrakech
-          - Invite seulement
-          - 1 seule fois (localStorage) */}
       <LocationGate>
         <div className="min-vh-100 d-flex flex-column">
           <ScrollToTop />
-          {/* 📊 Tracking des pages (SPA) */}
           <PageViewTracker />
           <NavbarWithCount />
+
           <main className="flex-fill">
             <React.Suspense
               fallback={
-                <div className="container-xxl py-5 text-muted">
-                  Chargement…
-                </div>
+                <div className="container-xxl py-5 text-muted">Chargement…</div>
               }
             >
               <Routes>
@@ -375,13 +359,13 @@ export default function App() {
                 <Route path="/african-market" element={<AfricanMarket />} />
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
                 <Route path="/top-products" element={<TopProductsPage />} />
+                <Route path="/promos" element={<PromotionsPage />} />
 
                 {/* ✅ Pages légales */}
                 <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                 <Route path="/legal/terms" element={<Terms />} />
                 <Route path="/legal/returns" element={<ReturnsPolicy />} />
 
-                {/* Admin protégé */}
                 <Route path="/admin" element={<ProtectedAdmin />}>
                   <Route element={<AdminShell />}>
                     <Route index element={<AdminHome />} />
@@ -389,6 +373,15 @@ export default function App() {
                     <Route path="products" element={<ProductsAdminPage />} />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
+
+                    {/* ✅ Promotions */}
+                    <Route
+                      path="promotions"
+                      element={<PromotionsAdminPage />}
+                    />
+
+                    {/* ✅ IA */}
+                    <Route path="ai" element={<AiToolsAdminPage />} />
                   </Route>
                 </Route>
 
@@ -403,14 +396,11 @@ export default function App() {
             </React.Suspense>
           </main>
 
-          {/* ✅ Widget invité global (s'auto-masque si user connecté) */}
           <GuestOrderWidget />
-
           <ScrollTopButton threshold={380} offsetBottom={84} offsetRight={16} />
           <FloatingCartGuard />
           <Footer />
 
-          {/* 🔔 Bulle de notification temps réel (socket/SSE, PWA-friendly) */}
           <NotificationBubble />
 
           {pendingRating && (

@@ -377,7 +377,7 @@ export default function AdminHome() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [kpi, setKpi] = useState<Summary | null>(null);
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [, setLastUpdate] = useState<Date | null>(null);
 
   const [commissionFilter, setCommissionFilter] = useState<
     "today" | "week" | "month" | "year"
@@ -487,10 +487,7 @@ export default function AdminHome() {
   // SSE : rafraîchir à la volée sur ORDER_CREATED / ORDER_STATUS
   useEffect(() => {
     const token = getAccessToken();
-    if (!token) {
-      console.warn("[AdminHome] pas de token → pas de SSE admin");
-      return;
-    }
+    if (!token) return;
 
     const API_BASE = import.meta.env.VITE_API_BASE as string;
     const base = API_BASE.replace(/\/$/, "");
@@ -548,23 +545,6 @@ export default function AdminHome() {
 
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
-      {/* Barre d’actions */}
-      <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-        <div className="text-muted small">
-          Dernière mise à jour&nbsp;
-          {lastUpdate ? lastUpdate.toLocaleTimeString("fr-FR") : "—"}
-        </div>
-        <div className="d-flex gap-2">
-          <button
-            className="btn btn-sm btn-outline-dark"
-            onClick={() => refresh()}
-            disabled={loading}
-          >
-            {loading ? "Actualisation…" : "Actualiser"}
-          </button>
-        </div>
-      </div>
-
       {/* KPI Cards */}
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
         {/* CA aujourd'hui (hors livraison) */}
@@ -574,7 +554,10 @@ export default function AdminHome() {
               <div className="text-muted small">
                 CA (aujourd&apos;hui, hors livraison)
               </div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {mad(kpi?.revenue_today)}
               </div>
               <div className="text-muted small">
@@ -583,42 +566,57 @@ export default function AdminHome() {
             </div>
           </div>
         </div>
+
         {/* CA semaine (hors livraison) */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">CA (semaine, hors livraison)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div className="text-muted small">
+                CA (semaine, hors livraison)
+              </div>
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {mad(kpi?.revenue_week)}
               </div>
               <div className="text-muted small">Lun → aujourd’hui</div>
             </div>
           </div>
         </div>
+
         {/* CA mois (hors livraison) */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">CA (mois, hors livraison)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {mad(kpi?.revenue_month)}
               </div>
               <div className="text-muted small">1 → aujourd’hui</div>
             </div>
           </div>
         </div>
+
         {/* CA année (hors livraison) */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">CA (année, hors livraison)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {mad(kpi?.revenue_year)}
               </div>
               <div className="text-muted small">01/01 → aujourd’hui</div>
             </div>
           </div>
         </div>
+
         {/* Commission Duumini avec filtre actif */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
@@ -638,55 +636,74 @@ export default function AdminHome() {
                 <option value="month">Mois</option>
                 <option value="year">Année</option>
               </select>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {mad(commissionValue)}
               </div>
               <div className="text-muted small">{commissionLabel}</div>
             </div>
           </div>
         </div>
+
         {/* Cmd en attente */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Cmd en attente</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {kpi?.orders_pending ?? 0}
               </div>
               <div className="text-muted small">OPEN + PREPARATION</div>
             </div>
           </div>
         </div>
+
         {/* Produits */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Produits actifs</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {kpi?.products_active ?? 0}
               </div>
               <div className="text-muted small">Total catalogue</div>
             </div>
           </div>
         </div>
+
         {/* Boutiques */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Boutiques</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {kpi?.shops_total ?? 0}
               </div>
               <div className="text-muted small">Enregistrées</div>
             </div>
           </div>
         </div>
+
         {/* Utilisateurs */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Utilisateurs</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate">
+              <div
+                className="fs-5 fs-sm-4 fw-semibold text-truncate"
+                style={{ color: "var(--duu-black)" }}
+              >
                 {kpi?.users_total ?? 0}
               </div>
               <div className="text-muted small">Inscrits</div>
@@ -701,22 +718,24 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate">
-                  Évolution du CA (30 jours, hors livraison)
-                </h2>
-                <span className="text-muted small text-truncate">
-                  Sous-total produits des commandes DONE (sans frais de
-                  livraison)
-                </span>
+                <div className="d-flex flex-column">
+                  <h2
+                    className="h6 mb-0 text-truncate"
+                    style={{ color: "var(--duu-black)" }}
+                  >
+                    Évolution du CA (30 jours, hors livraison)
+                  </h2>
+                  <span className="text-muted small text-truncate">
+                    Sous-total produits des commandes DONE (sans frais de livraison)
+                  </span>
+                </div>
+
+              
               </div>
-              <div
-                style={{ width: "100%", height: chartHeight, minHeight: 200 }}
-              >
+
+              <div style={{ width: "100%", height: chartHeight, minHeight: 200 }}>
                 {loading ? (
-                  <div
-                    className="placeholder-glow w-100 h-100 rounded"
-                    style={{ background: "#eee" }}
-                  />
+                  <div className="placeholder w-100 h-100 rounded" />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -729,10 +748,7 @@ export default function AdminHome() {
                       }}
                     >
                       {!isMobile && <CartesianGrid strokeDasharray="3 3" />}
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: isMobile ? 10 : 12 }}
-                      />
+                      <XAxis dataKey="date" tick={{ fontSize: isMobile ? 10 : 12 }} />
                       <YAxis
                         tickFormatter={(v) =>
                           `${Math.round((Number(v) || 0) / 1000)}k`
@@ -742,12 +758,7 @@ export default function AdminHome() {
                       <Tooltip
                         formatter={(v: any) => [mad(Number(v)), "CA hors livraison"]}
                       />
-                      <Line
-                        type="monotone"
-                        dataKey="revenue"
-                        dot={false}
-                        strokeWidth={2}
-                      />
+                      <Line type="monotone" dataKey="revenue" dot={false} strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
@@ -759,15 +770,16 @@ export default function AdminHome() {
         <div className="col-12 col-lg-4">
           <div className="card h-100 shadow-sm">
             <div className="card-body">
-              <h2 className="h6 mb-2 text-truncate">Commandes / jour</h2>
-              <div
-                style={{ width: "100%", height: chartHeight, minHeight: 200 }}
+              <h2
+                className="h6 mb-2 text-truncate"
+                style={{ color: "var(--duu-black)" }}
               >
+                Commandes / jour
+              </h2>
+
+              <div style={{ width: "100%", height: chartHeight, minHeight: 200 }}>
                 {loading ? (
-                  <div
-                    className="placeholder-glow w-100 h-100 rounded"
-                    style={{ background: "#eee" }}
-                  />
+                  <div className="placeholder w-100 h-100 rounded" />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -780,10 +792,7 @@ export default function AdminHome() {
                       }}
                     >
                       {!isMobile && <CartesianGrid strokeDasharray="3 3" />}
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: isMobile ? 10 : 12 }}
-                      />
+                      <XAxis dataKey="date" tick={{ fontSize: isMobile ? 10 : 12 }} />
                       <YAxis tick={{ fontSize: isMobile ? 10 : 12 }} />
                       <Tooltip />
                       <Bar dataKey="orders" maxBarSize={isMobile ? 18 : 28} />
@@ -803,10 +812,15 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate">Dernières commandes</h2>
+                <h2
+                  className="h6 mb-0 text-truncate"
+                  style={{ color: "var(--duu-black)" }}
+                >
+                  Dernières commandes
+                </h2>
                 <Link
                   to="/admin/orders"
-                  className="btn btn-sm btn-outline-dark w-100 w-sm-auto"
+                  className="btn btn-sm btn-duu w-100 w-sm-auto"
                 >
                   Tout voir
                 </Link>
@@ -833,10 +847,7 @@ export default function AdminHome() {
                     <tbody>
                       {orders.map((o) => (
                         <tr key={(o as any).id}>
-                          <td
-                            className="text-truncate"
-                            style={{ maxWidth: 120 }}
-                          >
+                          <td className="text-truncate" style={{ maxWidth: 120 }}>
                             <Link
                               to={`/admin/orders/${(o as any).id}`}
                               className="link-dark"
@@ -848,14 +859,11 @@ export default function AdminHome() {
                             {shortDate((o as any).created_at)}
                           </td>
                           <td>
-                            <span className="badge bg-secondary">
+                            <span className="badge badge-duu text-white">
                               {normStatus((o as any).status)}
                             </span>
                           </td>
-                          <td className="text-end">
-                            {/* Ici on garde le total payé par le client (avec livraison) */}
-                            {mad(safeTotal(o as any))}
-                          </td>
+                          <td className="text-end">{mad(safeTotal(o as any))}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -871,10 +879,15 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate">Boutiques récentes</h2>
+                <h2
+                  className="h6 mb-0 text-truncate"
+                  style={{ color: "var(--duu-black)" }}
+                >
+                  Boutiques récentes
+                </h2>
                 <Link
                   to="/admin/shops"
-                  className="btn btn-sm btn-outline-dark w-100 w-sm-auto"
+                  className="btn btn-sm btn-duu w-100 w-sm-auto"
                 >
                   Gérer
                 </Link>
@@ -899,10 +912,7 @@ export default function AdminHome() {
                     <tbody>
                       {shops.map((s) => (
                         <tr key={(s as any).id}>
-                          <td
-                            className="text-truncate"
-                            style={{ maxWidth: 240 }}
-                          >
+                          <td className="text-truncate" style={{ maxWidth: 240 }}>
                             <Link
                               to={`/admin/shops/${(s as any).id}`}
                               className="link-dark"
@@ -928,12 +938,15 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate">
+                <h2
+                  className="h6 mb-0 text-truncate"
+                  style={{ color: "var(--duu-black)" }}
+                >
                   Derniers utilisateurs inscrits
                 </h2>
                 <Link
                   to="/admin/users"
-                  className="btn btn-sm btn-outline-dark w-100 w-sm-auto"
+                  className="btn btn-sm btn-duu w-100 w-sm-auto"
                 >
                   Gérer
                 </Link>
@@ -960,26 +973,25 @@ export default function AdminHome() {
                     <tbody>
                       {users.map((u) => (
                         <tr key={(u as any).id}>
-                          <td
-                            className="text-truncate"
-                            style={{ maxWidth: 280 }}
-                          >
+                          <td className="text-truncate" style={{ maxWidth: 280 }}>
                             <Link
                               to={`/admin/users/${(u as any).id}`}
                               className="link-dark"
                             >
-                              {((u as any).first_name || (u as any).last_name
-                                ? `${(u as any).first_name ?? ""} ${
-                                    (u as any).last_name ?? ""
-                                  }`.trim()
-                                : (u as any).phone || `#${(u as any).id}`)}
+                              {(
+                                (u as any).first_name || (u as any).last_name
+                                  ? `${(u as any).first_name ?? ""} ${
+                                      (u as any).last_name ?? ""
+                                    }`.trim()
+                                  : (u as any).phone || `#${(u as any).id}`
+                              )}
                             </Link>
                           </td>
                           <td className="d-none d-md-table-cell">
                             {(u as any).phone}
                           </td>
                           <td className="d-none d-lg-table-cell">
-                            <span className="badge bg-secondary">
+                            <span className="badge badge-duu text-white">
                               {(u as any).role}
                             </span>
                           </td>

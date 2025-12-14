@@ -5,6 +5,7 @@ import { ChevronRight, Bell } from "lucide-react";
 import InstallPWA from "../components/InstallPWA";
 import { listProducts, type Product } from "../services/products";
 import { API_BASE } from "../services/http";
+import PromotionsCarousel from "../components/PromotionsCarousel";
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -68,13 +69,9 @@ function HomeProductCard(props: { product: Product; to: string }) {
     (product as any).client_price ??
     0;
 
-
   return (
     <div className="col-6 col-sm-4 col-md-3 col-lg-2">
-      <Link
-        to={to}
-        className="text-decoration-none text-reset d-block h-100"
-      >
+      <Link to={to} className="text-decoration-none text-reset d-block h-100">
         <div
           className="card border-0 shadow-sm h-100"
           style={{
@@ -85,9 +82,7 @@ function HomeProductCard(props: { product: Product; to: string }) {
         >
           <div
             className="position-relative bg-light d-flex align-items-center justify-content-center"
-            style={{
-              height: 130, // 🔹 image plus petite
-            }}
+            style={{ height: 130 }}
           >
             {imageSrc ? (
               <img
@@ -96,20 +91,13 @@ function HomeProductCard(props: { product: Product; to: string }) {
                 className="img-fluid"
                 loading="lazy"
                 decoding="async"
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             ) : (
               <div className="w-100 h-100 d-flex align-items-center justify-content-center small text-muted">
                 Image à venir
               </div>
             )}
-
-            {/* petit tag en haut à gauche */}
-          
           </div>
 
           <div className="card-body p-2">
@@ -176,7 +164,6 @@ function NotificationsCTA() {
 
 export default function Home() {
   const [featured, setFeatured] = useState<Product[]>([]);
-  const [foodProducts, setFoodProducts] = useState<Product[]>([]);
   const [marketProducts, setMarketProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -196,7 +183,7 @@ export default function Home() {
 
         if (!items || !Array.isArray(items) || cancelled) return;
 
-        // On garde uniquement les produits actifs
+        // ✅ On garde uniquement les produits actifs + en stock
         const active = items.filter((p: any) => {
           const isActive =
             (p.is_active ?? p.active ?? 1) &&
@@ -204,21 +191,17 @@ export default function Home() {
           return !!isActive;
         });
 
-        const food = active.filter(
-          (p: any) => (p.sub_category || "").toLowerCase() === "food"
-        );
-        const market = active.filter(
-          (p: any) => (p.sub_category || "").toLowerCase() !== "food"
+        // ✅ SANS FOOD : on filtre tout ce qui est sub_category = food
+        const marketOnly = active.filter(
+          (p: any) => String(p.sub_category || "").toLowerCase() !== "food"
         );
 
-        // Sélections pour la Home
-        const featuredSelection = active.slice(0, 8); // mix
-        const foodSelection = food.slice(0, 6);
-        const marketSelection = market.slice(0, 6);
+        // ✅ Sélections pour la Home (uniquement market)
+        const featuredSelection = marketOnly.slice(0, 8);
+        const marketSelection = marketOnly.slice(0, 12);
 
         if (!cancelled) {
           setFeatured(featuredSelection);
-          setFoodProducts(foodSelection);
           setMarketProducts(marketSelection);
         }
       } catch (e) {
@@ -231,7 +214,6 @@ export default function Home() {
     }
 
     fetchProducts();
-
     return () => {
       cancelled = true;
     };
@@ -247,8 +229,9 @@ export default function Home() {
         <InstallPWA />
         <NotificationsCTA />
       </section>
+      <PromotionsCarousel limit={10} toAllLink="/promos" />
 
-      {/* SECTION 1 : Sélection Duumini */}
+      {/* SECTION 1 : Sélection Duumini (sans food) */}
       <section className="container-xxl mt-4">
         <div className="d-flex align-items-end justify-content-between mb-2">
           <div>
@@ -275,52 +258,11 @@ export default function Home() {
             </div>
           ) : (
             <div className="row g-3">
-              {featured.map((p) => {
-                const sub = ((p as any).sub_category || "").toLowerCase();
-                const to = sub === "food" ? "/african-food" : "/african-market";
-                return (
-                  <HomeProductCard
-                    key={(p as any).id ?? (p as any).slug}
-                    product={p}
-                    to={to}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* SECTION 2 : Duumini Food */}
-      <section className="container-xxl mt-4">
-        <div className="d-flex align-items-end justify-content-between mb-2">
-          <div>
-            <h2 className="h5 m-0">Plats & Restaurants Africains</h2>
-            <div className="small text-muted">
-              Commandez vos plats préférés, prêts à être livrés.
-            </div>
-          </div>
-          <Link
-            to="/african-food"
-            className="small text-decoration-none d-flex align-items-center gap-1"
-          >
-            Voir tous les plats
-            <ChevronRight size={14} />
-          </Link>
-        </div>
-
-        <div className="bg-white rounded-4 shadow-sm p-3">
-          {foodProducts.length === 0 && !loadingProducts ? (
-            <div className="small text-muted">
-              Les plats seront bientôt disponibles.
-            </div>
-          ) : (
-            <div className="row g-3">
-              {foodProducts.map((p) => (
+              {featured.map((p) => (
                 <HomeProductCard
                   key={(p as any).id ?? (p as any).slug}
                   product={p}
-                  to="/african-food"
+                  to="/african-market"
                 />
               ))}
             </div>
@@ -328,7 +270,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECTION 3 : Duumini Market */}
+      {/* SECTION 2 : Duumini Market (uniquement) */}
       <section className="container-xxl mt-4">
         <div className="d-flex align-items-end justify-content-between mb-2">
           <div>
@@ -365,7 +307,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SECTION 4 : Bandeau “Pourquoi Duumini ?” */}
+      {/* SECTION 3 : Bandeau “Pourquoi Duumini ?” */}
       <section className="container-xxl mt-4">
         <div className="card border-0 shadow-sm rounded-4">
           <div className="card-body d-flex flex-column flex-md-row gap-3">

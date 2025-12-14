@@ -37,7 +37,7 @@ export default function Footer() {
               <span className="fw-bold" style={{ color: "var(--duu-black)" }}>Duumini</span>
             </div>
             <p className="text-muted mb-2" style={{ maxWidth: 420 }}>
-              Produits et saveurs d’Afrique subsaharienne — livrés à Casablanca.
+              Produits et saveurs d’Afrique subsaharienne — livrés à Casablanca et Marrakech.
             </p>
             <div className="d-flex gap-2">
               <a
@@ -59,7 +59,7 @@ export default function Footer() {
             <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>Menu</h6>
             <ul className="list-unstyled m-0">
               <li><TopLink className="link-dark text-decoration-none d-block py-1" to="/">Accueil</TopLink></li>
-              <li><TopLink className="link-dark text-decoration-none d-block py-1" to="/african-food">Duumini Food</TopLink></li>
+             {/* <li><TopLink className="link-dark text-decoration-none d-block py-1" to="/african-food">Duumini Food</TopLink></li>*/}
               <li><TopLink className="link-dark text-decoration-none d-block py-1" to="/african-market">Duumini Market</TopLink></li>
               <li><TopLink className="link-dark text-decoration-none d-block py-1" to="/cart">Panier</TopLink></li>
               <li><TopLink className="link-dark text-decoration-none d-block py-1" to="/orders">Mes commandes</TopLink></li>

@@ -9,28 +9,52 @@ export default function AdminTopNav({
   title?: string;
 }) {
   const cls = ({ isActive }: { isActive: boolean }) =>
-    "btn btn-sm w-100 w-sm-auto text-start " + (isActive ? "btn-dark" : "btn-outline-dark");
+    "btn btn-sm w-100 w-sm-auto text-start " +
+    (isActive ? "btn-dark" : "btn-outline-dark");
 
   return (
     <nav aria-label="Menu admin" className="mb-3">
-      {showTitle && <div className="text-muted fw-semibold small mb-2">{title}</div>}
+      {showTitle && (
+        <div className="text-muted fw-semibold small mb-2">{title}</div>
+      )}
 
       {/* 2 colonnes sur mobile, inline en ≥sm */}
       <div className="row row-cols-2 row-cols-sm-auto g-2">
         <div className="col">
-          <NavLink to="/admin" end className={cls}>Tableau de bord</NavLink>
+          <NavLink to="/admin" end className={cls}>
+            Tableau de bord
+          </NavLink>
         </div>
+
         <div className="col">
-          <NavLink to="/admin/orders" className={cls}>Commandes</NavLink>
+          <NavLink to="/admin/orders" className={cls}>
+            Commandes
+          </NavLink>
         </div>
+
         <div className="col">
-          <NavLink to="/admin/products" className={cls}>Produits</NavLink>
+          <NavLink to="/admin/products" className={cls}>
+            Produits
+          </NavLink>
         </div>
+
+        {/* ✅ NOUVEL ONGLET PROMOTIONS */}
         <div className="col">
-          <NavLink to="/admin/users" className={cls}>Utilisateurs</NavLink>
+          <NavLink to="/admin/promotions" className={cls}>
+            Promotions
+          </NavLink>
         </div>
+
         <div className="col">
-          <NavLink to="/admin/shops" className={cls}>Boutiques</NavLink>
+          <NavLink to="/admin/users" className={cls}>
+            Utilisateurs
+          </NavLink>
+        </div>
+
+        <div className="col">
+          <NavLink to="/admin/shops" className={cls}>
+            Boutiques
+          </NavLink>
         </div>
       </div>
     </nav>
