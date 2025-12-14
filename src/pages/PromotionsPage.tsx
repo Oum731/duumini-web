@@ -7,7 +7,7 @@ import { getPromoMeta, isRealPromo } from "../lib/promotions";
 /* =========================
    CONFIG CAN
    ========================= */
-const PROMO_END_ISO = "2026-01-22T23:59:59+01:00"; // ✅ fin 22 janvier (heure Maroc)
+const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
 
 function useBlink(ms = 650) {
   const [on, setOn] = useState(true);
@@ -40,7 +40,7 @@ function isFood(p: any) {
   return String(p?.sub_category || p?.category || "").toLowerCase() === "food";
 }
 
-/** ✅ OFFRE CAN = produits en promo (hors food + hors boissons) */
+/** OFFRE CAN = produits en promo (hors food + hors boissons) */
 function isCanProductOffer(p: any) {
   if (Number(p?.promo_can ?? 0) === 1) return true;
 
@@ -76,6 +76,16 @@ export default function PromotionsPage() {
   const blink = useBlink(650);
   const cd = useCountdown(PROMO_END_ISO);
 
+  const urgency = useMemo(() => {
+    if (cd.isOver) return "OVER" as const;
+    if (cd.days <= 0) return "D1" as const;
+    if (cd.days <= 7) return "SOON" as const;
+    return "NORMAL" as const;
+  }, [cd.days, cd.isOver]);
+
+  const pulseClass =
+    urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
+
   const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
     2,
     "0"
@@ -108,52 +118,58 @@ export default function PromotionsPage() {
     fetchPromos();
   }, []);
 
-  const canItems = useMemo(() => items.filter((p: any) => isCanProductOffer(p)), [items]);
+  // tri: meilleures promos d'abord (score %)
+  const canItems = useMemo(() => {
+    const list = items.filter((p: any) => isCanProductOffer(p));
+
+    return list
+      .map((p: any) => {
+        const promo = getPromoMeta(p);
+        const type = String(p?.promo_discount_type || "PERCENT").toUpperCase();
+        const value = Number(p?.promo_discount_value ?? 0);
+        const price = Number(p?.price ?? 0);
+
+        let score = 0;
+        if (promo) {
+          score =
+            type === "PERCENT"
+              ? value
+              : price > 0
+              ? (value / price) * 100
+              : 0;
+        }
+        return { p, promo, score };
+      })
+      .filter((x) => !!x.promo)
+      .sort((a, b) => b.score - a.score)
+      .map((x) => x.p);
+  }, [items]);
 
   return (
     <div className="container-xxl py-4">
       <style>{`
-        .duu-hero{
+        .duu-zone{
           position: relative;
           border: 1px solid rgba(0,0,0,.06);
           border-radius: 20px;
           padding: 16px;
           overflow: hidden;
           background:
-            radial-gradient(1100px 320px at 10% 0%, rgba(255,213,79,.35), transparent 60%),
-            radial-gradient(900px 280px at 90% 10%, rgba(229,57,53,.16), transparent 55%),
-            radial-gradient(700px 240px at 70% 90%, rgba(0,150,80,.08), transparent 60%),
-            linear-gradient(180deg, rgba(17,17,17,.02), rgba(17,17,17,0));
-        }
-        .duu-hero:before{
-          content:"";
-          position:absolute; inset:0;
-          background:
-            linear-gradient(135deg, rgba(229,57,53,.08) 0%, transparent 40%),
-            linear-gradient(45deg, rgba(255,213,79,.08) 0%, transparent 40%),
-            repeating-linear-gradient(90deg, rgba(0,0,0,.04), rgba(0,0,0,.04) 1px, transparent 1px, transparent 18px);
-          opacity:.55;
-          pointer-events:none;
+            radial-gradient(900px 260px at 0% 0%, rgba(255,213,79,.32), transparent 60%),
+            radial-gradient(900px 260px at 100% 20%, rgba(229,57,53,.12), transparent 55%),
+            linear-gradient(180deg, rgba(0,0,0,.02), transparent);
         }
 
-        .duu-chip{
-          display:inline-flex;
+        .duu-strip{
+          display:flex;
           align-items:center;
-          gap:10px;
-          padding:8px 12px;
-          border-radius: 999px;
-          border: 1px dashed rgba(0,0,0,.18);
-          background: rgba(255,255,255,.72);
-          font-weight: 980;
-          flex-wrap: wrap;
-          max-width: 100%;
-          position: relative;
+          gap:8px;
+          flex-wrap:wrap;
         }
-
         .duu-dot{
           width:10px;height:10px;border-radius:50%;
           background: rgba(229,57,53,.95);
-          box-shadow: 0 0 0 3px rgba(229,57,53,.20);
+          box-shadow: 0 0 0 3px rgba(229,57,53,.18);
         }
         .duu-dot.blink{ animation: duuBlink .7s infinite; }
         @keyframes duuBlink{
@@ -162,35 +178,26 @@ export default function PromotionsPage() {
           100%{ opacity: 1; transform: scale(1); }
         }
 
-        .duu-pill{
-          background: var(--duu-red, #E53935);
-          color:#fff;
-          padding: 2px 10px;
+        .duu-tag{
+          background: linear-gradient(90deg, rgba(229,57,53,1), rgba(255,213,79,1));
+          color:#111;
+          padding: 4px 10px;
           border-radius: 999px;
-          font-size: .80rem;
           font-weight: 980;
-          letter-spacing: .25px;
-        }
-        .duu-pill.blink{ animation: duuPillBlink .85s infinite; }
-        @keyframes duuPillBlink{
-          0%{ filter: brightness(1); transform: scale(1); }
-          50%{ filter: brightness(1.2); transform: scale(1.03); }
-          100%{ filter: brightness(1); transform: scale(1); }
+          font-size: .82rem;
+          border: 1px solid rgba(0,0,0,.12);
         }
 
-        .duu-title{
+        .duu-h1{
           margin: 10px 0 4px 0;
           font-weight: 980;
           line-height: 1.12;
           letter-spacing: .2px;
-          position: relative;
         }
-
         .duu-sub{
           color: rgba(0,0,0,.62);
           font-weight: 780;
           font-size: .95rem;
-          position: relative;
         }
 
         .duu-meta{
@@ -198,26 +205,51 @@ export default function PromotionsPage() {
           gap:8px;
           flex-wrap:wrap;
           margin-top: 10px;
-          position: relative;
         }
 
         .duu-badge{
           display:inline-flex;
           align-items:center;
-          gap:6px;
+          gap:8px;
           padding:6px 10px;
           border-radius:999px;
           font-weight: 900;
           font-size: .82rem;
-          background: rgba(255,255,255,.76);
+          background: rgba(255,255,255,.86);
           border: 1px solid rgba(0,0,0,.10);
           color: rgba(0,0,0,.78);
         }
+
         .duu-badge-strong{
-          background: linear-gradient(90deg, rgba(229,57,53,.18), rgba(255,213,79,.20));
+          background: var(--duu-yellow, #FFD54F);
+          color:#111;
+          border: 1px solid rgba(0,0,0,.12);
+          will-change: transform;
         }
-        .duu-badge-green{
-          background: rgba(0,150,80,.10);
+
+        @keyframes duuPulseNormal {
+          0% { transform: scale(1); box-shadow: 0 .35rem .9rem rgba(255,213,79,.30); }
+          50% { transform: scale(1.02); box-shadow: 0 .55rem 1.15rem rgba(255,213,79,.45); }
+          100% { transform: scale(1); box-shadow: 0 .35rem .9rem rgba(255,213,79,.30); }
+        }
+        .pulse-normal{ animation: duuPulseNormal 1.25s ease-in-out infinite; }
+
+        @keyframes duuPulseSoon {
+          0% { transform: scale(1); box-shadow: 0 .45rem 1.05rem rgba(255,213,79,.42); }
+          50% { transform: scale(1.04); box-shadow: 0 .75rem 1.55rem rgba(255,213,79,.65); }
+          100% { transform: scale(1); box-shadow: 0 .45rem 1.05rem rgba(255,213,79,.42); }
+        }
+        .pulse-soon{ animation: duuPulseSoon 1.05s ease-in-out infinite; }
+
+        @keyframes duuPulseD1 {
+          0% { transform: scale(1); box-shadow: 0 .55rem 1.25rem rgba(255,213,79,.55); }
+          50% { transform: scale(1.06); box-shadow: 0 1rem 2rem rgba(255,213,79,.85); }
+          100% { transform: scale(1); box-shadow: 0 .55rem 1.25rem rgba(255,213,79,.55); }
+        }
+        .pulse-d1{ animation: duuPulseD1 .78s ease-in-out infinite; }
+
+        @media (prefers-reduced-motion: reduce){
+          .pulse-normal, .pulse-soon, .pulse-d1{ animation: none; }
         }
 
         .duu-note{
@@ -225,50 +257,38 @@ export default function PromotionsPage() {
           color: rgba(0,0,0,.56);
           font-size: .90rem;
           font-weight: 700;
-          position: relative;
         }
 
         @media (max-width: 576px){
-          .duu-hero{ padding: 14px; border-radius: 18px; }
-          .duu-title{ font-size: 1.12rem; }
+          .duu-zone{ padding: 14px; border-radius: 18px; }
+          .duu-h1{ font-size: 1.12rem; }
           .duu-sub{ font-size: .90rem; }
           .duu-badge{ font-size: .78rem; }
         }
       `}</style>
 
-      <div className="duu-hero mb-3">
+      <div className="duu-zone mb-3">
         <div className="d-flex flex-column flex-sm-row align-items-sm-start justify-content-between gap-2">
           <div style={{ minWidth: 0 }}>
-            <div className="duu-chip">
+            <div className="duu-strip">
               <span className={`duu-dot ${blink ? "blink" : ""}`} />
-              <span className={`duu-pill ${blink ? "blink" : ""}`}>OFFRE CAN 🇲🇦</span>
-              <span style={{ fontWeight: 900, color: "rgba(0,0,0,.75)" }}>
-                Coupe d’Afrique • Maroc • Vibre CAN 2025 🔥
-              </span>
+              <span className="duu-tag">ZONE CAN 2025</span>
             </div>
 
-            <h1 className="duu-title">🏆 Offres CAN 2025 — Sélection “ambiance stade”</h1>
-            <div className="duu-sub">
-              Des promos pour supporters • Des prix qui font du bruit • Duumini en mode CAN
-            </div>
+            {/* Texte différent du carousel + très court */}
+            <h1 className="duu-h1">⚽ Promos CAN — Coupe d’Afrique</h1>
+            <div className="duu-sub">Top remises • Produits (hors boissons)</div>
 
             <div className="duu-meta">
-              <span className="duu-badge duu-badge-strong">
-                ⏳ {cd.isOver ? "Offre terminée" : `Reste ${cd.days}j ${timeStr}`}
+              <span className={`duu-badge duu-badge-strong ${pulseClass}`}>
+                ⏳ {cd.isOver ? "Terminé" : `Reste ${cd.days}j ${timeStr}`}
               </span>
-              <span className="duu-badge duu-badge-green">🇲🇦 Maroc</span>
-              <span className="duu-badge">🎉 Prix CAN</span>
+              <span className="duu-badge">🏟️ Supporters</span>
               <span className="duu-badge">🚚 Livraison offerte*</span>
             </div>
 
             <div className="duu-note">
-              {cd.isOver ? (
-                "⏳ L’offre CAN est terminée."
-              ) : (
-                <>
-                  Fin le <b>22 janvier</b> • *Livraison offerte sur les produits éligibles.
-                </>
-              )}
+              {cd.isOver ? "CAN terminée." : <>Fin <b>22 janvier</b> • *sur produits éligibles</>}
             </div>
           </div>
 
@@ -278,7 +298,6 @@ export default function PromotionsPage() {
             onClick={fetchPromos}
             disabled={loading}
             title="Actualiser"
-            style={{ position: "relative" }}
           >
             {loading ? "Actualisation…" : "Actualiser"}
           </button>
@@ -288,9 +307,9 @@ export default function PromotionsPage() {
       {err && <div className="alert alert-danger py-2">{err}</div>}
 
       {loading ? (
-        <div className="text-muted">Chargement des offres CAN…</div>
+        <div className="text-muted">Chargement…</div>
       ) : canItems.length === 0 ? (
-        <div className="text-muted">Aucune offre CAN disponible pour le moment.</div>
+        <div className="text-muted">Aucune promo CAN disponible.</div>
       ) : (
         <div className="row g-3">
           {canItems.map((p: any) => {
@@ -303,7 +322,7 @@ export default function PromotionsPage() {
                   product={p}
                   priceOverride={promo.promoPrice}
                   oldPrice={promo.oldPrice}
-                  badgeText={`OFFRE CAN ${promo.label}`}
+                  badgeText={`🏟️ Supporters • CAN ${promo.label}`}
                 />
               </div>
             );

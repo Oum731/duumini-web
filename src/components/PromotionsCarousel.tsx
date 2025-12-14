@@ -8,7 +8,7 @@ type PromoDiscountType = "PERCENT" | "AMOUNT";
 /* =========================
    CONFIG CAN
    ========================= */
-const PROMO_END_ISO = "2026-01-22T23:59:59+01:00"; // ✅ fin 22 janvier (heure Maroc)
+const PROMO_END_ISO = "2026-01-22T23:59:59+01:00"; // fin 22 janvier (heure Maroc)
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -45,7 +45,6 @@ function isRealPromo(p: any) {
   );
 }
 
-/** clignotant doux */
 function useBlink(ms = 650) {
   const [on, setOn] = useState(true);
   useEffect(() => {
@@ -55,7 +54,6 @@ function useBlink(ms = 650) {
   return on;
 }
 
-/** compte à rebours */
 function useCountdown(endIso: string) {
   const end = useMemo(() => new Date(endIso).getTime(), [endIso]);
   const [now, setNow] = useState(() => Date.now());
@@ -72,6 +70,34 @@ function useCountdown(endIso: string) {
   const secs = Math.floor((diff / 1000) % 60);
 
   return { diff, days, hours, mins, secs, isOver: diff <= 0 };
+}
+
+/* ====== Mini SVG Player (maillot recolorable) ====== */
+function KickPlayerSVG({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 64 64"
+      width="28"
+      height="28"
+      aria-hidden="true"
+    >
+      {/* head */}
+      <circle cx="22" cy="16" r="6" fill="#111" opacity="0.9" />
+      {/* jersey */}
+      <path
+        className="duu-jersey"
+        d="M14 30c2-7 6-11 12-11s10 4 12 11l-6 3c-1-3-3-6-6-6s-5 3-6 6l-6-3z"
+        fill="var(--jersey, #E53935)"
+      />
+      {/* body/shorts */}
+      <path d="M20 33h12l2 12H18l2-12z" fill="#111" opacity="0.9" />
+      {/* legs */}
+      <path d="M22 45l-6 14h6l4-9 4 9h6l-6-14H22z" fill="#111" opacity="0.9" />
+      {/* arm */}
+      <path d="M14 32l-6 4 3 5 7-5-4-4z" fill="#111" opacity="0.9" />
+    </svg>
+  );
 }
 
 export default function PromotionsCarousel({
@@ -93,11 +119,10 @@ export default function PromotionsCarousel({
   const blink = useBlink(650);
   const cd = useCountdown(PROMO_END_ISO);
 
-  // ✅ intensité du pulse selon l'urgence (CAN vibes)
   const urgency = useMemo(() => {
     if (cd.isOver) return "OVER" as const;
-    if (cd.days <= 0) return "D1" as const; // <= 24h
-    if (cd.days <= 7) return "SOON" as const; // <= 7 jours
+    if (cd.days <= 0) return "D1" as const;
+    if (cd.days <= 7) return "SOON" as const;
     return "NORMAL" as const;
   }, [cd.days, cd.isOver]);
 
@@ -149,16 +174,12 @@ export default function PromotionsCarousel({
         Boolean(p?.promo_can) ||
         name.includes("can") ||
         name.includes("coupe") ||
-        name.includes("afrique") ||
-        name.includes("canette") ||
-        name.includes("boisson") ||
-        name.includes("soda");
+        name.includes("afrique");
 
       return { p, type, value, promoPrice, cover, isCan };
     });
   }, [items]);
 
-  // ✅ auto-scroll (pause si user drag/scroll)
   useEffect(() => {
     if (!scrollerRef.current || computed.length <= 1) return;
 
@@ -204,14 +225,13 @@ export default function PromotionsCarousel({
     "0"
   )}:${String(cd.secs).padStart(2, "0")}`;
 
-  // ✅ classes pulse selon urgence
   const pulseClass =
     urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
 
   return (
     <section className="container-xxl mt-4">
       <style>{`
-        .duu-can-wrap{
+        .duu-stadium-wrap{
           position: relative;
           border: 1px solid rgba(0,0,0,.06);
           border-radius: 20px;
@@ -223,18 +243,16 @@ export default function PromotionsCarousel({
             radial-gradient(700px 240px at 70% 90%, rgba(0,150,80,.08), transparent 60%),
             linear-gradient(180deg, rgba(17,17,17,.02), rgba(17,17,17,0));
         }
-        .duu-can-wrap:before{
+        .duu-stadium-wrap:before{
           content:"";
           position:absolute; inset:0;
           background:
-            linear-gradient(135deg, rgba(229,57,53,.08) 0%, transparent 40%),
-            linear-gradient(45deg, rgba(255,213,79,.08) 0%, transparent 40%),
             repeating-linear-gradient(90deg, rgba(0,0,0,.04), rgba(0,0,0,.04) 1px, transparent 1px, transparent 18px);
-          opacity:.55;
+          opacity:.50;
           pointer-events:none;
         }
 
-        .duu-can-head{
+        .duu-head{
           position: relative;
           display:flex;
           gap:10px;
@@ -244,49 +262,12 @@ export default function PromotionsCarousel({
           user-select:none;
         }
 
-        .duu-can-title{
-          margin:0;
-          font-weight: 980;
-          color: var(--duu-black);
-          line-height: 1.1;
-          letter-spacing: .2px;
-        }
-        .duu-can-sub{
-          color: rgba(0,0,0,.62);
-          font-weight: 780;
-          line-height: 1.2;
-        }
-
-        .duu-can-chevron{
-          flex: 0 0 auto;
-          width: 34px;
-          height: 34px;
-          border-radius: 999px;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          border: 1px solid rgba(0,0,0,.10);
-          background: rgba(255,255,255,.78);
-        }
-
-        .duu-can-ribbon{
+        .duu-topline{
           display:flex;
           align-items:center;
           gap:8px;
           flex-wrap:wrap;
-          max-width: 100%;
           margin-bottom: 8px;
-        }
-
-        .duu-can-pill{
-          display:inline-flex;
-          align-items:center;
-          gap:8px;
-          padding:7px 10px;
-          border-radius:999px;
-          border: 1px dashed rgba(0,0,0,.18);
-          background: rgba(255,255,255,.74);
-          font-weight: 950;
         }
 
         .duu-dot{
@@ -301,7 +282,17 @@ export default function PromotionsCarousel({
           100%{ opacity: 1; transform: scale(1); }
         }
 
-        .duu-can-tag{
+        .duu-pill{
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          padding:6px 10px;
+          border-radius:999px;
+          border: 1px dashed rgba(0,0,0,.18);
+          background: rgba(255,255,255,.74);
+          font-weight: 950;
+        }
+        .duu-pill-tag{
           background: var(--duu-red);
           color:#fff;
           padding:2px 8px;
@@ -311,23 +302,45 @@ export default function PromotionsCarousel({
           letter-spacing: .35px;
           white-space: nowrap;
         }
-        .duu-can-tag.blink{ animation: duuPillBlink .85s infinite; }
-        @keyframes duuPillBlink{
-          0%{ filter: brightness(1); transform: scale(1); }
-          50%{ filter: brightness(1.25); transform: scale(1.03); }
-          100%{ filter: brightness(1); transform: scale(1); }
+
+        .duu-title{
+          margin:0;
+          font-weight: 980;
+          color: var(--duu-black);
+          line-height: 1.1;
+          letter-spacing: .2px;
+        }
+        .duu-sub{
+          color: rgba(0,0,0,.62);
+          font-weight: 780;
+          line-height: 1.2;
+          margin-top: 4px;
         }
 
-        .duu-can-meta{
+        .duu-chevron{
+          flex: 0 0 auto;
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border: 1px solid rgba(0,0,0,.10);
+          background: rgba(255,255,255,.78);
+        }
+
+        .duu-meta{
           display:flex;
           gap:8px;
-          flex-wrap: wrap;
+          flex-wrap:wrap;
           align-items:center;
+          margin-top: 10px;
         }
+
         .duu-chip{
           display:inline-flex;
           align-items:center;
-          gap:6px;
+          gap:8px;
           padding:6px 10px;
           border-radius:999px;
           font-weight:900;
@@ -345,7 +358,7 @@ export default function PromotionsCarousel({
           will-change: transform;
         }
 
-        /* 🔥 Pulse stade - NORMAL */
+        /* ===== Pulse urgence ===== */
         @keyframes duuPulseNormal {
           0% { transform: scale(1); box-shadow: 0 .35rem .9rem rgba(255,213,79,.30); }
           50% { transform: scale(1.025); box-shadow: 0 .55rem 1.15rem rgba(255,213,79,.45); }
@@ -353,7 +366,6 @@ export default function PromotionsCarousel({
         }
         .pulse-normal{ animation: duuPulseNormal 1.25s ease-in-out infinite; }
 
-        /* 🔥 Pulse plus fort quand on approche (≤ 7 jours) */
         @keyframes duuPulseSoon {
           0% { transform: scale(1); box-shadow: 0 .45rem 1.05rem rgba(255,213,79,.42); }
           50% { transform: scale(1.045); box-shadow: 0 .75rem 1.55rem rgba(255,213,79,.65); }
@@ -361,7 +373,6 @@ export default function PromotionsCarousel({
         }
         .pulse-soon{ animation: duuPulseSoon 1.05s ease-in-out infinite; }
 
-        /* ⏱️ Pulse plus rapide à J-1 (≤ 24h) */
         @keyframes duuPulseD1 {
           0% { transform: scale(1); box-shadow: 0 .55rem 1.25rem rgba(255,213,79,.55); }
           50% { transform: scale(1.06); box-shadow: 0 1rem 2rem rgba(255,213,79,.85); }
@@ -369,16 +380,105 @@ export default function PromotionsCarousel({
         }
         .pulse-d1{ animation: duuPulseD1 .78s ease-in-out infinite; }
 
-        /* Accessibilité */
+        /* ===== Joueur + ballon + flamme ===== */
+        .duu-kick{
+          display:inline-flex;
+          align-items:center;
+          gap:6px;
+          margin-right: 4px;
+          transform-origin: 0 50%;
+        }
+
+        /* Kick loop */
+        @keyframes duuKick {
+          0%   { transform: translateY(0) }
+          35%  { transform: translateY(-1px) }
+          55%  { transform: translateY(0) }
+          100% { transform: translateY(0) }
+        }
+
+        /* Ball shoot */
+        .duu-ballshot{
+          position: relative;
+          width: 28px;
+          height: 22px;
+        }
+        .duu-ball{
+          position: absolute;
+          right: 0;
+          top: 2px;
+          font-size: 1rem;
+          z-index: 2;
+          animation: duuBallShoot 1.2s ease-in-out infinite;
+          filter: drop-shadow(0 .25rem .35rem rgba(0,0,0,.18));
+        }
+        .duu-flame{
+          position:absolute;
+          right: 10px;
+          top: 7px;
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          background:
+            radial-gradient(circle at 30% 30%, #ffffff66, transparent 60%),
+            radial-gradient(circle, #ff9800, #ff5722, #e53935);
+          filter: blur(1px);
+          opacity:.85;
+          animation: duuFlameTrail 1.2s ease-in-out infinite;
+        }
+
+        @keyframes duuBallShoot{
+          0%   { transform: translateX(0) rotate(0deg) scale(1); }
+          35%  { transform: translateX(7px) rotate(12deg) scale(1.06); }
+          60%  { transform: translateX(0) rotate(-8deg) scale(.98); }
+          100% { transform: translateX(0) rotate(0deg) scale(1); }
+        }
+        @keyframes duuFlameTrail{
+          0%   { transform: scale(.6); opacity:.35; }
+          35%  { transform: scale(1); opacity:.92; }
+          60%  { transform: scale(.75); opacity:.60; }
+          100% { transform: scale(.6); opacity:.35; }
+        }
+
+        /* jersey color cycle (pays) */
+        @keyframes duuJerseyCycle{
+          0%   { --jersey:#E53935; } /* Maroc (rouge) */
+          12%  { --jersey:#007A3D; } /* Sénégal (vert) */
+          24%  { --jersey:#F77F00; } /* Côte d’Ivoire (orange) */
+          36%  { --jersey:#14B8A6; } /* Nigeria vibe */
+          48%  { --jersey:#1D4ED8; } /* Tunisie/bleu stylé */
+          60%  { --jersey:#111827; } /* Ghana/Noir */
+          72%  { --jersey:#F59E0B; } /* Jaune */
+          84%  { --jersey:#7C3AED; } /* Violet (variation) */
+          100% { --jersey:#E53935; }
+        }
+
+        .duu-player{
+          animation:
+            duuKick 1.2s ease-in-out infinite,
+            duuJerseyCycle 1.2s steps(1,end) infinite;
+        }
+        .duu-jersey{ fill: var(--jersey, #E53935); }
+
+        /* accélération selon urgence */
+        .pulse-soon .duu-player,
+        .pulse-soon .duu-ball,
+        .pulse-soon .duu-flame{
+          animation-duration: .95s;
+        }
+        .pulse-d1 .duu-player,
+        .pulse-d1 .duu-ball,
+        .pulse-d1 .duu-flame{
+          animation-duration: .65s;
+        }
+
         @media (prefers-reduced-motion: reduce){
           .pulse-normal, .pulse-soon, .pulse-d1{ animation: none; }
+          .duu-player, .duu-ball, .duu-flame{ animation: none; }
         }
 
-        .duu-chip-green{
-          background: rgba(0,150,80,.10);
-        }
-
-        .duu-can-scroller{
+        /* Scroller */
+        .duu-scroller{
           position: relative;
           display:flex;
           gap:12px;
@@ -390,8 +490,8 @@ export default function PromotionsCarousel({
           -webkit-overflow-scrolling: touch;
           margin-top: 10px;
         }
-        .duu-can-scroller::-webkit-scrollbar{ height: 6px; }
-        .duu-can-scroller::-webkit-scrollbar-thumb{
+        .duu-scroller::-webkit-scrollbar{ height: 6px; }
+        .duu-scroller::-webkit-scrollbar-thumb{
           background: rgba(0,0,0,.12);
           border-radius: 999px;
         }
@@ -461,17 +561,10 @@ export default function PromotionsCarousel({
           font-size: .9rem;
         }
 
-        .duu-note{
-          margin-top: 6px;
-          color: rgba(0,0,0,.56);
-          font-size: .85rem;
-          font-weight: 700;
-        }
-
         @media (max-width: 576px){
-          .duu-can-wrap{ padding: 12px; border-radius: 18px; }
-          .duu-can-title{ font-size: 1.04rem; }
-          .duu-can-sub{ font-size: .88rem; }
+          .duu-stadium-wrap{ padding: 12px; border-radius: 18px; }
+          .duu-title{ font-size: 1.04rem; }
+          .duu-sub{ font-size: .88rem; }
           .duu-card{ width: 172px; border-radius: 14px; }
           .duu-img{ height: 132px; }
           .duu-badge, .duu-badge-can{ font-size: .70rem; padding: 5px 9px; }
@@ -479,58 +572,58 @@ export default function PromotionsCarousel({
         }
       `}</style>
 
-      <div className="duu-can-wrap">
+      <div className="duu-stadium-wrap">
         <div
-          className="duu-can-head"
+          className="duu-head"
           role="button"
           tabIndex={0}
           onClick={() => navigate(toAllLink)}
           onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
-          title="Découvrir toutes les Offres CAN"
+          title="Voir les offres CAN"
         >
           <div style={{ minWidth: 0, position: "relative" }}>
-            <div className="duu-can-ribbon">
-              <span className="duu-can-pill">
-                <span className={`duu-dot ${blink ? "blink" : ""}`} />
-                <span className={`duu-can-tag ${blink ? "blink" : ""}`}>
-                  OFFRE CAN 🇲🇦
-                </span>
+            <div className="duu-topline">
+              <span className={`duu-dot ${blink ? "blink" : ""}`} />
+              <span className="duu-pill">
+                <span className="duu-pill-tag">CAN 2025</span>
                 <span style={{ fontWeight: 900, color: "rgba(0,0,0,.75)" }}>
-                  CAN 2025 • Maroc • Ambiance supporters 🔥
+                  Spécial promos
                 </span>
               </span>
             </div>
 
-            <h2 className="duu-can-title">🏆 Spécial CAN 2025 — Promos en mode “stade”</h2>
+            <h2 className="duu-title">🏟️ Spécial CAN — prix supporters</h2>
+            <div className="duu-sub">Coupe d’Afrique • Fin 22 jan</div>
 
-            {/* ✅ texte supprimé */}
-            <div className="duu-can-sub">Coupe d’Afrique • Fin le 22 janvier</div>
-
-            <div className="duu-can-meta mt-2">
+            <div className="duu-meta">
               <span className={`duu-chip duu-chip-strong ${pulseClass}`}>
-                ⏳ {cd.isOver ? "Offre terminée" : `Reste ${cd.days}j ${timeStr}`}
+                <span className="duu-kick" aria-hidden="true">
+                  <KickPlayerSVG className="duu-player" />
+                  <span className="duu-ballshot">
+                    <span className="duu-flame" />
+                    <span className="duu-ball">⚽</span>
+                  </span>
+                </span>
+                ⏳ {cd.isOver ? "Terminé" : `Reste ${cd.days}j ${timeStr}`}
               </span>
-              <span className="duu-chip duu-chip-green">🇲🇦 Maroc</span>
-              <span className="duu-chip">🚚 Livraison offerte*</span>
-              <span className="duu-chip">🎉 Prix supporters</span>
-            </div>
 
-            <div className="duu-note">*Livraison offerte sur les produits éligibles.</div>
+              <span className="duu-chip">🚚 Livraison offerte*</span>
+            </div>
           </div>
 
-          <div className="duu-can-chevron" aria-hidden="true">
+          <div className="duu-chevron" aria-hidden="true">
             ›
           </div>
         </div>
 
         <div
           ref={scrollerRef}
-          className="duu-can-scroller"
+          className="duu-scroller"
           role="button"
           tabIndex={0}
           onClick={() => navigate(toAllLink)}
           onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
-          title="Découvrir toutes les offres CAN"
+          title="Voir les offres CAN"
         >
           {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
             const saved =
@@ -552,7 +645,7 @@ export default function PromotionsCarousel({
                   {isCan && (
                     <span className="duu-badge-can">
                       <span className={`duu-dot ${blink ? "blink" : ""}`} />
-                      CAN 🇲🇦
+                      CAN
                     </span>
                   )}
                 </div>
@@ -577,16 +670,16 @@ export default function PromotionsCarousel({
                   </div>
 
                   <div className="small text-muted mt-1">
-                    {cd.isOver
-                      ? "⏳ Offre CAN terminée"
-                      : isCan
-                      ? "🔥 Ambiance CAN — profite maintenant"
-                      : "🎉 Promo du moment"}
+                    {cd.isOver ? "CAN terminée" : isCan ? "🔥 Spécial CAN" : "🎉 Promo"}
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+
+        <div className="small text-muted mt-2" style={{ position: "relative" }}>
+          *Livraison offerte sur les produits éligibles.
         </div>
       </div>
     </section>
