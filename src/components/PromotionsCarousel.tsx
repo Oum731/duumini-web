@@ -93,6 +93,14 @@ export default function PromotionsCarousel({
   const blink = useBlink(650);
   const cd = useCountdown(PROMO_END_ISO);
 
+  // ✅ intensité du pulse selon l'urgence (CAN vibes)
+  const urgency = useMemo(() => {
+    if (cd.isOver) return "OVER" as const;
+    if (cd.days <= 0) return "D1" as const; // <= 24h
+    if (cd.days <= 7) return "SOON" as const; // <= 7 jours
+    return "NORMAL" as const;
+  }, [cd.days, cd.isOver]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -196,6 +204,10 @@ export default function PromotionsCarousel({
     "0"
   )}:${String(cd.secs).padStart(2, "0")}`;
 
+  // ✅ classes pulse selon urgence
+  const pulseClass =
+    urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
+
   return (
     <section className="container-xxl mt-4">
       <style>{`
@@ -222,7 +234,6 @@ export default function PromotionsCarousel({
           pointer-events:none;
         }
 
-        /* Header cliquable */
         .duu-can-head{
           position: relative;
           display:flex;
@@ -258,7 +269,6 @@ export default function PromotionsCarousel({
           background: rgba(255,255,255,.78);
         }
 
-        /* Ruban CAN */
         .duu-can-ribbon{
           display:flex;
           align-items:center;
@@ -326,15 +336,48 @@ export default function PromotionsCarousel({
           border: 1px solid rgba(0,0,0,.10);
           color: rgba(0,0,0,.78);
         }
+
+        /* ✅ compteur jaune CAN */
         .duu-chip-strong{
-          background: linear-gradient(90deg, rgba(229,57,53,.18), rgba(255,213,79,.20));
-          border: 1px solid rgba(0,0,0,.10);
+          background: var(--duu-yellow, #FFD54F);
+          color:#111;
+          border: 1px solid rgba(0,0,0,.12);
+          will-change: transform;
         }
+
+        /* 🔥 Pulse stade - NORMAL */
+        @keyframes duuPulseNormal {
+          0% { transform: scale(1); box-shadow: 0 .35rem .9rem rgba(255,213,79,.30); }
+          50% { transform: scale(1.025); box-shadow: 0 .55rem 1.15rem rgba(255,213,79,.45); }
+          100% { transform: scale(1); box-shadow: 0 .35rem .9rem rgba(255,213,79,.30); }
+        }
+        .pulse-normal{ animation: duuPulseNormal 1.25s ease-in-out infinite; }
+
+        /* 🔥 Pulse plus fort quand on approche (≤ 7 jours) */
+        @keyframes duuPulseSoon {
+          0% { transform: scale(1); box-shadow: 0 .45rem 1.05rem rgba(255,213,79,.42); }
+          50% { transform: scale(1.045); box-shadow: 0 .75rem 1.55rem rgba(255,213,79,.65); }
+          100% { transform: scale(1); box-shadow: 0 .45rem 1.05rem rgba(255,213,79,.42); }
+        }
+        .pulse-soon{ animation: duuPulseSoon 1.05s ease-in-out infinite; }
+
+        /* ⏱️ Pulse plus rapide à J-1 (≤ 24h) */
+        @keyframes duuPulseD1 {
+          0% { transform: scale(1); box-shadow: 0 .55rem 1.25rem rgba(255,213,79,.55); }
+          50% { transform: scale(1.06); box-shadow: 0 1rem 2rem rgba(255,213,79,.85); }
+          100% { transform: scale(1); box-shadow: 0 .55rem 1.25rem rgba(255,213,79,.55); }
+        }
+        .pulse-d1{ animation: duuPulseD1 .78s ease-in-out infinite; }
+
+        /* Accessibilité */
+        @media (prefers-reduced-motion: reduce){
+          .pulse-normal, .pulse-soon, .pulse-d1{ animation: none; }
+        }
+
         .duu-chip-green{
           background: rgba(0,150,80,.10);
         }
 
-        /* Scroller */
         .duu-can-scroller{
           position: relative;
           display:flex;
@@ -376,7 +419,6 @@ export default function PromotionsCarousel({
           background: rgba(0,0,0,.05);
         }
 
-        /* ✅ Un seul badge promo (pas de livraison sur l'image) */
         .duu-badge{
           position:absolute; top:10px; left:10px;
           display:inline-flex;
@@ -460,12 +502,12 @@ export default function PromotionsCarousel({
             </div>
 
             <h2 className="duu-can-title">🏆 Spécial CAN 2025 — Promos en mode “stade”</h2>
-            <div className="duu-can-sub">
-              Sélection Duumini pour vibrer la Coupe d’Afrique • Fin le 22 janvier
-            </div>
+
+            {/* ✅ texte supprimé */}
+            <div className="duu-can-sub">Coupe d’Afrique • Fin le 22 janvier</div>
 
             <div className="duu-can-meta mt-2">
-              <span className="duu-chip duu-chip-strong">
+              <span className={`duu-chip duu-chip-strong ${pulseClass}`}>
                 ⏳ {cd.isOver ? "Offre terminée" : `Reste ${cd.days}j ${timeStr}`}
               </span>
               <span className="duu-chip duu-chip-green">🇲🇦 Maroc</span>
