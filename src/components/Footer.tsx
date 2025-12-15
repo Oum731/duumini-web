@@ -1,9 +1,17 @@
 // src/components/Footer.tsx
-import React from "react";
+import React, { useMemo } from "react";
 import { Link, type LinkProps } from "react-router-dom";
 import { DUUMINI_SLOGAN } from "../lib/brand";
 
-/** Link qui remonte en haut de page au clic (spécial Footer) */
+/* 📅 Date d'ouverture (doit matcher Home.tsx) */
+const DUUMINI_OPEN_ISO = "2025-12-21T00:00:00+01:00";
+
+/** Helper date */
+function isDateReached(iso: string) {
+  return Date.now() >= new Date(iso).getTime();
+}
+
+/** Link qui remonte en haut de page au clic (Footer) */
 function TopLink(
   props: LinkProps & { className?: string; children?: React.ReactNode }
 ) {
@@ -28,6 +36,11 @@ function TopLink(
 }
 
 export default function Footer() {
+  const isOpen = useMemo(
+    () => isDateReached(DUUMINI_OPEN_ISO),
+    []
+  );
+
   return (
     <footer className="border-top mt-4" style={{ background: "#fff" }}>
       <style>{`
@@ -40,7 +53,7 @@ export default function Footer() {
 
       <div className="container-xxl py-4">
         <div className="row g-4">
-          {/* Brand */}
+          {/* ================= Brand ================= */}
           <div className="col-12 col-md-4">
             <div className="d-flex align-items-center gap-2 mb-2">
               <img
@@ -54,7 +67,6 @@ export default function Footer() {
               </span>
             </div>
 
-            {/* ✅ Slogan partout (Footer) */}
             <div className="duu-footer-slogan">{DUUMINI_SLOGAN}</div>
 
             <p className="text-muted mb-2" style={{ maxWidth: 420 }}>
@@ -80,98 +92,78 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Navigation */}
+          {/* ================= Navigation ================= */}
           <div className="col-6 col-md-2">
             <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
               Menu
             </h6>
             <ul className="list-unstyled m-0">
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/"
-                >
+                <TopLink className="link-dark d-block py-1" to="/">
                   Accueil
                 </TopLink>
               </li>
-              {/* <li><TopLink className="link-dark text-decoration-none d-block py-1" to="/african-food">Duumini Food</TopLink></li> */}
+
+              {/* ✅ Duumini Market → visible SEULEMENT après ouverture */}
+              {isOpen && (
+                <li>
+                  <TopLink
+                    className="link-dark d-block py-1"
+                    to="/african-market"
+                  >
+                    Duumini Market
+                  </TopLink>
+                </li>
+              )}
+
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/african-market"
-                >
-                  Duumini Market
-                </TopLink>
-              </li>
-              <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/cart"
-                >
+                <TopLink className="link-dark d-block py-1" to="/cart">
                   Panier
                 </TopLink>
               </li>
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/orders"
-                >
+                <TopLink className="link-dark d-block py-1" to="/orders">
                   Mes commandes
                 </TopLink>
               </li>
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/contact"
-                >
+                <TopLink className="link-dark d-block py-1" to="/contact">
                   Contact
                 </TopLink>
               </li>
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/about"
-                >
+                <TopLink className="link-dark d-block py-1" to="/about">
                   À propos
                 </TopLink>
               </li>
             </ul>
           </div>
 
-          {/* Légal */}
+          {/* ================= Légal ================= */}
           <div className="col-6 col-md-3">
             <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
               Informations légales
             </h6>
             <ul className="list-unstyled m-0">
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/legal/privacy"
-                >
-                  Confidentialité &amp; Traitement des données
+                <TopLink className="link-dark d-block py-1" to="/legal/privacy">
+                  Confidentialité &amp; données
                 </TopLink>
               </li>
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/legal/terms"
-                >
+                <TopLink className="link-dark d-block py-1" to="/legal/terms">
                   Conditions d’utilisation
                 </TopLink>
               </li>
               <li>
-                <TopLink
-                  className="link-dark text-decoration-none d-block py-1"
-                  to="/legal/returns"
-                >
-                  Politique de retour &amp; annulation
+                <TopLink className="link-dark d-block py-1" to="/legal/returns">
+                  Politique de retour
                 </TopLink>
               </li>
             </ul>
           </div>
 
-          {/* Contact rapide */}
+          {/* ================= Support ================= */}
           <div className="col-12 col-md-3">
             <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
               Support
@@ -206,7 +198,8 @@ export default function Footer() {
         </div>
 
         <hr className="my-3" />
-        <div className="d-flex flex-column flex-sm-row justify-content-between align-items-start gap-2">
+
+        <div className="d-flex flex-column flex-sm-row justify-content-between gap-2">
           <div className="small text-muted">
             © {new Date().getFullYear()} Duumini — Tous droits réservés.
           </div>
@@ -220,7 +213,7 @@ export default function Footer() {
             </TopLink>
             <span className="text-muted mx-2">•</span>
             <TopLink to="/legal/returns" className="link-dark text-decoration-none">
-              Retours &amp; annulation
+              Retours
             </TopLink>
           </div>
         </div>

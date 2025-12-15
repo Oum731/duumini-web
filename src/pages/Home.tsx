@@ -1,33 +1,30 @@
 // src/pages/Home.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, Bell } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import InstallPWA from "../components/InstallPWA";
 import { listProducts, type Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import PromotionsCarousel from "../components/PromotionsCarousel";
 
-/* ===== Brand (slogan + dates) ===== */
+/* ===== Brand & Dates ===== */
 const DUUMINI_SLOGAN = "Les goûts de ton pays, partout où tu te trouves";
-
-// 📅 Date d'ouverture officielle
 const DUUMINI_OPEN_ISO = "2025-12-21T00:00:00+01:00";
-
-// 📅 Fin de la promo (cache la box promo après cette date)
 const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
+
+/* 📞 WhatsApp infos */
+const DUUMINI_WHATSAPP = "+212623677884";
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
   if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  if (u.startsWith("http")) return u;
   if (u.startsWith("/")) return `${API_BASE}${u}`;
   return u;
 }
 
 function moneyMAD(n?: number | null) {
-  const v = Number(n || 0);
-  return `${v.toLocaleString("fr-FR", {
-    minimumFractionDigits: 0,
+  return `${Number(n || 0).toLocaleString("fr-FR", {
     maximumFractionDigits: 0,
   })} MAD`;
 }
@@ -39,151 +36,25 @@ function isDateReached(iso: string) {
 /* ===== Countdown Hook ===== */
 function useCountdown(targetIso: string) {
   const target = useMemo(() => new Date(targetIso).getTime(), [targetIso]);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(t);
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
   }, []);
 
-  const diff = target - now;
-  const isOver = diff <= 0;
-  const safe = Math.max(0, diff);
-
-  const days = Math.floor(safe / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((safe / (1000 * 60 * 60)) % 24);
-  const mins = Math.floor((safe / (1000 * 60)) % 60);
-  const secs = Math.floor((safe / 1000) % 60);
-
-  return { diff, days, hours, mins, secs, isOver };
+  const diff = Math.max(0, target - now);
+  return {
+    days: Math.floor(diff / 86400000),
+    hours: Math.floor((diff / 3600000) % 24),
+    mins: Math.floor((diff / 60000) % 60),
+    secs: Math.floor((diff / 1000) % 60),
+  };
 }
 
-/* ===== Bannière ouverture (visible seulement AVANT ouverture) ===== */
-function DuuminiOpeningBanner() {
-  const cd = useCountdown(DUUMINI_OPEN_ISO);
-
-  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
-    2,
-    "0"
-  )}:${String(cd.secs).padStart(2, "0")}`;
-
-  return (
-    <section className="container-xxl pt-3">
-      <style>{`
-        .duu-open-card{
-          border: 1px solid rgba(0,0,0,.08);
-          border-radius: 18px;
-          overflow:hidden;
-          background:
-            radial-gradient(900px 320px at 12% 0%, rgba(255,213,79,.42), transparent 60%),
-            radial-gradient(900px 280px at 92% 10%, rgba(229,57,53,.18), transparent 55%),
-            linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.60));
-          box-shadow: 0 .9rem 2.2rem rgba(0,0,0,.10);
-        }
-        .duu-open-top{
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          gap:12px;
-          padding: 10px 12px;
-          background: var(--duu-yellow, #FFD54F);
-          border-bottom: 1px solid rgba(0,0,0,.10);
-        }
-        .duu-open-title{
-          font-weight: 990;
-          letter-spacing:.2px;
-          color: rgba(0,0,0,.92);
-          white-space: nowrap;
-          overflow:hidden;
-          text-overflow: ellipsis;
-        }
-        .duu-open-chip{
-          display:inline-flex;
-          align-items:center;
-          gap:8px;
-          padding: 7px 10px;
-          border-radius: 999px;
-          background: rgba(0,0,0,.86);
-          color:#fff;
-          font-weight: 980;
-          border: 1px solid rgba(255,255,255,.18);
-          white-space: nowrap;
-        }
-        .duu-open-dot{
-          width:10px;height:10px;border-radius:50%;
-          background: rgba(229,57,53,1);
-          box-shadow: 0 0 0 3px rgba(229,57,53,.18);
-          animation: duuBlink .7s infinite;
-        }
-        @keyframes duuBlink{
-          0%{ opacity: 1; transform: scale(1); }
-          50%{ opacity: .20; transform: scale(.78); }
-          100%{ opacity: 1; transform: scale(1); }
-        }
-        .duu-open-body{
-          padding: 12px;
-          display:flex;
-          flex-direction:column;
-          gap:10px;
-        }
-        .duu-open-slogan{
-          font-weight: 950;
-          color: rgba(0,0,0,.82);
-          line-height: 1.15;
-        }
-        .duu-open-meta{
-          display:flex;
-          gap:10px;
-          flex-wrap:wrap;
-          align-items:center;
-        }
-        .duu-open-count{
-          display:inline-flex;
-          align-items:center;
-          gap:10px;
-          padding: 10px 12px;
-          border-radius: 14px;
-          background: rgba(255,255,255,.88);
-          border: 1px solid rgba(0,0,0,.10);
-          font-weight: 980;
-          color:#111;
-          box-shadow: 0 .6rem 1.3rem rgba(0,0,0,.08);
-          white-space: nowrap;
-        }
-        .duu-open-hint{
-          font-weight: 800;
-          color: rgba(0,0,0,.62);
-        }
-      `}</style>
-
-      <div className="duu-open-card">
-        <div className="duu-open-top">
-          <div className="duu-open-title">Duumini ouvre le 21 décembre 🎉🎊</div>
-          <div className="duu-open-chip" aria-hidden="true">
-            <span className="duu-open-dot" />
-            OUVERTURE
-          </div>
-        </div>
-
-        <div className="duu-open-body">
-
-          <div className="duu-open-meta">
-            <span className="duu-open-count">
-              ⏳ {cd.isOver ? "C’est ouvert ✅" : `${cd.days}j ${timeStr}`}
-            </span>
-            <span className="duu-open-hint small">
-              {cd.isOver ? "Bienvenue sur Duumini." : "Restez prêts : lancement très proche."}
-            </span>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* === Bandeau hors-ligne (écoute online/offline) === */
+/* === Offline Banner === */
 function OfflineBanner() {
-  const [online, setOnline] = useState<boolean>(
+  const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true
   );
 
@@ -200,76 +71,139 @@ function OfflineBanner() {
 
   if (online) return null;
   return (
-    <div className="alert alert-warning rounded-0 m-0 text-center small">
-      Vous êtes hors-ligne. Certaines images ou données récentes peuvent ne pas s’afficher.
+    <div className="alert alert-warning rounded-0 text-center small m-0">
+      Vous êtes hors-ligne.
     </div>
   );
 }
 
-/* === Carte produit “teaser” pour la Home (vignettes plus petites) === */
-function HomeProductCard(props: { product: Product; to: string }) {
-  const { product, to } = props;
+/* ===== PAGE LANCEMENT (emoji clignotant + WhatsApp) ===== */
+function LaunchOnlyPage() {
+  const cd = useCountdown(DUUMINI_OPEN_ISO);
 
-  const imageSrc = (() => {
-    const raw =
-      (product as any).cover ||
-      (product as any).image ||
-      (product as any).images?.[0]?.url ||
-      null;
-    return imgUrl(raw);
-  })();
-
-  const name = (product as any).name ?? (product as any).title ?? "Produit";
-  const price =
-    (product as any).price_client ??
-    (product as any).price ??
-    (product as any).client_price ??
-    0;
+  const wa = DUUMINI_WHATSAPP.replace(/\D/g, "");
+  const waHref = `https://wa.me/${wa}?text=${encodeURIComponent(
+    "Bonjour Duumini 👋 Je souhaite plus d’informations sur le lancement et les offres CAN."
+  )}`;
 
   return (
-    <div className="col-6 col-sm-4 col-md-3 col-lg-2">
-      <Link to={to} className="text-decoration-none text-reset d-block h-100">
-        <div
-          className="card border-0 shadow-sm h-100"
-          style={{ borderRadius: "1rem", overflow: "hidden", background: "#fff" }}
-        >
+    <div
+      style={{
+        minHeight: "100vh",
+        background:
+          "radial-gradient(900px 420px at 15% 0%, rgba(255,213,79,.35), transparent 60%), radial-gradient(900px 320px at 90% 10%, rgba(229,57,53,.16), transparent 55%), #fafafa",
+      }}
+      className="d-flex align-items-start justify-content-center pt-4 pb-4"
+    >
+      <style>{`
+        .blink-emoji{
+          animation: blinkEmoji .8s infinite;
+          display:inline-block;
+        }
+        @keyframes blinkEmoji{
+          0%{ opacity:1; transform:scale(1); }
+          50%{ opacity:.25; transform:scale(.8); }
+          100%{ opacity:1; transform:scale(1); }
+        }
+      `}</style>
+
+      <OfflineBanner />
+
+      <div className="container" style={{ maxWidth: 720 }}>
+        <div className="card border-0 shadow-lg rounded-4 overflow-hidden">
           <div
-            className="position-relative bg-light d-flex align-items-center justify-content-center"
-            style={{ height: 130 }}
+            className="p-3 d-flex justify-content-between align-items-center"
+            style={{ background: "#FFD54F" }}
           >
-            {imageSrc ? (
-              <img
-                src={imageSrc}
-                alt={name}
-                className="img-fluid"
-                loading="lazy"
-                decoding="async"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            ) : (
-              <div className="w-100 h-100 d-flex align-items-center justify-content-center small text-muted">
-                Image à venir
+            <div className="d-flex align-items-center gap-2 fw-bold">
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: "#111",
+                  color: "#fff",
+                }}
+                className="d-flex align-items-center justify-content-center"
+              >
+                D
               </div>
-            )}
+              DUUMINI
+            </div>
+            <span className="badge bg-dark">
+              <span className="blink-emoji">🔥</span> LANCEMENT
+            </span>
           </div>
 
-          <div className="card-body p-2">
-            <div
-              className="small fw-semibold mb-1"
-              title={name}
-              style={{
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                minHeight: "2.4em",
-              }}
+          <div className="card-body d-flex flex-column gap-3">
+            <h1 className="h5 fw-bold m-0">
+              Ouverture le 21 décembre{" "}
+              <span className="blink-emoji">🎉</span>
+            </h1>
+
+            <p className="text-muted m-0">
+              Offres spéciales CAN jusqu’au 22 janvier 2026 🏆 — prix promo &
+              livraison.
+            </p>
+
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <span className="badge bg-light text-dark p-2">
+                ⏳ {cd.days}j {cd.hours}h {cd.mins}m {cd.secs}s
+              </span>
+              <span className="small text-muted fw-semibold">
+                Écris-nous sur WhatsApp pour être informé{" "}
+                <span className="blink-emoji">👇</span>
+              </span>
+            </div>
+
+            <div className="small fw-semibold text-muted">
+              🚚 Casablanca & Marrakech • 💳 Paiement à la livraison
+            </div>
+
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-success fw-bold"
             >
-              {name}
-            </div>
-            <div className="small fw-semibold" style={{ color: "#111" }}>
-              {moneyMAD(price as number)}
-            </div>
+              💬 WhatsApp – plus d’infos
+            </a>
+
+            <InstallPWA />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===== Product Card ===== */
+function HomeProductCard({ product }: { product: Product }) {
+  const image =
+    (product as any).cover ||
+    (product as any).image ||
+    (product as any).images?.[0]?.url;
+
+  const name = (product as any).name ?? "Produit";
+  const price = (product as any).price_client ?? 0;
+
+  return (
+    <div className="col-6 col-md-3 col-lg-2">
+      <Link to="/african-market" className="text-reset text-decoration-none">
+        <div className="card h-100 shadow-sm border-0 rounded-3">
+          <div style={{ height: 130 }} className="bg-light">
+            {image && (
+              <img
+                src={imgUrl(image)}
+                alt={name}
+                className="w-100 h-100"
+                style={{ objectFit: "cover" }}
+              />
+            )}
+          </div>
+          <div className="card-body p-2">
+            <div className="small fw-semibold">{name}</div>
+            <div className="small">{moneyMAD(price)}</div>
           </div>
         </div>
       </Link>
@@ -277,203 +211,50 @@ function HomeProductCard(props: { product: Product; to: string }) {
   );
 }
 
-/* === CTA Notifications (optionnel, utile en PWA) === */
-function NotificationsCTA() {
-  const supported = typeof window !== "undefined" && "Notification" in window;
-  const [perm, setPerm] = useState<NotificationPermission>(
-    supported ? Notification.permission : "denied"
-  );
-  if (!supported || perm !== "default") return null;
-
-  return (
-    <div className="card border-0 shadow-sm mt-3">
-      <div className="card-body d-flex flex-column flex-lg-row align-items-lg-center gap-2">
-        <div className="flex-grow-1">
-          <div className="fw-semibold d-flex align-items-center gap-2">
-            <Bell size={18} aria-hidden="true" />
-            Activer les notifications
-          </div>
-          <div className="small text-muted">
-            Pour suivre vos commandes et recevoir nos alertes importantes.
-          </div>
-        </div>
-        <button
-          className="btn btn-outline-dark"
-          onClick={async () => {
-            try {
-              const res = await Notification.requestPermission();
-              setPerm(res);
-            } catch {}
-          }}
-        >
-          Autoriser
-        </button>
-      </div>
-    </div>
-  );
-}
-
+/* ===== HOME ===== */
 export default function Home() {
-  const [featured, setFeatured] = useState<Product[]>([]);
-  const [marketProducts, setMarketProducts] = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
 
-  // ✅ Re-render automatique toutes les 1s pour cacher/afficher à la bonne date
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const t = window.setInterval(() => tick((v) => v + 1), 1000);
-    return () => window.clearInterval(t);
-  }, []);
-
-  // ⏱️ Conditions dates
   const isOpen = isDateReached(DUUMINI_OPEN_ISO);
   const isPromoActive = isOpen && !isDateReached(PROMO_END_ISO);
 
   useEffect(() => {
-    let cancelled = false;
+    if (!isOpen) return;
+    listProducts({ page: 1, pageSize: 12 }).then((r: any) => {
+      const items = r?.data?.items ?? r;
+      setProducts(items || []);
+    });
+  }, [isOpen]);
 
-    async function fetchProducts() {
-      try {
-        setLoadingProducts(true);
-
-        const res = await (listProducts as any)({ page: 1, pageSize: 60 });
-        const data = (res as any).data ?? res;
-        const items: Product[] = data.items ?? data;
-
-        if (!items || !Array.isArray(items) || cancelled) return;
-
-        const active = items.filter((p: any) => {
-          const isActive =
-            (p.is_active ?? p.active ?? 1) &&
-            (p.stock === undefined || p.stock !== 0);
-          return !!isActive;
-        });
-
-        const marketOnly = active.filter(
-          (p: any) => String(p.sub_category || "").toLowerCase() !== "food"
-        );
-
-        const featuredSelection = marketOnly.slice(0, 8);
-        const marketSelection = marketOnly.slice(0, 12);
-
-        if (!cancelled) {
-          setFeatured(featuredSelection);
-          setMarketProducts(marketSelection);
-        }
-      } catch (e) {
-        console.error("[Home] Erreur chargement produits Home", e);
-      } finally {
-        if (!cancelled) setLoadingProducts(false);
-      }
-    }
-
-    fetchProducts();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  if (!isOpen) return <LaunchOnlyPage />;
 
   return (
-    <div className="pb-4" style={{ background: "#fafafa" }}>
+    <div className="pb-4 bg-light">
       <OfflineBanner />
 
-      {/* ✅ Bannière ouverture : seulement AVANT ouverture */}
-      {!isOpen && <DuuminiOpeningBanner />}
-
-      {/* Bandeau installation PWA + CTA notifications */}
-      <section className="container-xxl pt-3">
+      <section className="container pt-3">
         <InstallPWA />
-        <NotificationsCTA />
       </section>
 
-      {/* ✅ Promotions : seulement APRES ouverture et AVANT fin promo */}
-      {isPromoActive && <PromotionsCarousel limit={10} toAllLink="/promos" />}
+      {isPromoActive && (
+        <PromotionsCarousel limit={10} toAllLink="/promos" />
+      )}
 
-      {/* SECTION 1 : Sélection Duumini (sans food) */}
-      <section className="container-xxl mt-4">
-        <div className="d-flex align-items-end justify-content-between mb-2">
+      <section className="container mt-4">
+        <div className="d-flex justify-content-between align-items-end mb-2">
           <div>
             <h2 className="h5 m-0">La sélection Duumini</h2>
-            <div className="small text-muted">
-              Un aperçu des produits disponibles près de chez vous.
-            </div>
+            <div className="small text-muted">{DUUMINI_SLOGAN}</div>
           </div>
-          <Link
-            to="/african-market"
-            className="small text-decoration-none d-flex align-items-center gap-1"
-          >
-            Voir tous les produits
-            <ChevronRight size={14} />
+          <Link to="/african-market" className="small text-decoration-none">
+            Voir tout <ChevronRight size={14} />
           </Link>
         </div>
 
-        <div className="bg-white rounded-4 shadow-sm p-3">
-          {loadingProducts && featured.length === 0 ? (
-            <div className="small text-muted">Chargement des produits…</div>
-          ) : featured.length === 0 ? (
-            <div className="small text-muted">Les produits seront bientôt disponibles.</div>
-          ) : (
-            <div className="row g-3">
-              {featured.map((p) => (
-                <HomeProductCard
-                  key={(p as any).id ?? (p as any).slug}
-                  product={p}
-                  to="/african-market"
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* SECTION 2 : Duumini Market (uniquement) */}
-      <section className="container-xxl mt-4">
-        <div className="d-flex align-items-end justify-content-between mb-2">
-          <div>
-            <h2 className="h5 m-0">Épicerie africaine</h2>
-            <div className="small text-muted">Épices, céréales, produits frais & plus encore.</div>
-          </div>
-          <Link
-            to="/african-market"
-            className="small text-decoration-none d-flex align-items-center gap-1"
-          >
-            Voir toute l&apos;épicerie
-            <ChevronRight size={14} />
-          </Link>
-        </div>
-
-        <div className="bg-white rounded-4 shadow-sm p-3">
-          {marketProducts.length === 0 && !loadingProducts ? (
-            <div className="small text-muted">Les produits d&apos;épicerie seront bientôt disponibles.</div>
-          ) : (
-            <div className="row g-3">
-              {marketProducts.map((p) => (
-                <HomeProductCard
-                  key={(p as any).id ?? (p as any).slug}
-                  product={p}
-                  to="/african-market"
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* SECTION 3 : Bandeau “Pourquoi Duumini ?” */}
-      <section className="container-xxl mt-4">
-        <div className="card border-0 shadow-sm rounded-4">
-          <div className="card-body d-flex flex-column flex-md-row gap-3">
-            <div className="flex-fill">
-              <div className="fw-semibold">Pourquoi choisir Duumini ?</div>
-              <div className="small text-muted">{DUUMINI_SLOGAN}</div>
-            </div>
-            <div className="d-flex flex-wrap gap-3 small">
-              <div>🚚 Livraison rapide Casablanca & Marrakech</div>
-              <div>✅ Produits authentiques d&apos;Afrique subsaharienne</div>
-              <div>💳 Paiement à la livraison</div>
-              <div>📞 Service client WhatsApp réactif</div>
-            </div>
-          </div>
+        <div className="row g-3">
+          {products.map((p) => (
+            <HomeProductCard key={(p as any).id} product={p} />
+          ))}
         </div>
       </section>
     </div>
