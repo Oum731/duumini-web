@@ -184,9 +184,11 @@ export default function PromotionsCarousel({
     };
   }, [computed, intervalMs]);
 
-  if (loading || computed.length === 0) return null;
+  // ✅ IMPORTANT: on ne masque plus la box si computed est vide
+  if (loading) return null;
 
   const headline = "Spécial CAN • Duumini";
+  const hasPromos = computed.length > 0;
 
   return (
     <section className="container-xxl mt-4">
@@ -203,7 +205,6 @@ export default function PromotionsCarousel({
           box-shadow: 0 .9rem 2.2rem rgba(0,0,0,.10);
         }
 
-        /* ✅ Bandeau jaune (avant le visuel) */
         .can-banner{
           display:flex;
           align-items:center;
@@ -225,14 +226,6 @@ export default function PromotionsCarousel({
           line-height: 1.05;
           letter-spacing: .2px;
           font-size: .98rem;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .can-banner-sub{
-          font-weight: 850;
-          color: rgba(0,0,0,.70);
-          font-size: .86rem;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -263,11 +256,10 @@ export default function PromotionsCarousel({
           100%{ opacity: 1; transform: scale(1); }
         }
 
-        /* effet ticket perforé (léger, pro) */
         .can-ticket::before, .can-ticket::after{
           content:"";
           position:absolute;
-          top: 132px; /* ⬅️ ajusté car on a ajouté le bandeau */
+          top: 132px;
           width: 26px; height: 26px;
           border-radius: 999px;
           background: rgba(255,255,255,.92);
@@ -293,8 +285,6 @@ export default function PromotionsCarousel({
           box-shadow: 0 .8rem 2.2rem rgba(0,0,0,.10);
           min-height: 210px;
         }
-
-        .can-right{ min-width:0; }
 
         .can-actions{
           display:flex;
@@ -421,7 +411,6 @@ export default function PromotionsCarousel({
           .duu-card{ width: 172px; border-radius: 14px; }
           .duu-img{ height: 132px; }
           .can-banner-title{ font-size: .94rem; }
-          .can-banner-sub{ font-size: .82rem; }
         }
       `}</style>
 
@@ -433,7 +422,6 @@ export default function PromotionsCarousel({
         onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
         title="Voir les offres CAN"
       >
-        {/* ✅ NOUVEAU BANDEAU JAUNE AVANT LE VISUEL */}
         <div className="can-banner">
           <div className="can-banner-left">
             <div className="can-banner-title">{headline}</div>
@@ -463,67 +451,75 @@ export default function PromotionsCarousel({
           </div>
         </div>
 
-        {/* ✅ ton carrousel produits (même logique + auto-scroll) */}
-        <div
-          ref={scrollerRef}
-          className="duu-scroller"
-          role="button"
-          tabIndex={0}
-          onClick={() => navigate(toAllLink)}
-          onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
-          title="Voir les promos CAN"
-        >
-          {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
-            const saved = type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
+        {hasPromos ? (
+          <div
+            ref={scrollerRef}
+            className="duu-scroller"
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate(toAllLink)}
+            onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
+            title="Voir les promos CAN"
+          >
+            {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
+              const saved =
+                type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
 
-            return (
-              <div className="card border-0 duu-card" data-promo-card key={p.id}>
-                <div className="position-relative">
-                  {cover ? (
-                    <img className="duu-img" src={imgUrl(cover)} alt={p.name} loading="lazy" />
-                  ) : (
-                    <div className="duu-img d-flex align-items-center justify-content-center text-muted">
-                      Image
+              return (
+                <div className="card border-0 duu-card" data-promo-card key={p.id}>
+                  <div className="position-relative">
+                    {cover ? (
+                      <img className="duu-img" src={imgUrl(cover)} alt={p.name} loading="lazy" />
+                    ) : (
+                      <div className="duu-img d-flex align-items-center justify-content-center text-muted">
+                        Image
+                      </div>
+                    )}
+
+                    <span className="duu-badge">PROMO {saved}</span>
+
+                    {isCan && (
+                      <span className="duu-badge-can">
+                        <span className={`can-dot ${blink ? "blink" : ""}`} />
+                        CAN
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="card-body p-2">
+                    <div
+                      className="fw-semibold small mb-1"
+                      style={{
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                        minHeight: "2.4em",
+                      }}
+                    >
+                      {p.name}
                     </div>
-                  )}
 
-                  <span className="duu-badge">PROMO {saved}</span>
+                    <div className="d-flex align-items-baseline gap-2">
+                      <div className="fw-bold">{moneyMAD(promoPrice)}</div>
+                      <div className="duu-old">{moneyMAD(p.price)}</div>
+                    </div>
 
-                  {isCan && (
-                    <span className="duu-badge-can">
-                      <span className={`can-dot ${blink ? "blink" : ""}`} />
-                      CAN
-                    </span>
-                  )}
-                </div>
-
-                <div className="card-body p-2">
-                  <div
-                    className="fw-semibold small mb-1"
-                    style={{
-                      display: "-webkit-box",
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                      minHeight: "2.4em",
-                    }}
-                  >
-                    {p.name}
-                  </div>
-
-                  <div className="d-flex align-items-baseline gap-2">
-                    <div className="fw-bold">{moneyMAD(promoPrice)}</div>
-                    <div className="duu-old">{moneyMAD(p.price)}</div>
-                  </div>
-
-                  <div className="small text-muted mt-1">
-                    {cd.isOver ? "Offre terminée" : "⚡ Offre CAN"}
+                    <div className="small text-muted mt-1">
+                      {cd.isOver ? "Offre terminée" : "⚡ Offre CAN"}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="px-3 pb-3">
+            <div className="alert alert-light border small mb-0">
+              Aucune promo disponible pour le moment. Revenez bientôt 👀
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );

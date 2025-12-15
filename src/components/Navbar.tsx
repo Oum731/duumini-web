@@ -1,6 +1,6 @@
 // src/components/Navbar.tsx
+import React, { useMemo, useState } from "react";
 import { Link, NavLink } from "react-router-dom";
-import { useState, useMemo } from "react";
 import {
   ShoppingCart,
   UserRound,
@@ -12,6 +12,7 @@ import {
   Package,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { DUUMINI_SLOGAN } from "../lib/brand";
 
 type Role = "MEMBER" | "VENDEUR" | "LIVREUR" | "ADMIN";
 
@@ -24,7 +25,9 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const { user } = useAuth();
 
   const { isLoggedIn, isAdmin, isVendor } = useMemo(() => {
-    const role = (user?.role ? String(user.role) : "").trim().toUpperCase() as Role | "";
+    const role = (user?.role ? String(user.role) : "")
+      .trim()
+      .toUpperCase() as Role | "";
     return {
       isLoggedIn: !!user,
       isAdmin: role === "ADMIN",
@@ -64,10 +67,42 @@ export default function Navbar({ cartCount = 0 }: Props) {
       role="navigation"
       aria-label="Navigation principale"
     >
+      <style>{`
+        .duu-brand-wrap{ min-width: 0; }
+        .duu-brand-slogan{
+          font-weight: 800;
+          color: rgba(0,0,0,.70);
+          font-size: .78rem;
+          line-height: 1.05;
+          margin-top: -2px;
+          max-width: 320px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        @media (max-width: 420px){
+          .duu-brand-slogan{ max-width: 180px; }
+        }
+      `}</style>
+
       <div className="container-xxl">
-        <Link to="/" className="navbar-brand d-flex align-items-center gap-2" onClick={() => setOpen(false)}>
+        <Link
+          to="/"
+          className="navbar-brand d-flex align-items-center gap-2"
+          onClick={() => setOpen(false)}
+        >
           <img src="/logo.jpeg" alt="Duumini" height={32} className="rounded" />
-          <span className="fw-bold" style={{ color: "var(--duu-black)" }}>Duumini</span>
+
+          <div className="duu-brand-wrap">
+            <span className="fw-bold" style={{ color: "var(--duu-black)" }}>
+              Duumini
+            </span>
+
+            {/* ✅ Slogan partout (Navbar) */}
+            <div className="duu-brand-slogan" title={DUUMINI_SLOGAN}>
+              {DUUMINI_SLOGAN}
+            </div>
+          </div>
         </Link>
 
         <button
@@ -80,7 +115,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
           <span className="navbar-toggler-icon" />
         </button>
 
-        <div className={`collapse navbar-collapse justify-content-end ${open ? "show" : ""}`}>
+        <div
+          className={`collapse navbar-collapse justify-content-end ${
+            open ? "show" : ""
+          }`}
+        >
           <ul className="navbar-nav mb-2 mb-lg-0 me-lg-3">
             {navItem("/", "Accueil", Home, { end: true })}
             {navItem("/contact", "Contact", Mail)}
@@ -88,7 +127,6 @@ export default function Navbar({ cartCount = 0 }: Props) {
 
             {isLoggedIn && navItem("/orders", "Mes commandes", Package)}
 
-            {/* Affichage conditionnel selon rôle (venant du contexte → DB) */}
             {isAdmin && navItem("/admin", "Dashboard", Shield)}
             {isVendor && navItem("/ma-boutique", "Ma boutique", Store)}
 

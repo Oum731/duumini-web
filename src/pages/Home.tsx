@@ -1,11 +1,20 @@
 // src/pages/Home.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, Bell } from "lucide-react";
 import InstallPWA from "../components/InstallPWA";
 import { listProducts, type Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import PromotionsCarousel from "../components/PromotionsCarousel";
+
+/* ===== Brand (slogan + dates) ===== */
+const DUUMINI_SLOGAN = "Les goûts de ton pays, partout où tu te trouves";
+
+// 📅 Date d'ouverture officielle
+const DUUMINI_OPEN_ISO = "2025-12-21T00:00:00+01:00";
+
+// 📅 Fin de la promo (cache la box promo après cette date)
+const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
 
 /* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
@@ -21,6 +30,155 @@ function moneyMAD(n?: number | null) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })} MAD`;
+}
+
+function isDateReached(iso: string) {
+  return Date.now() >= new Date(iso).getTime();
+}
+
+/* ===== Countdown Hook ===== */
+function useCountdown(targetIso: string) {
+  const target = useMemo(() => new Date(targetIso).getTime(), [targetIso]);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const diff = target - now;
+  const isOver = diff <= 0;
+  const safe = Math.max(0, diff);
+
+  const days = Math.floor(safe / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((safe / (1000 * 60 * 60)) % 24);
+  const mins = Math.floor((safe / (1000 * 60)) % 60);
+  const secs = Math.floor((safe / 1000) % 60);
+
+  return { diff, days, hours, mins, secs, isOver };
+}
+
+/* ===== Bannière ouverture (visible seulement AVANT ouverture) ===== */
+function DuuminiOpeningBanner() {
+  const cd = useCountdown(DUUMINI_OPEN_ISO);
+
+  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
+    2,
+    "0"
+  )}:${String(cd.secs).padStart(2, "0")}`;
+
+  return (
+    <section className="container-xxl pt-3">
+      <style>{`
+        .duu-open-card{
+          border: 1px solid rgba(0,0,0,.08);
+          border-radius: 18px;
+          overflow:hidden;
+          background:
+            radial-gradient(900px 320px at 12% 0%, rgba(255,213,79,.42), transparent 60%),
+            radial-gradient(900px 280px at 92% 10%, rgba(229,57,53,.18), transparent 55%),
+            linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,255,255,.60));
+          box-shadow: 0 .9rem 2.2rem rgba(0,0,0,.10);
+        }
+        .duu-open-top{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:12px;
+          padding: 10px 12px;
+          background: var(--duu-yellow, #FFD54F);
+          border-bottom: 1px solid rgba(0,0,0,.10);
+        }
+        .duu-open-title{
+          font-weight: 990;
+          letter-spacing:.2px;
+          color: rgba(0,0,0,.92);
+          white-space: nowrap;
+          overflow:hidden;
+          text-overflow: ellipsis;
+        }
+        .duu-open-chip{
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          padding: 7px 10px;
+          border-radius: 999px;
+          background: rgba(0,0,0,.86);
+          color:#fff;
+          font-weight: 980;
+          border: 1px solid rgba(255,255,255,.18);
+          white-space: nowrap;
+        }
+        .duu-open-dot{
+          width:10px;height:10px;border-radius:50%;
+          background: rgba(229,57,53,1);
+          box-shadow: 0 0 0 3px rgba(229,57,53,.18);
+          animation: duuBlink .7s infinite;
+        }
+        @keyframes duuBlink{
+          0%{ opacity: 1; transform: scale(1); }
+          50%{ opacity: .20; transform: scale(.78); }
+          100%{ opacity: 1; transform: scale(1); }
+        }
+        .duu-open-body{
+          padding: 12px;
+          display:flex;
+          flex-direction:column;
+          gap:10px;
+        }
+        .duu-open-slogan{
+          font-weight: 950;
+          color: rgba(0,0,0,.82);
+          line-height: 1.15;
+        }
+        .duu-open-meta{
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          align-items:center;
+        }
+        .duu-open-count{
+          display:inline-flex;
+          align-items:center;
+          gap:10px;
+          padding: 10px 12px;
+          border-radius: 14px;
+          background: rgba(255,255,255,.88);
+          border: 1px solid rgba(0,0,0,.10);
+          font-weight: 980;
+          color:#111;
+          box-shadow: 0 .6rem 1.3rem rgba(0,0,0,.08);
+          white-space: nowrap;
+        }
+        .duu-open-hint{
+          font-weight: 800;
+          color: rgba(0,0,0,.62);
+        }
+      `}</style>
+
+      <div className="duu-open-card">
+        <div className="duu-open-top">
+          <div className="duu-open-title">Duumini ouvre le 21 décembre 🎉🎊</div>
+          <div className="duu-open-chip" aria-hidden="true">
+            <span className="duu-open-dot" />
+            OUVERTURE
+          </div>
+        </div>
+
+        <div className="duu-open-body">
+
+          <div className="duu-open-meta">
+            <span className="duu-open-count">
+              ⏳ {cd.isOver ? "C’est ouvert ✅" : `${cd.days}j ${timeStr}`}
+            </span>
+            <span className="duu-open-hint small">
+              {cd.isOver ? "Bienvenue sur Duumini." : "Restez prêts : lancement très proche."}
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 /* === Bandeau hors-ligne (écoute online/offline) === */
@@ -43,8 +201,7 @@ function OfflineBanner() {
   if (online) return null;
   return (
     <div className="alert alert-warning rounded-0 m-0 text-center small">
-      Vous êtes hors-ligne. Certaines images ou données récentes peuvent ne pas
-      s’afficher.
+      Vous êtes hors-ligne. Certaines images ou données récentes peuvent ne pas s’afficher.
     </div>
   );
 }
@@ -74,11 +231,7 @@ function HomeProductCard(props: { product: Product; to: string }) {
       <Link to={to} className="text-decoration-none text-reset d-block h-100">
         <div
           className="card border-0 shadow-sm h-100"
-          style={{
-            borderRadius: "1rem",
-            overflow: "hidden",
-            background: "#fff",
-          }}
+          style={{ borderRadius: "1rem", overflow: "hidden", background: "#fff" }}
         >
           <div
             className="position-relative bg-light d-flex align-items-center justify-content-center"
@@ -150,9 +303,7 @@ function NotificationsCTA() {
             try {
               const res = await Notification.requestPermission();
               setPerm(res);
-            } catch {
-              // ignore
-            }
+            } catch {}
           }}
         >
           Autoriser
@@ -167,6 +318,17 @@ export default function Home() {
   const [marketProducts, setMarketProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
+  // ✅ Re-render automatique toutes les 1s pour cacher/afficher à la bonne date
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => tick((v) => v + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // ⏱️ Conditions dates
+  const isOpen = isDateReached(DUUMINI_OPEN_ISO);
+  const isPromoActive = isOpen && !isDateReached(PROMO_END_ISO);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -174,16 +336,12 @@ export default function Home() {
       try {
         setLoadingProducts(true);
 
-        const res = await (listProducts as any)({
-          page: 1,
-          pageSize: 60,
-        });
+        const res = await (listProducts as any)({ page: 1, pageSize: 60 });
         const data = (res as any).data ?? res;
         const items: Product[] = data.items ?? data;
 
         if (!items || !Array.isArray(items) || cancelled) return;
 
-        // ✅ On garde uniquement les produits actifs + en stock
         const active = items.filter((p: any) => {
           const isActive =
             (p.is_active ?? p.active ?? 1) &&
@@ -191,12 +349,10 @@ export default function Home() {
           return !!isActive;
         });
 
-        // ✅ SANS FOOD : on filtre tout ce qui est sub_category = food
         const marketOnly = active.filter(
           (p: any) => String(p.sub_category || "").toLowerCase() !== "food"
         );
 
-        // ✅ Sélections pour la Home (uniquement market)
         const featuredSelection = marketOnly.slice(0, 8);
         const marketSelection = marketOnly.slice(0, 12);
 
@@ -207,9 +363,7 @@ export default function Home() {
       } catch (e) {
         console.error("[Home] Erreur chargement produits Home", e);
       } finally {
-        if (!cancelled) {
-          setLoadingProducts(false);
-        }
+        if (!cancelled) setLoadingProducts(false);
       }
     }
 
@@ -221,15 +375,19 @@ export default function Home() {
 
   return (
     <div className="pb-4" style={{ background: "#fafafa" }}>
-      {/* Bandeau offline */}
       <OfflineBanner />
 
-      {/* Bandeau installation PWA (Android + iOS tips) */}
+      {/* ✅ Bannière ouverture : seulement AVANT ouverture */}
+      {!isOpen && <DuuminiOpeningBanner />}
+
+      {/* Bandeau installation PWA + CTA notifications */}
       <section className="container-xxl pt-3">
         <InstallPWA />
         <NotificationsCTA />
       </section>
-      <PromotionsCarousel limit={10} toAllLink="/promos" />
+
+      {/* ✅ Promotions : seulement APRES ouverture et AVANT fin promo */}
+      {isPromoActive && <PromotionsCarousel limit={10} toAllLink="/promos" />}
 
       {/* SECTION 1 : Sélection Duumini (sans food) */}
       <section className="container-xxl mt-4">
@@ -253,9 +411,7 @@ export default function Home() {
           {loadingProducts && featured.length === 0 ? (
             <div className="small text-muted">Chargement des produits…</div>
           ) : featured.length === 0 ? (
-            <div className="small text-muted">
-              Les produits seront bientôt disponibles.
-            </div>
+            <div className="small text-muted">Les produits seront bientôt disponibles.</div>
           ) : (
             <div className="row g-3">
               {featured.map((p) => (
@@ -275,9 +431,7 @@ export default function Home() {
         <div className="d-flex align-items-end justify-content-between mb-2">
           <div>
             <h2 className="h5 m-0">Épicerie africaine</h2>
-            <div className="small text-muted">
-              Épices, céréales, produits frais & plus encore.
-            </div>
+            <div className="small text-muted">Épices, céréales, produits frais & plus encore.</div>
           </div>
           <Link
             to="/african-market"
@@ -290,9 +444,7 @@ export default function Home() {
 
         <div className="bg-white rounded-4 shadow-sm p-3">
           {marketProducts.length === 0 && !loadingProducts ? (
-            <div className="small text-muted">
-              Les produits d&apos;épicerie seront bientôt disponibles.
-            </div>
+            <div className="small text-muted">Les produits d&apos;épicerie seront bientôt disponibles.</div>
           ) : (
             <div className="row g-3">
               {marketProducts.map((p) => (
@@ -313,9 +465,7 @@ export default function Home() {
           <div className="card-body d-flex flex-column flex-md-row gap-3">
             <div className="flex-fill">
               <div className="fw-semibold">Pourquoi choisir Duumini ?</div>
-              <div className="small text-muted">
-                La plateforme dédiée aux produits africains au Maroc.
-              </div>
+              <div className="small text-muted">{DUUMINI_SLOGAN}</div>
             </div>
             <div className="d-flex flex-wrap gap-3 small">
               <div>🚚 Livraison rapide Casablanca & Marrakech</div>

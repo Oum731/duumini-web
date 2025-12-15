@@ -87,9 +87,10 @@ export default function PromotionsPage() {
   const pulseClass =
     urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
 
-  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(2, "0")}:${String(
-    cd.secs
-  ).padStart(2, "0")}`;
+  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
+    2,
+    "0"
+  )}:${String(cd.secs).padStart(2, "0")}`;
 
   async function fetchPromos() {
     setLoading(true);
@@ -157,43 +158,6 @@ export default function PromotionsPage() {
           flex-direction:column;
           gap:8px;
         }
-        .can-chip{
-          display:inline-flex;
-          align-items:center;
-          gap:10px;
-          padding:8px 12px;
-          border-radius: 999px;
-          border: 1px dashed rgba(0,0,0,.16);
-          background: rgba(255,255,255,.80);
-          font-weight: 950;
-          width: fit-content;
-        }
-        .can-dot{
-          width:10px;height:10px;border-radius:50%;
-          background: rgba(229,57,53,1);
-          box-shadow: 0 0 0 3px rgba(229,57,53,.18);
-        }
-        .can-dot.blink{ animation: canBlink .7s infinite; }
-        @keyframes canBlink{
-          0%{ opacity: 1; transform: scale(1); }
-          50%{ opacity: .25; transform: scale(.75); }
-          100%{ opacity: 1; transform: scale(1); }
-        }
-        .can-pill{
-          background: var(--duu-red, #E53935);
-          color:#fff;
-          padding: 3px 10px;
-          border-radius: 999px;
-          font-size: .82rem;
-          font-weight: 950;
-          letter-spacing: .2px;
-        }
-        .can-title{
-          margin: 0;
-          font-weight: 990;
-          letter-spacing: .2px;
-          line-height: 1.06;
-        }
         .can-sub{
           font-weight: 800;
           color: rgba(0,0,0,.62);
@@ -227,13 +191,6 @@ export default function PromotionsPage() {
         @media (prefers-reduced-motion: reduce){
           .pulse-normal, .pulse-soon, .pulse-d1{ animation:none; }
         }
-        .can-note{
-          padding: 10px 12px 12px 12px;
-          border-top: 1px dashed rgba(0,0,0,.10);
-          font-weight: 800;
-          color: rgba(0,0,0,.60);
-          background: rgba(255,255,255,.55);
-        }
         @media (min-width: 992px){
           .can-grid{
             grid-template-columns: 1fr 1fr;
@@ -252,8 +209,6 @@ export default function PromotionsPage() {
           </div>
 
           <div className="can-text">
-           
-
             <p className="can-sub">Fin le 22 janvier 2026</p>
 
             <div className="can-meta">
@@ -261,7 +216,6 @@ export default function PromotionsPage() {
                 ⏳ {cd.isOver ? "Terminé" : `${cd.days}j ${timeStr}`}
               </span>
 
-              
               <button
                 type="button"
                 className="btn btn-sm btn-outline-dark ms-auto"
@@ -272,7 +226,6 @@ export default function PromotionsPage() {
                 {loading ? "…" : "Actualiser"}
               </button>
             </div>
-
           </div>
         </div>
       </div>
@@ -282,7 +235,9 @@ export default function PromotionsPage() {
       {loading ? (
         <div className="text-muted">Chargement des offres CAN…</div>
       ) : canItems.length === 0 ? (
-        <div className="text-muted">Aucune offre CAN pour le moment.</div>
+        <div className="alert alert-light border small">
+          Aucune offre CAN pour le moment. Revenez bientôt 👀
+        </div>
       ) : (
         <div className="row g-3">
           {canItems.map((p: any) => {
