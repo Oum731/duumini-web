@@ -15,6 +15,7 @@
     "bootstrap": "^5.3.8",
     "cloudinary": "^2.8.0",
     "lottie-react": "^2.4.1",
+    "lottie-web": "^5.13.0",
     "lucide-react": "^0.548.0",
     "pushy-sdk-web": "^1.0.24",
     "react": "^19.1.1",

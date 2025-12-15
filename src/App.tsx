@@ -58,6 +58,7 @@ import NotificationBubble from "./components/NotificationBubble";
 import { trackPageView } from "./lib/analytics";
 import PromotionsPage from "./pages/PromotionsPage";
 import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
+import CanKickLottie from "./components/CanKickLottie";
 
 function Page({ title }: { title: string }) {
   return (
@@ -360,6 +361,7 @@ export default function App() {
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
                 <Route path="/top-products" element={<TopProductsPage />} />
                 <Route path="/promos" element={<PromotionsPage />} />
+                <Route path="/test-can" element={<CanKickLottie />} />
 
                 {/* ✅ Pages légales */}
                 <Route path="/legal/privacy" element={<PrivacyPolicy />} />
