@@ -3,10 +3,8 @@ import { api } from "../services/http";
 import type { Product } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { getPromoMeta, isRealPromo } from "../lib/promotions";
+import CanKickLottie from "../components/CanKickLottie";
 
-/* =========================
-   CONFIG CAN
-   ========================= */
 const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
 
 function useBlink(ms = 650) {
@@ -40,10 +38,8 @@ function isFood(p: any) {
   return String(p?.sub_category || p?.category || "").toLowerCase() === "food";
 }
 
-/** OFFRE CAN = produits en promo (hors food + hors boissons) */
 function isCanProductOffer(p: any) {
   if (Number(p?.promo_can ?? 0) === 1) return true;
-
   if (isFood(p)) return false;
 
   const name = String(p?.name || "").toLowerCase();
@@ -86,10 +82,9 @@ export default function PromotionsPage() {
   const pulseClass =
     urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
 
-  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
-    2,
-    "0"
-  )}:${String(cd.secs).padStart(2, "0")}`;
+  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(2, "0")}:${String(
+    cd.secs
+  ).padStart(2, "0")}`;
 
   async function fetchPromos() {
     setLoading(true);
@@ -118,187 +113,132 @@ export default function PromotionsPage() {
     fetchPromos();
   }, []);
 
-  // tri: meilleures promos d'abord (score %)
   const canItems = useMemo(() => {
     const list = items.filter((p: any) => isCanProductOffer(p));
-
-    return list
-      .map((p: any) => {
-        const promo = getPromoMeta(p);
-        const type = String(p?.promo_discount_type || "PERCENT").toUpperCase();
-        const value = Number(p?.promo_discount_value ?? 0);
-        const price = Number(p?.price ?? 0);
-
-        let score = 0;
-        if (promo) {
-          score =
-            type === "PERCENT"
-              ? value
-              : price > 0
-              ? (value / price) * 100
-              : 0;
-        }
-        return { p, promo, score };
-      })
-      .filter((x) => !!x.promo)
-      .sort((a, b) => b.score - a.score)
-      .map((x) => x.p);
+    // ✅ tri auto : plus grosse remise d’abord
+    return [...list].sort((a: any, b: any) => {
+      const av = Number(a?.promo_discount_value ?? 0);
+      const bv = Number(b?.promo_discount_value ?? 0);
+      return bv - av;
+    });
   }, [items]);
 
   return (
     <div className="container-xxl py-4">
       <style>{`
-        .duu-zone{
+        .can-hero{
           position: relative;
           border: 1px solid rgba(0,0,0,.06);
-          border-radius: 20px;
+          border-radius: 22px;
           padding: 16px;
           overflow: hidden;
           background:
-            radial-gradient(900px 260px at 0% 0%, rgba(255,213,79,.32), transparent 60%),
-            radial-gradient(900px 260px at 100% 20%, rgba(229,57,53,.12), transparent 55%),
-            linear-gradient(180deg, rgba(0,0,0,.02), transparent);
+            radial-gradient(1200px 380px at 12% 0%, rgba(255,213,79,.45), transparent 62%),
+            radial-gradient(1000px 320px at 90% 15%, rgba(229,57,53,.20), transparent 60%),
+            linear-gradient(180deg, rgba(17,17,17,.02), rgba(17,17,17,0));
         }
+        .can-hero:before{
+          content:"";
+          position:absolute; inset:0;
+          background:
+            linear-gradient(135deg, rgba(229,57,53,.08) 0%, transparent 42%),
+            repeating-linear-gradient(90deg, rgba(0,0,0,.04), rgba(0,0,0,.04) 1px, transparent 1px, transparent 18px);
+          opacity:.55;
+          pointer-events:none;
+        }
+        .can-chip{
+          display:inline-flex; align-items:center; gap:10px;
+          padding:8px 12px; border-radius:999px;
+          border: 1px dashed rgba(0,0,0,.18);
+          background: rgba(255,255,255,.72);
+          font-weight:980; flex-wrap:wrap;
+          position: relative;
+        }
+        .can-dot{ width:10px;height:10px;border-radius:50%; background: rgba(229,57,53,.95); box-shadow: 0 0 0 3px rgba(229,57,53,.20); }
+        .can-dot.blink{ animation: canBlink .7s infinite; }
+        @keyframes canBlink{ 0%{opacity:1} 50%{opacity:.25; transform:scale(.75)} 100%{opacity:1} }
 
-        .duu-strip{
-          display:flex;
-          align-items:center;
-          gap:8px;
-          flex-wrap:wrap;
+        .can-pill{
+          background: var(--duu-red, #E53935); color:#fff;
+          padding:2px 10px; border-radius:999px;
+          font-size:.80rem; font-weight:980; letter-spacing:.25px;
         }
-        .duu-dot{
-          width:10px;height:10px;border-radius:50%;
-          background: rgba(229,57,53,.95);
-          box-shadow: 0 0 0 3px rgba(229,57,53,.18);
-        }
-        .duu-dot.blink{ animation: duuBlink .7s infinite; }
-        @keyframes duuBlink{
-          0%{ opacity: 1; transform: scale(1); }
-          50%{ opacity: .25; transform: scale(.75); }
-          100%{ opacity: 1; transform: scale(1); }
-        }
+        .can-pill.blink{ animation: canPillBlink .85s infinite; }
+        @keyframes canPillBlink{ 0%{filter:brightness(1)} 50%{filter:brightness(1.2); transform:scale(1.03)} 100%{filter:brightness(1)} }
 
-        .duu-tag{
-          background: linear-gradient(90deg, rgba(229,57,53,1), rgba(255,213,79,1));
-          color:#111;
-          padding: 4px 10px;
-          border-radius: 999px;
-          font-weight: 980;
-          font-size: .82rem;
-          border: 1px solid rgba(0,0,0,.12);
-        }
-
-        .duu-h1{
+        .can-title{
           margin: 10px 0 4px 0;
-          font-weight: 980;
-          line-height: 1.12;
-          letter-spacing: .2px;
+          font-weight: 990;
+          line-height: 1.08;
+          position: relative;
         }
-        .duu-sub{
+        .can-sub{
           color: rgba(0,0,0,.62);
-          font-weight: 780;
-          font-size: .95rem;
+          font-weight: 800;
+          position: relative;
         }
 
-        .duu-meta{
-          display:flex;
-          gap:8px;
-          flex-wrap:wrap;
-          margin-top: 10px;
-        }
-
-        .duu-badge{
-          display:inline-flex;
-          align-items:center;
-          gap:8px;
-          padding:6px 10px;
-          border-radius:999px;
-          font-weight: 900;
-          font-size: .82rem;
-          background: rgba(255,255,255,.86);
+        .can-meta{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px; position:relative; }
+        .can-badge{
+          display:inline-flex; align-items:center; gap:8px;
+          padding:6px 10px; border-radius:999px;
+          font-weight: 900; font-size:.82rem;
+          background: rgba(255,255,255,.78);
           border: 1px solid rgba(0,0,0,.10);
-          color: rgba(0,0,0,.78);
+          color: rgba(0,0,0,.82);
         }
-
-        .duu-badge-strong{
+        .can-count{
           background: var(--duu-yellow, #FFD54F);
-          color:#111;
-          border: 1px solid rgba(0,0,0,.12);
+          color:#111; border: 1px solid rgba(0,0,0,.12);
           will-change: transform;
         }
 
-        @keyframes duuPulseNormal {
+        @keyframes canPulseNormal {
           0% { transform: scale(1); box-shadow: 0 .35rem .9rem rgba(255,213,79,.30); }
-          50% { transform: scale(1.02); box-shadow: 0 .55rem 1.15rem rgba(255,213,79,.45); }
+          50% { transform: scale(1.025); box-shadow: 0 .55rem 1.15rem rgba(255,213,79,.45); }
           100% { transform: scale(1); box-shadow: 0 .35rem .9rem rgba(255,213,79,.30); }
         }
-        .pulse-normal{ animation: duuPulseNormal 1.25s ease-in-out infinite; }
+        .pulse-normal{ animation: canPulseNormal 1.25s ease-in-out infinite; }
 
-        @keyframes duuPulseSoon {
+        @keyframes canPulseSoon {
           0% { transform: scale(1); box-shadow: 0 .45rem 1.05rem rgba(255,213,79,.42); }
-          50% { transform: scale(1.04); box-shadow: 0 .75rem 1.55rem rgba(255,213,79,.65); }
+          50% { transform: scale(1.045); box-shadow: 0 .75rem 1.55rem rgba(255,213,79,.65); }
           100% { transform: scale(1); box-shadow: 0 .45rem 1.05rem rgba(255,213,79,.42); }
         }
-        .pulse-soon{ animation: duuPulseSoon 1.05s ease-in-out infinite; }
+        .pulse-soon{ animation: canPulseSoon 1.05s ease-in-out infinite; }
 
-        @keyframes duuPulseD1 {
+        @keyframes canPulseD1 {
           0% { transform: scale(1); box-shadow: 0 .55rem 1.25rem rgba(255,213,79,.55); }
           50% { transform: scale(1.06); box-shadow: 0 1rem 2rem rgba(255,213,79,.85); }
           100% { transform: scale(1); box-shadow: 0 .55rem 1.25rem rgba(255,213,79,.55); }
         }
-        .pulse-d1{ animation: duuPulseD1 .78s ease-in-out infinite; }
+        .pulse-d1{ animation: canPulseD1 .78s ease-in-out infinite; }
 
         @media (prefers-reduced-motion: reduce){
           .pulse-normal, .pulse-soon, .pulse-d1{ animation: none; }
         }
-
-        .duu-note{
-          margin-top: 8px;
-          color: rgba(0,0,0,.56);
-          font-size: .90rem;
-          font-weight: 700;
-        }
-
-        @media (max-width: 576px){
-          .duu-zone{ padding: 14px; border-radius: 18px; }
-          .duu-h1{ font-size: 1.12rem; }
-          .duu-sub{ font-size: .90rem; }
-          .duu-badge{ font-size: .78rem; }
-        }
       `}</style>
 
-      <div className="duu-zone mb-3">
-        <div className="d-flex flex-column flex-sm-row align-items-sm-start justify-content-between gap-2">
+      <div className="can-hero mb-3">
+        <div className="d-flex flex-column flex-sm-row align-items-sm-start justify-content-between gap-2" style={{ position: "relative" }}>
           <div style={{ minWidth: 0 }}>
-            <div className="duu-strip">
-              <span className={`duu-dot ${blink ? "blink" : ""}`} />
-              <span className="duu-tag">ZONE CAN 2025</span>
+            <div className="can-chip">
+              <span className={`can-dot ${blink ? "blink" : ""}`} />
+              <span className={`can-pill ${blink ? "blink" : ""}`}>CAN 2025</span>
+              <span style={{ fontWeight: 900, color: "rgba(0,0,0,.75)" }}>Mode Coupe d’Afrique 🏆</span>
             </div>
 
-            {/* Texte différent du carousel + très court */}
-            <h1 className="duu-h1">⚽ Promos CAN — Coupe d’Afrique</h1>
-            <div className="duu-sub">Top remises • Produits (hors boissons)</div>
+            <div className="can-sub">Maroc • Fin le 22 janvier</div>
 
-            <div className="duu-meta">
-              <span className={`duu-badge duu-badge-strong ${pulseClass}`}>
+            <div className="can-meta">
+              <span className={`can-badge can-count ${pulseClass}`}>
                 ⏳ {cd.isOver ? "Terminé" : `Reste ${cd.days}j ${timeStr}`}
               </span>
-              <span className="duu-badge">🏟️ Supporters</span>
-              <span className="duu-badge">🚚 Livraison offerte*</span>
-            </div>
-
-            <div className="duu-note">
-              {cd.isOver ? "CAN terminée." : <>Fin <b>22 janvier</b> • *sur produits éligibles</>}
+              <CanKickLottie size={34} showTeam />
             </div>
           </div>
 
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-dark"
-            onClick={fetchPromos}
-            disabled={loading}
-            title="Actualiser"
-          >
+          <button type="button" className="btn btn-sm btn-outline-dark" onClick={fetchPromos} disabled={loading}>
             {loading ? "Actualisation…" : "Actualiser"}
           </button>
         </div>
@@ -307,9 +247,9 @@ export default function PromotionsPage() {
       {err && <div className="alert alert-danger py-2">{err}</div>}
 
       {loading ? (
-        <div className="text-muted">Chargement…</div>
+        <div className="text-muted">Chargement des offres CAN…</div>
       ) : canItems.length === 0 ? (
-        <div className="text-muted">Aucune promo CAN disponible.</div>
+        <div className="text-muted">Aucune offre CAN disponible pour le moment.</div>
       ) : (
         <div className="row g-3">
           {canItems.map((p: any) => {
@@ -322,7 +262,7 @@ export default function PromotionsPage() {
                   product={p}
                   priceOverride={promo.promoPrice}
                   oldPrice={promo.oldPrice}
-                  badgeText={`🏟️ Supporters • CAN ${promo.label}`}
+                  badgeText={`SUPPORTERS ${promo.label}`}
                 />
               </div>
             );
