@@ -56,6 +56,10 @@ import NotificationBubble from "./components/NotificationBubble";
 
 // ✅ Analytics (Meta Pixel via GTM / dataLayer)
 import { trackPageView } from "./lib/analytics";
+
+// ✅ Metricool (page view SPA)
+import { trackMetricoolPageView } from "./lib/metricool";
+
 import PromotionsPage from "./pages/PromotionsPage";
 import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
 import CanKickLottie from "./components/CanKickLottie";
@@ -88,7 +92,12 @@ function PageViewTracker() {
 
   useEffect(() => {
     const path = `${pathname}${search || ""}`;
+
+    // ✅ GTM/Meta/GA4 via dataLayer
     trackPageView(path);
+
+    // ✅ Metricool (SPA)
+    trackMetricoolPageView();
   }, [pathname, search]);
 
   return null;
@@ -193,11 +202,7 @@ function GlobalRatingModal(props: {
     setError(null);
     setSuccess(null);
     try {
-      await rateProduct(
-        pending.product_id,
-        rating,
-        comment.trim() || undefined
-      );
+      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch (e) {
@@ -251,9 +256,7 @@ function GlobalRatingModal(props: {
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">
-                  Votre avis (optionnel)
-                </label>
+                <label className="form-label small">Votre avis (optionnel)</label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -301,7 +304,6 @@ export default function App() {
   const [pendingRating, setPendingRating] =
     useState<PendingProductRating | null>(null);
 
-  // ✅ Avec ton http.ts : getPendingProductRating() renvoie directement l’objet JSON (pas axios {data})
   useEffect(() => {
     if (!user) {
       setPendingRating(null);
@@ -313,10 +315,7 @@ export default function App() {
     async function checkPending() {
       try {
         const res = await getPendingProductRating();
-
         if (cancelled) return;
-
-        // res est soit PendingProductRating soit null
         setPendingRating((res as PendingProductRating | null) ?? null);
       } catch (e) {
         console.error("Erreur pending rating:", e);
@@ -378,16 +377,12 @@ export default function App() {
                     <Route path="users" element={<UsersAdminPage />} />
 
                     {/* ✅ Promotions */}
-                    <Route
-                      path="promotions"
-                      element={<PromotionsAdminPage />}
-                    />
+                    <Route path="promotions" element={<PromotionsAdminPage />} />
 
                     {/* ✅ IA */}
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
-
                   </Route>
                 </Route>
 
