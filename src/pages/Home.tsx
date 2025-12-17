@@ -112,10 +112,59 @@ function LaunchOnlyPage() {
         .launch-body { padding: 14px; }
         .launch-countdown { font-variant-numeric: tabular-nums; }
         .launch-note { line-height: 1.25; }
-        .launch-announce { background: #FFD54F; }
+
+        /* ✅ Animation PRO (recommandée) : halo + léger zoom */
+        .announce-pulse-wrap{
+          background:#FFD54F;
+          position:relative;
+          overflow:hidden;
+        }
+        .announce-pulse-wrap::before{
+          content:"";
+          position:absolute;
+          inset: -20%;
+          background: radial-gradient(circle at 50% 40%, rgba(255,255,255,.65), transparent 55%);
+          opacity:.0;
+          transform: scale(.95);
+          animation: announceGlow 1.6s ease-in-out infinite;
+          pointer-events:none;
+        }
+        @keyframes announceGlow{
+          0%{ opacity:.05; transform: scale(.97); }
+          50%{ opacity:.45; transform: scale(1.02); }
+          100%{ opacity:.05; transform: scale(.97); }
+        }
+
+        .announce-img{
+          display:block;
+          width:100%;
+          max-height:460px;
+          object-fit:contain;
+          transform: translateZ(0);
+          animation: announceScale 1.6s ease-in-out infinite;
+        }
+        @keyframes announceScale{
+          0%{ transform: scale(1); }
+          50%{ transform: scale(1.015); }
+          100%{ transform: scale(1); }
+        }
+
+        /* ✅ Option “blink” agressive (désactivée par défaut)
+           Si tu veux VRAIMENT blink, remplace announce-pulse-wrap par announce-blink-wrap */
+        .announce-blink-wrap{
+          background:#FFD54F;
+          animation: announceBlink .75s infinite;
+        }
+        @keyframes announceBlink{
+          0%{ filter: brightness(1); }
+          50%{ filter: brightness(1.25); }
+          100%{ filter: brightness(1); }
+        }
+
         @media (max-width: 420px){
           .launch-body { padding: 12px; }
           .launch-hero { padding: 12px; }
+          .announce-img{ max-height: 420px; }
         }
       `}</style>
 
@@ -144,17 +193,12 @@ function LaunchOnlyPage() {
             </span>
           </div>
 
-          {/* ✅ Image annonce (public/annonce.jpeg) */}
-          <div className="launch-announce">
+          {/* ✅ Image annonce (public/annonce.jpeg) + effet visible */}
+          <div className="announce-pulse-wrap">
             <img
               src="/annonce.jpeg"
               alt="Annonce Duumini"
-              className="w-100"
-              style={{
-                maxHeight: 460,
-                objectFit: "contain",
-                display: "block",
-              }}
+              className="announce-img"
               loading="eager"
             />
           </div>
@@ -162,7 +206,8 @@ function LaunchOnlyPage() {
           <div className="card-body d-flex flex-column gap-3 launch-body">
             <div className="d-flex flex-column gap-1">
               <h1 className="h5 fw-bold m-0">
-                Ouverture le 21 décembre 2025 <span className="blink-emoji">🎉</span>
+                Ouverture le 21 décembre 2025{" "}
+                <span className="blink-emoji">🎉</span>
               </h1>
               <p className="text-muted m-0 launch-note">
                 Offres CAN jusqu’au 22 janvier 2026 🏆
@@ -289,7 +334,10 @@ export default function Home() {
               <h2 className="h5 m-0 home-title">La sélection Duumini</h2>
               <div className="small text-muted home-slogan">{DUUMINI_SLOGAN}</div>
             </div>
-            <Link to="/african-market" className="small text-decoration-none home-seeall">
+            <Link
+              to="/african-market"
+              className="small text-decoration-none home-seeall"
+            >
               Voir tout <ChevronRight size={14} />
             </Link>
           </div>
