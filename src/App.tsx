@@ -59,6 +59,7 @@ import { trackPageView } from "./lib/analytics";
 import PromotionsPage from "./pages/PromotionsPage";
 import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
 import CanKickLottie from "./components/CanKickLottie";
+import AiCopyPage from "./pages/admin/AiCopyPage";
 
 function Page({ title }: { title: string }) {
   return (
@@ -384,6 +385,9 @@ export default function App() {
 
                     {/* ✅ IA */}
                     <Route path="ai" element={<AiToolsAdminPage />} />
+                    <Route path="ai/copy" element={<AiCopyPage />} />
+                    <Route path="copy" element={<AiCopyPage />} />
+
                   </Route>
                 </Route>
 

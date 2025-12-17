@@ -63,9 +63,8 @@ function isFormData(x: any): x is FormData {
 /** Parse la réponse selon le Content-Type */
 async function parseResponse<T>(res: Response): Promise<T> {
   const ctype = res.headers.get("content-type") || "";
-  if (!ctype) {
-    return undefined as unknown as T;
-  }
+  if (!ctype) return undefined as unknown as T;
+
   if (ctype.includes("application/json")) {
     return (await res.json()) as T;
   }
@@ -73,10 +72,32 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return text as T;
 }
 
+/** Fetch avec timeout dédié (important pour retry après refresh) */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeout: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeout);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Client HTTP générique avec retry/refresh auto sur 401
  */
-export async function http<T = unknown>(path: string, config: HttpConfig = {}): Promise<T> {
+export async function http<T = unknown>(
+  path: string,
+  config: HttpConfig = {}
+): Promise<T> {
   const {
     method = "GET",
     headers = {},
@@ -87,14 +108,17 @@ export async function http<T = unknown>(path: string, config: HttpConfig = {}): 
     credentials,
   } = config;
 
-  const hdrs: Record<string, string> = { Accept: "application/json", ...headers };
+  const hdrs: Record<string, string> = {
+    Accept: "application/json",
+    ...headers,
+  };
 
   // Auth bearer si token dispo (utilise la même source que auth.ts)
   const token = noAuth ? null : getAccessToken();
   const finalQuery: HttpConfig["query"] = { ...(query || {}) };
 
-  if (token) {
-    if (!hdrs.Authorization) hdrs.Authorization = `Bearer ${token}`;
+  if (token && !hdrs.Authorization) {
+    hdrs.Authorization = `Bearer ${token}`;
   }
 
   const url = buildUrl(path, finalQuery);
@@ -112,55 +136,52 @@ export async function http<T = unknown>(path: string, config: HttpConfig = {}): 
     }
   }
 
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeout);
+  const init: RequestInit = {
+    method,
+    headers: hdrs,
+    body: finalBody,
+    mode: "cors",
+    credentials, // "include" si tu utilises des cookies côté API
+  };
 
-  async function doFetch() {
-    return fetch(url, {
-      method,
-      headers: hdrs,
-      body: finalBody,
-      signal: controller.signal,
-      mode: "cors",
-      credentials, // "include" si tu utilises des cookies côté API
-    });
-  }
+  let res: Response;
 
-  let res: Response | null = null;
   try {
-    res = await doFetch();
+    // 1) première tentative
+    res = await fetchWithTimeout(url, init, timeout);
 
-    // 🔁 Si 401 et on n’était pas en noAuth → tente un refresh 1 fois
+    // 2) si 401 → refresh 1 fois puis retry avec un NOUVEAU timeout complet
     if (res.status === 401 && !noAuth) {
       try {
-        await doRefresh(); // met à jour le token dans localStorage
+        await doRefresh();
         const newToken = getAccessToken();
         if (newToken) {
-          (hdrs as any).Authorization = `Bearer ${newToken}`;
+          hdrs.Authorization = `Bearer ${newToken}`;
         }
-        res = await doFetch(); // re-tente
+        res = await fetchWithTimeout(url, init, timeout);
       } catch {
-        clearSession(); // on nettoie la session si refresh KO
+        clearSession();
       }
     }
   } catch (e: any) {
-    clearTimeout(t);
-    const msg = e?.name === "AbortError" ? "Requête annulée (timeout)" : e?.message || "Erreur réseau";
+    const msg =
+      e?.name === "AbortError"
+        ? "Requête annulée (timeout)"
+        : e?.message || "Erreur réseau";
     throw new HttpError(0, msg);
-  } finally {
-    clearTimeout(t);
-  }
-
-  if (!res) {
-    throw new HttpError(0, "Aucune réponse du serveur");
   }
 
   if (!res.ok) {
     let payload: HttpErrorPayload | undefined;
     try {
       payload = await parseResponse<HttpErrorPayload>(res);
-    } catch { /* ignore */ }
-    const msg = payload?.error || payload?.message || `HTTP ${res.status} ${res.statusText}`;
+    } catch {
+      /* ignore */
+    }
+    const msg =
+      payload?.error ||
+      payload?.message ||
+      `HTTP ${res.status} ${res.statusText}`;
     throw new HttpError(res.status, msg, payload);
   }
 
@@ -174,21 +195,40 @@ export const api = {
   get<T = unknown>(path: string, cfg?: Omit<HttpConfig, "method" | "body">) {
     return http<T>(path, { ...cfg, method: "GET" });
   },
-  post<T = unknown>(path: string, body?: any, cfg?: Omit<HttpConfig, "method" | "body">) {
+  post<T = unknown>(
+    path: string,
+    body?: any,
+    cfg?: Omit<HttpConfig, "method" | "body">
+  ) {
     return http<T>(path, { ...cfg, method: "POST", body });
   },
-  put<T = unknown>(path: string, body?: any, cfg?: Omit<HttpConfig, "method" | "body">) {
+  put<T = unknown>(
+    path: string,
+    body?: any,
+    cfg?: Omit<HttpConfig, "method" | "body">
+  ) {
     return http<T>(path, { ...cfg, method: "PUT", body });
   },
-  patch<T = unknown>(path: string, body?: any, cfg?: Omit<HttpConfig, "method" | "body">) {
+  patch<T = unknown>(
+    path: string,
+    body?: any,
+    cfg?: Omit<HttpConfig, "method" | "body">
+  ) {
     return http<T>(path, { ...cfg, method: "PATCH", body });
   },
-  delete<T = unknown>(path: string, cfg?: Omit<HttpConfig, "method" | "body">) {
+  delete<T = unknown>(
+    path: string,
+    cfg?: Omit<HttpConfig, "method" | "body">
+  ) {
     return http<T>(path, { ...cfg, method: "DELETE" });
   },
 
   /** Upload multipart (FormData) */
-  async upload<T = unknown>(path: string, form: FormData, cfg?: Omit<HttpConfig, "method" | "body" | "headers">) {
+  upload<T = unknown>(
+    path: string,
+    form: FormData,
+    cfg?: Omit<HttpConfig, "method" | "body" | "headers">
+  ) {
     return http<T>(path, { ...cfg, method: "POST", body: form });
   },
 };

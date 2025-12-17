@@ -11,7 +11,7 @@ try {
 }
 
 /* 2) App Shell + Offline Cache */
-const SW_VERSION = "duumini-sw-v1.5";
+const SW_VERSION = "duumini-sw-v1.6";
 const CORE_ASSETS = [
   "/", // SPA entry (Vite sert index.html au /)
   "/index.html",

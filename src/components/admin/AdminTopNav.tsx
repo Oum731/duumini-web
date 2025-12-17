@@ -38,12 +38,24 @@ export default function AdminTopNav({
           </NavLink>
         </div>
 
-        {/* ✅ NOUVEL ONGLET PROMOTIONS */}
         <div className="col">
           <NavLink to="/admin/promotions" className={cls}>
             Promotions
           </NavLink>
         </div>
+{/*
+        <div className="col">
+          <NavLink to="/admin/copy" className={cls}>
+            Copy du site
+          </NavLink>
+        </div>
+
+         ✅ NOUVEL ONGLET AGENT IA 
+        <div className="col">
+          <NavLink to="/admin/ai" className={cls}>
+            Agent IA
+          </NavLink>
+        </div>*/}
 
         <div className="col">
           <NavLink to="/admin/users" className={cls}>
