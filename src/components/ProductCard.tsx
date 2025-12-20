@@ -1,3 +1,4 @@
+// src/components/ProductCard.tsx
 import { useMemo, useState } from "react";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
@@ -26,6 +27,23 @@ function shortText(s?: string | null, max = 200) {
   const t = (s || "").trim();
   if (t.length <= max) return t;
   return t.slice(0, max - 1) + "…";
+}
+
+function normToken(x: any) {
+  return String(x ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function getSubCategoryToken(p: Product) {
+  const anyP = p as any;
+  const byName = normToken(anyP.sub_category || anyP.sub_category_slug || anyP.sub_category_name);
+  if (byName) return byName;
+
+  const id = anyP.sub_category_id;
+  if (id != null && String(id).trim() !== "") return normToken(String(id));
+
+  return "";
 }
 
 /* ===== Partage ===== */
@@ -81,16 +99,11 @@ type Props = {
   product: Product;
   onAdd?: (p: Product) => void;
 
-  /** ✅ Prix promo affiché + utilisé au panier */
   priceOverride?: number | null;
-
-  /** ✅ Ancien prix barré */
   oldPrice?: number | null;
-
-  /** ✅ Badge promo (ex: "-20%") */
   badgeText?: string | null;
 
-  /** ✅ Optionnel: masquer certains types via sub_category */
+  /** Peut contenir des slugs/noms OU des ids (ex: ["boissons"] ou ["3"]) */
   hideSubCategories?: string[];
 };
 
@@ -106,8 +119,14 @@ export default function ProductCard({
   const { add, lines } = useCart();
   const anyP = product as any;
 
-  const subCat = String(anyP.sub_category || "").trim().toLowerCase();
-  if (hideSubCategories.map((x) => String(x).toLowerCase()).includes(subCat)) {
+  const subCat = useMemo(() => getSubCategoryToken(product), [product]);
+
+  const hideList = useMemo(
+    () => hideSubCategories.map((x) => normToken(x)).filter(Boolean),
+    [hideSubCategories]
+  );
+
+  if (subCat && hideList.includes(subCat)) {
     return null;
   }
 
@@ -121,7 +140,6 @@ export default function ProductCard({
   );
   if (!isActive || !isCityAllowed) return null;
 
-  // ✅ Collecte toutes les images possibles (cover + images[])
   const imagesRaw: string[] = useMemo(() => {
     const arr: string[] = [];
     const cover = anyP.cover || anyP.image || null;
@@ -133,7 +151,6 @@ export default function ProductCard({
       if (u) arr.push(String(u));
     }
 
-    // dédoublonnage simple
     const seen = new Set<string>();
     const out: string[] = [];
     for (const u of arr) {
@@ -156,8 +173,6 @@ export default function ProductCard({
 
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  // ✅ slider state
   const [imgIdx, setImgIdx] = useState(0);
 
   const shareUrl = useMemo(() => buildProductUrl(product), [product]);
@@ -329,7 +344,6 @@ export default function ProductCard({
         </div>
       </div>
 
-      {/* ===== Modal ancien style: image gauche / infos droite + carousel ===== */}
       {open && (
         <div
           className="modal d-block"
@@ -345,7 +359,6 @@ export default function ProductCard({
 
               <div className="modal-body">
                 <div className="row g-3">
-                  {/* LEFT: image(s) */}
                   <div className="col-12 col-md-6">
                     <div className="position-relative rounded overflow-hidden bg-light">
                       {currentImg ? (
@@ -392,7 +405,6 @@ export default function ProductCard({
                       )}
                     </div>
 
-                    {/* Thumbnails */}
                     {images.length > 1 && (
                       <div className="d-flex gap-2 mt-2 flex-wrap">
                         {images.slice(0, 8).map((u, i) => {
@@ -406,11 +418,7 @@ export default function ProductCard({
                                 "p-0 border rounded overflow-hidden " +
                                 (active ? "border-dark" : "border-0")
                               }
-                              style={{
-                                width: 54,
-                                height: 54,
-                                background: "#fff",
-                              }}
+                              style={{ width: 54, height: 54, background: "#fff" }}
                               aria-label={`Voir image ${i + 1}`}
                               title={`Image ${i + 1}`}
                             >
@@ -431,7 +439,6 @@ export default function ProductCard({
                     )}
                   </div>
 
-                  {/* RIGHT: infos */}
                   <div className="col-12 col-md-6">
                     <div className="d-flex align-items-baseline gap-2">
                       <div className="h5 m-0">{moneyMAD(displayPrice)}</div>
@@ -467,10 +474,7 @@ export default function ProductCard({
                         + Ajouter au panier
                       </button>
 
-                      <button
-                        className="btn btn-outline-secondary"
-                        onClick={shareProduct}
-                      >
+                      <button className="btn btn-outline-secondary" onClick={shareProduct}>
                         {copied ? "Lien copié" : "Partager"}
                       </button>
                     </div>
@@ -485,17 +489,13 @@ export default function ProductCard({
               </div>
 
               <div className="modal-footer">
-                <button
-                  className="btn btn-outline-dark"
-                  onClick={() => setOpen(false)}
-                >
+                <button className="btn btn-outline-dark" onClick={() => setOpen(false)}>
                   Fermer
                 </button>
               </div>
             </div>
           </div>
 
-          {/* petit style pour coller au thème */}
           <style>{`
             .btn-duu{
               background: var(--duu-yellow);

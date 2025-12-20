@@ -142,12 +142,7 @@ export default function ProductView() {
         };
 
         const rel = items
-          .filter(
-            (p) =>
-              p.id !== product.id &&
-              isSameGroup(p) &&
-              isProductActive(p)
-          )
+          .filter((p) => p.id !== product.id && isSameGroup(p) && isProductActive(p))
           .slice(0, 8);
 
         if (!stop) setRelated(rel);
@@ -211,7 +206,6 @@ export default function ProductView() {
 
   return (
     <div className="container-xxl py-4">
-      {/* Actions */}
       <div className="d-flex flex-wrap gap-2 mb-3">
         <button className="btn btn-outline-dark" onClick={handleBack}>
           ← Retour
@@ -228,10 +222,7 @@ export default function ProductView() {
           {coverUrl ? (
             <img src={coverUrl} alt={product.name} className="img-fluid rounded" />
           ) : (
-            <div
-              className="bg-light rounded"
-              style={{ width: "100%", paddingTop: "100%" }}
-            />
+            <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
           )}
         </div>
 
