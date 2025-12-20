@@ -1,14 +1,11 @@
 // src/pages/ProductView.tsx
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import type { Product } from "../services/products";
 import { listProducts } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { API_BASE } from "../services/http";
 import ProductRating from "../components/ProductRating";
-
-import { listCategories, type Category } from "../services/categories";
-import { listSubCategories, type SubCategory } from "../services/subCategories";
 
 function imgUrl(u?: string | null) {
   if (!u) return "";
@@ -21,6 +18,7 @@ function moneyMAD(n?: number | null) {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "MAD",
+    maximumFractionDigits: 0,
   }).format(Number(n || 0));
 }
 
@@ -29,7 +27,12 @@ function isProductActive(p: Product | null | undefined): boolean {
   return ((p as any).is_active ?? (p as any).active ?? 1) ? true : false;
 }
 
-type Channel = "african-food" | "african-market";
+function getSectionPath(p: Product | null) {
+  const ch = String((p as any)?.channel || "").toLowerCase();
+  if (ch.includes("food")) return "/african-food";
+  if (ch.includes("market")) return "/african-market";
+  return "/african-market";
+}
 
 export default function ProductView() {
   const { idOrSlug } = useParams<{ idOrSlug: string }>();
@@ -38,62 +41,20 @@ export default function ProductView() {
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
-
   const [related, setRelated] = useState<Product[]>([]);
 
   const title = useMemo(() => product?.name || "Produit", [product]);
-  const cover = product?.cover || (product as any)?.images?.[0]?.url || null;
-  const coverUrl = imgUrl(cover);
+
+  const cover = useMemo(() => {
+    const anyP = product as any;
+    return anyP?.cover || anyP?.images?.[0]?.url || anyP?.image || null;
+  }, [product]);
+
+  const coverUrl = useMemo(() => imgUrl(cover), [cover]);
 
   const productIsActive = useMemo(() => isProductActive(product), [product]);
 
-  // --- maps
-  const categoriesById = useMemo(() => {
-    const m: Record<number, Category> = {};
-    for (const c of categories) m[c.id] = c;
-    return m;
-  }, [categories]);
-
-  const subById = useMemo(() => {
-    const m: Record<number, SubCategory> = {};
-    for (const s of subCategories) m[s.id] = s;
-    return m;
-  }, [subCategories]);
-
-  // --- product ids
-  const productCategoryId = useMemo(() => Number((product as any)?.category_id || 0) || 0, [product]);
-  const productSubId = useMemo(() => Number((product as any)?.sub_category_id || 0) || 0, [product]);
-
-  // --- infer channel from category name/slug OR known IDs (fallback market)
-  const inferredChannel: Channel = useMemo(() => {
-    // 1) si on a une sous-catégorie, on récupère sa catégorie parente
-    const sub = productSubId ? subById[productSubId] : null;
-    const catId = sub?.category_id ? Number(sub.category_id) : productCategoryId;
-    const cat = catId ? categoriesById[catId] : null;
-
-    const hay = `${cat?.slug || ""} ${cat?.name || ""}`.toLowerCase();
-
-    // Règle simple: si la catégorie contient "food" / "aliment" / "épicerie" => food
-    // Sinon => market
-    if (
-      hay.includes("food") ||
-      hay.includes("aliment") ||
-      hay.includes("epicer") ||
-      hay.includes("épicer") ||
-      hay.includes("frais") ||
-      hay.includes("sec")
-    ) {
-      return "african-food";
-    }
-    return "african-market";
-  }, [productSubId, productCategoryId, subById, categoriesById]);
-
-  const sectionPath = useMemo(() => {
-    return inferredChannel === "african-food" ? "/african-food" : "/african-market";
-  }, [inferredChannel]);
+  const sectionPath = useMemo(() => getSectionPath(product), [product]);
 
   const handleBack = useCallback(() => {
     if (window.history && window.history.length > 1 && document.referrer) {
@@ -103,19 +64,21 @@ export default function ProductView() {
     nav(sectionPath);
   }, [nav, sectionPath]);
 
-  // Load product
+  // ===== Load product by id or slug =====
   useEffect(() => {
     let stop = false;
+
     (async () => {
       setLoading(true);
       setError(null);
+      setProduct(null);
 
       try {
         if (!idOrSlug) throw new Error("Produit introuvable");
 
         // 1) Try numeric ID
         const asId = Number(idOrSlug);
-        if (Number.isFinite(asId)) {
+        if (Number.isFinite(asId) && asId > 0) {
           const res = await fetch(`${API_BASE}/api/products/${asId}`, {
             credentials: "omit",
           });
@@ -131,6 +94,7 @@ export default function ProductView() {
           `${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`,
           { credentials: "omit" }
         );
+
         if (resSlug.ok) {
           const p = (await resSlug.json()) as Product;
           if (!stop) setProduct(p || null);
@@ -150,57 +114,40 @@ export default function ProductView() {
     };
   }, [idOrSlug]);
 
-  // Load categories + subCategories (needed to compute section and labels)
+  // ===== Load related products (same sub_category_id, fallback same category_id) =====
   useEffect(() => {
     let stop = false;
-    (async () => {
-      try {
-        const [catsRes, subsRes] = await Promise.all([
-          listCategories({ page: 1, pageSize: 500 } as any),
-          listSubCategories({ page: 1, pageSize: 2000 } as any),
-        ]);
-        if (stop) return;
-        setCategories((catsRes as any)?.items || []);
-        setSubCategories((subsRes as any)?.items || []);
-      } catch {
-        if (!stop) {
-          setCategories([]);
-          setSubCategories([]);
-        }
-      }
-    })();
-    return () => {
-      stop = true;
-    };
-  }, []);
 
-  // Load related products
-  useEffect(() => {
-    let stop = false;
     (async () => {
       if (!product) return;
 
       try {
-        const res = await listProducts({ page: 1, pageSize: 36, onlyActive: true } as any);
-        const items: Product[] = Array.isArray((res as any)?.items) ? (res as any).items : [];
+        const res = await listProducts({ page: 1, pageSize: 36 } as any);
+        const items: Product[] = Array.isArray((res as any)?.items)
+          ? (res as any).items
+          : [];
 
-        const pid = Number(product.id);
+        const pAny = product as any;
+        const subId = Number(pAny?.sub_category_id || 0);
+        const catId = Number(pAny?.category_id || 0);
 
-        const targetSubId = Number((product as any)?.sub_category_id || 0) || 0;
-        const targetCatId = Number((product as any)?.category_id || 0) || 0;
+        const isSameGroup = (p: Product) => {
+          const anyP = p as any;
+          const pSubId = Number(anyP?.sub_category_id || 0);
+          const pCatId = Number(anyP?.category_id || 0);
 
-        const sameBucket = (p: Product) => {
-          const pSub = Number((p as any)?.sub_category_id || 0) || 0;
-          const pCat = Number((p as any)?.category_id || 0) || 0;
-
-          // priorité: même sous-catégorie, sinon même catégorie
-          if (targetSubId && pSub) return pSub === targetSubId;
-          if (targetCatId && pCat) return pCat === targetCatId;
+          if (subId && pSubId) return pSubId === subId;
+          if (catId && pCatId) return pCatId === catId;
           return false;
         };
 
         const rel = items
-          .filter((p) => Number(p.id) !== pid && sameBucket(p) && isProductActive(p))
+          .filter(
+            (p) =>
+              p.id !== product.id &&
+              isSameGroup(p) &&
+              isProductActive(p)
+          )
           .slice(0, 8);
 
         if (!stop) setRelated(rel);
@@ -213,13 +160,6 @@ export default function ProductView() {
       stop = true;
     };
   }, [product]);
-
-  // label affichable (sans Food/Market)
-  const subLabel = useMemo(() => {
-    if (!productSubId) return null;
-    const s = subById[productSubId];
-    return s?.name || null;
-  }, [productSubId, subById]);
 
   if (loading) {
     return (
@@ -241,6 +181,7 @@ export default function ProductView() {
     );
   }
 
+  // Not found or inactive
   if (error || !product || !productIsActive) {
     return (
       <div className="container-xxl py-4">
@@ -265,8 +206,12 @@ export default function ProductView() {
     );
   }
 
+  const anyP = product as any;
+  const displayPrice = Number(anyP?.price_client ?? anyP?.price ?? 0);
+
   return (
     <div className="container-xxl py-4">
+      {/* Actions */}
       <div className="d-flex flex-wrap gap-2 mb-3">
         <button className="btn btn-outline-dark" onClick={handleBack}>
           ← Retour
@@ -283,19 +228,16 @@ export default function ProductView() {
           {coverUrl ? (
             <img src={coverUrl} alt={product.name} className="img-fluid rounded" />
           ) : (
-            <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
+            <div
+              className="bg-light rounded"
+              style={{ width: "100%", paddingTop: "100%" }}
+            />
           )}
         </div>
 
         <div className="col-12 col-md-6">
-          <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
-            <div className="h5 m-0">{moneyMAD((product as any).price_client ?? product.price)}</div>
-
-            {subLabel ? (
-              <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
-                {subLabel}
-              </span>
-            ) : null}
+          <div className="d-flex align-items-center gap-2 mb-2">
+            <div className="h5 m-0">{moneyMAD(displayPrice)}</div>
           </div>
 
           <div className="mb-3">
