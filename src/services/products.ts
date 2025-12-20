@@ -3,13 +3,16 @@ import { api } from "./http";
 
 export type PromoDiscountType = "PERCENT" | "AMOUNT";
 
+/** Images */
+export type ProductImage = { id: number; url: string; sort_order: number };
+
 export type Product = {
   id: number;
   shop_id: number | null;
 
   category_id?: number | null;
 
-  // ✅ NEW: FK vers sub_categories
+  // ✅ FK vers sub_categories
   sub_category_id?: number | null;
 
   // ✅ infos joinées (retournées par l'API)
@@ -25,20 +28,20 @@ export type Product = {
   price: number;
   vendor_price?: number | null;
 
-  currency?: string;
+  currency?: string | null;
   description?: string | null;
   stock?: number | null;
-  is_featured?: 0 | 1;
+  is_featured?: 0 | 1 | null;
 
-  promo_eligible?: 0 | 1;
+  promo_eligible?: 0 | 1 | null;
   promo_discount_type?: PromoDiscountType | null;
   promo_discount_value?: number | null;
-  promo_free_delivery?: 0 | 1;
+  promo_free_delivery?: 0 | 1 | null;
 
-  created_at?: string;
-  updated_at?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 
-  images?: { id: number; url: string; sort_order: number }[];
+  images?: ProductImage[];
   cover?: string | null;
 
   shop_name?: string | null;
@@ -47,18 +50,22 @@ export type Product = {
   shop_city?: string | null;
   shop_city_code?: string | null;
 
-  is_active?: 0 | 1;
+  is_active?: 0 | 1 | null;
+  active?: 0 | 1 | null; // compat si certains endpoints renvoient "active"
 
   cities?: string[] | null;
 
-  total_qty?: number;
-  avg_rating?: number;
-  rating_count?: number;
+  total_qty?: number | null;
+  avg_rating?: number | null;
+  rating_count?: number | null;
+
+  // ✅ Anti-bug : si quelqu’un tente product.sub_category => TS hurle
+  sub_category?: never;
 };
 
 export type Paginated<T> = {
   items: T[];
-  pageInfo: { page: number; pageSize: number; total: number; pages: number };
+  pageInfo: { page: number; pageSize: number; total: number };
 };
 
 type Channel = "african-food" | "african-market";
@@ -93,8 +100,8 @@ function uniqCities(input: any): string[] | null {
   if (Array.isArray(input)) arr = input;
   else {
     const s = String(input || "").trim();
-    if (!s) return [];
-    if (s.startsWith("[") && s.endsWith("]")) {
+    if (!s) arr = [];
+    else if (s.startsWith("[") && s.endsWith("]")) {
       try {
         const parsed = JSON.parse(s);
         arr = Array.isArray(parsed) ? parsed : [];
@@ -216,13 +223,13 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
     draft.price != null ? draft.price : draft.vendor_price != null ? draft.vendor_price : null;
   if (finalPrice != null) fd.append("price", String(finalPrice));
 
-  if (draft.currency) fd.append("currency", draft.currency);
+  if (draft.currency) fd.append("currency", String(draft.currency));
   if (draft.description != null) fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
 
-  // ✅ NEW: sub_category_id
+  // ✅ sub_category_id
   if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
 
   if (draft.is_featured != null) {
@@ -258,7 +265,7 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
 
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
-  return api.post<{ id: number; channel: Channel }>("/api/products", fd);
+  return api.post<{ id: number; channel: Channel }>("/api/products", fd as any);
 }
 
 /* ---------- Update ---------- */
@@ -276,7 +283,7 @@ export async function updateProduct(
     draft.price != null ? draft.price : draft.vendor_price != null ? draft.vendor_price : null;
   if (finalPrice != null) fd.append("price", String(finalPrice));
 
-  if (draft.currency) fd.append("currency", draft.currency);
+  if (draft.currency) fd.append("currency", String(draft.currency));
   if (draft.description != null) fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
@@ -308,7 +315,7 @@ export async function updateProduct(
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
 
-  // ✅ NEW: sub_category_id
+  // ✅ sub_category_id
   if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
 
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
@@ -320,7 +327,7 @@ export async function updateProduct(
 
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
-  return api.put<{ ok: true }>(`/api/products/${id}`, fd);
+  return api.put<{ ok: true }>(`/api/products/${id}`, fd as any);
 }
 
 /* ---------- Delete ---------- */
