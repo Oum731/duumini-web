@@ -1,11 +1,14 @@
 // src/pages/ProductView.tsx
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import type { Product } from "../services/products";
 import { listProducts } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { API_BASE } from "../services/http";
-import ProductRating from "../components/ProductRating"; // ✅ Note
+import ProductRating from "../components/ProductRating";
+
+import { listCategories, type Category } from "../services/categories";
+import { listSubCategories, type SubCategory } from "../services/subCategories";
 
 function imgUrl(u?: string | null) {
   if (!u) return "";
@@ -21,11 +24,12 @@ function moneyMAD(n?: number | null) {
   }).format(Number(n || 0));
 }
 
-// Helper pour savoir si un produit est actif
 function isProductActive(p: Product | null | undefined): boolean {
   if (!p) return false;
   return ((p as any).is_active ?? (p as any).active ?? 1) ? true : false;
 }
+
+type Channel = "african-food" | "african-market";
 
 export default function ProductView() {
   const { idOrSlug } = useParams<{ idOrSlug: string }>();
@@ -35,40 +39,81 @@ export default function ProductView() {
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Produits similaires (même sous-catégorie)
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+
   const [related, setRelated] = useState<Product[]>([]);
 
   const title = useMemo(() => product?.name || "Produit", [product]);
-  const cover = product?.cover || product?.images?.[0]?.url || null;
+  const cover = product?.cover || (product as any)?.images?.[0]?.url || null;
   const coverUrl = imgUrl(cover);
 
   const productIsActive = useMemo(() => isProductActive(product), [product]);
 
-  // Choix de la rubrique (pour le bouton Explorer / fallback Retour)
+  // --- maps
+  const categoriesById = useMemo(() => {
+    const m: Record<number, Category> = {};
+    for (const c of categories) m[c.id] = c;
+    return m;
+  }, [categories]);
+
+  const subById = useMemo(() => {
+    const m: Record<number, SubCategory> = {};
+    for (const s of subCategories) m[s.id] = s;
+    return m;
+  }, [subCategories]);
+
+  // --- product ids
+  const productCategoryId = useMemo(() => Number((product as any)?.category_id || 0) || 0, [product]);
+  const productSubId = useMemo(() => Number((product as any)?.sub_category_id || 0) || 0, [product]);
+
+  // --- infer channel from category name/slug OR known IDs (fallback market)
+  const inferredChannel: Channel = useMemo(() => {
+    // 1) si on a une sous-catégorie, on récupère sa catégorie parente
+    const sub = productSubId ? subById[productSubId] : null;
+    const catId = sub?.category_id ? Number(sub.category_id) : productCategoryId;
+    const cat = catId ? categoriesById[catId] : null;
+
+    const hay = `${cat?.slug || ""} ${cat?.name || ""}`.toLowerCase();
+
+    // Règle simple: si la catégorie contient "food" / "aliment" / "épicerie" => food
+    // Sinon => market
+    if (
+      hay.includes("food") ||
+      hay.includes("aliment") ||
+      hay.includes("epicer") ||
+      hay.includes("épicer") ||
+      hay.includes("frais") ||
+      hay.includes("sec")
+    ) {
+      return "african-food";
+    }
+    return "african-market";
+  }, [productSubId, productCategoryId, subById, categoriesById]);
+
   const sectionPath = useMemo(() => {
-    const sub = (product?.sub_category || "").toString().toLowerCase();
-    return sub === "food" ? "/african-food" : "/african-market";
-  }, [product?.sub_category]);
+    return inferredChannel === "african-food" ? "/african-food" : "/african-market";
+  }, [inferredChannel]);
 
   const handleBack = useCallback(() => {
-    // S'il y a un historique utilisable → retour
     if (window.history && window.history.length > 1 && document.referrer) {
       nav(-1);
       return;
     }
-    // Sinon, on envoie vers la bonne section
     nav(sectionPath);
   }, [nav, sectionPath]);
 
+  // Load product
   useEffect(() => {
     let stop = false;
     (async () => {
       setLoading(true);
       setError(null);
+
       try {
         if (!idOrSlug) throw new Error("Produit introuvable");
 
-        // 1) Essayer en tant qu'ID numérique
+        // 1) Try numeric ID
         const asId = Number(idOrSlug);
         if (Number.isFinite(asId)) {
           const res = await fetch(`${API_BASE}/api/products/${asId}`, {
@@ -81,7 +126,7 @@ export default function ProductView() {
           }
         }
 
-        // 2) Essayer par slug si endpoint dispo: /api/products/slug/:slug
+        // 2) Try slug endpoint
         const resSlug = await fetch(
           `${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`,
           { credentials: "omit" }
@@ -99,34 +144,63 @@ export default function ProductView() {
         if (!stop) setLoading(false);
       }
     })();
+
     return () => {
       stop = true;
     };
   }, [idOrSlug]);
 
-  // Charger des produits "similaires"
+  // Load categories + subCategories (needed to compute section and labels)
+  useEffect(() => {
+    let stop = false;
+    (async () => {
+      try {
+        const [catsRes, subsRes] = await Promise.all([
+          listCategories({ page: 1, pageSize: 500 } as any),
+          listSubCategories({ page: 1, pageSize: 2000 } as any),
+        ]);
+        if (stop) return;
+        setCategories((catsRes as any)?.items || []);
+        setSubCategories((subsRes as any)?.items || []);
+      } catch {
+        if (!stop) {
+          setCategories([]);
+          setSubCategories([]);
+        }
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, []);
+
+  // Load related products
   useEffect(() => {
     let stop = false;
     (async () => {
       if (!product) return;
-      try {
-        // On récupère une page et on filtre côté client pour éviter de changer le backend.
-        const res = await listProducts({ page: 1, pageSize: 24 } as any);
-        const items: Product[] = Array.isArray((res as any)?.items)
-          ? (res as any).items
-          : [];
 
-        const sameSub = (p: Product) =>
-          (p?.sub_category || "").toString().toLowerCase() ===
-          (product?.sub_category || "").toString().toLowerCase();
+      try {
+        const res = await listProducts({ page: 1, pageSize: 36, onlyActive: true } as any);
+        const items: Product[] = Array.isArray((res as any)?.items) ? (res as any).items : [];
+
+        const pid = Number(product.id);
+
+        const targetSubId = Number((product as any)?.sub_category_id || 0) || 0;
+        const targetCatId = Number((product as any)?.category_id || 0) || 0;
+
+        const sameBucket = (p: Product) => {
+          const pSub = Number((p as any)?.sub_category_id || 0) || 0;
+          const pCat = Number((p as any)?.category_id || 0) || 0;
+
+          // priorité: même sous-catégorie, sinon même catégorie
+          if (targetSubId && pSub) return pSub === targetSubId;
+          if (targetCatId && pCat) return pCat === targetCatId;
+          return false;
+        };
 
         const rel = items
-          .filter(
-            (p) =>
-              p.id !== product.id &&
-              sameSub(p) &&
-              isProductActive(p) // ✅ seulement les actifs
-          )
+          .filter((p) => Number(p.id) !== pid && sameBucket(p) && isProductActive(p))
           .slice(0, 8);
 
         if (!stop) setRelated(rel);
@@ -134,10 +208,18 @@ export default function ProductView() {
         if (!stop) setRelated([]);
       }
     })();
+
     return () => {
       stop = true;
     };
   }, [product]);
+
+  // label affichable (sans Food/Market)
+  const subLabel = useMemo(() => {
+    if (!productSubId) return null;
+    const s = subById[productSubId];
+    return s?.name || null;
+  }, [productSubId, subById]);
 
   if (loading) {
     return (
@@ -159,7 +241,6 @@ export default function ProductView() {
     );
   }
 
-  // ⛔️ Produit introuvable ou désactivé → message + boutons
   if (error || !product || !productIsActive) {
     return (
       <div className="container-xxl py-4">
@@ -171,6 +252,7 @@ export default function ProductView() {
             Explorer
           </Link>
         </div>
+
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
           <span>
@@ -183,10 +265,8 @@ export default function ProductView() {
     );
   }
 
-  // Vue détaillée du produit
   return (
     <div className="container-xxl py-4">
-      {/* Barre d’actions */}
       <div className="d-flex flex-wrap gap-2 mb-3">
         <button className="btn btn-outline-dark" onClick={handleBack}>
           ← Retour
@@ -203,24 +283,21 @@ export default function ProductView() {
           {coverUrl ? (
             <img src={coverUrl} alt={product.name} className="img-fluid rounded" />
           ) : (
-            <div
-              className="bg-light rounded"
-              style={{ width: "100%", paddingTop: "100%" }}
-            />
+            <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
           )}
         </div>
 
         <div className="col-12 col-md-6">
-          <div className="d-flex align-items-center gap-2 mb-2">
-            <div className="h5 m-0">{moneyMAD(product.price)}</div>
-            {product.sub_category ? (
+          <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <div className="h5 m-0">{moneyMAD((product as any).price_client ?? product.price)}</div>
+
+            {subLabel ? (
               <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
-                {product.sub_category === "food" ? "Food" : "Market"}
+                {subLabel}
               </span>
             ) : null}
           </div>
 
-          {/* ✅ Note du produit (étoiles) */}
           <div className="mb-3">
             <ProductRating productId={product.id} />
           </div>
@@ -233,7 +310,6 @@ export default function ProductView() {
         </div>
       </div>
 
-      {/* Vous aimerez aussi */}
       {related.length > 0 && (
         <div className="mt-4">
           <div className="d-flex align-items-center justify-content-between mb-2">
@@ -242,6 +318,7 @@ export default function ProductView() {
               Voir tout
             </Link>
           </div>
+
           <div className="row g-2 g-sm-3">
             {related.map((p) => (
               <div key={p.id} className="col-6 col-md-4 col-lg-3">
