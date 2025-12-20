@@ -1,10 +1,7 @@
 // src/components/Footer.tsx
 import React, { useMemo } from "react";
 import { Link, type LinkProps } from "react-router-dom";
-import { DUUMINI_SLOGAN } from "../lib/brand";
-
-/* 📅 Date d'ouverture (doit matcher Home.tsx) */
-const DUUMINI_OPEN_ISO = "2025-12-21T00:00:00+01:00";
+import { DUUMINI_SLOGAN, DUUMINI_OPEN_ISO } from "../lib/brand";
 
 /** Helper date */
 function isDateReached(iso: string) {
@@ -36,10 +33,7 @@ function TopLink(
 }
 
 export default function Footer() {
-  const isOpen = useMemo(
-    () => isDateReached(DUUMINI_OPEN_ISO),
-    []
-  );
+  const isOpen = useMemo(() => isDateReached(DUUMINI_OPEN_ISO), []);
 
   return (
     <footer className="border-top mt-4" style={{ background: "#fff" }}>
@@ -204,15 +198,24 @@ export default function Footer() {
             © {new Date().getFullYear()} Duumini — Tous droits réservés.
           </div>
           <div className="small">
-            <TopLink to="/legal/privacy" className="link-dark text-decoration-none">
+            <TopLink
+              to="/legal/privacy"
+              className="link-dark text-decoration-none"
+            >
               Confidentialité
             </TopLink>
             <span className="text-muted mx-2">•</span>
-            <TopLink to="/legal/terms" className="link-dark text-decoration-none">
+            <TopLink
+              to="/legal/terms"
+              className="link-dark text-decoration-none"
+            >
               Conditions
             </TopLink>
             <span className="text-muted mx-2">•</span>
-            <TopLink to="/legal/returns" className="link-dark text-decoration-none">
+            <TopLink
+              to="/legal/returns"
+              className="link-dark text-decoration-none"
+            >
               Retours
             </TopLink>
           </div>

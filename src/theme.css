@@ -76,3 +76,69 @@
 .placeholder { background: rgba(0,0,0,.06); }
 /* src/styles/theme.css (ou équivalent) */
 footer a.link-dark:hover { color: var(--duu-red) !important; }
+/* ===== Duumini Categories Menu ===== */
+.duu-cat-btn {
+  border: 1px solid rgba(0,0,0,.16);
+  background: #fff;
+  color: var(--duu-black);
+}
+.duu-cat-btn:hover { border-color: rgba(0,0,0,.25); }
+
+.duu-cat-pill {
+  border: 1px solid rgba(0,0,0,.12);
+  background: #fff;
+  color: var(--duu-black);
+}
+.duu-cat-pill:hover { border-color: rgba(0,0,0,.22); }
+
+.duu-cat-pill-active {
+  background: var(--duu-yellow);
+  border-color: rgba(0,0,0,.12);
+  color: #1f1f1f;
+  font-weight: 700;
+}
+
+.duu-cat-panel {
+  background: #fff;
+  border-left: 1px solid rgba(0,0,0,.10);
+}
+
+.duu-cat-title {
+  color: var(--duu-black);
+  font-weight: 800;
+}
+
+.duu-cat-close {
+  border: 1px solid rgba(0,0,0,.18);
+  background: #fff;
+  color: var(--duu-black);
+}
+.duu-cat-close:hover { color: var(--duu-red); border-color: rgba(229,57,53,.35); }
+
+.duu-cat-acc-btn {
+  background: #fff;
+  color: var(--duu-black);
+  border: 0;
+}
+.duu-cat-acc-btn:hover { background: rgba(0,0,0,.03); }
+
+.duu-cat-acc-btn-active {
+  background: rgba(255, 213, 79, .25);
+}
+
+.duu-cat-sub-btn {
+  border: 1px solid rgba(0,0,0,.14);
+  background: #fff;
+  color: var(--duu-black);
+}
+.duu-cat-sub-btn:hover { border-color: rgba(0,0,0,.25); }
+.duu-cat-sub-btn-active {
+  border-color: rgba(229,57,53,.45);
+  background: rgba(229,57,53,.07);
+  color: var(--duu-black);
+  font-weight: 700;
+}
+
+.duu-cat-backdrop {
+  background: rgba(0,0,0,.45);
+}

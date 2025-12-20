@@ -1,7 +1,12 @@
 // src/pages/AfricanFood.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
+import CategoriesMenu from "../components/CategoriesMenu";
 import { listProducts, type Product } from "../services/products";
+import { listCategories, type Category } from "../services/categories";
+import { listSubCategories, type SubCategory } from "../services/subCategories";
 import { useLocationCity } from "../context/LocationContext";
 
 function GridSkeleton() {
@@ -25,12 +30,6 @@ function GridSkeleton() {
   );
 }
 
-/**
- * Normalise la ville utilisateur pour l'API:
- *  - accepte "CASABLANCA", "casa", "Casablanca", ...
- *  - accepte "MARRAKECH", "marrakech", "mar", ...
- *  - renvoie "Casablanca" | "Marrakech" | undefined
- */
 function normalizeCityForApi(raw: string | null | undefined): string | undefined {
   if (!raw) return undefined;
   const t = String(raw).trim().toLowerCase();
@@ -39,10 +38,60 @@ function normalizeCityForApi(raw: string | null | undefined): string | undefined
   return undefined;
 }
 
+/** ===== Random stable (seeded) ===== */
+function mulberry32(seed: number) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(input: string) {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seededShuffle<T>(arr: T[], seedStr: string): T[] {
+  const out = arr.slice();
+  const rand = mulberry32(hashSeed(seedStr));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+const RANDOM_WINDOW_HOURS = 5;
+function getWindowKey(now = Date.now()) {
+  const win = RANDOM_WINDOW_HOURS * 60 * 60 * 1000;
+  return Math.floor(now / win);
+}
+
+type Channel = "african-food";
+
 export default function AfricanFood() {
-  const { city } = useLocationCity(); // 🔥 ville choisie par l'utilisateur ("CASABLANCA" | "MARRAKECH" | null)
+  const { city } = useLocationCity();
+  const navigate = useNavigate();
+  const params = useParams();
+
+  const categorySlugParam = (params as any)?.categorySlug
+    ? String((params as any).categorySlug).trim().toLowerCase()
+    : "";
+
+  const subSlugParam = (params as any)?.subCategorySlug
+    ? String((params as any).subCategorySlug).trim().toLowerCase()
+    : "";
 
   const [items, setItems] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,22 +103,17 @@ export default function AfricanFood() {
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setQDebounced(q.trim().toLowerCase()), 300);
-    return () => clearTimeout(t);
+    const t = window.setTimeout(() => setQDebounced(q.trim().toLowerCase()), 300);
+    return () => window.clearTimeout(t);
   }, [q]);
 
-  const pages = useMemo(
-    () => Math.max(1, Math.ceil(total / pageSize)),
-    [total, pageSize]
-  );
-
-  // Clamp page si nécessaire
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
   useEffect(() => {
     if (page > pages) setPage(pages);
   }, [pages, page]);
 
-  // Chargement avec annulation
   const abortRef = useRef<AbortController | null>(null);
+
   async function refresh() {
     abortRef.current?.abort();
     const ac = new AbortController();
@@ -77,20 +121,42 @@ export default function AfricanFood() {
 
     setLoading(true);
     setError(null);
-    try {
-      const cityApi = normalizeCityForApi(city); // ✅ string | undefined
 
-      const res = await listProducts({
-        page,
-        pageSize,
-        channel: "african-food",
-        onlyActive: true,
-        city: cityApi, // ✅ filtrage par ville de la boutique côté API
-      });
+    try {
+      const cityApi = normalizeCityForApi(city);
+
+      const [resProducts, resCats, resSubs] = await Promise.all([
+        listProducts({
+          page,
+          pageSize,
+          channel: "african-food" as Channel,
+          onlyActive: true,
+          city: cityApi,
+        }),
+        listCategories({ page: 1, pageSize: 500 }),
+        listSubCategories({ page: 1, pageSize: 2000 }),
+      ]);
 
       if (ac.signal.aborted) return;
-      setItems(res.items);
-      setTotal(res.pageInfo.total);
+
+      const rawItems = resProducts.items || [];
+      const windowKey = getWindowKey();
+
+      const seedStr = [
+        "african-food",
+        `win:${windowKey}`,
+        `city:${cityApi || "all"}`,
+        `page:${page}`,
+        `cat:${categorySlugParam || "all"}`,
+        `sub:${subSlugParam || "all"}`,
+      ].join("|");
+
+      const finalItems = seededShuffle(rawItems, seedStr);
+
+      setItems(finalItems);
+      setTotal(resProducts.pageInfo?.total ?? 0);
+      setCategories(resCats.items || []);
+      setSubCategories(resSubs.items || []);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setError(e?.message || String(e));
@@ -100,51 +166,307 @@ export default function AfricanFood() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     refresh();
-    // 🔥 on recharge quand la ville change
-  }, [page, pageSize, city]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, city, categorySlugParam, subSlugParam]);
 
-  const filtered = useMemo(() => {
+  // maps
+  const categoriesById = useMemo(() => {
+    const map: Record<number, Category> = {};
+    for (const c of categories) map[c.id] = c;
+    return map;
+  }, [categories]);
+
+  const categoriesBySlug = useMemo(() => {
+    const map: Record<string, Category> = {};
+    for (const c of categories) map[String(c.slug || "").toLowerCase()] = c;
+    return map;
+  }, [categories]);
+
+  const subById = useMemo(() => {
+    const map: Record<number, SubCategory> = {};
+    for (const s of subCategories) map[s.id] = s;
+    return map;
+  }, [subCategories]);
+
+  const subsByCatId = useMemo(() => {
+    const m: Record<number, SubCategory[]> = {};
+    for (const s of subCategories) {
+      const cid = Number(s.category_id || 0);
+      if (!cid) continue;
+      if (!m[cid]) m[cid] = [];
+      m[cid].push(s);
+    }
+    Object.keys(m).forEach((k) => {
+      m[Number(k)].sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
+    });
+    return m;
+  }, [subCategories]);
+
+  const selectedCategory = useMemo(() => {
+    if (!categorySlugParam) return null;
+    return categoriesBySlug[categorySlugParam] || null;
+  }, [categorySlugParam, categoriesBySlug]);
+
+  const selectedSubCategory = useMemo(() => {
+    if (!subSlugParam || !selectedCategory) return null;
+    const list = subsByCatId[selectedCategory.id] || [];
+    return list.find((s) => String(s.slug || "").toLowerCase() === subSlugParam) || null;
+  }, [subSlugParam, selectedCategory, subsByCatId]);
+
+  // URL invalide → redirect
+  useEffect(() => {
+    if (!categories.length) return;
+    if (categorySlugParam && !selectedCategory) {
+      navigate("/african-food", { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categories.length, categorySlugParam, selectedCategory]);
+
+  // filtre search d’abord
+  const filteredBySearch = useMemo(() => {
     if (!qDebounced) return items;
     return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
   }, [items, qDebounced]);
 
-  const filteredCount = filtered.length;
-  const showCount = qDebounced
-    ? `${filteredCount} / ${total} éléments`
-    : `${total} éléments`;
+  // filtre category/subcategory (front)
+  const filtered = useMemo(() => {
+    let out = filteredBySearch;
+
+    if (selectedCategory) {
+      out = out.filter((p) => {
+        const cid = Number((p as any).category_id || 0);
+        if (!cid) return false;
+        const c = categoriesById[cid];
+        return (
+          c &&
+          String(c.slug || "").toLowerCase() ===
+            String(selectedCategory.slug || "").toLowerCase()
+        );
+      });
+    }
+
+    if (selectedSubCategory) {
+      out = out.filter((p) => {
+        const sid = Number((p as any).sub_category_id || 0);
+        if (!sid) return false;
+        const s = subById[sid];
+        return (
+          s &&
+          String(s.slug || "").toLowerCase() ===
+            String(selectedSubCategory.slug || "").toLowerCase()
+        );
+      });
+    }
+
+    return out;
+  }, [filteredBySearch, selectedCategory, selectedSubCategory, categoriesById, subById]);
+
+  // ✅ titre simple
+  const title = useMemo(() => {
+    if (selectedSubCategory) return selectedSubCategory.name || "Produits";
+    if (selectedCategory) return selectedCategory.name || "Produits";
+    return "Produits";
+  }, [selectedCategory, selectedSubCategory]);
+
+  const activeCategoryId = selectedCategory?.id ?? null;
+  const activeSubCategoryId = selectedSubCategory?.id ?? null;
+
+  const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
 
   return (
     <section className="container-xxl py-4">
-      <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-        <div>
-          <h1 className="h4 mb-1" style={{ color: "var(--duu-black)" }}>
-            Duumini Food
-          </h1>
+      <style>{`
+        .btn-duu{
+          background: var(--duu-yellow);
+          color: #1f1f1f;
+          border: none;
+          font-weight: 800;
+        }
+        .btn-duu:hover{ filter: brightness(.96); }
+        .btn-duu:focus,
+        .btn-duu:focus-visible{
+          outline: none !important;
+          box-shadow: 0 0 0 .2rem rgba(255,213,79,.40) !important;
+        }
+
+        /* ✅ Fix focus/active du bouton Filtrer */
+        .duu-filter-btn .btn,
+        .duu-filter-btn .dropdown > .btn,
+        .duu-filter-btn > .btn{
+          border-color: rgba(0,0,0,.22) !important;
+          color: var(--duu-black) !important;
+          background: rgba(255,255,255,.92) !important;
+          font-weight: 800;
+        }
+        .duu-filter-btn .btn:hover,
+        .duu-filter-btn .dropdown > .btn:hover,
+        .duu-filter-btn > .btn:hover{
+          border-color: rgba(0,0,0,.32) !important;
+          color: var(--duu-red) !important;
+          background: rgba(255,255,255,.98) !important;
+        }
+        .duu-filter-btn .btn:focus,
+        .duu-filter-btn .dropdown > .btn:focus,
+        .duu-filter-btn > .btn:focus,
+        .duu-filter-btn .btn:focus-visible,
+        .duu-filter-btn .dropdown > .btn:focus-visible,
+        .duu-filter-btn > .btn:focus-visible{
+          outline: none !important;
+          box-shadow: 0 0 0 .2rem rgba(255,213,79,.40) !important;
+          background: rgba(255,255,255,.98) !important;
+          color: var(--duu-black) !important;
+        }
+        .duu-filter-btn .btn:active,
+        .duu-filter-btn .dropdown > .btn:active,
+        .duu-filter-btn > .btn:active{
+          background: rgba(255,213,79,.20) !important;
+          color: var(--duu-black) !important;
+        }
+
+        .filter-chip{
+          border: 1px solid rgba(0,0,0,.12);
+          border-radius: 999px;
+          padding: 6px 10px;
+          background: rgba(255,255,255,.75);
+          font-weight: 800;
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+        }
+      `}</style>
+
+      <div className="d-flex flex-column gap-2 mb-3">
+        <div className="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
+          <div className="min-w-0">
+            <h1 className="h4 mb-0" style={{ color: "var(--duu-black)" }}>
+              {title}
+            </h1>
+          </div>
+
+          <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
+            {/* ✅ Filtrer */}
+            <div className="d-flex align-items-center gap-2 flex-shrink-0 duu-filter-btn">
+              <span
+                className="d-inline-flex align-items-center justify-content-center"
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  border: "1px solid rgba(0,0,0,.10)",
+                  background: "rgba(255,255,255,.92)",
+                }}
+                aria-hidden="true"
+              >
+                <SlidersHorizontal size={18} />
+              </span>
+
+              <CategoriesMenu
+                title="Filtrer"
+                variant="auto"
+                activeCategoryId={activeCategoryId}
+                activeSubCategoryId={activeSubCategoryId}
+                onSelectCategory={(c) => {
+                  setPage(1);
+                  navigate(`/african-food/${c.slug}`);
+                }}
+                onSelectSubCategory={(s) => {
+                  setPage(1);
+                  const cat = categoriesById[s.category_id];
+                  const catSlug = cat?.slug || selectedCategory?.slug || "";
+                  if (!catSlug) return;
+                  navigate(`/african-food/${catSlug}/${s.slug}`);
+                }}
+              />
+            </div>
+
+            {/* Search */}
+            <div className="input-group" style={{ maxWidth: 420 }}>
+              <input
+                className="form-control"
+                placeholder="Rechercher un produit…"
+                value={q}
+                onChange={(e) => {
+                  setPage(1);
+                  setQ(e.target.value);
+                }}
+                aria-label="Rechercher"
+              />
+              <button
+                className="btn btn-duu"
+                onClick={() => {
+                  setQ("");
+                  setPage(1);
+                }}
+                disabled={!q}
+              >
+                Effacer
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="input-group" style={{ maxWidth: 420 }}>
-          <input
-            className="form-control"
-            placeholder="Rechercher un produit…"
-            value={q}
-            onChange={(e) => {
-              setPage(1);
-              setQ(e.target.value);
-            }}
-          />
-          <button
-            className="btn btn-duu"
-            onClick={() => {
-              setQ("");
-              setPage(1);
-            }}
-            disabled={!q}
-          >
-            Effacer
-          </button>
-        </div>
+        {/* ✅ barre filtres actifs */}
+        {showFiltersBar && (
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            {selectedCategory && (
+              <span className="filter-chip">
+                <span style={{ opacity: 0.7 }}>📦</span>
+                {selectedCategory.name}
+              </span>
+            )}
+            {selectedSubCategory && (
+              <span className="filter-chip">
+                <span style={{ opacity: 0.7 }}>🏷️</span>
+                {selectedSubCategory.name}
+              </span>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() => {
+                setPage(1);
+                navigate("/african-food");
+              }}
+            >
+              Tout afficher
+            </button>
+          </div>
+        )}
+
+        {/* ✅ sous-catégories */}
+        {selectedCategory && (
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <button
+              type="button"
+              className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
+              onClick={() => {
+                setPage(1);
+                navigate(`/african-food/${selectedCategory.slug}`);
+              }}
+            >
+              Tout
+            </button>
+
+            {(subsByCatId[selectedCategory.id] || []).map((s) => {
+              const active = selectedSubCategory?.id === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
+                  onClick={() => {
+                    setPage(1);
+                    navigate(`/african-food/${selectedCategory.slug}/${s.slug}`);
+                  }}
+                >
+                  {s.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {error && (
@@ -164,16 +486,15 @@ export default function AfricanFood() {
         <div className="row g-3">
           {filtered.map((p) => (
             <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={p.id}>
-              {/* ProductCard gère déjà le filtrage par ville + le panier */}
               <ProductCard product={p} />
             </div>
           ))}
         </div>
       )}
 
-      {!loading && (
-        <div className="d-flex justify-content-between align-items-center mt-3">
-          <div className="text-muted small">{showCount}</div>
+      {/* ✅ Pagination : pas de compteur X éléments */}
+      {!loading && pages > 1 && (
+        <div className="d-flex justify-content-end align-items-center mt-3">
           <div className="btn-group">
             <button
               className="btn btn-sm btn-outline-dark"
@@ -184,9 +505,11 @@ export default function AfricanFood() {
             >
               ◀
             </button>
+
             <span className="btn btn-sm btn-outline-dark disabled">
               {page} / {pages}
             </span>
+
             <button
               className="btn btn-sm btn-duu"
               disabled={page >= pages}

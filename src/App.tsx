@@ -92,11 +92,7 @@ function PageViewTracker() {
 
   useEffect(() => {
     const path = `${pathname}${search || ""}`;
-
-    // ✅ GTM/Meta/GA4 via dataLayer
     trackPageView(path);
-
-    // ✅ Metricool (SPA)
     trackMetricoolPageView();
   }, [pathname, search]);
 
@@ -223,22 +219,12 @@ function GlobalRatingModal(props: {
   return (
     <>
       <div className="modal-backdrop fade show" />
-      <div
-        className="modal fade show d-block"
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-      >
+      <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
         <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">Donnez votre avis</h5>
-              <button
-                type="button"
-                className="btn-close"
-                aria-label="Fermer"
-                onClick={onClose}
-              />
+              <button type="button" className="btn-close" aria-label="Fermer" onClick={onClose} />
             </div>
             <div className="modal-body">
               <p className="small text-muted mb-2">
@@ -247,9 +233,7 @@ function GlobalRatingModal(props: {
               </p>
 
               <div className="mb-3">
-                <span className="small d-block mb-1 fw-semibold">
-                  Votre note :
-                </span>
+                <span className="small d-block mb-1 fw-semibold">Votre note :</span>
                 <div className="d-flex align-items-center gap-2">
                   {[1, 2, 3, 4, 5].map((i) => renderStar(i))}
                 </div>
@@ -267,28 +251,14 @@ function GlobalRatingModal(props: {
                 />
               </div>
 
-              {error && (
-                <div className="alert alert-danger py-1 small">{error}</div>
-              )}
-              {success && (
-                <div className="alert alert-success py-1 small">{success}</div>
-              )}
+              {error && <div className="alert alert-danger py-1 small">{error}</div>}
+              {success && <div className="alert alert-success py-1 small">{success}</div>}
             </div>
             <div className="modal-footer">
-              <button
-                type="button"
-                className="btn btn-outline-secondary btn-sm"
-                onClick={onClose}
-                disabled={saving}
-              >
+              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose} disabled={saving}>
                 Plus tard
               </button>
-              <button
-                type="button"
-                className="btn btn-sm btn-duu"
-                onClick={handleSubmit}
-                disabled={saving}
-              >
+              <button type="button" className="btn btn-sm btn-duu" onClick={handleSubmit} disabled={saving}>
                 {saving ? "Envoi…" : "Envoyer mon avis"}
               </button>
             </div>
@@ -301,8 +271,7 @@ function GlobalRatingModal(props: {
 
 export default function App() {
   const { user } = useAuth();
-  const [pendingRating, setPendingRating] =
-    useState<PendingProductRating | null>(null);
+  const [pendingRating, setPendingRating] = useState<PendingProductRating | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -338,11 +307,7 @@ export default function App() {
           <NavbarWithCount />
 
           <main className="flex-fill">
-            <React.Suspense
-              fallback={
-                <div className="container-xxl py-5 text-muted">Chargement…</div>
-              }
-            >
+            <React.Suspense fallback={<div className="container-xxl py-5 text-muted">Chargement…</div>}>
               <Routes>
                 <Route path="/" element={<LandingRedirect />} />
 
@@ -355,9 +320,15 @@ export default function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/cart" element={<CartPage />} />
 
-                {/* ✅ Vitrine */}
+                {/* ✅ Vitrine (routes dynamiques) */}
                 <Route path="/african-food" element={<AfricanFood />} />
+                <Route path="/african-food/:categorySlug" element={<AfricanFood />} />
+                <Route path="/african-food/:categorySlug/:subCategorySlug" element={<AfricanFood />} />
+
                 <Route path="/african-market" element={<AfricanMarket />} />
+                <Route path="/african-market/:categorySlug" element={<AfricanMarket />} />
+                <Route path="/african-market/:categorySlug/:subCategorySlug" element={<AfricanMarket />} />
+
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
                 <Route path="/top-products" element={<TopProductsPage />} />
                 <Route path="/promos" element={<PromotionsPage />} />
@@ -375,11 +346,7 @@ export default function App() {
                     <Route path="products" element={<ProductsAdminPage />} />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
-
-                    {/* ✅ Promotions */}
                     <Route path="promotions" element={<PromotionsAdminPage />} />
-
-                    {/* ✅ IA */}
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
@@ -405,10 +372,7 @@ export default function App() {
           <NotificationBubble />
 
           {pendingRating && (
-            <GlobalRatingModal
-              pending={pendingRating}
-              onClose={() => setPendingRating(null)}
-            />
+            <GlobalRatingModal pending={pendingRating} onClose={() => setPendingRating(null)} />
           )}
         </div>
       </LocationGate>

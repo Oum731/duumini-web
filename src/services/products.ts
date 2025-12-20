@@ -6,7 +6,19 @@ export type PromoDiscountType = "PERCENT" | "AMOUNT";
 export type Product = {
   id: number;
   shop_id: number | null;
+
   category_id?: number | null;
+
+  // ✅ NEW: FK vers sub_categories
+  sub_category_id?: number | null;
+
+  // ✅ infos joinées (retournées par l'API)
+  category_name?: string | null;
+  category_slug?: string | null;
+
+  sub_category_slug?: string | null; // ex: "food"
+  sub_category_name?: string | null; // ex: "Alimentation"
+
   name: string;
   slug: string;
 
@@ -19,16 +31,13 @@ export type Product = {
   is_featured?: 0 | 1;
 
   promo_eligible?: 0 | 1;
-
-  // ✅ Promo
   promo_discount_type?: PromoDiscountType | null;
   promo_discount_value?: number | null;
   promo_free_delivery?: 0 | 1;
 
-  sub_category?: string | null;
-
   created_at?: string;
   updated_at?: string;
+
   images?: { id: number; url: string; sort_order: number }[];
   cover?: string | null;
 
@@ -55,13 +64,6 @@ export type Paginated<T> = {
 type Channel = "african-food" | "african-market";
 
 /* ---------- Utils ---------- */
-function normalizeSubCategory(v?: string | null): string | undefined {
-  if (v == null) return undefined;
-  const s = String(v).trim();
-  if (!s) return undefined;
-  return s;
-}
-
 function normalizeCityFilterToVille(city?: string | null): string | undefined {
   if (!city) return undefined;
   const raw = String(city).trim();
@@ -119,7 +121,6 @@ function uniqCities(input: any): string[] | null {
   return out;
 }
 
-/** ✅ Normalise type promo */
 function normalizePromoType(v: any): PromoDiscountType | null {
   const s = String(v || "").trim().toUpperCase();
   if (s === "AMOUNT") return "AMOUNT";
@@ -127,7 +128,6 @@ function normalizePromoType(v: any): PromoDiscountType | null {
   return null;
 }
 
-/** ✅ Normalise valeur promo */
 function normalizePromoValue(v: any): number | null {
   if (v == null || v === "") return null;
   const n = Number(v);
@@ -135,7 +135,6 @@ function normalizePromoValue(v: any): number | null {
   return n;
 }
 
-/** ✅ Convertit bool/number => 0|1 (ou null si absent) */
 function to01(v: any): 0 | 1 | null {
   if (v === undefined || v === null) return null;
   if (typeof v === "number") return v ? 1 : 0;
@@ -144,6 +143,10 @@ function to01(v: any): 0 | 1 | null {
   if (s === "0" || s === "false" || s === "no" || s === "off") return 0;
   return null;
 }
+
+/* ======================================================================
+ * Products
+ * ===================================================================== */
 
 /* ---------- List ---------- */
 export async function listProducts(
@@ -210,43 +213,35 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
   if (draft.name) fd.append("name", draft.name);
 
   const finalPrice =
-    draft.price != null
-      ? draft.price
-      : draft.vendor_price != null
-      ? draft.vendor_price
-      : null;
+    draft.price != null ? draft.price : draft.vendor_price != null ? draft.vendor_price : null;
   if (finalPrice != null) fd.append("price", String(finalPrice));
 
   if (draft.currency) fd.append("currency", draft.currency);
-  if (draft.description != null)
-    fd.append("description", String(draft.description || ""));
+  if (draft.description != null) fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
-  if (draft.category_id != null)
-    fd.append("category_id", String(draft.category_id));
+  if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
+
+  // ✅ NEW: sub_category_id
+  if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
 
   if (draft.is_featured != null) {
     const v = to01(draft.is_featured);
     if (v != null) fd.append("is_featured", String(v));
   }
 
-  // ✅ promo_eligible (IMPORTANT: ne pas faire un "truthy" sur "0")
   const promoEligible = to01(draft.promo_eligible);
   if (promoEligible != null) fd.append("promo_eligible", String(promoEligible));
 
-  // ✅ promo_free_delivery
   const promoFree = to01((draft as any).promo_free_delivery);
   if (promoFree != null) fd.append("promo_free_delivery", String(promoFree));
 
-  // ✅ promo_discount_* (seulement si promo=1)
   if (promoEligible === 1) {
     const t = normalizePromoType((draft as any).promo_discount_type);
     const v = normalizePromoValue((draft as any).promo_discount_value);
-
     if (t) fd.append("promo_discount_type", t);
     if (v != null) fd.append("promo_discount_value", String(v));
   } else if (promoEligible === 0) {
-    // ✅ reset promo côté API (elle purge si promo_eligible=0)
     fd.append("promo_discount_type", "");
     fd.append("promo_discount_value", "");
   }
@@ -255,9 +250,6 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
     const v = to01(draft.is_active);
     if (v != null) fd.append("is_active", String(v));
   }
-
-  const sub = normalizeSubCategory(draft.sub_category ?? undefined);
-  if (sub) fd.append("sub_category", sub);
 
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
@@ -281,16 +273,11 @@ export async function updateProduct(
   if (draft.name) fd.append("name", draft.name);
 
   const finalPrice =
-    draft.price != null
-      ? draft.price
-      : draft.vendor_price != null
-      ? draft.vendor_price
-      : null;
+    draft.price != null ? draft.price : draft.vendor_price != null ? draft.vendor_price : null;
   if (finalPrice != null) fd.append("price", String(finalPrice));
 
   if (draft.currency) fd.append("currency", draft.currency);
-  if (draft.description != null)
-    fd.append("description", String(draft.description || ""));
+  if (draft.description != null) fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
   if (draft.is_featured != null) {
@@ -298,23 +285,18 @@ export async function updateProduct(
     if (v != null) fd.append("is_featured", String(v));
   }
 
-  // ✅ promo_eligible
   const promoEligible = to01(draft.promo_eligible);
   if (promoEligible != null) fd.append("promo_eligible", String(promoEligible));
 
-  // ✅ promo_free_delivery
   const promoFree = to01((draft as any).promo_free_delivery);
   if (promoFree != null) fd.append("promo_free_delivery", String(promoFree));
 
-  // ✅ promo_discount_* (seulement si promo)
   if (promoEligible === 1) {
     const t = normalizePromoType((draft as any).promo_discount_type);
     const v = normalizePromoValue((draft as any).promo_discount_value);
-
     if (t) fd.append("promo_discount_type", t);
     if (v != null) fd.append("promo_discount_value", String(v));
   } else if (promoEligible === 0) {
-    // ✅ reset promo
     fd.append("promo_discount_type", "");
     fd.append("promo_discount_value", "");
   }
@@ -324,11 +306,11 @@ export async function updateProduct(
     if (v != null) fd.append("is_active", String(v));
   }
 
-  const sub = normalizeSubCategory(draft.sub_category ?? undefined);
-  if (sub) fd.append("sub_category", sub);
+  if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
 
-  if (draft.category_id != null)
-    fd.append("category_id", String(draft.category_id));
+  // ✅ NEW: sub_category_id
+  if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
+
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
   const cities = uniqCities(draft.cities);
@@ -373,9 +355,7 @@ export async function listTopOrderedProducts(
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
-export async function listTopRatedProducts(
-  opts?: { limit?: number; minCount?: number }
-): Promise<Product[]>;
+export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number }): Promise<Product[]>;
 export async function listTopRatedProducts(opts: {
   limit?: number;
   minCount?: number;
@@ -389,9 +369,67 @@ export async function listTopRatedProducts(
   const minCount = opts.minCount ?? 2;
 
   const query: Record<string, any> = { limit, minCount };
-
   const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
   if (ville) query.ville = ville;
 
   return api.get<Product[]>("/api/products/top-rated", { query });
+}
+
+/* ======================================================================
+ * Ratings / Avis
+ * ===================================================================== */
+
+export type ProductRatingSummary = {
+  average: number;
+  count: number;
+};
+
+export type ProductRatingRow = {
+  id: number;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  user_id: number;
+  user_name: string;
+};
+
+export type PendingRatingProduct =
+  | {
+      product_id: number;
+      product_name: string;
+      product_image: string | null;
+      order_id: number;
+      delivered_at: string;
+    }
+  | null;
+
+export async function getProductRatingSummary(productId: number) {
+  return api.get<ProductRatingSummary>(`/api/products/${productId}/ratings`);
+}
+
+export async function listProductRatings(productId: number) {
+  return api.get<ProductRatingRow[]>(`/api/products/${productId}/ratings/list`);
+}
+
+export async function getPendingRatingProduct() {
+  return api.get<PendingRatingProduct>(`/api/products/pending-rating`);
+}
+
+export async function rateProduct(productId: number, payload: { rating: number; comment?: string | null }) {
+  return api.post<{
+    ok: true;
+    average: number;
+    count: number;
+    user_rating: number;
+    comment: string | null;
+  }>(`/api/products/${productId}/rate`, payload);
+}
+
+export async function unrateProduct(productId: number) {
+  return api.delete<{
+    ok: true;
+    deleted: boolean;
+    average: number;
+    count: number;
+  }>(`/api/products/${productId}/rate`);
 }
