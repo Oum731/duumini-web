@@ -119,12 +119,13 @@ export default function PromotionsCarousel({
     return "NORMAL" as const;
   }, [cd.days, cd.isOver]);
 
-  const pulseClass = urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
+  const pulseClass =
+    urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
 
-  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(2, "0")}:${String(cd.secs).padStart(
+  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
     2,
     "0"
-  )}`;
+  )}:${String(cd.secs).padStart(2, "0")}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -161,7 +162,8 @@ export default function PromotionsCarousel({
 
   const computed = useMemo(() => {
     return items.map((p: any) => {
-      const type: PromoDiscountType = p?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
+      const type: PromoDiscountType =
+        p?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
       const value = Number(p?.promo_discount_value ?? 0);
       const promoPrice = computePromoPrice(Number(p?.price ?? 0), type, value);
       const cover = p?.cover || p?.images?.[0]?.url || null;
@@ -261,7 +263,7 @@ export default function PromotionsCarousel({
           min-width:0;
         }
 
-        /* ✅ FIX MOBILE: allow wrapping + 2 lines clamp */
+        /* ✅ Pill keeps the main numbers, stays clean */
         .delivery-pill{
           display:inline-flex;
           align-items:center;
@@ -274,11 +276,9 @@ export default function PromotionsCarousel({
           font-weight: 900;
           font-size: .78rem;
 
-          /* was nowrap -> causes overlap */
           white-space: normal;
           max-width: 100%;
 
-          /* clamp 2 lines */
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
@@ -289,6 +289,20 @@ export default function PromotionsCarousel({
           line-height: 1.18;
         }
         .delivery-pill b{ color: var(--duu-red, #E53935); font-weight: 950; }
+
+        /* ✅ Always-visible note (fix: "(selon la ville)" never gets cut) */
+        .delivery-note{
+          font-size: .74rem;
+          font-weight: 900;
+          color: rgba(0,0,0,.70);
+          line-height: 1.1;
+          margin-top: 2px;
+          white-space: nowrap;
+          padding-left: 2px;
+        }
+        @media (max-width: 380px){
+          .delivery-note{ white-space: normal; }
+        }
 
         /* ✅ badge CAN never shrink */
         .can-banner-badge{
@@ -476,6 +490,7 @@ export default function PromotionsCarousel({
           .duu-img{ height: 132px; }
           .can-banner-title{ font-size: .94rem; }
           .delivery-pill{ font-size: .74rem; }
+          .delivery-note{ font-size: .72rem; }
         }
       `}</style>
 
@@ -491,13 +506,13 @@ export default function PromotionsCarousel({
           <div className="can-banner-left">
             <div className="can-banner-title">{headline}</div>
 
-            {/* ✅ Info livraison (ne chevauche plus CAN sur mobile) */}
+            {/* ✅ FIX: "(selon la ville)" toujours visible */}
             <div className="can-banner-sub">
               <span className="delivery-pill" title={DELIVERY_INFO}>
-                🚚 Livraison Casablanca <b>25 DH</b> • Hors Casablanca dès <b>60 DH</b>{" "}
-                <span style={{ opacity: 0.75, fontWeight: 800 }}>(selon la ville)</span>
+                🚚 Livraison Casablanca <b>25 DH</b> • Hors Casablanca dès <b>60 DH</b>
               </span>
             </div>
+            <span className="delivery-note">(selon la ville)</span>
           </div>
 
           <div className="can-banner-badge" aria-hidden="true">
@@ -535,7 +550,8 @@ export default function PromotionsCarousel({
             title="Voir les promos CAN"
           >
             {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
-              const saved = type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
+              const saved =
+                type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
 
               return (
                 <div className="card border-0 duu-card" data-promo-card key={p.id}>
@@ -543,7 +559,9 @@ export default function PromotionsCarousel({
                     {cover ? (
                       <img className="duu-img" src={imgUrl(cover)} alt={p.name} loading="lazy" />
                     ) : (
-                      <div className="duu-img d-flex align-items-center justify-content-center text-muted">Image</div>
+                      <div className="duu-img d-flex align-items-center justify-content-center text-muted">
+                        Image
+                      </div>
                     )}
 
                     <span className="duu-badge">PROMO {saved}</span>
@@ -581,9 +599,17 @@ export default function PromotionsCarousel({
                         "Offre terminée"
                       ) : (
                         <>
-                          🚚 Casa <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>25 DH</span> • Hors Casa dès{" "}
-                          <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>60 DH</span>{" "}
-                          <span style={{ fontWeight: 800, color: "rgba(0,0,0,.55)" }}>(selon la ville)</span>
+                          🚚 Casa{" "}
+                          <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>
+                            25 DH
+                          </span>{" "}
+                          • Hors Casa dès{" "}
+                          <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>
+                            60 DH
+                          </span>{" "}
+                          <span style={{ fontWeight: 800, color: "rgba(0,0,0,.55)" }}>
+                            (selon la ville)
+                          </span>
                         </>
                       )}
                     </div>
@@ -594,7 +620,9 @@ export default function PromotionsCarousel({
           </div>
         ) : (
           <div className="px-3 pb-3">
-            <div className="alert alert-light border small mb-0">Aucune promo disponible pour le moment. Revenez bientôt 👀</div>
+            <div className="alert alert-light border small mb-0">
+              Aucune promo disponible pour le moment. Revenez bientôt 👀
+            </div>
           </div>
         )}
       </div>
