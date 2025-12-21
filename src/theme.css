@@ -1,10 +1,17 @@
 :root{
-  --duu-yellow:#FFD54F;
-  --duu-red:#E53935;
-  --duu-black:#111111;
+  --duu-yellow: #fddc00;   /* ✅ Duumini */
+  --duu-red:    #E53935;
+  --duu-black:  #111111;
+
+  /* helpers */
+  --duu-yellow-rgb: 253, 220, 0; /* pour box-shadow */
+  --duu-red-rgb: 229, 57, 53;
 }
 
-.navbar {
+/* =========================
+   Navbar
+========================= */
+.navbar{
   box-shadow: 0 2px 10px rgba(0,0,0,.05);
 }
 
@@ -12,13 +19,15 @@
 .navbar .nav-link{
   position: relative;
   color: var(--duu-black) !important;
-  transition: color .2s ease;
+  transition: color .2s ease, opacity .2s ease;
 }
-.navbar .nav-link:hover{ color: var(--duu-red) !important; }
+.navbar .nav-link:hover{
+  color: var(--duu-red) !important;
+}
 
-/* Page active (NavLink isActive) : gras + soulignement rouge */
+/* Page active (NavLink isActive) : gras + trait rouge */
 .navbar .nav-link.active{
-  font-weight: 700;
+  font-weight: 800;
   color: var(--duu-black) !important;
 }
 .navbar .nav-link.active::after,
@@ -27,118 +36,160 @@
   position:absolute;
   left: 8px;
   right: 8px;
-  bottom:-6px;   /* petit trait sous l’onglet */
+  bottom:-6px;
   height:3px;
   background: var(--duu-red);
   border-radius: 3px;
 }
 
-/* Focus clavier accessible (sans contour bleu agressif) */
+/* Focus clavier (ring jaune Duumini, pas de contour bleu) */
 .navbar .nav-link:focus-visible{
-  outline:none;
-  color: var(--duu-black) !important;
+  outline: none;
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35);
+  border-radius: 10px;
 }
 
-.btn-duu {
-  background: var(--duu-yellow);
-  color: #1f1f1f;
-  border: none;
-}
-.btn-duu:hover { filter: brightness(0.95); }
-
-.badge-duu { background: var(--duu-red); }
-
-/* Toggler plus visible sur fond jaune (optionnel) */
+/* Toggler visible sur fond jaune */
 .navbar .navbar-toggler{
   border-color: rgba(0,0,0,.25);
 }
 .navbar .navbar-toggler:focus{
-  box-shadow: 0 0 0 .2rem rgba(0,0,0,.1);
-}
-/* Accent sur les champs (focus rouge) */
-.form-control:focus {
-  border-color: var(--duu-red);
-  box-shadow: 0 0 0 .2rem rgba(229, 57, 53, .15);
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35);
 }
 
-/* Bouton thème "Duumini" */
-.btn-duu {
+/* =========================
+   Buttons (Duumini)
+========================= */
+.btn-duu{
   background: var(--duu-yellow);
   color: #1f1f1f;
   border: none;
+  font-weight: 800;
 }
-.btn-duu:hover { filter: brightness(0.95); }
+.btn-duu:hover{
+  filter: brightness(.96);
+}
+.btn-duu:focus,
+.btn-duu:focus-visible{
+  outline: none !important;
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
+}
+.btn-duu:active{
+  transform: translateY(0);
+  filter: brightness(.94);
+}
 
 /* Badge */
-.badge-duu { background: var(--duu-red); }
+.badge-duu{
+  background: var(--duu-red);
+  color: #fff;
+}
+
+/* =========================
+   Forms focus
+========================= */
+.form-control:focus,
+.form-select:focus{
+  border-color: var(--duu-red);
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-red-rgb), .15);
+}
 
 /* Placeholders un peu plus visibles */
-.placeholder { background: rgba(0,0,0,.06); }
-/* src/styles/theme.css (ou équivalent) */
-footer a.link-dark:hover { color: var(--duu-red) !important; }
-/* ===== Duumini Categories Menu ===== */
-.duu-cat-btn {
+.placeholder{
+  background: rgba(0,0,0,.06);
+}
+
+/* Footer links */
+footer a.link-dark:hover{
+  color: var(--duu-red) !important;
+}
+
+/* =========================
+   Duumini Categories Menu
+========================= */
+.duu-cat-btn{
   border: 1px solid rgba(0,0,0,.16);
   background: #fff;
   color: var(--duu-black);
 }
-.duu-cat-btn:hover { border-color: rgba(0,0,0,.25); }
+.duu-cat-btn:hover{
+  border-color: rgba(0,0,0,.25);
+}
 
-.duu-cat-pill {
+/* pills */
+.duu-cat-pill{
   border: 1px solid rgba(0,0,0,.12);
   background: #fff;
   color: var(--duu-black);
 }
-.duu-cat-pill:hover { border-color: rgba(0,0,0,.22); }
+.duu-cat-pill:hover{
+  border-color: rgba(0,0,0,.22);
+}
 
-.duu-cat-pill-active {
+.duu-cat-pill-active{
   background: var(--duu-yellow);
   border-color: rgba(0,0,0,.12);
   color: #1f1f1f;
-  font-weight: 700;
+  font-weight: 800;
 }
 
-.duu-cat-panel {
+/* panel */
+.duu-cat-panel{
   background: #fff;
   border-left: 1px solid rgba(0,0,0,.10);
 }
 
-.duu-cat-title {
+.duu-cat-title{
   color: var(--duu-black);
-  font-weight: 800;
+  font-weight: 900;
 }
 
-.duu-cat-close {
+/* close */
+.duu-cat-close{
   border: 1px solid rgba(0,0,0,.18);
   background: #fff;
   color: var(--duu-black);
 }
-.duu-cat-close:hover { color: var(--duu-red); border-color: rgba(229,57,53,.35); }
+.duu-cat-close:hover{
+  color: var(--duu-red);
+  border-color: rgba(var(--duu-red-rgb), .35);
+}
+.duu-cat-close:focus,
+.duu-cat-close:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35);
+}
 
-.duu-cat-acc-btn {
+/* accordion btn */
+.duu-cat-acc-btn{
   background: #fff;
   color: var(--duu-black);
   border: 0;
 }
-.duu-cat-acc-btn:hover { background: rgba(0,0,0,.03); }
-
-.duu-cat-acc-btn-active {
-  background: rgba(255, 213, 79, .25);
+.duu-cat-acc-btn:hover{
+  background: rgba(0,0,0,.03);
+}
+.duu-cat-acc-btn-active{
+  background: rgba(var(--duu-yellow-rgb), .22); /* ✅ duu yellow */
 }
 
-.duu-cat-sub-btn {
+/* sub category btn */
+.duu-cat-sub-btn{
   border: 1px solid rgba(0,0,0,.14);
   background: #fff;
   color: var(--duu-black);
 }
-.duu-cat-sub-btn:hover { border-color: rgba(0,0,0,.25); }
-.duu-cat-sub-btn-active {
-  border-color: rgba(229,57,53,.45);
-  background: rgba(229,57,53,.07);
+.duu-cat-sub-btn:hover{
+  border-color: rgba(0,0,0,.25);
+}
+.duu-cat-sub-btn-active{
+  border-color: rgba(var(--duu-red-rgb), .45);
+  background: rgba(var(--duu-red-rgb), .07);
   color: var(--duu-black);
-  font-weight: 700;
+  font-weight: 800;
 }
 
-.duu-cat-backdrop {
+/* backdrop */
+.duu-cat-backdrop{
   background: rgba(0,0,0,.45);
 }
