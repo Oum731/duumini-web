@@ -32,13 +32,31 @@ function computePromoPrice(price: number, type: PromoDiscountType, value: number
   return Math.max(0, Number((p - v).toFixed(2)));
 }
 
+/* ✅ Sans Product.sub_category : slug/name/id puis fallback category */
+function normToken(x: any) {
+  return String(x ?? "").trim().toLowerCase();
+}
+function subToken(p: any) {
+  const bySlug = normToken(p?.sub_category_slug);
+  if (bySlug) return bySlug;
+
+  const byName = normToken(p?.sub_category_name);
+  if (byName) return byName;
+
+  const id = p?.sub_category_id;
+  if (id != null && String(id).trim() !== "") return normToken(String(id));
+
+  return "";
+}
+function isFood(p: any) {
+  const t = subToken(p);
+  if (t) return t === "food" || t.includes("food") || t.includes("alimentation");
+  return normToken(p?.category) === "food";
+}
+
 function isRealPromo(p: any) {
-  const isFood = String(p?.sub_category || "").toLowerCase() === "food";
-  return (
-    !isFood &&
-    Number(p?.promo_eligible ?? 0) === 1 &&
-    Number(p?.promo_discount_value ?? 0) > 0
-  );
+  const food = isFood(p);
+  return !food && Number(p?.promo_eligible ?? 0) === 1 && Number(p?.promo_discount_value ?? 0) > 0;
 }
 
 function useBlink(ms = 650) {
@@ -144,7 +162,7 @@ export default function PromotionsCarousel({
       const value = Number(p?.promo_discount_value ?? 0);
       const promoPrice = computePromoPrice(Number(p?.price ?? 0), type, value);
       const cover = p?.cover || p?.images?.[0]?.url || null;
-      const isCan = Boolean(p?.promo_can);
+      const isCan = Number(p?.promo_can ?? 0) === 1;
       return { p, type, value, promoPrice, cover, isCan };
     });
   }, [items]);
@@ -462,8 +480,7 @@ export default function PromotionsCarousel({
             title="Voir les promos CAN"
           >
             {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
-              const saved =
-                type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
+              const saved = type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
 
               return (
                 <div className="card border-0 duu-card" data-promo-card key={p.id}>
@@ -505,9 +522,7 @@ export default function PromotionsCarousel({
                       <div className="duu-old">{moneyMAD(p.price)}</div>
                     </div>
 
-                    <div className="small text-muted mt-1">
-                      {cd.isOver ? "Offre terminée" : "⚡ Offre CAN"}
-                    </div>
+                    <div className="small text-muted mt-1">{cd.isOver ? "Offre terminée" : "⚡ Offre CAN"}</div>
                   </div>
                 </div>
               );

@@ -1,6 +1,6 @@
 // src/pages/ProductView.tsx
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Product } from "../services/products";
 import { listProducts } from "../services/products";
 import ProductCard from "../components/ProductCard";
@@ -22,22 +22,17 @@ function moneyMAD(n?: number | null) {
   }).format(Number(n || 0));
 }
 
-function isProductActive(p: Product | null | undefined): boolean {
+function isActiveProduct(p: Product | null | undefined) {
   if (!p) return false;
   const anyP = p as any;
   return Number(anyP.is_active ?? anyP.active ?? 1) === 1;
 }
 
-/** ✅ IMPORTANT : AUCUN .sub_category ici */
-function subToken(p: Product | null | undefined): string {
+function subToken(p: Product | null | undefined) {
   if (!p) return "";
   const anyP = p as any;
-
-  const slug = String(anyP.sub_category_slug || "").trim().toLowerCase();
-  if (slug) return slug;
-
-  const name = String(anyP.sub_category_name || "").trim().toLowerCase();
-  if (name) return name;
+  const s = String(anyP.sub_category_slug ?? anyP.sub_category_name ?? "").trim().toLowerCase();
+  if (s) return s;
 
   const id = anyP.sub_category_id;
   if (id != null && String(id).trim() !== "") return String(id).trim().toLowerCase();
@@ -45,21 +40,10 @@ function subToken(p: Product | null | undefined): string {
   return "";
 }
 
-function sectionPathFor(p: Product | null | undefined): string {
+function sectionPathFor(p: Product | null | undefined) {
   const t = subToken(p);
-  if (t === "food" || t.includes("food") || t.includes("aliment")) return "/african-food";
+  if (t === "food" || t.includes("food") || t.includes("alimentation")) return "/african-food";
   return "/african-market";
-}
-
-function getItemsFromListResponse(res: any): Product[] {
-  // selon ton wrapper api: parfois res.items, parfois res.data.items, etc.
-  const a = res?.items;
-  if (Array.isArray(a)) return a;
-  const b = res?.data?.items;
-  if (Array.isArray(b)) return b;
-  const c = res?.data;
-  if (Array.isArray(c)) return c;
-  return [];
 }
 
 export default function ProductView() {
@@ -76,14 +60,12 @@ export default function ProductView() {
   const title = useMemo(() => String(anyP?.name || "Produit"), [anyP?.name]);
 
   const cover = useMemo(() => {
-    // ✅ pas d’accès typed: tout via any (sans sub_category)
     return anyP?.cover || anyP?.images?.[0]?.url || anyP?.image || null;
   }, [anyP?.cover, anyP?.images, anyP?.image]);
 
   const coverUrl = useMemo(() => imgUrl(cover), [cover]);
 
-  const productIsActive = useMemo(() => isProductActive(product), [product]);
-
+  const productIsActive = useMemo(() => isActiveProduct(product), [product]);
   const sectionPath = useMemo(() => sectionPathFor(product), [product]);
 
   const handleBack = useCallback(() => {
@@ -94,7 +76,6 @@ export default function ProductView() {
     nav(sectionPath);
   }, [nav, sectionPath]);
 
-  // ===== Load product by id or slug =====
   useEffect(() => {
     let stop = false;
 
@@ -106,7 +87,6 @@ export default function ProductView() {
       try {
         if (!idOrSlug) throw new Error("Produit introuvable");
 
-        // 1) numeric ID
         const asId = Number(idOrSlug);
         if (Number.isFinite(asId) && asId > 0) {
           const res = await fetch(`${API_BASE}/api/products/${asId}`, { credentials: "omit" });
@@ -117,11 +97,9 @@ export default function ProductView() {
           }
         }
 
-        // 2) slug endpoint (si tu l’as)
-        const resSlug = await fetch(
-          `${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`,
-          { credentials: "omit" }
-        );
+        const resSlug = await fetch(`${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`, {
+          credentials: "omit",
+        });
         if (resSlug.ok) {
           const p = (await resSlug.json()) as Product;
           if (!stop) setProduct(p || null);
@@ -141,7 +119,6 @@ export default function ProductView() {
     };
   }, [idOrSlug]);
 
-  // ===== Load related (same sub_category_id, fallback same category_id) =====
   useEffect(() => {
     let stop = false;
 
@@ -150,7 +127,7 @@ export default function ProductView() {
 
       try {
         const res = await listProducts({ page: 1, pageSize: 48 } as any);
-        const items: Product[] = getItemsFromListResponse(res);
+        const items: Product[] = Array.isArray((res as any)?.items) ? (res as any).items : [];
 
         const pAny = product as any;
         const subId = Number(pAny?.sub_category_id || 0);
@@ -170,7 +147,7 @@ export default function ProductView() {
         };
 
         const rel = items
-          .filter((p) => (p as any).id !== (product as any).id && isSameGroup(p) && isProductActive(p))
+          .filter((p) => (p as any).id !== (product as any).id && isSameGroup(p) && isActiveProduct(p))
           .slice(0, 8);
 
         if (!stop) setRelated(rel);
@@ -219,9 +196,7 @@ export default function ProductView() {
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
           <span>
-            {product && !productIsActive
-              ? "Ce produit n'est plus disponible."
-              : error || "Produit introuvable"}
+            {product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}
           </span>
         </div>
       </div>
@@ -229,9 +204,7 @@ export default function ProductView() {
   }
 
   const displayPrice = Number(anyP?.price_client ?? anyP?.price ?? 0);
-
-  const badge =
-    String(anyP?.sub_category_slug || "").trim().toLowerCase() === "food" ? "Food" : "Market";
+  const badge = String(anyP?.sub_category_slug || "").toLowerCase() === "food" ? "Food" : "Market";
 
   return (
     <div className="container-xxl py-4">
@@ -267,11 +240,7 @@ export default function ProductView() {
             <ProductRating productId={Number(anyP?.id)} />
           </div>
 
-          {anyP?.description ? (
-            <p className="text-muted">{String(anyP.description)}</p>
-          ) : (
-            <p className="text-muted">Aucune description fournie.</p>
-          )}
+          {anyP?.description ? <p className="text-muted">{String(anyP.description)}</p> : <p className="text-muted">Aucune description fournie.</p>}
         </div>
       </div>
 

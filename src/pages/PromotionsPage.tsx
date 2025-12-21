@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../services/http";
 import type { Product } from "../services/products";
 import ProductCard from "../components/ProductCard";
@@ -31,34 +31,67 @@ function useCountdown(endIso: string) {
   return { diff, days, hours, mins, secs, isOver: diff <= 0 };
 }
 
-function isFood(p: any) {
-  return String(p?.sub_category || p?.category || "").toLowerCase() === "food";
+/* ✅ Sans Product.sub_category : slug/name/id puis fallback category */
+function normToken(x: any) {
+  return String(x ?? "").trim().toLowerCase();
 }
 
+function subToken(p: any) {
+  const bySlug = normToken(p?.sub_category_slug);
+  if (bySlug) return bySlug;
+
+  const byName = normToken(p?.sub_category_name);
+  if (byName) return byName;
+
+  const id = p?.sub_category_id;
+  if (id != null && String(id).trim() !== "") return normToken(String(id));
+
+  return "";
+}
+
+function isFoodLike(p: any) {
+  const t = subToken(p);
+  if (t) return t === "food" || t.includes("food") || t.includes("alimentation");
+  return normToken(p?.category) === "food";
+}
+
+function looksLikeDrink(p: any) {
+  const name = normToken(p?.name);
+  const cat =
+    normToken(p?.category_name) ||
+    normToken(p?.category_slug) ||
+    normToken(p?.category) ||
+    "";
+
+  const sub =
+    normToken(p?.sub_category_name) || normToken(p?.sub_category_slug) || "";
+
+  // 💡 mots-clés simples : on évite les boisson/canette/soda/jus/eau/energy
+  const hay = `${name} ${cat} ${sub}`;
+
+  return (
+    hay.includes("boisson") ||
+    hay.includes("boissons") ||
+    hay.includes("soda") ||
+    hay.includes("cola") ||
+    hay.includes("jus") ||
+    hay.includes("eau") ||
+    hay.includes("energy") ||
+    hay.includes("canette") ||
+    hay.includes("cannette")
+  );
+}
+
+/**
+ * ✅ Produits "OFFRE CAN"
+ * - si promo_can = 1 => on accepte
+ * - sinon on exclut food + boissons (on veut "produits" pas "boissons")
+ */
 function isCanProductOffer(p: any) {
   if (Number(p?.promo_can ?? 0) === 1) return true;
-  if (isFood(p)) return false;
-
-  const name = String(p?.name || "").toLowerCase();
-  const cat = String(p?.category_name || p?.category || "").toLowerCase();
-
-  const looksLikeDrink =
-    cat.includes("boisson") ||
-    cat.includes("boissons") ||
-    cat.includes("soda") ||
-    cat.includes("jus") ||
-    cat.includes("eau") ||
-    name.includes("boisson") ||
-    name.includes("boissons") ||
-    name.includes("canette") ||
-    name.includes("cannette") ||
-    name.includes("soda") ||
-    name.includes("cola") ||
-    name.includes("jus") ||
-    name.includes("eau") ||
-    name.includes("energy");
-
-  return !looksLikeDrink;
+  if (isFoodLike(p)) return false;
+  if (looksLikeDrink(p)) return false;
+  return true;
 }
 
 export default function PromotionsPage() {
@@ -85,25 +118,33 @@ export default function PromotionsPage() {
   }, [cd.days, cd.isOver]);
 
   const pulseClass =
-    urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
+    urgency === "D1"
+      ? "pulse-d1"
+      : urgency === "SOON"
+      ? "pulse-soon"
+      : "pulse-normal";
 
   const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
     2,
     "0"
   )}:${String(cd.secs).padStart(2, "0")}`;
 
-  async function fetchPromos() {
+  const fetchPromos = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
+      // 1) endpoint promos si dispo
       try {
         const res = await api.get<Product[]>("/api/products/promotions", {
           query: { limit: 250, onlyActive: 1 },
         });
         setItems((res || []).filter(isRealPromo));
         return;
-      } catch {}
+      } catch {
+        // fallback
+      }
 
+      // 2) fallback : /api/products
       const res = await api.get<{ items: Product[] }>("/api/products", {
         query: { page: 1, pageSize: 250, onlyActive: 1 },
       });
@@ -113,16 +154,17 @@ export default function PromotionsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     fetchPromos();
-  }, []);
+  }, [fetchPromos]);
 
   const canItems = useMemo(() => {
-    const list = items.filter((p: any) => isCanProductOffer(p));
+    const list = (items || []).filter((p: any) => isCanProductOffer(p));
     return [...list].sort(
-      (a: any, b: any) => Number(b?.promo_discount_value ?? 0) - Number(a?.promo_discount_value ?? 0)
+      (a: any, b: any) =>
+        Number(b?.promo_discount_value ?? 0) - Number(a?.promo_discount_value ?? 0)
     );
   }, [items]);
 
@@ -157,6 +199,12 @@ export default function PromotionsPage() {
           display:flex;
           flex-direction:column;
           gap:8px;
+        }
+        .can-title{
+          font-weight: 950;
+          letter-spacing: .2px;
+          margin: 0;
+          color: #111;
         }
         .can-sub{
           font-weight: 800;
@@ -205,10 +253,16 @@ export default function PromotionsPage() {
       <div className="can-card mb-3">
         <div className="can-grid">
           <div className="can-anim-wrap">
-            <CanKickLottie variant="hero" className="w-100 h-100" offer={offer} blink={blink} />
+            <CanKickLottie
+              variant="hero"
+              className="w-100 h-100"
+              offer={offer}
+              blink={blink}
+            />
           </div>
 
           <div className="can-text">
+            <h2 className="can-title">{offer.title}</h2>
             <p className="can-sub">Fin le 22 janvier 2026</p>
 
             <div className="can-meta">

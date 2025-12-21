@@ -1,4 +1,3 @@
-// src/pages/Checkout.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
@@ -84,7 +83,9 @@ const COMMUNES_BY_CITY: Record<string, readonly string[]> = {
 const COMMUNES_DEFAULT = ["__other__"] as const;
 
 function cityKeyFromLabel(label: string) {
-  const k = String(label || "").trim().toUpperCase();
+  const k = String(label || "")
+    .trim()
+    .toUpperCase();
   if (k.includes("CASA")) return "CASABLANCA";
   if (k.includes("MARRA")) return "MARRAKECH";
   return k;
@@ -92,6 +93,31 @@ function cityKeyFromLabel(label: string) {
 
 type DeliveryMode = "EXPRESS" | "SIMPLE";
 const FEES: Record<DeliveryMode, number> = { EXPRESS: 50, SIMPLE: 25 };
+
+/* ===== Helpers sub-category token (sans Product.sub_category) ===== */
+function normToken(x: any) {
+  return String(x ?? "")
+    .trim()
+    .toLowerCase();
+}
+function productSubToken(p: any) {
+  const bySlug = normToken(p?.sub_category_slug);
+  if (bySlug) return bySlug;
+
+  const byName = normToken(p?.sub_category_name);
+  if (byName) return byName;
+
+  const id = p?.sub_category_id;
+  if (id != null && String(id).trim() !== "") return normToken(String(id));
+
+  return "";
+}
+function isFoodLike(p: any) {
+  const t = productSubToken(p);
+  if (t)
+    return t === "food" || t.includes("food") || t.includes("alimentation");
+  return normToken(p?.category) === "food";
+}
 
 export default function CheckoutPage() {
   const nav = useNavigate();
@@ -154,8 +180,7 @@ export default function CheckoutPage() {
   const hasPromoInCart = useMemo(() => {
     return (lines || []).some((l: any) => {
       const p = l?.product ?? l;
-      const isFood =
-        String(p?.sub_category || p?.category || "").toLowerCase() === "food";
+      const isFood = isFoodLike(p);
       const eligible = Number(p?.promo_eligible ?? 0) === 1;
       const val = Number(p?.promo_discount_value ?? 0) > 0;
       return !isFood && eligible && val;
@@ -199,7 +224,9 @@ export default function CheckoutPage() {
 
           // ✅ Ville du profil : si aucune ville choisie côté app, on prend celle du profil
           // (ne remplace pas un choix déjà fait par l’utilisateur dans LocationGate)
-          const profileCityRaw = String((u as any).city || (u as any).ville || "")
+          const profileCityRaw = String(
+            (u as any).city || (u as any).ville || ""
+          )
             .trim()
             .toLowerCase();
 
@@ -360,12 +387,14 @@ export default function CheckoutPage() {
       const contact = {
         first_name: hasToken ? firstName.trim() || undefined : undefined,
         last_name: hasToken ? lastName.trim() || undefined : undefined,
-        name: !hasToken ? (fullName || undefined) : undefined,
+        name: !hasToken ? fullName || undefined : undefined,
         phone: normalizedPhone,
       };
 
       // ✅ Promo : livraison gratuite partout
-      const finalDeliveryMode = hasPromoInCart ? ("PROMO_FREE" as any) : delivery;
+      const finalDeliveryMode = hasPromoInCart
+        ? ("PROMO_FREE" as any)
+        : delivery;
       const finalDeliveryFee = hasPromoInCart ? 0 : deliveryFee;
       const finalGrandTotal = totalAmount + finalDeliveryFee;
 
@@ -426,7 +455,16 @@ export default function CheckoutPage() {
           value: finalGrandTotal,
           currency: "MAD",
           items: lines.map((l: any) => {
-            const category = l.category_name || l.sub_category || "";
+            const category =
+              l.category_name ||
+              l.sub_category_name ||
+              l.sub_category_slug ||
+              (l.sub_category_id != null &&
+              String(l.sub_category_id).trim() !== ""
+                ? String(l.sub_category_id)
+                : "") ||
+              "";
+
             return {
               id: l.id,
               name: l.name,
@@ -474,7 +512,9 @@ export default function CheckoutPage() {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (e: any) {
-      setErr(e?.message || "Impossible de confirmer la commande pour le moment.");
+      setErr(
+        e?.message || "Impossible de confirmer la commande pour le moment."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -507,7 +547,9 @@ export default function CheckoutPage() {
       <div className="text-end">
         <div className="small text-muted">Total à payer</div>
         <div className="h5 m-0">{mad(grandTotal)}</div>
-        <div className="small text-muted">Dont livraison: {mad(deliveryFee)}</div>
+        <div className="small text-muted">
+          Dont livraison: {mad(deliveryFee)}
+        </div>
       </div>
     ),
     [grandTotal, deliveryFee]
@@ -620,12 +662,12 @@ export default function CheckoutPage() {
 
           {hasPromoInCart ? (
             <div className="text-muted">
-              🚚 Livraison gratuite <strong>partout</strong> (offres promotionnelles)
+              🚚 Livraison gratuite <strong>partout</strong> (offres
+              promotionnelles)
             </div>
           ) : (
             <div className="text-muted">
-              Livraison sur{" "}
-              <strong>{cityLabel || "—"}</strong>{" "}
+              Livraison sur <strong>{cityLabel || "—"}</strong>{" "}
               <button
                 type="button"
                 className="btn btn-sm btn-outline-dark ms-2"
@@ -645,7 +687,8 @@ export default function CheckoutPage() {
         <div className="alert alert-info mb-3">
           <div className="fw-semibold mb-1">Commander sans créer de compte</div>
           <p className="mb-2 small">
-            Vous pouvez finaliser votre commande <strong>en tant qu’invité</strong>.
+            Vous pouvez finaliser votre commande{" "}
+            <strong>en tant qu’invité</strong>.
           </p>
           <div className="d-flex flex-wrap gap-2">
             <button
@@ -671,7 +714,8 @@ export default function CheckoutPage() {
 
           {guestConfirmed && (
             <p className="mt-2 small mb-0">
-              ✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.
+              ✅ Mode invité activé. Remplissez le formulaire puis confirmez la
+              commande.
             </p>
           )}
         </div>
@@ -745,22 +789,33 @@ export default function CheckoutPage() {
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international :
+                        +2126…, +225…, +223…, +1…
                       </div>
                     )}
                     <div className="form-text">
-                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                      🟢{" "}
+                      <strong>
+                        Idéalement, utilisez votre numéro WhatsApp
+                      </strong>
+                      .
                     </div>
                   </div>
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input className="form-control" value={cityLabel || ""} disabled />
+                      <input
+                        className="form-control"
+                        value={cityLabel || ""}
+                        disabled
+                      />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
-                        onClick={() => window.dispatchEvent(new Event("city:open"))}
+                        onClick={() =>
+                          window.dispatchEvent(new Event("city:open"))
+                        }
                         title="Changer la ville de livraison"
                       >
                         Changer
@@ -801,7 +856,8 @@ export default function CheckoutPage() {
                       <span className="small">
                         {useGps && coords ? (
                           <span className="text-success">
-                            GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                            GPS: {coords.lat.toFixed(5)},{" "}
+                            {coords.lng.toFixed(5)}
                           </span>
                         ) : (
                           <button
@@ -840,7 +896,9 @@ export default function CheckoutPage() {
                           onChange={(e) => setQuartier(e.target.value)}
                         />
                         {gpsErr && (
-                          <div className="form-text text-danger mt-1">{gpsErr}</div>
+                          <div className="form-text text-danger mt-1">
+                            {gpsErr}
+                          </div>
                         )}
                         <div className="form-text">
                           Saisissez votre quartier ou utilisez le GPS.
@@ -852,9 +910,9 @@ export default function CheckoutPage() {
                           <span>
                             Localisation GPS activée{" "}
                             {coords
-                              ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(
+                              ? `(${coords.lat.toFixed(
                                   5
-                                )})`
+                                )}, ${coords.lng.toFixed(5)})`
                               : ""}
                             .
                           </span>
@@ -869,7 +927,9 @@ export default function CheckoutPage() {
                             Changer
                           </button>
                         </div>
-                        {gpsErr && <div className="form-text text-danger">{gpsErr}</div>}
+                        {gpsErr && (
+                          <div className="form-text text-danger">{gpsErr}</div>
+                        )}
                       </>
                     )}
                   </div>
@@ -899,22 +959,33 @@ export default function CheckoutPage() {
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international :
+                        +2126…, +225…, +223…, +1…
                       </div>
                     )}
                     <div className="form-text">
-                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                      🟢{" "}
+                      <strong>
+                        Idéalement, utilisez votre numéro WhatsApp
+                      </strong>
+                      .
                     </div>
                   </div>
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input className="form-control" value={cityLabel || ""} disabled />
+                      <input
+                        className="form-control"
+                        value={cityLabel || ""}
+                        disabled
+                      />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
-                        onClick={() => window.dispatchEvent(new Event("city:open"))}
+                        onClick={() =>
+                          window.dispatchEvent(new Event("city:open"))
+                        }
                         title="Changer la ville de livraison"
                       >
                         Changer
@@ -931,7 +1002,8 @@ export default function CheckoutPage() {
                       <span className="small">
                         {useGps && coords ? (
                           <span className="text-success">
-                            GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                            GPS: {coords.lat.toFixed(5)},{" "}
+                            {coords.lng.toFixed(5)}
                           </span>
                         ) : (
                           <button
@@ -971,9 +1043,13 @@ export default function CheckoutPage() {
                           onChange={(e) => setGuestAddress(e.target.value)}
                         />
                         {gpsErr && (
-                          <div className="form-text text-danger mt-1">{gpsErr}</div>
+                          <div className="form-text text-danger mt-1">
+                            {gpsErr}
+                          </div>
                         )}
-                        <div className="form-text">Adresse complète ou GPS.</div>
+                        <div className="form-text">
+                          Adresse complète ou GPS.
+                        </div>
                       </>
                     ) : (
                       <>
@@ -981,9 +1057,9 @@ export default function CheckoutPage() {
                           <span>
                             Localisation GPS activée{" "}
                             {coords
-                              ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(
+                              ? `(${coords.lat.toFixed(
                                   5
-                                )})`
+                                )}, ${coords.lng.toFixed(5)})`
                               : ""}
                             .
                           </span>
@@ -998,8 +1074,12 @@ export default function CheckoutPage() {
                             Changer
                           </button>
                         </div>
-                        {gpsErr && <div className="form-text text-danger">{gpsErr}</div>}
-                        <div className="form-text">Précisions optionnelles :</div>
+                        {gpsErr && (
+                          <div className="form-text text-danger">{gpsErr}</div>
+                        )}
+                        <div className="form-text">
+                          Précisions optionnelles :
+                        </div>
                         <textarea
                           className="form-control mt-2"
                           rows={2}
@@ -1024,7 +1104,8 @@ export default function CheckoutPage() {
                 <div className="alert alert-success mb-0">
                   <div className="fw-semibold">🚚 Livraison gratuite</div>
                   <div className="small">
-                    Votre panier contient une offre promotionnelle. Livraison gratuite partout.
+                    Votre panier contient une offre promotionnelle. Livraison
+                    gratuite partout.
                   </div>
                 </div>
               ) : (
@@ -1107,8 +1188,8 @@ export default function CheckoutPage() {
 
                   <div className="form-text mt-2">
                     Frais applicables à{" "}
-                    <strong>{cityLabel || "votre ville"}</strong>. Le mode choisi
-                    ajustera le total automatiquement.
+                    <strong>{cityLabel || "votre ville"}</strong>. Le mode
+                    choisi ajustera le total automatiquement.
                   </div>
                 </>
               )}
@@ -1127,7 +1208,9 @@ export default function CheckoutPage() {
               disabled={!canSubmit || submitting}
               aria-busy={submitting}
               title={
-                !canSubmit ? "Complétez les champs requis" : "Confirmer la commande"
+                !canSubmit
+                  ? "Complétez les champs requis"
+                  : "Confirmer la commande"
               }
             >
               {submitting ? (
@@ -1169,7 +1252,11 @@ export default function CheckoutPage() {
                 <li className="list-group-item d-flex justify-content-between align-items-center">
                   <span className="text-muted">
                     Livraison{" "}
-                    {hasPromoInCart ? "Promo" : delivery === "EXPRESS" ? "Express" : "Simple"}
+                    {hasPromoInCart
+                      ? "Promo"
+                      : delivery === "EXPRESS"
+                      ? "Express"
+                      : "Simple"}
                   </span>
                   <span className="fw-semibold">{mad(deliveryFee)}</span>
                 </li>
