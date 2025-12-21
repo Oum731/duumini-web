@@ -94,7 +94,11 @@ function toggleInArray(list: string[], value: string) {
   return [...list, value];
 }
 
-function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
+function computePromoPrice(
+  price: number,
+  type: PromoDiscountType,
+  value: number
+) {
   const p = Number(price || 0);
   const v = Number(value || 0);
   if (!p || !v) return p;
@@ -111,7 +115,7 @@ function computePromoPrice(price: number, type: PromoDiscountType, value: number
 
 /** ✅ promo “réelle” uniquement si éligible + valeur > 0 + produit actif */
 function hasRealPromo(p: any) {
-  const active = (p?.active ?? p?.is_active ?? 1) ? 1 : 0;
+  const active = p?.active ?? p?.is_active ?? 1 ? 1 : 0;
   if (!active) return false;
   return !!p?.promo_eligible && Number(p?.promo_discount_value ?? 0) > 0;
 }
@@ -165,15 +169,13 @@ function unwrap<T>(res: any): T {
 function getPaginated(res: any): { items: Product[]; pageInfo?: any } {
   const body = unwrap<any>(res);
 
-  const items =
-    Array.isArray(body?.items) ? (body.items as Product[]) :
-    Array.isArray(body?.data?.items) ? (body.data.items as Product[]) :
-    [];
+  const items = Array.isArray(body?.items)
+    ? (body.items as Product[])
+    : Array.isArray(body?.data?.items)
+    ? (body.data.items as Product[])
+    : [];
 
-  const pageInfo =
-    body?.pageInfo ??
-    body?.data?.pageInfo ??
-    undefined;
+  const pageInfo = body?.pageInfo ?? body?.data?.pageInfo ?? undefined;
 
   return { items, pageInfo };
 }
@@ -194,8 +196,15 @@ function ProductForm({
   subCategories: SubCategory[];
   shops: Shop[];
   onCreateCategory: (name: string) => Promise<Category>;
-  onCreateSubCategory: (categoryId: number, name: string) => Promise<SubCategory>;
-  onSubmit: (draft: Draft, files: File[], replaceImages: boolean) => Promise<void> | void;
+  onCreateSubCategory: (
+    categoryId: number,
+    name: string
+  ) => Promise<SubCategory>;
+  onSubmit: (
+    draft: Draft,
+    files: File[],
+    replaceImages: boolean
+  ) => Promise<void> | void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => {
@@ -210,9 +219,13 @@ function ProductForm({
       currency: anyInit?.currency || "MAD",
 
       is_featured:
-        anyInit?.is_featured != null ? (Number(anyInit.is_featured) as 0 | 1) : 0,
+        anyInit?.is_featured != null
+          ? (Number(anyInit.is_featured) as 0 | 1)
+          : 0,
       promo_eligible:
-        anyInit?.promo_eligible != null ? (Number(anyInit.promo_eligible) as 0 | 1) : 0,
+        anyInit?.promo_eligible != null
+          ? (Number(anyInit.promo_eligible) as 0 | 1)
+          : 0,
 
       category_id:
         anyInit?.category_id != null && anyInit?.category_id !== ""
@@ -231,10 +244,14 @@ function ProductForm({
       promo_discount_type:
         anyInit?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT",
       promo_discount_value:
-        typeof anyInit?.promo_discount_value === "number" ? anyInit.promo_discount_value : null,
+        typeof anyInit?.promo_discount_value === "number"
+          ? anyInit.promo_discount_value
+          : null,
 
       promo_free_delivery:
-        anyInit?.promo_free_delivery != null ? (Number(anyInit.promo_free_delivery) as 0 | 1) : 0,
+        anyInit?.promo_free_delivery != null
+          ? (Number(anyInit.promo_free_delivery) as 0 | 1)
+          : 0,
 
       is_active:
         anyInit?.is_active != null
@@ -256,9 +273,13 @@ function ProductForm({
   const [newSubCategoryName, setNewSubCategoryName] = useState("");
 
   const [newSubCatsRaw, setNewSubCatsRaw] = useState("");
-  const [createdSubCatsPreview, setCreatedSubCatsPreview] = useState<string[]>([]);
+  const [createdSubCatsPreview, setCreatedSubCatsPreview] = useState<string[]>(
+    []
+  );
 
-  const [galleryInput, setGalleryInput] = useState<HTMLInputElement | null>(null);
+  const [galleryInput, setGalleryInput] = useState<HTMLInputElement | null>(
+    null
+  );
   const [cameraInput, setCameraInput] = useState<HTMLInputElement | null>(null);
 
   const [formError, setFormError] = useState<string | null>(null);
@@ -286,7 +307,9 @@ function ProductForm({
   const hasExistingImages = (initial as any)?.images?.length > 0;
 
   const selectedShop = shops.find((s) => s.id === (draft.shop_id ?? undefined));
-  const selectedCities = Array.isArray(draft.cities) ? (draft.cities as string[]) : [];
+  const selectedCities = Array.isArray(draft.cities)
+    ? (draft.cities as string[])
+    : [];
 
   const promoEnabled = !!draft.promo_eligible;
   const promoType: PromoDiscountType =
@@ -312,7 +335,9 @@ function ProductForm({
     const sid = Number(draft.sub_category_id || 0);
     if (!cid || !sid) return;
 
-    const ok = subCategories.some((sc) => sc.id === sid && Number(sc.category_id) === cid);
+    const ok = subCategories.some(
+      (sc) => sc.id === sid && Number(sc.category_id) === cid
+    );
     if (!ok) setDraft((d) => ({ ...d, sub_category_id: null }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.category_id]);
@@ -341,7 +366,8 @@ function ProductForm({
     if (promoType === "PERCENT") {
       if (v <= 0 || v > 95) return "Le pourcentage doit être entre 1 et 95.";
     } else {
-      if (v >= Number(draft.price)) return "Le montant de réduction doit être inférieur au prix.";
+      if (v >= Number(draft.price))
+        return "Le montant de réduction doit être inférieur au prix.";
     }
 
     return null;
@@ -421,7 +447,10 @@ function ProductForm({
         if (!cid) throw new Error("Sélectionne une catégorie d’abord.");
 
         if (isCustomSubCategory) {
-          const createdSub = await onCreateSubCategory(cid, newSubCategoryName.trim());
+          const createdSub = await onCreateSubCategory(
+            cid,
+            newSubCategoryName.trim()
+          );
           subCatId = createdSub.id;
 
           setIsCustomSubCategory(false);
@@ -457,7 +486,9 @@ function ProductForm({
               <input
                 className="form-control"
                 value={draft.name || ""}
-                onChange={(ev) => setDraft((d) => ({ ...d, name: ev.target.value }))}
+                onChange={(ev) =>
+                  setDraft((d) => ({ ...d, name: ev.target.value }))
+                }
                 required
               />
             </div>
@@ -466,11 +497,16 @@ function ProductForm({
               <label className="form-label">Actif</label>
               <select
                 className="form-select"
-                value={draft.is_active == null ? "" : String(Number(draft.is_active))}
+                value={
+                  draft.is_active == null ? "" : String(Number(draft.is_active))
+                }
                 onChange={(ev) =>
                   setDraft((d) => ({
                     ...d,
-                    is_active: ev.target.value === "" ? null : (Number(ev.target.value) as 0 | 1),
+                    is_active:
+                      ev.target.value === ""
+                        ? null
+                        : (Number(ev.target.value) as 0 | 1),
                   }))
                 }
               >
@@ -498,7 +534,9 @@ function ProductForm({
                         checked={checked}
                         onChange={() =>
                           setDraft((d) => {
-                            const current = Array.isArray(d.cities) ? (d.cities as string[]) : [];
+                            const current = Array.isArray(d.cities)
+                              ? (d.cities as string[])
+                              : [];
                             return { ...d, cities: toggleInArray(current, c) };
                           })
                         }
@@ -511,7 +549,8 @@ function ProductForm({
                 })}
               </div>
               <small className="text-muted">
-                Si aucune ville n’est cochée, le produit sera considéré “visible partout”.
+                Si aucune ville n’est cochée, le produit sera considéré “visible
+                partout”.
               </small>
             </div>
           </div>
@@ -547,7 +586,8 @@ function ProductForm({
               </div>
 
               <small className="text-muted">
-                Admin : boutique obligatoire. Vendeur : sa boutique est déduite côté API.
+                Admin : boutique obligatoire. Vendeur : sa boutique est déduite
+                côté API.
               </small>
             </div>
           </div>
@@ -557,20 +597,34 @@ function ProductForm({
               <label className="form-label">Catégorie</label>
               <select
                 className="form-select"
-                value={isCustomCategory ? "__other__" : draft.category_id ? String(draft.category_id) : ""}
+                value={
+                  isCustomCategory
+                    ? "__other__"
+                    : draft.category_id
+                    ? String(draft.category_id)
+                    : ""
+                }
                 onChange={(ev) => {
                   const val = ev.target.value;
                   if (val === "__other__") {
                     setIsCustomCategory(true);
                     setIsCustomSubCategory(false);
-                    setDraft((d) => ({ ...d, category_id: null, sub_category_id: null }));
+                    setDraft((d) => ({
+                      ...d,
+                      category_id: null,
+                      sub_category_id: null,
+                    }));
                   } else {
                     setIsCustomCategory(false);
                     setNewCategoryName("");
                     setNewSubCatsRaw("");
                     setCreatedSubCatsPreview([]);
                     const cid = val ? Number(val) : null;
-                    setDraft((d) => ({ ...d, category_id: cid, sub_category_id: null }));
+                    setDraft((d) => ({
+                      ...d,
+                      category_id: cid,
+                      sub_category_id: null,
+                    }));
                   }
                 }}
               >
@@ -625,7 +679,13 @@ function ProductForm({
                 <label className="form-label">Sous-catégorie (liée)</label>
                 <select
                   className="form-select"
-                  value={isCustomSubCategory ? "__other__" : draft.sub_category_id ? String(draft.sub_category_id) : ""}
+                  value={
+                    isCustomSubCategory
+                      ? "__other__"
+                      : draft.sub_category_id
+                      ? String(draft.sub_category_id)
+                      : ""
+                  }
                   onChange={(ev) => {
                     const val = ev.target.value;
                     if (val === "__other__") {
@@ -634,7 +694,10 @@ function ProductForm({
                     } else {
                       setIsCustomSubCategory(false);
                       setNewSubCategoryName("");
-                      setDraft((d) => ({ ...d, sub_category_id: val ? Number(val) : null }));
+                      setDraft((d) => ({
+                        ...d,
+                        sub_category_id: val ? Number(val) : null,
+                      }));
                     }
                   }}
                   disabled={!draft.category_id}
@@ -653,10 +716,14 @@ function ProductForm({
                     </option>
                   ))}
 
-                  {draft.category_id ? <option value="__other__">Autre…</option> : null}
+                  {draft.category_id ? (
+                    <option value="__other__">Autre…</option>
+                  ) : null}
                 </select>
 
-                <small className="text-muted">La liste dépend de la catégorie sélectionnée.</small>
+                <small className="text-muted">
+                  La liste dépend de la catégorie sélectionnée.
+                </small>
               </div>
 
               {isCustomSubCategory && (
@@ -688,7 +755,8 @@ function ProductForm({
                 onChange={(ev) =>
                   setDraft((d) => ({
                     ...d,
-                    price: ev.target.value === "" ? null : Number(ev.target.value),
+                    price:
+                      ev.target.value === "" ? null : Number(ev.target.value),
                   }))
                 }
                 required
@@ -699,7 +767,9 @@ function ProductForm({
               <input
                 className="form-control"
                 value={draft.currency || "MAD"}
-                onChange={(ev) => setDraft((d) => ({ ...d, currency: ev.target.value }))}
+                onChange={(ev) =>
+                  setDraft((d) => ({ ...d, currency: ev.target.value }))
+                }
               />
             </div>
             <div className="col-4">
@@ -711,7 +781,8 @@ function ProductForm({
                 onChange={(ev) =>
                   setDraft((d) => ({
                     ...d,
-                    stock: ev.target.value === "" ? null : Number(ev.target.value),
+                    stock:
+                      ev.target.value === "" ? null : Number(ev.target.value),
                   }))
                 }
               />
@@ -726,7 +797,12 @@ function ProductForm({
                   className="form-check-input"
                   type="checkbox"
                   checked={!!draft.is_featured}
-                  onChange={(ev) => setDraft((d) => ({ ...d, is_featured: ev.target.checked ? 1 : 0 }))}
+                  onChange={(ev) =>
+                    setDraft((d) => ({
+                      ...d,
+                      is_featured: ev.target.checked ? 1 : 0,
+                    }))
+                  }
                 />
                 <label htmlFor="feat" className="form-check-label">
                   Mis en avant
@@ -776,7 +852,8 @@ function ProductForm({
                       onChange={(ev) =>
                         setDraft((d) => ({
                           ...d,
-                          promo_discount_type: (ev.target.value as PromoDiscountType) || "PERCENT",
+                          promo_discount_type:
+                            (ev.target.value as PromoDiscountType) || "PERCENT",
                         }))
                       }
                     >
@@ -797,17 +874,24 @@ function ProductForm({
                       onChange={(ev) =>
                         setDraft((d) => ({
                           ...d,
-                          promo_discount_value: ev.target.value === "" ? null : Number(ev.target.value),
+                          promo_discount_value:
+                            ev.target.value === ""
+                              ? null
+                              : Number(ev.target.value),
                         }))
                       }
-                      placeholder={promoType === "PERCENT" ? "Ex: 10" : "Ex: 20"}
+                      placeholder={
+                        promoType === "PERCENT" ? "Ex: 10" : "Ex: 20"
+                      }
                     />
                   </div>
 
                   <div className="col-12 col-md-4">
                     <div className="small text-muted">Aperçu</div>
                     <div className="fw-semibold">
-                      {promoPricePreview == null ? "—" : moneyMAD(promoPricePreview)}
+                      {promoPricePreview == null
+                        ? "—"
+                        : moneyMAD(promoPricePreview)}
                       {promoPricePreview != null && draft.price != null ? (
                         <span className="ms-2 small text-muted">
                           (au lieu de {moneyMAD(Number(draft.price))})
@@ -818,13 +902,16 @@ function ProductForm({
                 </div>
 
                 <small className="text-muted d-block mt-2">
-                  Cette réduction sera utilisée pour afficher le prix promo côté client.
+                  Cette réduction sera utilisée pour afficher le prix promo côté
+                  client.
                 </small>
               </div>
             </div>
           )}
 
-          {formError && <div className="alert alert-danger py-2 mt-2">{formError}</div>}
+          {formError && (
+            <div className="alert alert-danger py-2 mt-2">{formError}</div>
+          )}
 
           <div className="mt-2">
             <label className="form-label">Description</label>
@@ -832,7 +919,9 @@ function ProductForm({
               className="form-control"
               rows={3}
               value={draft.description || ""}
-              onChange={(ev) => setDraft((d) => ({ ...d, description: ev.target.value }))}
+              onChange={(ev) =>
+                setDraft((d) => ({ ...d, description: ev.target.value }))
+              }
             />
           </div>
         </div>
@@ -861,13 +950,26 @@ function ProductForm({
           ) : null}
 
           <div className="d-flex flex-wrap gap-2 mb-2">
-            <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => galleryInput?.click()}>
+            <button
+              type="button"
+              className="btn btn-outline-dark btn-sm"
+              onClick={() => galleryInput?.click()}
+            >
               Depuis la galerie
             </button>
-            <button type="button" className="btn btn-dark btn-sm" onClick={() => cameraInput?.click()}>
+            <button
+              type="button"
+              className="btn btn-dark btn-sm"
+              onClick={() => cameraInput?.click()}
+            >
               Ouvrir la caméra
             </button>
-            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setFiles([])} disabled={!files.length}>
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => setFiles([])}
+              disabled={!files.length}
+            >
               Vider
             </button>
           </div>
@@ -932,7 +1034,12 @@ function ProductForm({
       </div>
 
       <div className="d-flex justify-content-between align-items-center mt-3">
-        <button type="button" className="btn btn-outline-secondary" onClick={onCancel} disabled={submitting}>
+        <button
+          type="button"
+          className="btn btn-outline-secondary"
+          onClick={onCancel}
+          disabled={submitting}
+        >
           Annuler
         </button>
         <button type="submit" className="btn btn-dark" disabled={submitting}>
@@ -978,7 +1085,7 @@ export default function ProductsAdminPage() {
   );
 
   function isActive(p: any) {
-    return (p?.active ?? p?.is_active ?? 1) ? 1 : 0;
+    return p?.active ?? p?.is_active ?? 1 ? 1 : 0;
   }
 
   async function refresh() {
@@ -987,9 +1094,13 @@ export default function ProductsAdminPage() {
     try {
       if (mode === "top-ordered" || mode === "top-rated") {
         const endpoint =
-          mode === "top-ordered" ? "/api/products/top-ordered" : "/api/products/top-rated";
+          mode === "top-ordered"
+            ? "/api/products/top-ordered"
+            : "/api/products/top-rated";
 
-        const resRaw = await api.get<any>(endpoint, { query: { limit: 100, minCount: 2, onlyActive: 1 } });
+        const resRaw = await api.get<any>(endpoint, {
+          query: { limit: 100, minCount: 2, onlyActive: 1 },
+        });
         const body = unwrap<any>(resRaw);
 
         const list = Array.isArray(body)
@@ -1006,7 +1117,9 @@ export default function ProductsAdminPage() {
       }
 
       const svcChannel =
-        channel === "all" ? undefined : (channel as "african-food" | "african-market");
+        channel === "all"
+          ? undefined
+          : (channel as "african-food" | "african-market");
 
       // ✅ on passe les filtres à listProducts (si ton backend supporte, super),
       // sinon le filtrage UI plus bas prendra le relais.
@@ -1042,9 +1155,12 @@ export default function ProductsAdminPage() {
 
   async function refreshSubCategories() {
     try {
-      const resRaw = await api.get<{ items: SubCategory[] }>("/api/sub-categories", {
-        query: { page: 1, pageSize: 500 },
-      });
+      const resRaw = await api.get<{ items: SubCategory[] }>(
+        "/api/sub-categories",
+        {
+          query: { page: 1, pageSize: 500 },
+        }
+      );
       const res = unwrap<{ items: SubCategory[] }>(resRaw);
       setSubCategories(res.items || []);
     } catch (e) {
@@ -1073,7 +1189,15 @@ export default function ProductsAdminPage() {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, channel, onlyActive, mode, filterShopId, filterCategoryId]);
+  }, [
+    page,
+    pageSize,
+    channel,
+    onlyActive,
+    mode,
+    filterShopId,
+    filterCategoryId,
+  ]);
 
   function openCreate() {
     setEdit(null);
@@ -1088,7 +1212,10 @@ export default function ProductsAdminPage() {
     try {
       const p = await getProduct(id);
       const anyP: any = p as any;
-      const fixed: any = { ...anyP, cities: normalizeCitiesInline(anyP?.cities) };
+      const fixed: any = {
+        ...anyP,
+        cities: normalizeCitiesInline(anyP?.cities),
+      };
       setEdit(fixed as FullProduct);
       setShowForm(true);
     } catch (e: any) {
@@ -1104,7 +1231,10 @@ export default function ProductsAdminPage() {
     try {
       const p = await getProduct(id);
       const anyP: any = p as any;
-      const fixed: any = { ...anyP, cities: normalizeCitiesInline(anyP?.cities) };
+      const fixed: any = {
+        ...anyP,
+        cities: normalizeCitiesInline(anyP?.cities),
+      };
       setPreview(fixed as FullProduct);
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -1217,8 +1347,18 @@ export default function ProductsAdminPage() {
       await updateProduct((p as any).id, { is_active: next } as any, [], false);
       setOk(next ? "Produit activé." : "Produit désactivé.");
 
-      setItems((prev) => prev.map((it) => ((it as any).id === (p as any).id ? ({ ...it, is_active: next } as any) : it)));
-      setPreview((prev) => (prev && prev.id === (p as any).id ? ({ ...prev, is_active: next } as any) : prev));
+      setItems((prev) =>
+        prev.map((it) =>
+          (it as any).id === (p as any).id
+            ? ({ ...it, is_active: next } as any)
+            : it
+        )
+      );
+      setPreview((prev) =>
+        prev && prev.id === (p as any).id
+          ? ({ ...prev, is_active: next } as any)
+          : prev
+      );
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -1251,9 +1391,13 @@ export default function ProductsAdminPage() {
       // 4) recherche texte
       if (!text) return true;
       return (
-        String(p.name || "").toLowerCase().includes(text) ||
+        String(p.name || "")
+          .toLowerCase()
+          .includes(text) ||
         String(p.id || "").includes(text) ||
-        String(p.shop_name || "").toLowerCase().includes(text)
+        String(p.shop_name || "")
+          .toLowerCase()
+          .includes(text)
       );
     });
   }, [items, q, filterShopId, filterCategoryId, onlyActive]);
@@ -1292,7 +1436,11 @@ export default function ProductsAdminPage() {
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
         <h1 className="h4 mb-0">Produits</h1>
         <div className="d-flex gap-2">
-          <button className="btn btn-outline-secondary" onClick={refresh} disabled={loading || busy}>
+          <button
+            className="btn btn-outline-secondary"
+            onClick={refresh}
+            disabled={loading || busy}
+          >
             Actualiser
           </button>
           <button className="btn btn-dark" onClick={openCreate} disabled={busy}>
@@ -1313,21 +1461,36 @@ export default function ProductsAdminPage() {
               <div className="btn-group btn-group-sm" role="group">
                 <button
                   type="button"
-                  className={"btn " + (channel === "all" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
+                  className={
+                    "btn " +
+                    (channel === "all" && mode === "default"
+                      ? "btn-dark"
+                      : "btn-outline-dark")
+                  }
                   onClick={() => changeChannel("all")}
                 >
                   Tous
                 </button>
                 <button
                   type="button"
-                  className={"btn " + (channel === "african-food" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
+                  className={
+                    "btn " +
+                    (channel === "african-food" && mode === "default"
+                      ? "btn-dark"
+                      : "btn-outline-dark")
+                  }
                   onClick={() => changeChannel("african-food")}
                 >
                   African Food
                 </button>
                 <button
                   type="button"
-                  className={"btn " + (channel === "african-market" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
+                  className={
+                    "btn " +
+                    (channel === "african-market" && mode === "default"
+                      ? "btn-dark"
+                      : "btn-outline-dark")
+                  }
                   onClick={() => changeChannel("african-market")}
                 >
                   African Market
@@ -1354,15 +1517,31 @@ export default function ProductsAdminPage() {
               <div className="btn-group btn-group-sm" role="group">
                 <button
                   type="button"
-                  className={"btn " + (mode === "top-ordered" ? "btn-warning" : "btn-outline-warning")}
-                  onClick={() => changeMode(mode === "top-ordered" ? "default" : "top-ordered")}
+                  className={
+                    "btn " +
+                    (mode === "top-ordered"
+                      ? "btn-warning"
+                      : "btn-outline-warning")
+                  }
+                  onClick={() =>
+                    changeMode(
+                      mode === "top-ordered" ? "default" : "top-ordered"
+                    )
+                  }
                 >
                   Top commandés
                 </button>
                 <button
                   type="button"
-                  className={"btn " + (mode === "top-rated" ? "btn-success" : "btn-outline-success")}
-                  onClick={() => changeMode(mode === "top-rated" ? "default" : "top-rated")}
+                  className={
+                    "btn " +
+                    (mode === "top-rated"
+                      ? "btn-success"
+                      : "btn-outline-success")
+                  }
+                  onClick={() =>
+                    changeMode(mode === "top-rated" ? "default" : "top-rated")
+                  }
                 >
                   Mieux notés
                 </button>
@@ -1372,7 +1551,10 @@ export default function ProductsAdminPage() {
 
           {/* ✅ Filtres catégorie + boutique + recherche */}
           <div className="d-flex flex-column flex-xl-row gap-2 align-items-xl-center justify-content-between">
-            <div className="d-flex flex-column flex-md-row gap-2" style={{ width: "100%" }}>
+            <div
+              className="d-flex flex-column flex-md-row gap-2"
+              style={{ width: "100%" }}
+            >
               <div className="input-group" style={{ maxWidth: 420 }}>
                 <input
                   className="form-control"
@@ -1383,7 +1565,11 @@ export default function ProductsAdminPage() {
                     setQ(ev.target.value);
                   }}
                 />
-                <button className="btn btn-outline-secondary" onClick={resetSearch} disabled={!q}>
+                <button
+                  className="btn btn-outline-secondary"
+                  onClick={resetSearch}
+                  disabled={!q}
+                >
                   Effacer
                 </button>
               </div>
@@ -1398,7 +1584,11 @@ export default function ProductsAdminPage() {
                   setFilterShopId(v ? Number(v) : "");
                 }}
                 disabled={mode !== "default"}
-                title={mode !== "default" ? "Disponible seulement en mode Default" : "Filtrer par boutique"}
+                title={
+                  mode !== "default"
+                    ? "Disponible seulement en mode Default"
+                    : "Filtrer par boutique"
+                }
               >
                 <option value="">Toutes les boutiques</option>
                 {shops.map((s) => (
@@ -1418,7 +1608,11 @@ export default function ProductsAdminPage() {
                   setFilterCategoryId(v ? Number(v) : "");
                 }}
                 disabled={mode !== "default"}
-                title={mode !== "default" ? "Disponible seulement en mode Default" : "Filtrer par catégorie"}
+                title={
+                  mode !== "default"
+                    ? "Disponible seulement en mode Default"
+                    : "Filtrer par catégorie"
+                }
               >
                 <option value="">Toutes les catégories</option>
                 {categories.map((c) => (
@@ -1440,13 +1634,21 @@ export default function ProductsAdminPage() {
 
             {mode === "default" && (
               <div className="btn-group">
-                <button className="btn btn-sm btn-outline-dark" disabled={page <= 1 || busy} onClick={() => setPage((p) => p - 1)}>
+                <button
+                  className="btn btn-sm btn-outline-dark"
+                  disabled={page <= 1 || busy}
+                  onClick={() => setPage((p) => p - 1)}
+                >
                   ◀
                 </button>
                 <span className="btn btn-sm btn-outline-dark disabled">
                   {page} / {pages}
                 </span>
-                <button className="btn btn-sm btn-outline-dark" disabled={page >= pages || busy} onClick={() => setPage((p) => p + 1)}>
+                <button
+                  className="btn btn-sm btn-outline-dark"
+                  disabled={page >= pages || busy}
+                  onClick={() => setPage((p) => p + 1)}
+                >
                   ▶
                 </button>
               </div>
@@ -1455,7 +1657,8 @@ export default function ProductsAdminPage() {
 
           {/* petit hint */}
           <div className="small text-muted">
-            Astuce : un produit <strong>désactivé</strong> ne doit pas apparaître en promo ni côté client.
+            Astuce : un produit <strong>désactivé</strong> ne doit pas
+            apparaître en promo ni côté client.
           </div>
         </div>
       </div>
@@ -1474,52 +1677,133 @@ export default function ProductsAdminPage() {
             </div>
           ) : (
             <div className="table-responsive">
-              <table className="table align-middle">
+              <table
+                className="table align-middle"
+                style={{ tableLayout: "fixed" }}
+              >
                 <thead>
                   <tr>
-                    <th>ID</th>
-                    <th>Produit</th>
-                    <th className="d-none d-sm-table-cell">Boutique</th>
-                    <th className="d-none d-md-table-cell">Canal</th>
-                    <th className="d-none d-lg-table-cell">Catégorie</th>
-                    <th className="d-none d-sm-table-cell">Stock</th>
-                    <th className="d-none d-sm-table-cell">Statut</th>
-                    <th className="text-end">Prix</th>
-                    <th className="text-end">Actions</th>
+                    <th style={{ width: 70 }}>ID</th>
+
+                    {/* ✅ colonne produit large */}
+                    <th style={{ width: 460 }}>Produit</th>
+
+                    {/* ✅ boutique: wrap */}
+                    <th
+                      className="d-none d-sm-table-cell"
+                      style={{ width: 220 }}
+                    >
+                      Boutique
+                    </th>
+
+                    <th
+                      className="d-none d-md-table-cell"
+                      style={{ width: 140 }}
+                    >
+                      Canal
+                    </th>
+
+                    {/* ✅ catégorie: wrap */}
+                    <th
+                      className="d-none d-lg-table-cell"
+                      style={{ width: 220 }}
+                    >
+                      Catégorie
+                    </th>
+
+                    <th
+                      className="d-none d-sm-table-cell"
+                      style={{ width: 90 }}
+                    >
+                      Stock
+                    </th>
+
+                    <th
+                      className="d-none d-sm-table-cell"
+                      style={{ width: 110 }}
+                    >
+                      Statut
+                    </th>
+
+                    <th className="text-end" style={{ width: 130 }}>
+                      Prix
+                    </th>
+
+                    <th className="text-end" style={{ width: 240 }}>
+                      Actions
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody>
                   {filtered.map((p) => {
                     const active = isActive(p);
-                    const subSlug = String((p as any).sub_category_slug || "").toLowerCase();
-                    const channelLabel = subSlug === "food" ? "African Food" : "African Market";
+                    const subSlug = String(
+                      (p as any).sub_category_slug || ""
+                    ).toLowerCase();
+                    const channelLabel =
+                      subSlug === "food" ? "African Food" : "African Market";
                     const promo = hasRealPromo(p as any);
 
                     const catName =
-                      categories.find((c) => c.id === Number((p as any).category_id || 0))?.name ||
+                      categories.find(
+                        (c) => c.id === Number((p as any).category_id || 0)
+                      )?.name ||
                       (p as any).category_name ||
                       "-";
+
+                    const shopName = (p as any).shop_name || "";
+                    const shopCellText =
+                      (p as any).shop_name || (p as any).shop_id || "-";
 
                     return (
                       <tr key={(p as any).id}>
                         <td>{(p as any).id}</td>
 
-                        <td className="text-truncate" style={{ maxWidth: 380 }}>
-                          <div className="d-flex align-items-center gap-2">
+                        {/* ✅ PRODUIT (wrap + 2 lignes + badges) */}
+                        <td style={{ whiteSpace: "normal" }}>
+                          <div className="d-flex align-items-start gap-2">
                             {(p as any).cover ? (
                               <img
                                 src={imgUrl((p as any).cover)}
                                 alt={(p as any).name}
                                 className="rounded border"
-                                style={{ width: 42, height: 42, objectFit: "cover" }}
+                                style={{
+                                  width: 42,
+                                  height: 42,
+                                  objectFit: "cover",
+                                  flex: "0 0 auto",
+                                }}
                               />
                             ) : (
-                              <div className="rounded border bg-light" style={{ width: 42, height: 42 }} />
+                              <div
+                                className="rounded border bg-light"
+                                style={{
+                                  width: 42,
+                                  height: 42,
+                                  flex: "0 0 auto",
+                                }}
+                              />
                             )}
 
-                            <div className="d-flex flex-column">
-                              <div className="d-flex align-items-center gap-2">
-                                <span className="text-truncate" title={(p as any).name}>
+                            {/* zone texte */}
+                            <div style={{ minWidth: 0, flex: "1 1 auto" }}>
+                              <div
+                                className="d-flex align-items-center gap-2 flex-wrap"
+                                style={{ rowGap: 6 }}
+                              >
+                                {/* ✅ nom : 2 lignes max */}
+                                <span
+                                  title={(p as any).name}
+                                  style={{
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden",
+                                    lineHeight: 1.2,
+                                    maxWidth: "100%",
+                                  }}
+                                >
                                   {(p as any).name}
                                 </span>
 
@@ -1537,55 +1821,115 @@ export default function ProductsAdminPage() {
 
                                 <button
                                   type="button"
-                                  className="btn btn-link btn-sm p-0 align-baseline"
+                                  className="btn btn-link btn-sm p-0"
                                   title="Voir"
+                                  style={{ whiteSpace: "nowrap" }}
                                   onClick={() => openPreview((p as any).id)}
                                 >
                                   (voir)
                                 </button>
                               </div>
 
-                              {(p as any).shop_name && <small className="text-muted">{(p as any).shop_name}</small>}
+                              {/* ✅ boutique sous le nom (wrap) */}
+                              {shopName ? (
+                                <div
+                                  className="small text-muted"
+                                  style={{
+                                    marginTop: 2,
+                                    whiteSpace: "normal",
+                                    wordBreak: "break-word",
+                                    overflowWrap: "anywhere",
+                                  }}
+                                >
+                                  {shopName}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         </td>
 
-                        <td className="d-none d-sm-table-cell">
-                          {(p as any).shop_name || (p as any).shop_id || "-"}
+                        {/* ✅ BOUTIQUE (wrap) */}
+                        <td
+                          className="d-none d-sm-table-cell"
+                          style={{
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.15,
+                          }}
+                          title={String(shopCellText)}
+                        >
+                          {shopCellText}
                         </td>
 
                         <td className="d-none d-md-table-cell">
-                          <span className="badge bg-light text-dark">{channelLabel}</span>
+                          <span className="badge bg-light text-dark">
+                            {channelLabel}
+                          </span>
                         </td>
 
-                        <td className="d-none d-lg-table-cell">{catName}</td>
+                        {/* ✅ CATÉGORIE (wrap) */}
+                        <td
+                          className="d-none d-lg-table-cell"
+                          style={{
+                            whiteSpace: "normal",
+                            wordBreak: "break-word",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.15,
+                          }}
+                          title={String(catName)}
+                        >
+                          {catName}
+                        </td>
 
-                        <td className="d-none d-sm-table-cell">{(p as any).stock ?? 0}</td>
+                        <td className="d-none d-sm-table-cell">
+                          {(p as any).stock ?? 0}
+                        </td>
 
                         <td className="d-none d-sm-table-cell">
                           {active ? (
-                            <span className="badge bg-success-subtle text-success">Actif</span>
+                            <span className="badge bg-success-subtle text-success">
+                              Actif
+                            </span>
                           ) : (
-                            <span className="badge bg-secondary-subtle text-muted">Désactivé</span>
+                            <span className="badge bg-secondary-subtle text-muted">
+                              Désactivé
+                            </span>
                           )}
                         </td>
 
-                        <td className="text-end">{moneyMAD((p as any).price)}</td>
+                        <td className="text-end">
+                          {moneyMAD((p as any).price)}
+                        </td>
 
                         <td className="text-end">
                           <div className="btn-group">
-                            <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit((p as any).id)} disabled={busy}>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => openEdit((p as any).id)}
+                              disabled={busy}
+                            >
                               Modifier
                             </button>
                             <button
                               type="button"
-                              className={`btn btn-sm ${active ? "btn-outline-warning" : "btn-outline-success"}`}
+                              className={`btn btn-sm ${
+                                active
+                                  ? "btn-outline-warning"
+                                  : "btn-outline-success"
+                              }`}
                               onClick={() => onToggleActive(p)}
                               disabled={busy}
                             >
                               {active ? "Désactiver" : "Activer"}
                             </button>
-                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onDelete((p as any).id)} disabled={busy}>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => onDelete((p as any).id)}
+                              disabled={busy}
+                            >
                               Supprimer
                             </button>
                           </div>
@@ -1602,13 +1946,21 @@ export default function ProductsAdminPage() {
             <div className="d-flex justify-content-between align-items-center mt-2">
               <div className="text-muted small">{total} éléments</div>
               <div className="btn-group">
-                <button className="btn btn-sm btn-outline-dark" disabled={page <= 1 || busy} onClick={() => setPage((p) => p - 1)}>
+                <button
+                  className="btn btn-sm btn-outline-dark"
+                  disabled={page <= 1 || busy}
+                  onClick={() => setPage((p) => p - 1)}
+                >
                   Préc.
                 </button>
                 <span className="btn btn-sm btn-outline-dark disabled">
                   {page} / {pages}
                 </span>
-                <button className="btn btn-sm btn-outline-dark" disabled={page >= pages || busy} onClick={() => setPage((p) => p + 1)}>
+                <button
+                  className="btn btn-sm btn-outline-dark"
+                  disabled={page >= pages || busy}
+                  onClick={() => setPage((p) => p + 1)}
+                >
                   Suiv.
                 </button>
               </div>
@@ -1618,12 +1970,23 @@ export default function ProductsAdminPage() {
       </div>
 
       {showForm && (
-        <div className="modal d-block" tabIndex={-1} style={{ background: "rgba(0,0,0,.2)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          style={{ background: "rgba(0,0,0,.2)" }}
+        >
           <div className="modal-dialog modal-lg modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">{edit == null ? "Nouveau produit" : "Modifier produit"}</h5>
-                <button type="button" className="btn-close" onClick={closeForm} disabled={busy} />
+                <h5 className="modal-title">
+                  {edit == null ? "Nouveau produit" : "Modifier produit"}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={closeForm}
+                  disabled={busy}
+                />
               </div>
               <div className="modal-body">
                 <ProductForm
@@ -1643,12 +2006,20 @@ export default function ProductsAdminPage() {
       )}
 
       {preview && (
-        <div className="modal d-block" tabIndex={-1} style={{ background: "rgba(0,0,0,.4)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          style={{ background: "rgba(0,0,0,.4)" }}
+        >
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Aperçu — {preview.name}</h5>
-                <button type="button" className="btn-close" onClick={() => setPreview(null)} />
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setPreview(null)}
+                />
               </div>
 
               <div className="modal-body">
@@ -1659,17 +2030,27 @@ export default function ProductsAdminPage() {
                         src={imgUrl(preview.images[0].url)}
                         alt={preview.name}
                         className="img-fluid rounded border"
-                        style={{ width: "100%", height: "auto", objectFit: "cover" }}
+                        style={{
+                          width: "100%",
+                          height: "auto",
+                          objectFit: "cover",
+                        }}
                       />
                     ) : (preview as any).cover ? (
                       <img
                         src={imgUrl((preview as any).cover)}
                         alt={preview.name}
                         className="img-fluid rounded border"
-                        style={{ width: "100%", height: "auto", objectFit: "cover" }}
+                        style={{
+                          width: "100%",
+                          height: "auto",
+                          objectFit: "cover",
+                        }}
                       />
                     ) : (
-                      <div className="border rounded p-3 text-muted">Pas d'image.</div>
+                      <div className="border rounded p-3 text-muted">
+                        Pas d'image.
+                      </div>
                     )}
 
                     {preview.images && preview.images.length > 1 ? (
@@ -1680,7 +2061,10 @@ export default function ProductsAdminPage() {
                               src={imgUrl(im.url)}
                               alt="mini"
                               className="w-100 rounded border"
-                              style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
+                              style={{
+                                aspectRatio: "1 / 1",
+                                objectFit: "cover",
+                              }}
                             />
                           </div>
                         ))}
@@ -1694,10 +2078,12 @@ export default function ProductsAdminPage() {
                         <strong>ID :</strong> {preview.id}
                       </li>
                       <li>
-                        <strong>Boutique :</strong> {preview.shop_name || (preview as any).shop_id}
+                        <strong>Boutique :</strong>{" "}
+                        {preview.shop_name || (preview as any).shop_id}
                       </li>
                       <li>
-                        <strong>Prix :</strong> {moneyMAD((preview as any).price)}
+                        <strong>Prix :</strong>{" "}
+                        {moneyMAD((preview as any).price)}
                       </li>
 
                       <li>
@@ -1712,7 +2098,8 @@ export default function ProductsAdminPage() {
                       </li>
 
                       <li>
-                        <strong>Catégorie :</strong> {(preview as any).category_id ?? "—"}
+                        <strong>Catégorie :</strong>{" "}
+                        {(preview as any).category_id ?? "—"}
                       </li>
 
                       <li>
@@ -1725,7 +2112,9 @@ export default function ProductsAdminPage() {
                       <li>
                         <strong>Villes :</strong>{" "}
                         {normalizeCitiesInline((preview as any).cities).length
-                          ? normalizeCitiesInline((preview as any).cities).join(", ")
+                          ? normalizeCitiesInline((preview as any).cities).join(
+                              ", "
+                            )
                           : "—"}
                       </li>
 
@@ -1735,13 +2124,19 @@ export default function ProductsAdminPage() {
                       </li>
                     </ul>
 
-                    <div className="small text-muted">{(preview as any).description || "—"}</div>
+                    <div className="small text-muted">
+                      {(preview as any).description || "—"}
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn btn-outline-secondary" onClick={() => setPreview(null)}>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary"
+                  onClick={() => setPreview(null)}
+                >
                   Fermer
                 </button>
                 <button
