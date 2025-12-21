@@ -38,6 +38,41 @@ function normalizeCityForApi(raw: string | null | undefined): string | undefined
   return undefined;
 }
 
+/** ===== Random stable (seeded) ===== */
+function mulberry32(seed: number) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function hashSeed(input: string) {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seededShuffle<T>(arr: T[], seedStr: string): T[] {
+  const out = arr.slice();
+  const rand = mulberry32(hashSeed(seedStr));
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+const RANDOM_WINDOW_HOURS = 5;
+function getWindowKey(now = Date.now()) {
+  const win = RANDOM_WINDOW_HOURS * 60 * 60 * 1000;
+  return Math.floor(now / win);
+}
+
 type Channel = "african-market";
 
 export default function AfricanMarket() {
@@ -63,6 +98,7 @@ export default function AfricanMarket() {
   const [pageSize] = useState(24);
   const [total, setTotal] = useState(0);
 
+  // search debounce
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   useEffect(() => {
@@ -77,6 +113,63 @@ export default function AfricanMarket() {
     if (page > pages) setPage(pages);
   }, [pages, page]);
 
+  async function refresh() {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const cityApi = normalizeCityForApi(city);
+
+      const [resProducts, resCats, resSubs] = await Promise.all([
+        listProducts({
+          page,
+          pageSize,
+          channel: "african-market" as Channel,
+          onlyActive: true,
+          city: cityApi,
+        }),
+        listCategories({ page: 1, pageSize: 500 }),
+        listSubCategories({ page: 1, pageSize: 2000 }),
+      ]);
+
+      if (ac.signal.aborted) return;
+
+      const rawItems = resProducts.items || [];
+      const windowKey = getWindowKey();
+
+      const seedStr = [
+        "african-market",
+        `win:${windowKey}`,
+        `city:${cityApi || "all"}`,
+        `page:${page}`,
+        `cat:${categorySlugParam || "all"}`,
+        `sub:${subSlugParam || "all"}`,
+      ].join("|");
+
+      const finalItems = seededShuffle(rawItems, seedStr);
+
+      setItems(finalItems);
+      setTotal(resProducts.pageInfo?.total ?? 0);
+      setCategories(resCats.items || []);
+      setSubCategories(resSubs.items || []);
+    } catch (e: any) {
+      if (ac.signal.aborted) return;
+      setError(e?.message || String(e));
+    } finally {
+      if (!ac.signal.aborted) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, city, categorySlugParam, subSlugParam]);
+
+  // maps
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
     for (const c of categories) map[c.id] = c;
@@ -89,6 +182,11 @@ export default function AfricanMarket() {
     return map;
   }, [categories]);
 
+  const subById = useMemo(() => {
+    const map: Record<number, SubCategory> = {};
+    for (const s of subCategories) map[s.id] = s;
+    return map;
+  }, [subCategories]);
 
   const subsByCatId = useMemo(() => {
     const m: Record<number, SubCategory[]> = {};
@@ -124,56 +222,46 @@ export default function AfricanMarket() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories.length, categorySlugParam, selectedCategory]);
 
-  async function refresh() {
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
+  // search filter
+  const filteredBySearch = useMemo(() => {
+    if (!qDebounced) return items;
+    return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
+  }, [items, qDebounced]);
 
-    setLoading(true);
-    setError(null);
+  // category/subcategory filter (front)
+  const filtered = useMemo(() => {
+    let out = filteredBySearch;
 
-    try {
-      const cityApi = normalizeCityForApi(city);
-
-      const categoryId = selectedCategory?.id;
-      const subCategoryId = selectedSubCategory?.id;
-
-      const [resProducts, resCats, resSubs] = await Promise.all([
-        listProducts({
-          page,
-          pageSize,
-          channel: "african-market" as Channel,
-          onlyActive: true,
-          city: cityApi,
-
-          // ✅ NEW: backend filtered pagination
-          categoryId: categoryId || undefined,
-          subCategoryId: subCategoryId || undefined,
-          q: qDebounced || undefined,
-        }),
-        listCategories({ page: 1, pageSize: 500 }),
-        listSubCategories({ page: 1, pageSize: 2000 }),
-      ]);
-
-      if (ac.signal.aborted) return;
-
-      setItems(resProducts.items || []);
-      setTotal(resProducts.pageInfo?.total ?? 0);
-      setCategories(resCats.items || []);
-      setSubCategories(resSubs.items || []);
-    } catch (e: any) {
-      if (ac.signal.aborted) return;
-      setError(e?.message || String(e));
-    } finally {
-      if (!ac.signal.aborted) setLoading(false);
+    if (selectedCategory) {
+      out = out.filter((p) => {
+        const cid = Number((p as any).category_id || 0);
+        if (!cid) return false;
+        const c = categoriesById[cid];
+        return (
+          c &&
+          String(c.slug || "").toLowerCase() ===
+            String(selectedCategory.slug || "").toLowerCase()
+        );
+      });
     }
-  }
 
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, city, categorySlugParam, subSlugParam, qDebounced]);
+    if (selectedSubCategory) {
+      out = out.filter((p) => {
+        const sid = Number((p as any).sub_category_id || 0);
+        if (!sid) return false;
+        const s = subById[sid];
+        return (
+          s &&
+          String(s.slug || "").toLowerCase() ===
+            String(selectedSubCategory.slug || "").toLowerCase()
+        );
+      });
+    }
 
+    return out;
+  }, [filteredBySearch, selectedCategory, selectedSubCategory, categoriesById, subById]);
+
+  // ✅ titre simple (pas “Catégorie / Sous-catégorie”)
   const title = useMemo(() => {
     if (selectedSubCategory) return selectedSubCategory.name || "Produits";
     if (selectedCategory) return selectedCategory.name || "Produits";
@@ -183,7 +271,7 @@ export default function AfricanMarket() {
   const activeCategoryId = selectedCategory?.id ?? null;
   const activeSubCategoryId = selectedSubCategory?.id ?? null;
 
-  const showFiltersBar = !!selectedCategory || !!selectedSubCategory || !!qDebounced;
+  const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
 
   return (
     <section className="container-xxl py-4">
@@ -201,6 +289,7 @@ export default function AfricanMarket() {
           box-shadow: 0 0 0 .2rem rgba(255,213,79,.40) !important;
         }
 
+        /* ✅ Fix focus/active du bouton Filtrer (Bootstrap le rend noir sinon) */
         .duu-filter-btn .btn,
         .duu-filter-btn .dropdown > .btn,
         .duu-filter-btn > .btn{
@@ -256,6 +345,7 @@ export default function AfricanMarket() {
           </div>
 
           <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
+            {/* ✅ Filtrer (icône + bouton) */}
             <div className="d-flex align-items-center gap-2 flex-shrink-0 duu-filter-btn">
               <span
                 className="d-inline-flex align-items-center justify-content-center"
@@ -290,6 +380,7 @@ export default function AfricanMarket() {
               />
             </div>
 
+            {/* Search */}
             <div className="input-group" style={{ maxWidth: 420 }}>
               <input
                 className="form-control"
@@ -315,6 +406,7 @@ export default function AfricanMarket() {
           </div>
         </div>
 
+        {/* ✅ barre compacte filtres actifs */}
         {showFiltersBar && (
           <div className="d-flex flex-wrap align-items-center gap-2">
             {selectedCategory && (
@@ -329,18 +421,11 @@ export default function AfricanMarket() {
                 {selectedSubCategory.name}
               </span>
             )}
-            {!!qDebounced && (
-              <span className="filter-chip">
-                <span style={{ opacity: 0.7 }}>🔎</span>
-                {qDebounced}
-              </span>
-            )}
 
             <button
               type="button"
               className="btn btn-sm btn-outline-secondary"
               onClick={() => {
-                setQ("");
                 setPage(1);
                 navigate("/african-market");
               }}
@@ -350,6 +435,7 @@ export default function AfricanMarket() {
           </div>
         )}
 
+        {/* ✅ sous-catégories */}
         {selectedCategory && (
           <div className="d-flex flex-wrap align-items-center gap-2">
             <button
@@ -394,11 +480,11 @@ export default function AfricanMarket() {
 
       {loading ? (
         <GridSkeleton />
-      ) : items.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="text-center text-muted py-5">Aucun produit trouvé.</div>
       ) : (
         <div className="row g-3">
-          {items.map((p) => (
+          {filtered.map((p) => (
             <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={p.id}>
               <ProductCard product={p} />
             </div>
@@ -406,6 +492,7 @@ export default function AfricanMarket() {
         </div>
       )}
 
+      {/* ✅ Pagination : pas de "X éléments" */}
       {!loading && pages > 1 && (
         <div className="d-flex justify-content-end align-items-center mt-3">
           <div className="btn-group">
