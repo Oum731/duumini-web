@@ -28,21 +28,38 @@ function isProductActive(p: Product | null | undefined): boolean {
   return Number(anyP.is_active ?? anyP.active ?? 1) === 1;
 }
 
+/** ✅ IMPORTANT : AUCUN .sub_category ici */
 function subToken(p: Product | null | undefined): string {
   if (!p) return "";
   const anyP = p as any;
-  const s = String(anyP.sub_category_slug ?? anyP.sub_category_name ?? "").trim().toLowerCase();
-  if (s) return s;
+
+  const slug = String(anyP.sub_category_slug || "").trim().toLowerCase();
+  if (slug) return slug;
+
+  const name = String(anyP.sub_category_name || "").trim().toLowerCase();
+  if (name) return name;
+
   const id = anyP.sub_category_id;
   if (id != null && String(id).trim() !== "") return String(id).trim().toLowerCase();
+
   return "";
 }
 
 function sectionPathFor(p: Product | null | undefined): string {
   const t = subToken(p);
-  // si slug = "food" => african-food, sinon market
-  if (t === "food" || t.includes("food") || t.includes("alimentation")) return "/african-food";
+  if (t === "food" || t.includes("food") || t.includes("aliment")) return "/african-food";
   return "/african-market";
+}
+
+function getItemsFromListResponse(res: any): Product[] {
+  // selon ton wrapper api: parfois res.items, parfois res.data.items, etc.
+  const a = res?.items;
+  if (Array.isArray(a)) return a;
+  const b = res?.data?.items;
+  if (Array.isArray(b)) return b;
+  const c = res?.data;
+  if (Array.isArray(c)) return c;
+  return [];
 }
 
 export default function ProductView() {
@@ -59,7 +76,7 @@ export default function ProductView() {
   const title = useMemo(() => String(anyP?.name || "Produit"), [anyP?.name]);
 
   const cover = useMemo(() => {
-    // ✅ pas d’accès typed: tout via any
+    // ✅ pas d’accès typed: tout via any (sans sub_category)
     return anyP?.cover || anyP?.images?.[0]?.url || anyP?.image || null;
   }, [anyP?.cover, anyP?.images, anyP?.image]);
 
@@ -100,7 +117,7 @@ export default function ProductView() {
           }
         }
 
-        // 2) slug endpoint
+        // 2) slug endpoint (si tu l’as)
         const resSlug = await fetch(
           `${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`,
           { credentials: "omit" }
@@ -133,7 +150,7 @@ export default function ProductView() {
 
       try {
         const res = await listProducts({ page: 1, pageSize: 48 } as any);
-        const items: Product[] = Array.isArray((res as any)?.items) ? (res as any).items : [];
+        const items: Product[] = getItemsFromListResponse(res);
 
         const pAny = product as any;
         const subId = Number(pAny?.sub_category_id || 0);
@@ -212,8 +229,9 @@ export default function ProductView() {
   }
 
   const displayPrice = Number(anyP?.price_client ?? anyP?.price ?? 0);
+
   const badge =
-    String(anyP?.sub_category_slug || "").toLowerCase() === "food" ? "Food" : "Market";
+    String(anyP?.sub_category_slug || "").trim().toLowerCase() === "food" ? "Food" : "Market";
 
   return (
     <div className="container-xxl py-4">
