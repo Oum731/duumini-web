@@ -25,11 +25,7 @@ function moneyMAD(n?: number | null) {
   })} MAD`;
 }
 
-function computePromoPrice(
-  price: number,
-  type: PromoDiscountType,
-  value: number
-) {
+function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
   const p = Number(price || 0);
   const v = Number(value || 0);
   if (!p || !v) return p;
@@ -65,11 +61,7 @@ function isFood(p: any) {
 
 function isRealPromo(p: any) {
   const food = isFood(p);
-  return (
-    !food &&
-    Number(p?.promo_eligible ?? 0) === 1 &&
-    Number(p?.promo_discount_value ?? 0) > 0
-  );
+  return !food && Number(p?.promo_eligible ?? 0) === 1 && Number(p?.promo_discount_value ?? 0) > 0;
 }
 
 function useBlink(ms = 650) {
@@ -127,16 +119,12 @@ export default function PromotionsCarousel({
     return "NORMAL" as const;
   }, [cd.days, cd.isOver]);
 
-  const pulseClass =
-    urgency === "D1"
-      ? "pulse-d1"
-      : urgency === "SOON"
-      ? "pulse-soon"
-      : "pulse-normal";
+  const pulseClass = urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
 
-  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(
-    cd.mins
-  ).padStart(2, "0")}:${String(cd.secs).padStart(2, "0")}`;
+  const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(2, "0")}:${String(cd.secs).padStart(
+    2,
+    "0"
+  )}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -145,7 +133,6 @@ export default function PromotionsCarousel({
       try {
         setLoading(true);
 
-        // 1) endpoint promos dédié (si dispo)
         try {
           const res = await api.get<Product[]>("/api/products/promotions", {
             query: { limit, onlyActive: 1 },
@@ -153,11 +140,8 @@ export default function PromotionsCarousel({
           const promos = (res || []).filter(isRealPromo).slice(0, limit);
           if (!cancelled) setItems(promos);
           return;
-        } catch {
-          // ignore
-        }
+        } catch {}
 
-        // 2) fallback: liste produits + filtre
         const res = await api.get<{ items: Product[] }>("/api/products", {
           query: { page: 1, pageSize: 120, onlyActive: 1 },
         });
@@ -177,8 +161,7 @@ export default function PromotionsCarousel({
 
   const computed = useMemo(() => {
     return items.map((p: any) => {
-      const type: PromoDiscountType =
-        p?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
+      const type: PromoDiscountType = p?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
       const value = Number(p?.promo_discount_value ?? 0);
       const promoPrice = computePromoPrice(Number(p?.price ?? 0), type, value);
       const cover = p?.cover || p?.images?.[0]?.url || null;
@@ -222,8 +205,6 @@ export default function PromotionsCarousel({
     };
   }, [computed, intervalMs]);
 
-  // ✅ IMPORTANT: ne pas casser la page
-  // - si loading : on ne rend rien
   if (loading) return null;
 
   const headline = "Spécial CAN • Duumini";
@@ -244,11 +225,12 @@ export default function PromotionsCarousel({
           box-shadow: 0 .9rem 2.2rem rgba(0,0,0,.10);
         }
 
+        /* ✅ IMPORTANT: left side can shrink (min-width:0) */
         .can-banner{
           display:flex;
-          align-items:center;
+          align-items:flex-start;
           justify-content:space-between;
-          gap:12px;
+          gap:10px;
           padding: 10px 12px;
           background: var(--duu-yellow, #FFD54F);
           border-bottom: 1px solid rgba(0,0,0,.10);
@@ -256,8 +238,9 @@ export default function PromotionsCarousel({
         .can-banner-left{
           display:flex;
           flex-direction:column;
-          gap:2px;
+          gap:6px;
           min-width:0;
+          flex: 1 1 auto;
         }
         .can-banner-title{
           font-weight: 990;
@@ -269,13 +252,16 @@ export default function PromotionsCarousel({
           overflow: hidden;
           text-overflow: ellipsis;
         }
+
         .can-banner-sub{
-          margin-top: 2px;
           display:flex;
           gap:8px;
           flex-wrap:wrap;
           align-items:center;
+          min-width:0;
         }
+
+        /* ✅ FIX MOBILE: allow wrapping + 2 lines clamp */
         .delivery-pill{
           display:inline-flex;
           align-items:center;
@@ -287,11 +273,26 @@ export default function PromotionsCarousel({
           color: rgba(0,0,0,.82);
           font-weight: 900;
           font-size: .78rem;
-          white-space: nowrap;
+
+          /* was nowrap -> causes overlap */
+          white-space: normal;
+          max-width: 100%;
+
+          /* clamp 2 lines */
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+
+          word-break: break-word;
+          overflow-wrap: anywhere;
+          line-height: 1.18;
         }
         .delivery-pill b{ color: var(--duu-red, #E53935); font-weight: 950; }
 
+        /* ✅ badge CAN never shrink */
         .can-banner-badge{
+          flex: 0 0 auto;
           display:inline-flex;
           align-items:center;
           gap:8px;
@@ -304,7 +305,9 @@ export default function PromotionsCarousel({
           border: 1px solid rgba(255,255,255,.18);
           box-shadow: 0 .5rem 1.1rem rgba(0,0,0,.12);
           white-space: nowrap;
+          margin-left: 6px;
         }
+
         .can-dot{
           width:10px;height:10px;border-radius:50%;
           background: rgba(229,57,53,1);
@@ -464,15 +467,6 @@ export default function PromotionsCarousel({
 
         .duu-old{ text-decoration: line-through; color: rgba(0,0,0,.45); font-weight: 850; font-size: .9rem; }
 
-        .delivery-line{
-          margin-top: 6px;
-          font-size: .78rem;
-          color: rgba(0,0,0,.62);
-          font-weight: 900;
-          line-height: 1.2;
-        }
-        .delivery-line b{ color: var(--duu-red, #E53935); font-weight: 950; }
-
         @media (min-width: 992px){
           .can-grid{ grid-template-columns: 1.05fr .95fr; gap: 14px; padding: 14px; }
           .can-visual{ min-height: 230px; }
@@ -482,7 +476,6 @@ export default function PromotionsCarousel({
           .duu-img{ height: 132px; }
           .can-banner-title{ font-size: .94rem; }
           .delivery-pill{ font-size: .74rem; }
-          .delivery-line{ font-size: .76rem; }
         }
       `}</style>
 
@@ -498,14 +491,11 @@ export default function PromotionsCarousel({
           <div className="can-banner-left">
             <div className="can-banner-title">{headline}</div>
 
-            {/* ✅ Info livraison dans la section promo (au lieu de “livraison gratuite”) */}
+            {/* ✅ Info livraison (ne chevauche plus CAN sur mobile) */}
             <div className="can-banner-sub">
               <span className="delivery-pill" title={DELIVERY_INFO}>
-                🚚 Livraison Casablanca <b>25 DH</b> • Hors Casablanca dès{" "}
-                <b>60 DH</b>{" "}
-                <span style={{ opacity: 0.75, fontWeight: 800 }}>
-                  (selon la ville)
-                </span>
+                🚚 Livraison Casablanca <b>25 DH</b> • Hors Casablanca dès <b>60 DH</b>{" "}
+                <span style={{ opacity: 0.75, fontWeight: 800 }}>(selon la ville)</span>
               </span>
             </div>
           </div>
@@ -530,13 +520,6 @@ export default function PromotionsCarousel({
               <span className="can-cta">
                 🔥 Voir les offres <span aria-hidden="true">›</span>
               </span>
-
-              {/* ✅ Optionnel: répéter en dessous si tu veux (décommenter)
-              <div className="delivery-line">
-                🚚 Livraison Casablanca <b>25 DH</b> • Hors Casablanca dès{" "}
-                <b>60 DH</b> <span style={{ opacity: .75 }}>(selon la ville)</span>
-              </div>
-              */}
             </div>
           </div>
         </div>
@@ -552,25 +535,15 @@ export default function PromotionsCarousel({
             title="Voir les promos CAN"
           >
             {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
-              const saved =
-                type === "PERCENT"
-                  ? `-${Math.round(value)}%`
-                  : `-${moneyMAD(value)}`;
+              const saved = type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
 
               return (
                 <div className="card border-0 duu-card" data-promo-card key={p.id}>
                   <div className="position-relative">
                     {cover ? (
-                      <img
-                        className="duu-img"
-                        src={imgUrl(cover)}
-                        alt={p.name}
-                        loading="lazy"
-                      />
+                      <img className="duu-img" src={imgUrl(cover)} alt={p.name} loading="lazy" />
                     ) : (
-                      <div className="duu-img d-flex align-items-center justify-content-center text-muted">
-                        Image
-                      </div>
+                      <div className="duu-img d-flex align-items-center justify-content-center text-muted">Image</div>
                     )}
 
                     <span className="duu-badge">PROMO {saved}</span>
@@ -602,21 +575,15 @@ export default function PromotionsCarousel({
                       <div className="duu-old">{moneyMAD(p.price)}</div>
                     </div>
 
-                    {/* ✅ Ici on met l'info livraison au lieu de “⚡ Offre CAN / Livraison gratuite” */}
+                    {/* ✅ Info livraison au lieu du texte promo */}
                     <div className="small text-muted mt-1">
-                      {cd.isOver ? "Offre terminée" : (
+                      {cd.isOver ? (
+                        "Offre terminée"
+                      ) : (
                         <>
-                          🚚 Livraison Casablanca{" "}
-                          <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>
-                            25 DH
-                          </span>{" "}
-                          • Hors Casablanca dès{" "}
-                          <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>
-                            60 DH
-                          </span>{" "}
-                          <span style={{ fontWeight: 800, color: "rgba(0,0,0,.55)" }}>
-                            (selon la ville)
-                          </span>
+                          🚚 Casa <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>25 DH</span> • Hors Casa dès{" "}
+                          <span style={{ color: "var(--duu-red,#E53935)", fontWeight: 900 }}>60 DH</span>{" "}
+                          <span style={{ fontWeight: 800, color: "rgba(0,0,0,.55)" }}>(selon la ville)</span>
                         </>
                       )}
                     </div>
@@ -627,9 +594,7 @@ export default function PromotionsCarousel({
           </div>
         ) : (
           <div className="px-3 pb-3">
-            <div className="alert alert-light border small mb-0">
-              Aucune promo disponible pour le moment. Revenez bientôt 👀
-            </div>
+            <div className="alert alert-light border small mb-0">Aucune promo disponible pour le moment. Revenez bientôt 👀</div>
           </div>
         )}
       </div>
