@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { ChevronRight, SlidersHorizontal } from "lucide-react";
 import InstallPWA from "../components/InstallPWA";
 import CategoriesMenu from "../components/CategoriesMenu";
+import PromotionsCarousel from "../components/PromotionsCarousel"; // ✅ ré-activé
 import { listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
@@ -12,7 +13,7 @@ import { API_BASE } from "../services/http";
 /* ===== Opening config ===== */
 export const DUUMINI_SLOGAN = "Les goûts de ton pays, partout où tu te trouves";
 export const DUUMINI_OPEN_ISO = "2025-12-21T20:00:00+01:00";
-export const CAN_PROMO_END_ISO = "2026-01-22T23:59:59+01:00"; // (pas utilisé ici, juste gardé)
+export const CAN_PROMO_END_ISO = "2026-01-22T23:59:59+01:00"; // ✅ utilisé ici
 
 /* 📞 WhatsApp infos (utilisé uniquement en mode fermeture) */
 const DUUMINI_WHATSAPP = "+212623677884";
@@ -30,10 +31,6 @@ function moneyMAD(n?: number | null) {
     maximumFractionDigits: 0,
   })} MAD`;
 }
-
-
-
-
 
 /* ===== Countdown Hook (fermeture) ===== */
 function useCountdown(targetIso: string) {
@@ -387,6 +384,7 @@ export default function Home() {
 
   /* ===== Opening gate ===== */
   const openAt = useMemo(() => new Date(DUUMINI_OPEN_ISO).getTime(), []);
+  const promoEndAt = useMemo(() => new Date(CAN_PROMO_END_ISO).getTime(), []);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -395,6 +393,9 @@ export default function Home() {
   }, []);
 
   const isOpen = now >= openAt;
+
+  // ✅ PROMO active UNIQUEMENT après ouverture (et jusqu'à la fin de promo)
+  const isPromoLive = now >= openAt && now <= promoEndAt;
 
   /* ===== Data ===== */
   const [loading, setLoading] = useState(true);
@@ -519,25 +520,6 @@ export default function Home() {
           min-height: 100%;
         }
 
-        /* ✅ Bannière ouverture (désactivée car on n'affiche pas avant ouverture ici)
-           Si tu veux aussi une bannière après ouverture, on peut la remettre. */
-        .open-banner{
-          border-radius: 18px;
-          border: 1px solid rgba(0,0,0,.10);
-          background:
-            linear-gradient(135deg, rgba(255,213,79,.65), rgba(255,255,255,.85));
-          box-shadow: 0 12px 26px rgba(0,0,0,.06);
-          overflow: hidden;
-        }
-        .open-banner-inner{
-          padding: 14px 14px 12px;
-          display:flex;
-          align-items:flex-start;
-          justify-content:space-between;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
-
         .sec{
           border-radius: 18px;
           border: 1px solid rgba(0,0,0,.08);
@@ -569,7 +551,6 @@ export default function Home() {
         }
         .soft-action:hover{ color: var(--duu-red); border-color: rgba(0,0,0,.20); }
 
-        /* ✅ barre filtre minimaliste */
         .filter-bar{
           display:flex;
           align-items:center;
@@ -577,7 +558,6 @@ export default function Home() {
           margin-top: 10px;
         }
 
-        /* ✅ bouton Filtrer: jamais noir au focus/active */
         .duu-filter-btn .btn,
         .duu-filter-btn .dropdown > .btn,
         .duu-filter-btn > .btn{
@@ -631,6 +611,13 @@ export default function Home() {
         <section className="container pt-3">
           <InstallPWA />
 
+          {/* ✅ PROMO: active seulement après ouverture (et jusqu’à la fin de promo) */}
+          {isPromoLive && (
+            <div className="mt-2">
+              <PromotionsCarousel />
+            </div>
+          )}
+
           {/* ✅ Juste le bouton Filtrer (pas de hero, pas de whatsapp, pas de paiement) */}
           <div className="filter-bar">
             <div className="duu-filter-btn d-flex align-items-center gap-2">
@@ -683,7 +670,7 @@ export default function Home() {
 
           {loading ? <div className="text-muted small mt-3">Chargement…</div> : null}
 
-          {/* ✅ Sections catégories (sans Food/Market counts, sans sous-catégories) */}
+          {/* ✅ Sections catégories */}
           {!loading && !err && (
             <div className="d-flex flex-column gap-3 mt-3">
               {categoryIdsWithProducts.map((cid, idx) => {

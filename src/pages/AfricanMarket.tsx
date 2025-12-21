@@ -30,14 +30,6 @@ function GridSkeleton() {
   );
 }
 
-function normalizeCityForApi(raw: string | null | undefined): string | undefined {
-  if (!raw) return undefined;
-  const t = String(raw).trim().toLowerCase();
-  if (t.startsWith("cas")) return "Casablanca";
-  if (t.startsWith("mar")) return "Marrakech";
-  return undefined;
-}
-
 /** ===== Random stable (seeded) ===== */
 function mulberry32(seed: number) {
   return function () {
@@ -122,15 +114,13 @@ export default function AfricanMarket() {
     setError(null);
 
     try {
-      const cityApi = normalizeCityForApi(city);
-
+      // ✅ On ne filtre plus par ville côté API
       const [resProducts, resCats, resSubs] = await Promise.all([
         listProducts({
           page,
           pageSize,
           channel: "african-market" as Channel,
           onlyActive: true,
-          city: cityApi,
         }),
         listCategories({ page: 1, pageSize: 500 }),
         listSubCategories({ page: 1, pageSize: 2000 }),
@@ -141,10 +131,11 @@ export default function AfricanMarket() {
       const rawItems = resProducts.items || [];
       const windowKey = getWindowKey();
 
+      // ✅ On garde city seulement pour le random stable (pas envoyé à l'API)
       const seedStr = [
         "african-market",
         `win:${windowKey}`,
-        `city:${cityApi || "all"}`,
+        `city:${city || "all"}`,
         `page:${page}`,
         `cat:${categorySlugParam || "all"}`,
         `sub:${subSlugParam || "all"}`,
@@ -239,8 +230,7 @@ export default function AfricanMarket() {
         const c = categoriesById[cid];
         return (
           c &&
-          String(c.slug || "").toLowerCase() ===
-            String(selectedCategory.slug || "").toLowerCase()
+          String(c.slug || "").toLowerCase() === String(selectedCategory.slug || "").toLowerCase()
         );
       });
     }
@@ -252,8 +242,7 @@ export default function AfricanMarket() {
         const s = subById[sid];
         return (
           s &&
-          String(s.slug || "").toLowerCase() ===
-            String(selectedSubCategory.slug || "").toLowerCase()
+          String(s.slug || "").toLowerCase() === String(selectedSubCategory.slug || "").toLowerCase()
         );
       });
     }
@@ -261,7 +250,7 @@ export default function AfricanMarket() {
     return out;
   }, [filteredBySearch, selectedCategory, selectedSubCategory, categoriesById, subById]);
 
-  // ✅ titre simple (pas “Catégorie / Sous-catégorie”)
+  // ✅ titre simple
   const title = useMemo(() => {
     if (selectedSubCategory) return selectedSubCategory.name || "Produits";
     if (selectedCategory) return selectedCategory.name || "Produits";

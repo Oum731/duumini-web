@@ -16,13 +16,10 @@ import {
   me as apiMe,
   updateProfile as apiUpdateProfile,
   type User,
+  type Sexe,
 } from "../services/auth";
 
-import {
-  initPush,
-  registerDevice,
-  unregisterDevice,
-} from "../services/push";
+import { initPush, registerDevice, unregisterDevice } from "../services/push";
 
 type RegisterPayload = {
   phone: string;
@@ -32,7 +29,7 @@ type RegisterPayload = {
   ville?: string | null;
   commune?: string | null;
   quartier?: string | null;
-  sexe?: "M" | "F" | null;
+  sexe?: Sexe | null;
 };
 
 type AuthContextType = {
@@ -47,37 +44,27 @@ type AuthContextType = {
 
 const noopAsync = async () => {};
 
-/* ===== Helper: hard reload (web + PWA) ===== */
 function hardReload() {
   if (typeof window === "undefined") return;
-  // Reload complet de l’onglet / PWA
   window.location.reload();
 }
 
-/* ===== Helper: broadcast changement d’auth dans l’app + autres onglets ===== */
 function broadcastAuthChange(user: User | null) {
   try {
     if (typeof window === "undefined") return;
 
-    // Événement CustomEvent pour le même onglet (si besoin)
     window.dispatchEvent(
       new CustomEvent("duumini:auth-changed", {
         detail: { user },
       })
     );
 
-    // Événement via localStorage pour les autres onglets / PWA
     const payload = {
       ts: Date.now(),
       user: user ? { id: user.id, role: user.role } : null,
     };
-    window.localStorage.setItem(
-      "duumini:auth-changed",
-      JSON.stringify(payload)
-    );
-  } catch {
-    // silencieux
-  }
+    window.localStorage.setItem("duumini:auth-changed", JSON.stringify(payload));
+  } catch {}
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -94,21 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => getCurrentUser());
   const [loading, setLoading] = useState<boolean>(true);
 
-  const applyRoleChangeIfNeeded = useCallback(
-    async (prev: User | null, next: User | null) => {
-      const prevRole = (prev?.role || "").toString().trim().toUpperCase();
-      const nextRole = (next?.role || "").toString().trim().toUpperCase();
+  const applyRoleChangeIfNeeded = useCallback(async (prev: User | null, next: User | null) => {
+    const prevRole = (prev?.role || "").toString().trim().toUpperCase();
+    const nextRole = (next?.role || "").toString().trim().toUpperCase();
+    if (prevRole && nextRole && prevRole !== nextRole) hardReload();
+  }, []);
 
-      // On ne fait PLUS d’appel /auth/refresh ici,
-      // uniquement un reload si le rôle change vraiment
-      if (prevRole && nextRole && prevRole !== nextRole) {
-        hardReload();
-      }
-    },
-    []
-  );
-
-  // 🔔 Init Pushy + enregistrement device pour l'utilisateur courant
   const setupPush = useCallback(async () => {
     try {
       const token = await initPush();
@@ -121,21 +99,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const refreshUser = useCallback(
-    async () => {
-      try {
-        const before = getCurrentUser();
-        const u = await apiMe(); // utilise authFetch → fait déjà /auth/refresh si besoin
-        setUser(u);
-        await applyRoleChangeIfNeeded(before, u);
-      } catch {
-        setUser(null);
-      }
-    },
-    [applyRoleChangeIfNeeded]
-  );
+  const refreshUser = useCallback(async () => {
+    try {
+      const before = getCurrentUser();
+      const u = await apiMe();
+      setUser(u);
+      await applyRoleChangeIfNeeded(before, u);
+    } catch {
+      setUser(null);
+    }
+  }, [applyRoleChangeIfNeeded]);
 
-  // Chargement initial : récupérer le user si token présent
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -150,10 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!alive) return;
         setUser(u);
         await applyRoleChangeIfNeeded(before, u);
-
-        if (u) {
-          await setupPush();
-        }
+        if (u) await setupPush();
       } catch {
         if (!alive) return;
         setUser(null);
@@ -166,7 +137,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applyRoleChangeIfNeeded, setupPush]);
 
-  // Refresh user sur focus / visibilité / intervalle raisonnable
   useEffect(() => {
     const onFocus = () => refreshUser();
     const onVis = () => {
@@ -185,42 +155,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Réaction aux changements d’auth dans les AUTRES onglets / PWA
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "duumini:auth-changed" && e.newValue) {
-        // Un autre onglet ou une autre fenêtre PWA a loggé / déloggé
-        // → on recharge complètement cette instance pour être 100% synchro
-        hardReload();
-      }
+      if (e.key === "duumini:auth-changed" && e.newValue) hardReload();
     };
 
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = useCallback(
-    async (phone: string, password: string) => {
-      const before = getCurrentUser();
-      const u = await apiLogin(phone, password);
-      setUser(u);
+  const login = useCallback(async (phone: string, password: string) => {
+    const before = getCurrentUser();
+    const u = await apiLogin(phone, password);
+    setUser(u);
 
-      // 🔔 Broadcast dans l’app + autres onglets
-      broadcastAuthChange(u);
+    broadcastAuthChange(u);
+    await applyRoleChangeIfNeeded(before, u);
 
-      await applyRoleChangeIfNeeded(before, u);
-
-      // Après login, on initialise Pushy + enregistre le device
-      await setupPush();
-
-      // 👉 Reload complet (web + PWA) pour recharger menus, routes protégées, etc.
-      hardReload();
-    },
-    [applyRoleChangeIfNeeded, setupPush]
-  );
+    await setupPush();
+    hardReload();
+  }, [applyRoleChangeIfNeeded, setupPush]);
 
   const register = useCallback(async (data: RegisterPayload) => {
     await apiRegister(data);
@@ -228,44 +184,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      // Désenregistrer les devices pushy de cet utilisateur
       await unregisterDevice();
     } catch {}
     await apiLogout();
     setUser(null);
 
-    // 🔔 Broadcast logout (user = null)
     broadcastAuthChange(null);
-
-    // 👉 Reload complet pour nettoyer tout (web + PWA)
     hardReload();
   }, []);
 
-  const updateProfile = useCallback(
-    async (data: Partial<User>) => {
-      const before = getCurrentUser();
-      const updated = await apiUpdateProfile(data);
-      setUser(updated);
+  const updateProfile = useCallback(async (data: Partial<User>) => {
+    const before = getCurrentUser();
+    const updated = await apiUpdateProfile(data);
+    setUser(updated);
 
-      // 🔔 propager le changement de profil (nom, etc.)
-      broadcastAuthChange(updated);
-
-      await applyRoleChangeIfNeeded(before, updated);
-    },
-    [applyRoleChangeIfNeeded]
-  );
+    broadcastAuthChange(updated);
+    await applyRoleChangeIfNeeded(before, updated);
+  }, [applyRoleChangeIfNeeded]);
 
   return (
     <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        login,
-        register,
-        logout,
-        refreshUser,
-        updateProfile,
-      }}
+      value={{ user, loading, login, register, logout, refreshUser, updateProfile }}
     >
       {children}
     </AuthContext.Provider>

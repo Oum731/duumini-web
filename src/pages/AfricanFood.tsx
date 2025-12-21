@@ -30,14 +30,6 @@ function GridSkeleton() {
   );
 }
 
-function normalizeCityForApi(raw: string | null | undefined): string | undefined {
-  if (!raw) return undefined;
-  const t = String(raw).trim().toLowerCase();
-  if (t.startsWith("cas")) return "Casablanca";
-  if (t.startsWith("mar")) return "Marrakech";
-  return undefined;
-}
-
 /** ===== Random stable (seeded) ===== */
 function mulberry32(seed: number) {
   return function () {
@@ -123,15 +115,13 @@ export default function AfricanFood() {
     setError(null);
 
     try {
-      const cityApi = normalizeCityForApi(city);
-
+      // ✅ On ne filtre plus par ville côté API
       const [resProducts, resCats, resSubs] = await Promise.all([
         listProducts({
           page,
           pageSize,
           channel: "african-food" as Channel,
           onlyActive: true,
-          city: cityApi,
         }),
         listCategories({ page: 1, pageSize: 500 }),
         listSubCategories({ page: 1, pageSize: 2000 }),
@@ -142,10 +132,11 @@ export default function AfricanFood() {
       const rawItems = resProducts.items || [];
       const windowKey = getWindowKey();
 
+      // ✅ City uniquement pour le shuffle stable (pas envoyé à l'API)
       const seedStr = [
         "african-food",
         `win:${windowKey}`,
-        `city:${cityApi || "all"}`,
+        `city:${city || "all"}`,
         `page:${page}`,
         `cat:${categorySlugParam || "all"}`,
         `sub:${subSlugParam || "all"}`,
@@ -240,8 +231,7 @@ export default function AfricanFood() {
         const c = categoriesById[cid];
         return (
           c &&
-          String(c.slug || "").toLowerCase() ===
-            String(selectedCategory.slug || "").toLowerCase()
+          String(c.slug || "").toLowerCase() === String(selectedCategory.slug || "").toLowerCase()
         );
       });
     }
@@ -253,8 +243,7 @@ export default function AfricanFood() {
         const s = subById[sid];
         return (
           s &&
-          String(s.slug || "").toLowerCase() ===
-            String(selectedSubCategory.slug || "").toLowerCase()
+          String(s.slug || "").toLowerCase() === String(selectedSubCategory.slug || "").toLowerCase()
         );
       });
     }

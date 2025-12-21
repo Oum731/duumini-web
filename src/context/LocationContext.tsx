@@ -3,6 +3,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -10,17 +11,33 @@ import { useAuth } from "./AuthContext";
 
 const STORAGE_KEY = "duumini_city";
 
-export type CityCode = "CASABLANCA" | "MARRAKECH";
+/**
+ * ✅ Avant: "CASABLANCA" | "MARRAKECH"
+ * ✅ Maintenant: ville libre (string)
+ */
+export type CityCode = string;
 
+/**
+ * ✅ Suggestions par défaut (peuvent être remplacées/complétées par la DB dans LocationGate)
+ * On garde la structure pour compat avec ton UI.
+ */
 export const CITY_OPTIONS: { code: CityCode; label: string }[] = [
-  { code: "CASABLANCA", label: "Casablanca" },
-  { code: "MARRAKECH", label: "Marrakech" },
+  { code: "Casablanca", label: "Casablanca" },
+  { code: "Marrakech", label: "Marrakech" },
+  { code: "Rabat", label: "Rabat" },
+  { code: "Tanger", label: "Tanger" },
+  { code: "Fès", label: "Fès" },
+  { code: "Agadir", label: "Agadir" },
 ];
 
 type LocationContextType = {
+  /**
+   * Ville courante (libre)
+   * Ex: "Casablanca", "Kénitra", "Oujda", etc.
+   */
   city: CityCode | null;
   setCity: (city: CityCode | null) => void;
-  isReady: boolean; // true quand on a lu le localStorage / profil
+  isReady: boolean;
 };
 
 const LocationContext = createContext<LocationContextType>({
@@ -29,60 +46,62 @@ const LocationContext = createContext<LocationContextType>({
   isReady: false,
 });
 
-// petit helper pour mapper "Casablanca" / "Marrakech" du profil user -> CityCode
-function normalizeUserVille(v?: string | null): CityCode | null {
-  const raw = (v || "").trim().toLowerCase();
-  if (!raw) return null;
-  if (raw.startsWith("cas")) return "CASABLANCA";
-  if (raw.startsWith("mar")) return "MARRAKECH";
-  return null;
+function normalizeCityLabel(v?: string | null): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  // On garde la casse telle quelle, mais on peut légèrement uniformiser :
+  // -> "casablanca" => "Casablanca"
+  // Si tu préfères ne pas toucher, supprime le bloc ci-dessous.
+  const lower = s.toLowerCase();
+  if (lower === "casablanca") return "Casablanca";
+  if (lower === "marrakech") return "Marrakech";
+  if (lower === "rabat") return "Rabat";
+  if (lower === "tanger") return "Tanger";
+  if (lower === "fes" || lower === "fès") return "Fès";
+  if (lower === "agadir") return "Agadir";
+  return s;
 }
 
 export function LocationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+
   const [city, setCityState] = useState<CityCode | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Lecture initiale : si user connecté → on utilise son profil,
-  // sinon → on lit le localStorage (invité).
+  // Ville du profil user (si connecté)
+  const userVille = useMemo(() => {
+    return normalizeCityLabel((user as any)?.ville ?? null);
+  }, [user]);
+
   useEffect(() => {
-    // User connecté → on NE propose PAS le choix de ville
+    // ✅ Si user connecté : on privilégie son profil
     if (user) {
-      const code = normalizeUserVille((user as any).ville);
-      if (code) {
-        setCityState(code);
-      } else {
-        // ville inconnue → on laisse null, mais on ne forcera pas de modal
-        setCityState(null);
-      }
+      setCityState(userVille);
       setIsReady(true);
       return;
     }
 
-    // Invité → lecture depuis localStorage
+    // ✅ Invité : lecture depuis localStorage
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved === "CASABLANCA" || saved === "MARRAKECH") {
-        setCityState(saved);
-      }
+      setCityState(normalizeCityLabel(saved));
     } catch {
-      // ignore
+      setCityState(null);
     } finally {
       setIsReady(true);
     }
-  }, [user?.id, (user as any)?.ville]);
+  }, [user?.id, userVille]);
 
   function setCity(next: CityCode | null) {
-    setCityState(next);
+    const normalized = normalizeCityLabel(next);
 
-    // On ne persiste que pour les invités
+    setCityState(normalized);
+
+    // ✅ On persiste seulement pour les invités
     if (!user) {
       try {
-        if (next) {
-          localStorage.setItem(STORAGE_KEY, next);
-        } else {
-          localStorage.removeItem(STORAGE_KEY);
-        }
+        if (normalized) localStorage.setItem(STORAGE_KEY, normalized);
+        else localStorage.removeItem(STORAGE_KEY);
       } catch {
         // ignore
       }

@@ -40,6 +40,15 @@ function normalizeRole(r: any): Role {
   return "MEMBER";
 }
 
+function normalizeSexe(s: any): Sexe | null {
+  if (s == null || s === "") return null;
+  const v = String(s).trim().toUpperCase();
+  if (v === "M") return "M";
+  if (v === "F") return "F";
+  if (v === "AUTRE") return "AUTRE";
+  return null;
+}
+
 /* ===== Helper front: code ville → libellé DB ===== */
 export function mapCityCodeToVille(code?: string | null): string | null {
   if (!code) return null;
@@ -59,27 +68,40 @@ export function getCurrentUser(): User | null {
   const raw = localStorage.getItem(STORAGE_KEYS.user);
   try {
     const parsed = raw ? (JSON.parse(raw) as User) : null;
-    return parsed ? { ...parsed, role: normalizeRole(parsed.role) } : null;
+    if (!parsed) return null;
+    return {
+      ...parsed,
+      role: normalizeRole(parsed.role),
+      sexe: normalizeSexe((parsed as any).sexe),
+    };
   } catch {
     return null;
   }
 }
+
 export function saveSession(data: LoginRes) {
   const normalizedUser: User = {
     ...data.user,
     role: normalizeRole(data.user.role),
+    sexe: normalizeSexe((data.user as any).sexe),
   };
   localStorage.setItem(STORAGE_KEYS.access, data.access_token);
   localStorage.setItem(STORAGE_KEYS.refresh, data.refresh_token);
   localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalizedUser));
 }
+
 export function clearSession() {
   localStorage.removeItem(STORAGE_KEYS.access);
   localStorage.removeItem(STORAGE_KEYS.refresh);
   localStorage.removeItem(STORAGE_KEYS.user);
 }
+
 function setUserInStorage(user: User) {
-  const normalized = { ...user, role: normalizeRole(user.role) } as User;
+  const normalized: User = {
+    ...user,
+    role: normalizeRole(user.role),
+    sexe: normalizeSexe((user as any).sexe),
+  };
   localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalized));
 }
 
@@ -148,7 +170,14 @@ export async function login(phone: string, password: string) {
     body: JSON.stringify({ phone, password }),
   });
   const data = await parseJson<LoginRes>(res);
-  saveSession({ ...data, user: { ...data.user, role: normalizeRole(data.user.role) } });
+  saveSession({
+    ...data,
+    user: {
+      ...data.user,
+      role: normalizeRole(data.user.role),
+      sexe: normalizeSexe((data.user as any).sexe),
+    },
+  });
   return getCurrentUser() as User;
 }
 
@@ -180,19 +209,31 @@ export async function me(): Promise<User | null> {
   const res = await authFetch(`${API}/api/user/me`);
   const u = await parseJson<User | null>(res);
   if (!u) return null;
-  const normalized = { ...u, role: normalizeRole(u.role) } as User;
+  const normalized: User = {
+    ...u,
+    role: normalizeRole(u.role),
+    sexe: normalizeSexe((u as any).sexe),
+  };
   setUserInStorage(normalized);
   return normalized;
 }
 
 export async function updateProfile(payload: Partial<User>) {
+  const cleanPayload: any = { ...payload };
+  if ("role" in cleanPayload) delete cleanPayload.role; // sécurité : role ne doit pas être updatable ici
+
   const res = await authFetch(`${API}/api/user/me`, {
     method: "PUT",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(cleanPayload),
     headers: { "Content-Type": "application/json" },
   });
+
   const user = await parseJson<User>(res);
-  const normalized = { ...user, role: normalizeRole(user.role) } as User;
+  const normalized: User = {
+    ...user,
+    role: normalizeRole(user.role),
+    sexe: normalizeSexe((user as any).sexe),
+  };
   setUserInStorage(normalized);
   return normalized;
 }

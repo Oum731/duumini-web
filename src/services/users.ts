@@ -2,6 +2,7 @@
 import { http } from "./http";
 
 export type Role = "MEMBER" | "VENDEUR" | "LIVREUR" | "ADMIN";
+export type Sexe = "M" | "F" | "AUTRE";
 
 export type User = {
   id: number;
@@ -13,7 +14,7 @@ export type User = {
   ville?: string | null;
   commune?: string | null;
   quartier?: string | null;
-  sexe?: "M" | "F" | null;
+  sexe?: Sexe | null;
   created_at?: string | null;
 };
 
@@ -62,7 +63,7 @@ export async function updateUser(
     ville?: string | null;
     commune?: string | null;
     quartier?: string | null;
-    sexe?: "M" | "F" | null;
+    sexe?: Sexe | null;
   }
 ) {
   return http<User>(`/api/user/${id}`, {

@@ -71,18 +71,6 @@ export type Paginated<T> = {
 type Channel = "african-food" | "african-market";
 
 /* ---------- Utils ---------- */
-function normalizeCityFilterToVille(city?: string | null): string | undefined {
-  if (!city) return undefined;
-  const raw = String(city).trim();
-  if (!raw) return undefined;
-
-  const low = raw.toLowerCase();
-  if (low.startsWith("cas")) return "Casablanca";
-  if (low.startsWith("mar")) return "Marrakech";
-
-  return raw;
-}
-
 function normalizeCityLabel(city?: string | null): string | null {
   if (!city) return null;
   const raw = String(city).trim();
@@ -162,8 +150,6 @@ export async function listProducts(
     pageSize?: number;
     channel?: Channel;
     onlyActive?: boolean;
-    city?: string;
-    ville?: string;
   } = {}
 ) {
   const page = opts.page ?? 1;
@@ -179,9 +165,7 @@ export async function listProducts(
   const query: Record<string, any> = { page, pageSize };
   if (opts.onlyActive) query.onlyActive = 1;
 
-  const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
-  if (ville) query.ville = ville;
-
+  // ⚠️ On n'envoie plus ville/city : l'API ne filtre plus dessus
   return api.get<Paginated<Product>>(base, { query });
 }
 
@@ -191,18 +175,12 @@ export async function listPromotions(
     limit?: number;
     channel?: "all" | Channel;
     onlyActive?: boolean;
-    city?: string;
-    ville?: string;
   } = {}
 ) {
   const limit = opts.limit ?? 12;
 
   const query: Record<string, any> = { limit };
   if (opts.onlyActive) query.onlyActive = 1;
-
-  const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
-  if (ville) query.ville = ville;
-
   if (opts.channel && opts.channel !== "all") query.channel = opts.channel;
 
   return api.get<Product[]>("/api/products/promotions", { query });
@@ -337,49 +315,22 @@ export async function removeProduct(id: number) {
 
 /* ---------- Top produits : les plus commandés ---------- */
 export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
-export async function listTopOrderedProducts(opts: {
-  limit?: number;
-  city?: string;
-  ville?: string;
-}): Promise<Product[]>;
-export async function listTopOrderedProducts(
-  limitOrOpts?: number | { limit?: number; city?: string; ville?: string }
-) {
+export async function listTopOrderedProducts(opts: { limit?: number }): Promise<Product[]>;
+export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: number }) {
   let limit = 8;
-  let ville: string | undefined;
+  if (typeof limitOrOpts === "number") limit = limitOrOpts;
+  else if (limitOrOpts && typeof limitOrOpts === "object" && typeof limitOrOpts.limit === "number")
+    limit = limitOrOpts.limit;
 
-  if (typeof limitOrOpts === "number") {
-    limit = limitOrOpts;
-  } else if (limitOrOpts && typeof limitOrOpts === "object") {
-    if (typeof limitOrOpts.limit === "number") limit = limitOrOpts.limit;
-    ville = normalizeCityFilterToVille(limitOrOpts.city ?? limitOrOpts.ville ?? null);
-  }
-
-  const query: Record<string, any> = { limit };
-  if (ville) query.ville = ville;
-
-  return api.get<Product[]>("/api/products/top-ordered", { query });
+  return api.get<Product[]>("/api/products/top-ordered", { query: { limit } });
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
 export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number }): Promise<Product[]>;
-export async function listTopRatedProducts(opts: {
-  limit?: number;
-  minCount?: number;
-  city?: string;
-  ville?: string;
-}): Promise<Product[]>;
-export async function listTopRatedProducts(
-  opts: { limit?: number; minCount?: number; city?: string; ville?: string } = {}
-) {
+export async function listTopRatedProducts(opts: { limit?: number; minCount?: number } = {}) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
-
-  const query: Record<string, any> = { limit, minCount };
-  const ville = normalizeCityFilterToVille(opts.city ?? opts.ville ?? null);
-  if (ville) query.ville = ville;
-
-  return api.get<Product[]>("/api/products/top-rated", { query });
+  return api.get<Product[]>("/api/products/top-rated", { query: { limit, minCount } });
 }
 
 /* ======================================================================
