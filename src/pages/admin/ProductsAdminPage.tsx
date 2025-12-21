@@ -37,10 +37,6 @@ type SubCategory = {
   category_slug?: string;
 };
 
-/**
- * Draft FORM (on ne dépend plus de Partial<Product>)
- * -> évite les erreurs TS SetStateAction<Draft> quand Product a des types différents
- */
 type Draft = {
   name: string;
   price?: number | null;
@@ -51,29 +47,24 @@ type Draft = {
   is_featured?: 0 | 1 | null;
   promo_eligible?: 0 | 1 | null;
 
-  // ✅ paire obligatoire sur tous les produits
   category_id?: number | null;
   sub_category_id?: number | null;
 
   shop_id?: number | null;
 
-  // ✅ création rapide
   category_name?: string;
   sub_category_name?: string;
 
-  // ✅ promo
   promo_discount_type?: PromoDiscountType | null;
   promo_discount_value?: number | null;
   promo_free_delivery?: 0 | 1 | null;
 
-  // ✅ villes
   cities?: string[];
 
-  // ✅ statut (admin)
   is_active?: 0 | 1 | null;
 };
 
-const CITY_OPTIONS = ["Casablanca", "Marrakech"];
+const CITY_OPTIONS = ["Casablanca", "Marrakech"] as const;
 
 type Mode = "default" | "top-ordered" | "top-rated";
 type Channel = "all" | "african-food" | "african-market";
@@ -118,7 +109,10 @@ function computePromoPrice(price: number, type: PromoDiscountType, value: number
   return Math.max(0, Number(res.toFixed(2)));
 }
 
+/** ✅ promo “réelle” uniquement si éligible + valeur > 0 + produit actif */
 function hasRealPromo(p: any) {
+  const active = (p?.active ?? p?.is_active ?? 1) ? 1 : 0;
+  if (!active) return false;
   return !!p?.promo_eligible && Number(p?.promo_discount_value ?? 0) > 0;
 }
 
@@ -130,10 +124,6 @@ function splitNames(raw: string) {
     .slice(0, 10);
 }
 
-/**
- * ✅ normalisation INLINE (pas de utils externe)
- * - accepte: string[], string, JSON-string, csv, null/undefined
- */
 function normalizeCitiesInline(input: unknown): string[] {
   if (input == null) return [];
 
@@ -145,7 +135,6 @@ function normalizeCitiesInline(input: unknown): string[] {
     const s = input.trim();
     if (!s) return [];
 
-    // JSON ?
     if (s.startsWith("[") && s.endsWith("]")) {
       try {
         const parsed = JSON.parse(s);
@@ -155,7 +144,6 @@ function normalizeCitiesInline(input: unknown): string[] {
       } catch {}
     }
 
-    // CSV
     if (s.includes(",")) {
       return s
         .split(",")
@@ -169,13 +157,11 @@ function normalizeCitiesInline(input: unknown): string[] {
   return [];
 }
 
-/** ✅ Lire un "body" que api.get peut renvoyer sous plusieurs formes */
 function unwrap<T>(res: any): T {
   if (res && typeof res === "object" && "data" in res) return res.data as T;
   return res as T;
 }
 
-/** ✅ normaliser une réponse paginée (res.items / res.data.items etc.) */
 function getPaginated(res: any): { items: Product[]; pageInfo?: any } {
   const body = unwrap<any>(res);
 
@@ -263,11 +249,9 @@ function ProductForm({
   const [replaceImages, setReplaceImages] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // ✅ création rapide catégorie
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
 
-  // ✅ création rapide sous-catégorie (mode normal)
   const [isCustomSubCategory, setIsCustomSubCategory] = useState(false);
   const [newSubCategoryName, setNewSubCategoryName] = useState("");
 
@@ -464,10 +448,6 @@ function ProductForm({
 
   return (
     <form onSubmit={submit}>
-      {/* ... (FORM UI inchangé, tu peux garder tel quel) ... */}
-      {/* IMPORTANT: je n’ai pas modifié ton JSX form, il est déjà compatible */}
-      {/* (Je le laisse tel quel pour éviter des différences inutiles) */}
-
       {/* ====== TON JSX ORIGINAL (inchangé) ====== */}
       <div className="row g-2">
         <div className="col-12 col-md-8">
@@ -583,7 +563,6 @@ function ProductForm({
                   if (val === "__other__") {
                     setIsCustomCategory(true);
                     setIsCustomSubCategory(false);
-                    setNewSubCategoryName("");
                     setDraft((d) => ({ ...d, category_id: null, sub_category_id: null }));
                   } else {
                     setIsCustomCategory(false);
@@ -987,40 +966,62 @@ export default function ProductsAdminPage() {
 
   const [mode, setMode] = useState<Mode>("default");
   const [channel, setChannel] = useState<Channel>("all");
+
+  /** ✅ filtres admin */
   const [onlyActive, setOnlyActive] = useState<boolean>(false);
+  const [filterShopId, setFilterShopId] = useState<number | "">("");
+  const [filterCategoryId, setFilterCategoryId] = useState<number | "">("");
 
   const pages = useMemo(
     () => (mode === "default" ? Math.max(1, Math.ceil(total / pageSize)) : 1),
     [total, pageSize, mode]
   );
 
+  function isActive(p: any) {
+    return (p?.active ?? p?.is_active ?? 1) ? 1 : 0;
+  }
+
   async function refresh() {
     setLoading(true);
     setError(null);
     try {
-      // ✅ vues rapides
       if (mode === "top-ordered" || mode === "top-rated") {
-        const endpoint = mode === "top-ordered" ? "/api/products/top-ordered" : "/api/products/top-rated";
-        const resRaw = await api.get<Product[]>(endpoint, { query: { limit: 100, minCount: 2 } });
-        const arr = unwrap<any>(resRaw);
-        const list = Array.isArray(arr) ? arr : Array.isArray(arr?.items) ? arr.items : [];
-        setItems(list);
-        setTotal(list.length);
+        const endpoint =
+          mode === "top-ordered" ? "/api/products/top-ordered" : "/api/products/top-rated";
+
+        const resRaw = await api.get<any>(endpoint, { query: { limit: 100, minCount: 2, onlyActive: 1 } });
+        const body = unwrap<any>(resRaw);
+
+        const list = Array.isArray(body)
+          ? body
+          : Array.isArray(body?.items)
+          ? body.items
+          : [];
+
+        // ✅ safety: jamais d'inactifs
+        const activeOnly = list.filter((p: any) => isActive(p));
+        setItems(activeOnly);
+        setTotal(activeOnly.length);
         return;
       }
 
-      // ✅ mode normal : utiliser le service listProducts correctement
       const svcChannel =
         channel === "all" ? undefined : (channel as "african-food" | "african-market");
 
+      // ✅ on passe les filtres à listProducts (si ton backend supporte, super),
+      // sinon le filtrage UI plus bas prendra le relais.
       const res = await listProducts({
         page,
         pageSize,
         onlyActive,
         channel: svcChannel,
-      });
+        category_id: filterCategoryId === "" ? undefined : filterCategoryId,
+        shop_id: filterShopId === "" ? undefined : filterShopId,
+      } as any);
 
       const { items: gotItems, pageInfo } = getPaginated(res);
+
+      // total backend si dispo, sinon fallback
       setItems(gotItems);
       setTotal(Number(pageInfo?.total ?? gotItems.length ?? 0));
     } catch (e: any) {
@@ -1072,7 +1073,7 @@ export default function ProductsAdminPage() {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, channel, onlyActive, mode]);
+  }, [page, pageSize, channel, onlyActive, mode, filterShopId, filterCategoryId]);
 
   function openCreate() {
     setEdit(null);
@@ -1197,14 +1198,14 @@ export default function ProductsAdminPage() {
   }
 
   async function onToggleActive(p: Product) {
-    const current = ((p as any).active ?? (p as any).is_active ?? 1) ? 1 : 0;
+    const current = isActive(p);
     const next = current ? 0 : 1;
 
     if (
       !confirm(
         next
           ? "Activer ce produit ? Il sera de nouveau visible sur Duumini."
-          : "Désactiver ce produit ? Il ne sera plus visible sur Duumini."
+          : "Désactiver ce produit ? Il ne sera plus visible sur Duumini (promo incluse)."
       )
     )
       return;
@@ -1213,11 +1214,11 @@ export default function ProductsAdminPage() {
     setError(null);
     setOk(null);
     try {
-      await updateProduct(p.id, { is_active: next } as any, [], false);
+      await updateProduct((p as any).id, { is_active: next } as any, [], false);
       setOk(next ? "Produit activé." : "Produit désactivé.");
 
-      setItems((prev) => prev.map((it) => (it.id === p.id ? ({ ...it, is_active: next } as any) : it)));
-      setPreview((prev) => (prev && prev.id === p.id ? ({ ...prev, is_active: next } as any) : prev));
+      setItems((prev) => prev.map((it) => ((it as any).id === (p as any).id ? ({ ...it, is_active: next } as any) : it)));
+      setPreview((prev) => (prev && prev.id === (p as any).id ? ({ ...prev, is_active: next } as any) : prev));
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -1225,15 +1226,37 @@ export default function ProductsAdminPage() {
     }
   }
 
-  const filtered = items.filter((p) => {
-    if (!q.trim()) return true;
-    const t = q.toLowerCase();
-    return (
-      (p.name || "").toLowerCase().includes(t) ||
-      String(p.id).includes(t) ||
-      (p.shop_name || "").toLowerCase().includes(t)
-    );
-  });
+  /** ✅ Filtrage UI (recherche + shop + catégorie + active) */
+  const filtered = useMemo(() => {
+    const text = q.trim().toLowerCase();
+    const shopId = filterShopId === "" ? null : Number(filterShopId);
+    const catId = filterCategoryId === "" ? null : Number(filterCategoryId);
+
+    return (items || []).filter((p: any) => {
+      // 1) active (si checkbox)
+      if (onlyActive && !isActive(p)) return false;
+
+      // 2) filtre boutique
+      if (shopId != null) {
+        const pid = Number(p.shop_id ?? p.shopId ?? 0);
+        if (pid !== shopId) return false;
+      }
+
+      // 3) filtre catégorie
+      if (catId != null) {
+        const cid = Number(p.category_id ?? 0);
+        if (cid !== catId) return false;
+      }
+
+      // 4) recherche texte
+      if (!text) return true;
+      return (
+        String(p.name || "").toLowerCase().includes(text) ||
+        String(p.id || "").includes(text) ||
+        String(p.shop_name || "").toLowerCase().includes(text)
+      );
+    });
+  }, [items, q, filterShopId, filterCategoryId, onlyActive]);
 
   function resetSearch() {
     setQ("");
@@ -1257,6 +1280,13 @@ export default function ProductsAdminPage() {
     setPage(1);
   }
 
+  function clearFilters() {
+    setFilterShopId("");
+    setFilterCategoryId("");
+    setQ("");
+    setPage(1);
+  }
+
   return (
     <div className="container-xxl py-4">
       <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
@@ -1275,99 +1305,159 @@ export default function ProductsAdminPage() {
       {error && <div className="alert alert-danger py-2">{error}</div>}
 
       <div className="card mb-3">
-        <div className="card-body d-flex flex-column flex-lg-row gap-3 align-items-lg-center justify-content-between">
-          <div className="d-flex flex-wrap gap-2 align-items-center">
-            <span className="text-muted small me-1">Canal :</span>
-            <div className="btn-group btn-group-sm" role="group">
-              <button
-                type="button"
-                className={"btn " + (channel === "all" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
-                onClick={() => changeChannel("all")}
-              >
-                Tous
-              </button>
-              <button
-                type="button"
-                className={"btn " + (channel === "african-food" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
-                onClick={() => changeChannel("african-food")}
-              >
-                African Food
-              </button>
-              <button
-                type="button"
-                className={"btn " + (channel === "african-market" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
-                onClick={() => changeChannel("african-market")}
-              >
-                African Market
-              </button>
+        <div className="card-body d-flex flex-column gap-3">
+          {/* Canal + vues rapides */}
+          <div className="d-flex flex-column flex-lg-row gap-3 align-items-lg-center justify-content-between">
+            <div className="d-flex flex-wrap gap-2 align-items-center">
+              <span className="text-muted small me-1">Canal :</span>
+              <div className="btn-group btn-group-sm" role="group">
+                <button
+                  type="button"
+                  className={"btn " + (channel === "all" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
+                  onClick={() => changeChannel("all")}
+                >
+                  Tous
+                </button>
+                <button
+                  type="button"
+                  className={"btn " + (channel === "african-food" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
+                  onClick={() => changeChannel("african-food")}
+                >
+                  African Food
+                </button>
+                <button
+                  type="button"
+                  className={"btn " + (channel === "african-market" && mode === "default" ? "btn-dark" : "btn-outline-dark")}
+                  onClick={() => changeChannel("african-market")}
+                >
+                  African Market
+                </button>
+              </div>
+
+              <div className="form-check ms-3">
+                <input
+                  id="onlyActive"
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={onlyActive}
+                  onChange={toggleOnlyActive}
+                  disabled={mode !== "default"}
+                />
+                <label htmlFor="onlyActive" className="form-check-label small">
+                  Actifs uniquement
+                </label>
+              </div>
             </div>
 
-            <div className="form-check ms-3">
-              <input
-                id="onlyActive"
-                className="form-check-input"
-                type="checkbox"
-                checked={onlyActive}
-                onChange={toggleOnlyActive}
+            <div className="d-flex flex-wrap gap-2 align-items-center">
+              <span className="text-muted small me-1">Vue rapide :</span>
+              <div className="btn-group btn-group-sm" role="group">
+                <button
+                  type="button"
+                  className={"btn " + (mode === "top-ordered" ? "btn-warning" : "btn-outline-warning")}
+                  onClick={() => changeMode(mode === "top-ordered" ? "default" : "top-ordered")}
+                >
+                  Top commandés
+                </button>
+                <button
+                  type="button"
+                  className={"btn " + (mode === "top-rated" ? "btn-success" : "btn-outline-success")}
+                  onClick={() => changeMode(mode === "top-rated" ? "default" : "top-rated")}
+                >
+                  Mieux notés
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ✅ Filtres catégorie + boutique + recherche */}
+          <div className="d-flex flex-column flex-xl-row gap-2 align-items-xl-center justify-content-between">
+            <div className="d-flex flex-column flex-md-row gap-2" style={{ width: "100%" }}>
+              <div className="input-group" style={{ maxWidth: 420 }}>
+                <input
+                  className="form-control"
+                  placeholder="Recherche par nom, boutique ou ID…"
+                  value={q}
+                  onChange={(ev) => {
+                    setPage(1);
+                    setQ(ev.target.value);
+                  }}
+                />
+                <button className="btn btn-outline-secondary" onClick={resetSearch} disabled={!q}>
+                  Effacer
+                </button>
+              </div>
+
+              <select
+                className="form-select"
+                style={{ maxWidth: 260 }}
+                value={filterShopId === "" ? "" : String(filterShopId)}
+                onChange={(e) => {
+                  setPage(1);
+                  const v = e.target.value;
+                  setFilterShopId(v ? Number(v) : "");
+                }}
                 disabled={mode !== "default"}
-              />
-              <label htmlFor="onlyActive" className="form-check-label small">
-                Actifs uniquement
-              </label>
-            </div>
-          </div>
+                title={mode !== "default" ? "Disponible seulement en mode Default" : "Filtrer par boutique"}
+              >
+                <option value="">Toutes les boutiques</option>
+                {shops.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
 
-          <div className="d-flex flex-wrap gap-2 align-items-center">
-            <span className="text-muted small me-1">Vue rapide :</span>
-            <div className="btn-group btn-group-sm" role="group">
+              <select
+                className="form-select"
+                style={{ maxWidth: 260 }}
+                value={filterCategoryId === "" ? "" : String(filterCategoryId)}
+                onChange={(e) => {
+                  setPage(1);
+                  const v = e.target.value;
+                  setFilterCategoryId(v ? Number(v) : "");
+                }}
+                disabled={mode !== "default"}
+                title={mode !== "default" ? "Disponible seulement en mode Default" : "Filtrer par catégorie"}
+              >
+                <option value="">Toutes les catégories</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+
               <button
                 type="button"
-                className={"btn " + (mode === "top-ordered" ? "btn-warning" : "btn-outline-warning")}
-                onClick={() => changeMode(mode === "top-ordered" ? "default" : "top-ordered")}
+                className="btn btn-outline-dark"
+                onClick={clearFilters}
+                disabled={!q && filterShopId === "" && filterCategoryId === ""}
               >
-                Top commandés
-              </button>
-              <button
-                type="button"
-                className={"btn " + (mode === "top-rated" ? "btn-success" : "btn-outline-success")}
-                onClick={() => changeMode(mode === "top-rated" ? "default" : "top-rated")}
-              >
-                Mieux notés
+                Réinitialiser filtres
               </button>
             </div>
+
+            {mode === "default" && (
+              <div className="btn-group">
+                <button className="btn btn-sm btn-outline-dark" disabled={page <= 1 || busy} onClick={() => setPage((p) => p - 1)}>
+                  ◀
+                </button>
+                <span className="btn btn-sm btn-outline-dark disabled">
+                  {page} / {pages}
+                </span>
+                <button className="btn btn-sm btn-outline-dark" disabled={page >= pages || busy} onClick={() => setPage((p) => p + 1)}>
+                  ▶
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* petit hint */}
+          <div className="small text-muted">
+            Astuce : un produit <strong>désactivé</strong> ne doit pas apparaître en promo ni côté client.
           </div>
         </div>
-      </div>
-
-      <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between mb-3 gap-2">
-        <div className="input-group" style={{ maxWidth: 420 }}>
-          <input
-            className="form-control"
-            placeholder="Recherche par nom, boutique ou ID…"
-            value={q}
-            onChange={(ev) => {
-              setPage(1);
-              setQ(ev.target.value);
-            }}
-          />
-          <button className="btn btn-outline-secondary" onClick={resetSearch} disabled={!q}>
-            Effacer
-          </button>
-        </div>
-
-        {mode === "default" && (
-          <div className="btn-group">
-            <button className="btn btn-sm btn-outline-dark" disabled={page <= 1 || busy} onClick={() => setPage((p) => p - 1)}>
-              ◀
-            </button>
-            <span className="btn btn-sm btn-outline-dark disabled">
-              {page} / {pages}
-            </span>
-            <button className="btn btn-sm btn-outline-dark" disabled={page >= pages || busy} onClick={() => setPage((p) => p + 1)}>
-              ▶
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="card shadow-sm">
@@ -1391,6 +1481,7 @@ export default function ProductsAdminPage() {
                     <th>Produit</th>
                     <th className="d-none d-sm-table-cell">Boutique</th>
                     <th className="d-none d-md-table-cell">Canal</th>
+                    <th className="d-none d-lg-table-cell">Catégorie</th>
                     <th className="d-none d-sm-table-cell">Stock</th>
                     <th className="d-none d-sm-table-cell">Statut</th>
                     <th className="text-end">Prix</th>
@@ -1399,21 +1490,26 @@ export default function ProductsAdminPage() {
                 </thead>
                 <tbody>
                   {filtered.map((p) => {
-                    const isActive = ((p as any).active ?? (p as any).is_active ?? 1) ? 1 : 0;
+                    const active = isActive(p);
                     const subSlug = String((p as any).sub_category_slug || "").toLowerCase();
                     const channelLabel = subSlug === "food" ? "African Food" : "African Market";
                     const promo = hasRealPromo(p as any);
 
+                    const catName =
+                      categories.find((c) => c.id === Number((p as any).category_id || 0))?.name ||
+                      (p as any).category_name ||
+                      "-";
+
                     return (
-                      <tr key={p.id}>
-                        <td>{p.id}</td>
+                      <tr key={(p as any).id}>
+                        <td>{(p as any).id}</td>
 
                         <td className="text-truncate" style={{ maxWidth: 380 }}>
                           <div className="d-flex align-items-center gap-2">
                             {(p as any).cover ? (
                               <img
                                 src={imgUrl((p as any).cover)}
-                                alt={p.name}
+                                alt={(p as any).name}
                                 className="rounded border"
                                 style={{ width: 42, height: 42, objectFit: "cover" }}
                               />
@@ -1423,8 +1519,8 @@ export default function ProductsAdminPage() {
 
                             <div className="d-flex flex-column">
                               <div className="d-flex align-items-center gap-2">
-                                <span className="text-truncate" title={p.name}>
-                                  {p.name}
+                                <span className="text-truncate" title={(p as any).name}>
+                                  {(p as any).name}
                                 </span>
 
                                 {promo && (
@@ -1433,31 +1529,41 @@ export default function ProductsAdminPage() {
                                   </span>
                                 )}
 
+                                {!active && (
+                                  <span className="badge bg-secondary-subtle text-muted border">
+                                    Désactivé
+                                  </span>
+                                )}
+
                                 <button
                                   type="button"
                                   className="btn btn-link btn-sm p-0 align-baseline"
                                   title="Voir"
-                                  onClick={() => openPreview(p.id)}
+                                  onClick={() => openPreview((p as any).id)}
                                 >
                                   (voir)
                                 </button>
                               </div>
 
-                              {p.shop_name && <small className="text-muted">{p.shop_name}</small>}
+                              {(p as any).shop_name && <small className="text-muted">{(p as any).shop_name}</small>}
                             </div>
                           </div>
                         </td>
 
-                        <td className="d-none d-sm-table-cell">{p.shop_name || (p as any).shop_id || "-"}</td>
+                        <td className="d-none d-sm-table-cell">
+                          {(p as any).shop_name || (p as any).shop_id || "-"}
+                        </td>
 
                         <td className="d-none d-md-table-cell">
                           <span className="badge bg-light text-dark">{channelLabel}</span>
                         </td>
 
+                        <td className="d-none d-lg-table-cell">{catName}</td>
+
                         <td className="d-none d-sm-table-cell">{(p as any).stock ?? 0}</td>
 
                         <td className="d-none d-sm-table-cell">
-                          {isActive ? (
+                          {active ? (
                             <span className="badge bg-success-subtle text-success">Actif</span>
                           ) : (
                             <span className="badge bg-secondary-subtle text-muted">Désactivé</span>
@@ -1468,18 +1574,18 @@ export default function ProductsAdminPage() {
 
                         <td className="text-end">
                           <div className="btn-group">
-                            <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit(p.id)} disabled={busy}>
+                            <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => openEdit((p as any).id)} disabled={busy}>
                               Modifier
                             </button>
                             <button
                               type="button"
-                              className={`btn btn-sm ${isActive ? "btn-outline-warning" : "btn-outline-success"}`}
+                              className={`btn btn-sm ${active ? "btn-outline-warning" : "btn-outline-success"}`}
                               onClick={() => onToggleActive(p)}
                               disabled={busy}
                             >
-                              {isActive ? "Désactiver" : "Activer"}
+                              {active ? "Désactiver" : "Activer"}
                             </button>
-                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onDelete(p.id)} disabled={busy}>
+                            <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => onDelete((p as any).id)} disabled={busy}>
                               Supprimer
                             </button>
                           </div>
@@ -1606,10 +1712,6 @@ export default function ProductsAdminPage() {
                       </li>
 
                       <li>
-                        <strong>Sub-cat slug :</strong> {(preview as any).sub_category_slug || "—"}
-                      </li>
-
-                      <li>
                         <strong>Catégorie :</strong> {(preview as any).category_id ?? "—"}
                       </li>
 
@@ -1629,7 +1731,7 @@ export default function ProductsAdminPage() {
 
                       <li>
                         <strong>Statut :</strong>{" "}
-                        {((preview as any).active ?? (preview as any).is_active ?? 1) ? "Actif" : "Désactivé"}
+                        {isActive(preview as any) ? "Actif" : "Désactivé"}
                       </li>
                     </ul>
 

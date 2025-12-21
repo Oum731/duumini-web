@@ -1,11 +1,16 @@
+// src/pages/PromotionsPage.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
+import ProductCard from "../components/ProductCard";
 import { api } from "../services/http";
 import type { Product } from "../services/products";
-import ProductCard from "../components/ProductCard";
 import { getPromoMeta, isRealPromo } from "../lib/promotions";
 import CanKickLottie, { type CanOffer } from "../components/CanKickLottie";
 
 const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
+
+/* =========================
+ * Helpers UI
+ * ========================= */
 
 function useBlink(ms = 650) {
   const [on, setOn] = useState(true);
@@ -31,12 +36,16 @@ function useCountdown(endIso: string) {
   return { diff, days, hours, mins, secs, isOver: diff <= 0 };
 }
 
-/* ✅ Sans Product.sub_category : slug/name/id puis fallback category */
+/* =========================
+ * Filtres "produits CAN"
+ * ========================= */
+
 function normToken(x: any) {
   return String(x ?? "").trim().toLowerCase();
 }
 
 function subToken(p: any) {
+  // priorités: slug -> name -> id
   const bySlug = normToken(p?.sub_category_slug);
   if (bySlug) return bySlug;
 
@@ -52,6 +61,7 @@ function subToken(p: any) {
 function isFoodLike(p: any) {
   const t = subToken(p);
   if (t) return t === "food" || t.includes("food") || t.includes("alimentation");
+  // fallback legacy (si jamais)
   return normToken(p?.category) === "food";
 }
 
@@ -63,10 +73,8 @@ function looksLikeDrink(p: any) {
     normToken(p?.category) ||
     "";
 
-  const sub =
-    normToken(p?.sub_category_name) || normToken(p?.sub_category_slug) || "";
+  const sub = normToken(p?.sub_category_name) || normToken(p?.sub_category_slug) || "";
 
-  // 💡 mots-clés simples : on évite les boisson/canette/soda/jus/eau/energy
   const hay = `${name} ${cat} ${sub}`;
 
   return (
@@ -84,14 +92,36 @@ function looksLikeDrink(p: any) {
 
 /**
  * ✅ Produits "OFFRE CAN"
- * - si promo_can = 1 => on accepte
- * - sinon on exclut food + boissons (on veut "produits" pas "boissons")
+ * - si promo_can = 1 => on accepte (si tu ajoutes ce champ plus tard)
+ * - sinon on exclut food + boissons
  */
 function isCanProductOffer(p: any) {
   if (Number(p?.promo_can ?? 0) === 1) return true;
   if (isFoodLike(p)) return false;
   if (looksLikeDrink(p)) return false;
   return true;
+}
+
+/* =========================
+ * Safe unwrap API response
+ * (évite le bug: res.data vs res)
+ * ========================= */
+function unwrap<T>(res: any): T {
+  if (res == null) return res as T;
+  if (Array.isArray(res)) return res as T;
+  if (typeof res === "object") {
+    if ("items" in res) return res as T;
+    if ("data" in res) return (res as any).data as T;
+    if ("result" in res) return (res as any).result as T;
+  }
+  return res as T;
+}
+
+function asArray<T>(x: any): T[] {
+  const v = unwrap<any>(x);
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === "object" && Array.isArray(v.items)) return v.items;
+  return [];
 }
 
 export default function PromotionsPage() {
@@ -102,7 +132,7 @@ export default function PromotionsPage() {
   const offer: CanOffer = useMemo(
     () => ({
       label: "OFFRE CAN 2025",
-      title: "Promo & Livraison gratuite",
+      title: "Promo & Livraison Casablanca 25 DH • Hors Casablanca dès 60 DH (selon la ville).",
     }),
     []
   );
@@ -118,11 +148,7 @@ export default function PromotionsPage() {
   }, [cd.days, cd.isOver]);
 
   const pulseClass =
-    urgency === "D1"
-      ? "pulse-d1"
-      : urgency === "SOON"
-      ? "pulse-soon"
-      : "pulse-normal";
+    urgency === "D1" ? "pulse-d1" : urgency === "SOON" ? "pulse-soon" : "pulse-normal";
 
   const timeStr = `${String(cd.hours).padStart(2, "0")}:${String(cd.mins).padStart(
     2,
@@ -132,25 +158,31 @@ export default function PromotionsPage() {
   const fetchPromos = useCallback(async () => {
     setLoading(true);
     setErr(null);
+
     try {
-      // 1) endpoint promos si dispo
+      // 1) endpoint promos
       try {
-        const res = await api.get<Product[]>("/api/products/promotions", {
+        const res = await api.get<any>("/api/products/promotions", {
           query: { limit: 250, onlyActive: 1 },
         });
-        setItems((res || []).filter(isRealPromo));
+
+        const arr = asArray<Product>(res);
+        setItems(arr.filter(isRealPromo));
         return;
       } catch {
         // fallback
       }
 
       // 2) fallback : /api/products
-      const res = await api.get<{ items: Product[] }>("/api/products", {
+      const res2 = await api.get<any>("/api/products", {
         query: { page: 1, pageSize: 250, onlyActive: 1 },
       });
-      setItems((res.items || []).filter(isRealPromo));
+
+      const arr2 = asArray<Product>(res2);
+      setItems(arr2.filter(isRealPromo));
     } catch (e: any) {
       setErr(e?.message || String(e));
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -163,8 +195,7 @@ export default function PromotionsPage() {
   const canItems = useMemo(() => {
     const list = (items || []).filter((p: any) => isCanProductOffer(p));
     return [...list].sort(
-      (a: any, b: any) =>
-        Number(b?.promo_discount_value ?? 0) - Number(a?.promo_discount_value ?? 0)
+      (a: any, b: any) => Number(b?.promo_discount_value ?? 0) - Number(a?.promo_discount_value ?? 0)
     );
   }, [items]);
 
@@ -205,6 +236,7 @@ export default function PromotionsPage() {
           letter-spacing: .2px;
           margin: 0;
           color: #111;
+          line-height: 1.15;
         }
         .can-sub{
           font-weight: 800;
@@ -231,8 +263,8 @@ export default function PromotionsPage() {
           white-space: nowrap;
         }
         @keyframes canPulseNormal { 0%{transform:scale(1)} 50%{transform:scale(1.03)} 100%{transform:scale(1)} }
-        @keyframes canPulseSoon { 0%{transform:scale(1)} 50%{transform:scale(1.05)} 100%{transform:scale(1)} }
-        @keyframes canPulseD1 { 0%{transform:scale(1)} 50%{transform:scale(1.07)} 100%{transform:scale(1)} }
+        @keyframes canPulseSoon   { 0%{transform:scale(1)} 50%{transform:scale(1.05)} 100%{transform:scale(1)} }
+        @keyframes canPulseD1     { 0%{transform:scale(1)} 50%{transform:scale(1.07)} 100%{transform:scale(1)} }
         .pulse-normal{ animation: canPulseNormal 1.25s ease-in-out infinite; }
         .pulse-soon{ animation: canPulseSoon 1.05s ease-in-out infinite; }
         .pulse-d1{ animation: canPulseD1 .78s ease-in-out infinite; }
@@ -253,12 +285,7 @@ export default function PromotionsPage() {
       <div className="can-card mb-3">
         <div className="can-grid">
           <div className="can-anim-wrap">
-            <CanKickLottie
-              variant="hero"
-              className="w-100 h-100"
-              offer={offer}
-              blink={blink}
-            />
+            <CanKickLottie variant="hero" className="w-100 h-100" offer={offer} blink={blink} />
           </div>
 
           <div className="can-text">

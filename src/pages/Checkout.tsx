@@ -1,3 +1,4 @@
+// src/pages/CheckoutPage.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
@@ -14,6 +15,7 @@ import {
   CITY_OPTIONS,
   type CityCode,
 } from "../context/LocationContext";
+import { api } from "../services/http";
 
 /* ——— Style local : focus rouge + état loading ——— */
 const FocusAndLoadingStyle = () => (
@@ -28,10 +30,7 @@ const FocusAndLoadingStyle = () => (
     .checkout .btn-duu:focus-visible {
       box-shadow: 0 0 0 .3rem rgba(229, 57, 53, .35) !important;
     }
-    .btn[aria-busy="true"] {
-      pointer-events: none;
-      opacity: .9;
-    }
+    .btn[aria-busy="true"] { pointer-events: none; opacity: .9; }
     .btn .visually-hidden {
       position: absolute !important;
       width: 1px !important;
@@ -43,62 +42,94 @@ const FocusAndLoadingStyle = () => (
       white-space: nowrap !important;
       border: 0 !important;
     }
+
+    /* petites améliorations UI */
+    .addr-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:.5rem;
+      padding:.35rem .6rem;
+      border-radius:999px;
+      border:1px solid rgba(0,0,0,.08);
+      background:rgba(255,255,255,.7);
+      font-weight:700;
+      color:#111;
+      max-width:100%;
+    }
+    .addr-pill small{
+      font-weight:600;
+      color:rgba(0,0,0,.62);
+    }
   `}</style>
 );
 
 /* =========================
-   ✅ Communes par ville
+   ✅ Location Suggestions API
+   (table: location_suggestions)
    ========================= */
 
-const COMMUNES_BY_CITY: Record<string, readonly string[]> = {
-  CASABLANCA: [
-    "Anfa",
-    "Maârif",
-    "Sidi Belyout",
-    "Aïn Chock",
-    "Hay Hassani",
-    "Ben Msick",
-    "Moulay Rachid",
-    "Sidi Bernoussi",
-    "Aïn Sebaâ",
-    "Al Fida",
-    "Mers Sultan",
-    "Sidi Othmane",
-    "__other__",
-  ],
-  MARRAKECH: [
-    "Gueliz",
-    "Hivernage",
-    "Medina",
-    "Sidi Youssef Ben Ali",
-    "Menara",
-    "Annakhil (Palmeraie)",
-    "Tassoultante",
-    "Saada",
-    "Ouahat Sidi Brahim",
-    "__other__",
-  ],
+type LocationSuggestion = {
+  value: string;
+  count?: number;
 };
 
-const COMMUNES_DEFAULT = ["__other__"] as const;
+type ItemsEnvelope<T> = { items: T[] };
 
-function cityKeyFromLabel(label: string) {
-  const k = String(label || "")
-    .trim()
-    .toUpperCase();
-  if (k.includes("CASA")) return "CASABLANCA";
-  if (k.includes("MARRA")) return "MARRAKECH";
-  return k;
+function normalizeSuggestionItems(input: any): LocationSuggestion[] {
+  const arr = input?.items ?? input ?? [];
+  if (!Array.isArray(arr)) return [];
+  // items: string[]
+  if (arr.length && typeof arr[0] === "string") {
+    return arr.map((s: string) => ({ value: String(s) }));
+  }
+  // items: {value,count}[]
+  return arr
+    .map((x: any) => ({
+      value: String(x?.value ?? x?.name ?? "").trim(),
+      count: x?.count != null ? Number(x.count) || 0 : undefined,
+    }))
+    .filter((x: LocationSuggestion) => !!x.value);
 }
 
-type DeliveryMode = "EXPRESS" | "SIMPLE";
-const FEES: Record<DeliveryMode, number> = { EXPRESS: 50, SIMPLE: 25 };
+async function listCommunesByCity(ville?: string) {
+  const v = String(ville || "").trim();
+  if (!v) return [] as LocationSuggestion[];
+  const res = await api.get<ItemsEnvelope<any>>("/api/locations/communes", {
+    query: { ville: v, limit: 30 },
+  });
+  return normalizeSuggestionItems(res);
+}
 
-/* ===== Helpers sub-category token (sans Product.sub_category) ===== */
+async function listQuartiersByCityCommune(ville?: string, commune?: string) {
+  const v = String(ville || "").trim();
+  const c = String(commune || "").trim();
+  if (!v || !c) return [] as LocationSuggestion[];
+  const res = await api.get<ItemsEnvelope<any>>("/api/locations/quartiers", {
+    query: { ville: v, commune: c, limit: 30 },
+  });
+  return normalizeSuggestionItems(res);
+}
+
+async function trackLocationSuggestion(
+  kind: "VILLE" | "COMMUNE" | "QUARTIER",
+  payload: { ville?: string; commune?: string; quartier?: string }
+) {
+  // Best-effort (pas bloquant)
+  try {
+    await api.post("/api/locations/track", { kind, ...payload });
+  } catch {
+    // ignore
+  }
+}
+
+/* =========================
+   ✅ Livraison pro (sans Simple/Express)
+   - Casablanca: 25 DH
+   - Hors Casablanca: dès 60 DH (selon la ville)
+   ========================= */
+
 function normToken(x: any) {
-  return String(x ?? "")
-    .trim()
-    .toLowerCase();
+  return String(x ?? "").trim().toLowerCase();
 }
 function productSubToken(p: any) {
   const bySlug = normToken(p?.sub_category_slug);
@@ -114,30 +145,41 @@ function productSubToken(p: any) {
 }
 function isFoodLike(p: any) {
   const t = productSubToken(p);
-  if (t)
-    return t === "food" || t.includes("food") || t.includes("alimentation");
+  if (t) return t === "food" || t.includes("food") || t.includes("alimentation");
   return normToken(p?.category) === "food";
 }
+
+/** ✅ Barème pro: configurable */
+const DELIVERY_RULES = {
+  CASABLANCA_FEE: 25,
+  DEFAULT_MIN_OUTSIDE_CASA: 60,
+};
+
+function cityLabelFromCode(city?: string | null) {
+  const found = CITY_OPTIONS.find((c) => c.code === city);
+  return found?.label || "";
+}
+function isCasablanca(label: string) {
+  const s = String(label || "").trim().toLowerCase();
+  return s.includes("casa");
+}
+function computeDeliveryFeeByCity(cityLabel: string) {
+  if (!cityLabel) return DELIVERY_RULES.DEFAULT_MIN_OUTSIDE_CASA;
+  if (isCasablanca(cityLabel)) return DELIVERY_RULES.CASABLANCA_FEE;
+  return DELIVERY_RULES.DEFAULT_MIN_OUTSIDE_CASA;
+}
+
+/* =========================
+   ✅ Checkout
+   ========================= */
 
 export default function CheckoutPage() {
   const nav = useNavigate();
   const location = useLocation();
   const { lines, totalAmount, totalItems, clear } = useCart();
 
-  // ✅ Ville depuis LocationContext (modifiable via LocationGate)
   const { city, setCity, isReady } = useLocationCity();
-
-  const cityLabel = useMemo(() => {
-    const found = CITY_OPTIONS.find((c) => c.code === city);
-    return found?.label || "";
-  }, [city]);
-
-  const cityKey = useMemo(() => cityKeyFromLabel(cityLabel), [cityLabel]);
-
-  const COMMUNES = useMemo(() => {
-    const arr = COMMUNES_BY_CITY[cityKey];
-    return (arr && arr.length ? arr : COMMUNES_DEFAULT) as readonly string[];
-  }, [cityKey]);
+  const cityLabel = useMemo(() => cityLabelFromCode(city), [city]);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -150,33 +192,34 @@ export default function CheckoutPage() {
 
   const [phone, setPhone] = useState("");
 
-  // ✅ commune dynamique (string) + autre
-  const [commune, setCommune] = useState<string>("__other__");
+  const [commune, setCommune] = useState<string>("");
   const [communeOther, setCommuneOther] = useState("");
   const [quartier, setQuartier] = useState("");
 
+  const [communeSuggestions, setCommuneSuggestions] = useState<LocationSuggestion[]>([]);
+  const [quartierSuggestions, setQuartierSuggestions] = useState<LocationSuggestion[]>([]);
+  const [loadingSuggest, setLoadingSuggest] = useState(false);
+
   const [useGps, setUseGps] = useState(false);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
-    null
-  );
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsErr, setGpsErr] = useState<string | null>(null);
 
   const [loadingGps, setLoadingGps] = useState(false);
   const [loadingRefill, setLoadingRefill] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [delivery, setDelivery] = useState<DeliveryMode>("SIMPLE");
+  const [editingAddress, setEditingAddress] = useState(true);
+  const [saveAddressToProfile, setSaveAddressToProfile] = useState(false);
 
   const hasToken = !!getAccessToken?.();
   const [guestConfirmed, setGuestConfirmed] = useState(false);
-
   useEffect(() => {
     if (!hasToken) setGuestConfirmed(true);
   }, [hasToken]);
 
   const [showGuestSuccess, setShowGuestSuccess] = useState(false);
 
-  /* ✅ Détection panier promo (au moins 1 produit promo non-food) */
+  // (info uniquement)
   const hasPromoInCart = useMemo(() => {
     return (lines || []).some((l: any) => {
       const p = l?.product ?? l;
@@ -187,90 +230,30 @@ export default function CheckoutPage() {
     });
   }, [lines]);
 
-  const deliveryFee = hasPromoInCart ? 0 : FEES[delivery];
+  const deliveryFee = useMemo(() => computeDeliveryFeeByCity(cityLabel), [cityLabel]);
   const grandTotal = totalAmount + deliveryFee;
 
-  // ✅ Si la ville change, on garde l’UX : si la commune n’existe plus → reset propre
-  useEffect(() => {
-    if (!COMMUNES.includes(commune)) {
-      setCommune(
-        COMMUNES.includes("__other__")
-          ? "__other__"
-          : String(COMMUNES[0] || "__other__")
-      );
-      setCommuneOther("");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cityKey]);
-
-  /* ---------- Pré-remplissage optionnel depuis /me ---------- */
-  useEffect(() => {
-    if (!isReady) return;
-
-    // Pas de token → mode invité
-    if (!hasToken) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    (async () => {
-      try {
-        const u = await me();
-        if (u) {
-          setFirstName((u as any).first_name || "");
-          setLastName((u as any).last_name || "");
-          setPhone(normalizePhoneInput((u as any).phone || ""));
-
-          // ✅ Ville du profil : si aucune ville choisie côté app, on prend celle du profil
-          // (ne remplace pas un choix déjà fait par l’utilisateur dans LocationGate)
-          const profileCityRaw = String(
-            (u as any).city || (u as any).ville || ""
-          )
-            .trim()
-            .toLowerCase();
-
-          if (!city) {
-            if (profileCityRaw.includes("casa")) {
-              setCity("CASABLANCA" as CityCode);
-            } else if (profileCityRaw.includes("marr")) {
-              setCity("MARRAKECH" as CityCode);
-            }
-          }
-
-          // ✅ Commune du profil : si pas dans la liste de la ville → "Autre…"
-          const c = String((u as any).commune || "").trim();
-          if (c && COMMUNES.includes(c)) {
-            setCommune(c);
-            setCommuneOther("");
-          } else if (c) {
-            setCommune("__other__");
-            setCommuneOther(c);
-          }
-
-          if ((u as any).quartier) setQuartier((u as any).quartier);
-        }
-      } catch {
-        // ignore
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasToken, location.pathname, isReady]);
+  const handlePhoneChange = useCallback((e: any) => {
+    const v = normalizePhoneInput(e.target.value as string);
+    setPhone(v);
+  }, []);
 
   const validPhone = isValidPhoneIntl(phone);
-  const communeVal = commune === "__other__" ? communeOther.trim() : commune;
+
+  const communeVal = useMemo(() => {
+    const base = String(commune || "").trim();
+    if (!base) return communeOther.trim();
+    if (base === "__other__") return communeOther.trim();
+    return base;
+  }, [commune, communeOther]);
 
   const hasName = hasToken
     ? firstName.trim().length > 0 || lastName.trim().length > 0
     : guestName.trim().length > 0;
 
   const addressOk = hasToken
-    ? !!communeVal &&
-      communeVal.length > 0 &&
-      (useGps ? !!coords : quartier.trim().length > 0)
-    : guestAddress.trim().length > 0 || !!coords;
+    ? !!cityLabel && (useGps ? !!coords : (communeVal.length > 0 && quartier.trim().length > 0))
+    : !!cityLabel && (useGps ? !!coords : guestAddress.trim().length > 0);
 
   const canSubmit =
     lines.length > 0 &&
@@ -304,12 +287,52 @@ export default function CheckoutPage() {
     );
   }, []);
 
-  const handlePhoneChange = useCallback((e: any) => {
-    const v = normalizePhoneInput(e.target.value as string);
-    setPhone(v);
-  }, []);
+  /* ---------- Pré-remplissage depuis /me ---------- */
+  useEffect(() => {
+    if (!isReady) return;
 
-  // ✅ Recharge depuis /me, en respectant COMMUNES_BY_CITY + ville profil (si city vide)
+    if (!hasToken) {
+      setLoading(false);
+      setEditingAddress(true);
+      return;
+    }
+
+    setLoading(true);
+    (async () => {
+      try {
+        const u = await me();
+        if (u) {
+          setFirstName((u as any).first_name || "");
+          setLastName((u as any).last_name || "");
+          setPhone(normalizePhoneInput((u as any).phone || ""));
+
+          const profileCityRaw = String((u as any).city || (u as any).ville || "")
+            .trim()
+            .toLowerCase();
+
+          if (!city) {
+            if (profileCityRaw.includes("casa")) setCity("CASABLANCA" as CityCode);
+            else if (profileCityRaw.includes("marr")) setCity("MARRAKECH" as CityCode);
+          }
+
+          const c = String((u as any).commune || "").trim();
+          const q = String((u as any).quartier || "").trim();
+          setCommune(c || "");
+          setCommuneOther("");
+          setQuartier(q || "");
+
+          setEditingAddress(false);
+          setSaveAddressToProfile(false);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasToken, location.pathname, isReady]);
+
   const refillFromProfile = useCallback(async () => {
     try {
       setErr(null);
@@ -320,35 +343,65 @@ export default function CheckoutPage() {
         setLastName((u as any).last_name || "");
         setPhone(normalizePhoneInput((u as any).phone || ""));
 
-        const profileCityRaw = String((u as any).city || (u as any).ville || "")
-          .trim()
-          .toLowerCase();
-
-        if (!city) {
-          if (profileCityRaw.includes("casa")) {
-            setCity("CASABLANCA" as CityCode);
-          } else if (profileCityRaw.includes("marr")) {
-            setCity("MARRAKECH" as CityCode);
-          }
-        }
-
         const c = String((u as any).commune || "").trim();
-        if (c && COMMUNES.includes(c)) {
-          setCommune(c);
-          setCommuneOther("");
-        } else if (c) {
-          setCommune("__other__");
-          setCommuneOther(c);
-        }
+        const q = String((u as any).quartier || "").trim();
+        setCommune(c || "");
+        setCommuneOther("");
+        setQuartier(q || "");
 
-        setQuartier((u as any).quartier || "");
+        setEditingAddress(false);
+        setSaveAddressToProfile(false);
       }
     } catch (e: any) {
       setErr(e?.message || "Impossible de charger votre profil.");
     } finally {
       setLoadingRefill(false);
     }
-  }, [COMMUNES, city, setCity]);
+  }, []);
+
+  /* ✅ Suggestions */
+  useEffect(() => {
+    if (!isReady) return;
+    const v = String(cityLabel || "").trim();
+    if (!v) return;
+
+    setLoadingSuggest(true);
+    (async () => {
+      try {
+        const communes = await listCommunesByCity(v);
+        setCommuneSuggestions(communes || []);
+      } catch {
+        setCommuneSuggestions([]);
+      } finally {
+        setLoadingSuggest(false);
+      }
+    })();
+
+    trackLocationSuggestion("VILLE", { ville: v });
+  }, [cityLabel, isReady]);
+
+  useEffect(() => {
+    const v = String(cityLabel || "").trim();
+    const c = String(communeVal || "").trim();
+    if (!v || !c) {
+      setQuartierSuggestions([]);
+      return;
+    }
+
+    setLoadingSuggest(true);
+    (async () => {
+      try {
+        const qs = await listQuartiersByCityCommune(v, c);
+        setQuartierSuggestions(qs || []);
+      } catch {
+        setQuartierSuggestions([]);
+      } finally {
+        setLoadingSuggest(false);
+      }
+    })();
+
+    trackLocationSuggestion("COMMUNE", { ville: v, commune: c });
+  }, [cityLabel, communeVal]);
 
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
@@ -358,8 +411,6 @@ export default function CheckoutPage() {
       setSubmitting(true);
 
       const normalizedPhone = normalizePhoneInput(phone.trim());
-
-      // ✅ ville = ville courante (LocationGate) OU fallback label OU vide
       const finalCity = cityLabel || "";
 
       const address: CreateOrderPayload["address"] = hasToken
@@ -391,18 +442,14 @@ export default function CheckoutPage() {
         phone: normalizedPhone,
       };
 
-      // ✅ Promo : livraison gratuite partout
-      const finalDeliveryMode = hasPromoInCart
-        ? ("PROMO_FREE" as any)
-        : delivery;
-      const finalDeliveryFee = hasPromoInCart ? 0 : deliveryFee;
+      const finalDeliveryFee = deliveryFee;
       const finalGrandTotal = totalAmount + finalDeliveryFee;
 
       const payload: CreateOrderPayload = {
         contact,
         address,
         delivery: {
-          mode: finalDeliveryMode,
+          mode: isCasablanca(finalCity) ? ("CASABLANCA" as any) : ("CITY" as any),
           fee: finalDeliveryFee,
           currency: "MAD",
         },
@@ -425,7 +472,7 @@ export default function CheckoutPage() {
         },
 
         address_city: address.ville,
-        address_commune: address.commune ?? null,
+        address_commune: (address as any).commune ?? null,
         address_district: address.quartier,
         address_gps_lat: address.gps?.lat ?? null,
         address_gps_lng: address.gps?.lng ?? null,
@@ -459,8 +506,7 @@ export default function CheckoutPage() {
               l.category_name ||
               l.sub_category_name ||
               l.sub_category_slug ||
-              (l.sub_category_id != null &&
-              String(l.sub_category_id).trim() !== ""
+              (l.sub_category_id != null && String(l.sub_category_id).trim() !== ""
                 ? String(l.sub_category_id)
                 : "") ||
               "";
@@ -476,12 +522,12 @@ export default function CheckoutPage() {
         });
       } catch {}
 
-      const minStart = hasPromoInCart ? 30 : delivery === "EXPRESS" ? 15 : 60;
-      const minEnd = hasPromoInCart ? 120 : delivery === "EXPRESS" ? 45 : 120;
+      const isCasa = isCasablanca(finalCity);
+      const minStart = isCasa ? 25 : 60;
+      const minEnd = isCasa ? 90 : 180;
 
       const etaStart = new Date(createdAt.getTime() + minStart * 60_000);
       const etaEnd = new Date(createdAt.getTime() + minEnd * 60_000);
-      const etaTarget = etaEnd;
 
       try {
         window.localStorage.setItem(
@@ -490,10 +536,10 @@ export default function CheckoutPage() {
             id: numericId || orderId,
             displayCode,
             createdAt: createdAt.toISOString(),
-            deliveryMode: finalDeliveryMode,
+            deliveryMode: isCasa ? "CASABLANCA" : "CITY",
             etaStart: etaStart.toISOString(),
             etaEnd: etaEnd.toISOString(),
-            etaTarget: etaTarget.toISOString(),
+            etaTarget: etaEnd.toISOString(),
             guest: !hasToken,
             city: finalCity || null,
           })
@@ -502,6 +548,26 @@ export default function CheckoutPage() {
           window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
         }
       } catch {}
+
+      if (!useGps) {
+        trackLocationSuggestion("QUARTIER", {
+          ville: finalCity,
+          commune: communeVal || undefined,
+          quartier: hasToken ? quartier.trim() : guestAddress.trim(),
+        });
+      }
+
+      if (hasToken && saveAddressToProfile) {
+        try {
+          await api.put("/api/user/me", {
+            ville: finalCity,
+            commune: communeVal || null,
+            quartier: useGps ? null : quartier.trim() || null,
+          });
+        } catch {
+          // non bloquant
+        }
+      }
 
       clear();
 
@@ -512,34 +578,31 @@ export default function CheckoutPage() {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (e: any) {
-      setErr(
-        e?.message || "Impossible de confirmer la commande pour le moment."
-      );
+      setErr(e?.message || "Impossible de confirmer la commande pour le moment.");
     } finally {
       setSubmitting(false);
     }
   }, [
     canSubmit,
     submitting,
+    phone,
+    cityLabel,
+    hasToken,
+    communeVal,
+    quartier,
+    useGps,
+    coords,
     firstName,
     lastName,
     guestName,
     guestAddress,
-    phone,
-    communeVal,
-    useGps,
-    coords,
-    delivery,
-    lines,
-    totalItems,
-    totalAmount,
     deliveryFee,
+    totalAmount,
+    totalItems,
+    lines,
     clear,
     nav,
-    quartier,
-    hasToken,
-    hasPromoInCart,
-    cityLabel,
+    saveAddressToProfile,
   ]);
 
   const headerRight = useMemo(
@@ -547,9 +610,7 @@ export default function CheckoutPage() {
       <div className="text-end">
         <div className="small text-muted">Total à payer</div>
         <div className="h5 m-0">{mad(grandTotal)}</div>
-        <div className="small text-muted">
-          Dont livraison: {mad(deliveryFee)}
-        </div>
+        <div className="small text-muted">Dont livraison: {mad(deliveryFee)}</div>
       </div>
     ),
     [grandTotal, deliveryFee]
@@ -576,6 +637,10 @@ export default function CheckoutPage() {
     );
   }
 
+  const deliveryTitle = isCasablanca(cityLabel)
+    ? "Livraison Casablanca 25 DH"
+    : "Hors Casablanca dès 60 DH (selon la ville)";
+
   return (
     <section className="container-xxl py-4 checkout">
       <FocusAndLoadingStyle />
@@ -583,12 +648,7 @@ export default function CheckoutPage() {
       {/* ✅ Modale de succès invité */}
       {showGuestSuccess && (
         <>
-          <div
-            className="modal fade show d-block"
-            tabIndex={-1}
-            role="dialog"
-            aria-modal="true"
-          >
+          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content">
                 <div className="modal-header">
@@ -606,17 +666,15 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="modal-body">
-                  <p className="mb-2">
-                    Merci&nbsp;! Votre commande a bien été envoyée.
-                  </p>
+                  <p className="mb-2">Merci&nbsp;! Votre commande a bien été envoyée.</p>
                   <p className="mb-2">
                     Un membre de l’équipe Duumini va vous{" "}
                     <strong>contacter très bientôt par téléphone</strong>.
                   </p>
                   <p className="mb-0 small text-muted">
                     Pour <strong>voir l’historique</strong> et{" "}
-                    <strong>suivre vos commandes</strong>, vous pouvez vous
-                    connecter ou créer un compte.
+                    <strong>suivre vos commandes</strong>, vous pouvez vous connecter
+                    ou créer un compte.
                   </p>
                 </div>
                 <div className="modal-footer d-flex flex-wrap gap-2">
@@ -660,24 +718,32 @@ export default function CheckoutPage() {
             Confirmer la commande
           </h1>
 
-          {hasPromoInCart ? (
-            <div className="text-muted">
-              🚚 Livraison gratuite <strong>partout</strong> (offres
-              promotionnelles)
-            </div>
-          ) : (
-            <div className="text-muted">
-              Livraison sur <strong>{cityLabel || "—"}</strong>{" "}
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-dark ms-2"
-                onClick={() => window.dispatchEvent(new Event("city:open"))}
-              >
-                Changer
-              </button>
-            </div>
-          )}
+          <div className="text-muted d-flex flex-wrap align-items-center gap-2">
+            <span>
+              Livraison sur{" "}
+              <span className="addr-pill">
+                <span>📍 {cityLabel || "—"}</span>
+                <small>• {mad(deliveryFee)}</small>
+              </span>
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-dark"
+              onClick={() => window.dispatchEvent(new Event("city:open"))}
+              title="Changer la ville de livraison"
+            >
+              Changer de ville
+            </button>
+
+            {hasPromoInCart && (
+              <span className="badge text-bg-warning">
+                Promo active (sans livraison gratuite)
+              </span>
+            )}
+          </div>
         </div>
+
         {headerRight}
       </div>
 
@@ -687,8 +753,7 @@ export default function CheckoutPage() {
         <div className="alert alert-info mb-3">
           <div className="fw-semibold mb-1">Commander sans créer de compte</div>
           <p className="mb-2 small">
-            Vous pouvez finaliser votre commande{" "}
-            <strong>en tant qu’invité</strong>.
+            Vous pouvez finaliser votre commande <strong>en tant qu’invité</strong>.
           </p>
           <div className="d-flex flex-wrap gap-2">
             <button
@@ -714,8 +779,7 @@ export default function CheckoutPage() {
 
           {guestConfirmed && (
             <p className="mt-2 small mb-0">
-              ✅ Mode invité activé. Remplissez le formulaire puis confirmez la
-              commande.
+              ✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.
             </p>
           )}
         </div>
@@ -739,11 +803,7 @@ export default function CheckoutPage() {
                   >
                     {loadingRefill ? (
                       <>
-                        <span
-                          className="spinner-border spinner-border-sm me-2"
-                          role="status"
-                          aria-hidden="true"
-                        />
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
                         Rechargement…
                         <span className="visually-hidden">en cours</span>
                       </>
@@ -780,157 +840,179 @@ export default function CheckoutPage() {
                     <label className="form-label">Téléphone</label>
                     <input
                       type="tel"
-                      className={`form-control ${
-                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
-                      }`}
+                      className={`form-control ${phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""}`}
                       placeholder="+212..."
                       value={phone}
                       onChange={handlePhoneChange}
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international :
-                        +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
                     <div className="form-text">
-                      🟢{" "}
-                      <strong>
-                        Idéalement, utilisez votre numéro WhatsApp
-                      </strong>
-                      .
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
                     </div>
                   </div>
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input
-                        className="form-control"
-                        value={cityLabel || ""}
-                        disabled
-                      />
+                      <input className="form-control" value={cityLabel || ""} disabled />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
-                        onClick={() =>
-                          window.dispatchEvent(new Event("city:open"))
-                        }
+                        onClick={() => window.dispatchEvent(new Event("city:open"))}
                         title="Changer la ville de livraison"
                       >
                         Changer
                       </button>
                     </div>
-                    <div className="form-text">
-                      La ville vient de votre sélection (LocationGate).
-                    </div>
+                    <div className="form-text">La ville vient de votre sélection (LocationGate).</div>
                   </div>
 
-                  <div className="col-12 col-md-6">
-                    <label className="form-label">Commune</label>
-                    <select
-                      className="form-select"
-                      value={commune}
-                      onChange={(e) => setCommune(e.target.value)}
-                    >
-                      {COMMUNES.map((c) => (
-                        <option key={c} value={c}>
-                          {c === "__other__" ? "Autre…" : c}
-                        </option>
-                      ))}
-                    </select>
-                    {commune === "__other__" && (
-                      <input
-                        className="form-control mt-2"
-                        placeholder="Saisir votre commune"
-                        value={communeOther}
-                        onChange={(e) => setCommuneOther(e.target.value)}
-                      />
-                    )}
-                  </div>
-
-                  {/* Quartier OU GPS */}
+                  {/* ✅ Adresse pro */}
                   <div className="col-12">
-                    <label className="form-label d-flex align-items-center justify-content-between">
-                      <span>Quartier / Localisation</span>
-                      <span className="small">
-                        {useGps && coords ? (
-                          <span className="text-success">
-                            GPS: {coords.lat.toFixed(5)},{" "}
-                            {coords.lng.toFixed(5)}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-dark"
-                            onClick={askGps}
-                            disabled={loadingGps}
-                            aria-busy={loadingGps}
-                          >
-                            {loadingGps ? (
-                              <>
-                                <span
-                                  className="spinner-border spinner-border-sm me-2"
-                                  role="status"
-                                  aria-hidden="true"
-                                />
-                                Activation…
-                                <span className="visually-hidden">
-                                  de la géolocalisation
-                                </span>
-                              </>
-                            ) : (
-                              "Utiliser ma position"
-                            )}
-                          </button>
-                        )}
-                      </span>
-                    </label>
-
-                    {!useGps ? (
-                      <>
-                        <input
-                          className="form-control"
-                          placeholder="Ex: Quartier…, repère…"
-                          value={quartier}
-                          onChange={(e) => setQuartier(e.target.value)}
-                        />
-                        {gpsErr && (
-                          <div className="form-text text-danger mt-1">
-                            {gpsErr}
-                          </div>
-                        )}
-                        <div className="form-text">
-                          Saisissez votre quartier ou utilisez le GPS.
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="alert alert-info d-flex justify-content-between align-items-center">
-                          <span>
-                            Localisation GPS activée{" "}
-                            {coords
-                              ? `(${coords.lat.toFixed(
-                                  5
-                                )}, ${coords.lng.toFixed(5)})`
+                    {!editingAddress ? (
+                      <div className="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div className="small">
+                          <div className="fw-semibold">Adresse de livraison</div>
+                          <div className="text-muted">
+                            {cityLabel || "—"}
+                            {communeVal ? `, ${communeVal}` : ""}
+                            {quartier ? ` — ${quartier}` : ""}
+                            {useGps && coords
+                              ? ` (GPS ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
                               : ""}
-                            .
-                          </span>
+                          </div>
+                        </div>
+                        <div className="d-flex gap-2">
                           <button
-                            className="btn btn-sm btn-outline-dark"
                             type="button"
-                            onClick={() => {
-                              setUseGps(false);
-                              setCoords(null);
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={() => setEditingAddress(true)}
+                          >
+                            Changer d’adresse
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="row g-3">
+                        <div className="col-12 col-md-6">
+                          <label className="form-label">Commune</label>
+                          <select
+                            className="form-select"
+                            value={commune || "__other__"}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setCommune(v === "__other__" ? "" : v);
+                              if (v !== "__other__") setCommuneOther("");
                             }}
                           >
-                            Changer
+                            <option value="__other__">Autre…</option>
+                            {(communeSuggestions || []).map((s) => (
+                              <option key={s.value} value={s.value}>
+                                {s.value}
+                                {s.count ? ` (${s.count})` : ""}
+                              </option>
+                            ))}
+                          </select>
+
+                          {(!commune || commune === "__other__") && (
+                            <input
+                              className="form-control mt-2"
+                              placeholder="Saisir votre commune"
+                              value={communeOther}
+                              onChange={(e) => setCommuneOther(e.target.value)}
+                            />
+                          )}
+
+                          <div className="form-text">
+                            {loadingSuggest
+                              ? "Chargement suggestions…"
+                              : "Choisissez une commune ou saisissez-la."}
+                          </div>
+                        </div>
+
+                        <div className="col-12 col-md-6">
+                          <label className="form-label">Quartier</label>
+                          {!useGps ? (
+                            <>
+                              <input
+                                className="form-control"
+                                value={quartier}
+                                onChange={(e) => setQuartier(e.target.value)}
+                                placeholder="Ex: Quartier…, repère…"
+                                list="quartier-suggestions"
+                              />
+                              <datalist id="quartier-suggestions">
+                                {(quartierSuggestions || []).map((s) => (
+                                  <option key={s.value} value={s.value} />
+                                ))}
+                              </datalist>
+                              <div className="form-text">
+                                Astuce : commence à taper pour voir des suggestions.
+                              </div>
+                            </>
+                          ) : (
+                            <div className="alert alert-info d-flex justify-content-between align-items-center">
+                              <span>
+                                Localisation GPS activée{" "}
+                                {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
+                              </span>
+                              <button
+                                className="btn btn-sm btn-outline-dark"
+                                type="button"
+                                onClick={() => {
+                                  setUseGps(false);
+                                  setCoords(null);
+                                }}
+                              >
+                                Changer
+                              </button>
+                            </div>
+                          )}
+
+                          {!useGps && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-dark mt-2"
+                              onClick={askGps}
+                              disabled={loadingGps}
+                              aria-busy={loadingGps}
+                            >
+                              {loadingGps ? "Activation…" : "Utiliser ma position"}
+                            </button>
+                          )}
+
+                          {gpsErr && <div className="form-text text-danger">{gpsErr}</div>}
+                        </div>
+
+                        <div className="col-12 d-flex flex-wrap gap-2 align-items-center justify-content-between">
+                          <label className="form-check m-0">
+                            <input
+                              className="form-check-input"
+                              type="checkbox"
+                              checked={saveAddressToProfile}
+                              onChange={(e) => setSaveAddressToProfile(e.target.checked)}
+                            />
+                            <span className="form-check-label ms-2">
+                              Enregistrer cette adresse dans mon profil
+                            </span>
+                          </label>
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-secondary"
+                            onClick={() => {
+                              setEditingAddress(false);
+                              setSaveAddressToProfile(false);
+                            }}
+                          >
+                            Terminer
                           </button>
                         </div>
-                        {gpsErr && (
-                          <div className="form-text text-danger">{gpsErr}</div>
-                        )}
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -950,49 +1032,33 @@ export default function CheckoutPage() {
                     <label className="form-label">Téléphone</label>
                     <input
                       type="tel"
-                      className={`form-control ${
-                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
-                      }`}
+                      className={`form-control ${phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""}`}
                       placeholder="+212..., +225..., +223..., +1..."
                       value={phone}
                       onChange={handlePhoneChange}
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international :
-                        +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
                     <div className="form-text">
-                      🟢{" "}
-                      <strong>
-                        Idéalement, utilisez votre numéro WhatsApp
-                      </strong>
-                      .
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
                     </div>
                   </div>
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input
-                        className="form-control"
-                        value={cityLabel || ""}
-                        disabled
-                      />
+                      <input className="form-control" value={cityLabel || ""} disabled />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
-                        onClick={() =>
-                          window.dispatchEvent(new Event("city:open"))
-                        }
+                        onClick={() => window.dispatchEvent(new Event("city:open"))}
                         title="Changer la ville de livraison"
                       >
                         Changer
                       </button>
-                    </div>
-                    <div className="form-text">
-                      La ville vient de votre sélection (LocationGate).
                     </div>
                   </div>
 
@@ -1002,8 +1068,7 @@ export default function CheckoutPage() {
                       <span className="small">
                         {useGps && coords ? (
                           <span className="text-success">
-                            GPS: {coords.lat.toFixed(5)},{" "}
-                            {coords.lng.toFixed(5)}
+                            GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
                           </span>
                         ) : (
                           <button
@@ -1013,21 +1078,7 @@ export default function CheckoutPage() {
                             disabled={loadingGps}
                             aria-busy={loadingGps}
                           >
-                            {loadingGps ? (
-                              <>
-                                <span
-                                  className="spinner-border spinner-border-sm me-2"
-                                  role="status"
-                                  aria-hidden="true"
-                                />
-                                Activation…
-                                <span className="visually-hidden">
-                                  de la géolocalisation
-                                </span>
-                              </>
-                            ) : (
-                              "Utiliser ma position"
-                            )}
+                            {loadingGps ? "Activation…" : "Utiliser ma position"}
                           </button>
                         )}
                       </span>
@@ -1042,26 +1093,15 @@ export default function CheckoutPage() {
                           value={guestAddress}
                           onChange={(e) => setGuestAddress(e.target.value)}
                         />
-                        {gpsErr && (
-                          <div className="form-text text-danger mt-1">
-                            {gpsErr}
-                          </div>
-                        )}
-                        <div className="form-text">
-                          Adresse complète ou GPS.
-                        </div>
+                        {gpsErr && <div className="form-text text-danger mt-1">{gpsErr}</div>}
+                        <div className="form-text">Adresse complète ou GPS.</div>
                       </>
                     ) : (
                       <>
                         <div className="alert alert-info d-flex justify-content-between align-items-center">
                           <span>
                             Localisation GPS activée{" "}
-                            {coords
-                              ? `(${coords.lat.toFixed(
-                                  5
-                                )}, ${coords.lng.toFixed(5)})`
-                              : ""}
-                            .
+                            {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
                           </span>
                           <button
                             className="btn btn-sm btn-outline-dark"
@@ -1074,12 +1114,8 @@ export default function CheckoutPage() {
                             Changer
                           </button>
                         </div>
-                        {gpsErr && (
-                          <div className="form-text text-danger">{gpsErr}</div>
-                        )}
-                        <div className="form-text">
-                          Précisions optionnelles :
-                        </div>
+                        {gpsErr && <div className="form-text text-danger">{gpsErr}</div>}
+                        <div className="form-text">Précisions optionnelles :</div>
                         <textarea
                           className="form-control mt-2"
                           rows={2}
@@ -1095,104 +1131,21 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Livraison */}
+          {/* Livraison (nouveau modèle) */}
           <div className="card border-0 shadow-sm mt-3">
             <div className="card-body">
-              <h2 className="h6 mb-3">Livraison</h2>
+              <h2 className="h6 mb-2">Livraison</h2>
 
-              {hasPromoInCart ? (
-                <div className="alert alert-success mb-0">
-                  <div className="fw-semibold">🚚 Livraison gratuite</div>
-                  <div className="small">
-                    Votre panier contient une offre promotionnelle. Livraison
-                    gratuite partout.
-                  </div>
+              <div className="alert alert-light border mb-0">
+                <div className="fw-semibold">🚚 {deliveryTitle}</div>
+                <div className="small text-muted">
+                  La livraison est calculée automatiquement selon votre ville.
                 </div>
-              ) : (
-                <>
-                  <div className="d-flex flex-column gap-2">
-                    <label
-                      className={
-                        "p-3 border rounded-3 d-flex align-items-center justify-content-between gap-3 " +
-                        (delivery === "SIMPLE"
-                          ? "border-dark bg-light"
-                          : "border-secondary-subtle")
-                      }
-                      role="button"
-                      aria-pressed={delivery === "SIMPLE"}
-                      onClick={() => setDelivery("SIMPLE")}
-                    >
-                      <div className="d-flex align-items-center gap-3">
-                        <input
-                          className="form-check-input"
-                          type="radio"
-                          name="delivery"
-                          checked={delivery === "SIMPLE"}
-                          onChange={() => setDelivery("SIMPLE")}
-                          style={{ transform: "scale(1.3)" }}
-                          aria-label="Livraison simple"
-                        />
-                        <div>
-                          <div className="fw-semibold">
-                            Livraison simple{" "}
-                            <span className="badge text-bg-dark ms-2">
-                              {mad(FEES.SIMPLE)}
-                            </span>
-                          </div>
-                          <small className="text-muted">
-                            Livraison estimée en <strong>1h à 2h</strong>.
-                          </small>
-                        </div>
-                      </div>
-                    </label>
-
-                    <label
-                      className={
-                        "p-3 border rounded-3 d-flex align-items-center justify-content-between gap-3 " +
-                        (delivery === "EXPRESS"
-                          ? "border-dark bg-light"
-                          : "border-secondary-subtle")
-                      }
-                      role="button"
-                      aria-pressed={delivery === "EXPRESS"}
-                      onClick={() => setDelivery("EXPRESS")}
-                    >
-                      <div className="d-flex align-items-center gap-3">
-                        <input
-                          className="form-check-input"
-                          type="radio"
-                          name="delivery"
-                          checked={delivery === "EXPRESS"}
-                          onChange={() => setDelivery("EXPRESS")}
-                          style={{ transform: "scale(1.3)" }}
-                          aria-label="Livraison express"
-                        />
-                        <div>
-                          <div className="fw-semibold">
-                            Express{" "}
-                            <span className="badge text-bg-dark ms-2">
-                              {mad(FEES.EXPRESS)}
-                            </span>
-                          </div>
-                          <small className="text-muted">
-                            Livraison rapide en{" "}
-                            <strong style={{ color: "var(--duu-red)" }}>
-                              15 à 45 min
-                            </strong>
-                            .
-                          </small>
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-
-                  <div className="form-text mt-2">
-                    Frais applicables à{" "}
-                    <strong>{cityLabel || "votre ville"}</strong>. Le mode
-                    choisi ajustera le total automatiquement.
-                  </div>
-                </>
-              )}
+                <div className="small mt-2">
+                  Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais :{" "}
+                  <strong>{mad(deliveryFee)}</strong>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1207,19 +1160,11 @@ export default function CheckoutPage() {
               onClick={submitOrder}
               disabled={!canSubmit || submitting}
               aria-busy={submitting}
-              title={
-                !canSubmit
-                  ? "Complétez les champs requis"
-                  : "Confirmer la commande"
-              }
+              title={!canSubmit ? "Complétez les champs requis" : "Confirmer la commande"}
             >
               {submitting ? (
                 <>
-                  <span
-                    className="spinner-border spinner-border-sm me-2"
-                    role="status"
-                    aria-hidden="true"
-                  />
+                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
                   Confirmation…
                   <span className="visually-hidden">de la commande</span>
                 </>
@@ -1250,14 +1195,7 @@ export default function CheckoutPage() {
                 ))}
 
                 <li className="list-group-item d-flex justify-content-between align-items-center">
-                  <span className="text-muted">
-                    Livraison{" "}
-                    {hasPromoInCart
-                      ? "Promo"
-                      : delivery === "EXPRESS"
-                      ? "Express"
-                      : "Simple"}
-                  </span>
+                  <span className="text-muted">Livraison</span>
                   <span className="fw-semibold">{mad(deliveryFee)}</span>
                 </li>
               </ul>

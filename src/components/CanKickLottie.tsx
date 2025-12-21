@@ -31,7 +31,6 @@ export default function CanKickLottie({
   }, [isHero, size]);
 
   const label = offer?.label ?? "OFFRE CAN 2025";
-  const t1 = offer?.title ?? "Promo & Livraison gratuite";
 
   return (
     <div
@@ -170,10 +169,6 @@ export default function CanKickLottie({
       <div className="can-chip">
         <span className={`can-dot ${blink ? "blink" : ""}`} />
         <span className="pill">{label}</span>
-      </div>
-
-      <div className="can-copy">
-        <div className="t1">{t1}</div>
       </div>
     </div>
   );

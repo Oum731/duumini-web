@@ -4,7 +4,6 @@ import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
 import ProductRating from "./ProductRating";
-import { useLocationCity, type CityCode } from "../context/LocationContext";
 import { trackAddToCart } from "../lib/analytics";
 
 /* ===== Helpers ===== */
@@ -30,13 +29,11 @@ function shortText(s?: string | null, max = 200) {
 }
 
 function normToken(x: any) {
-  return String(x ?? "")
-    .trim()
-    .toLowerCase();
+  return String(x ?? "").trim().toLowerCase();
 }
 
 /**
- * ⚠️ IMPORTANT: on n'utilise PAS p.sub_category (n'existe plus sur Product)
+ * ⚠️ IMPORTANT: on n'utilise PAS p.sub_category
  * On utilise: sub_category_slug / sub_category_name / sub_category_id
  */
 function getSubCategoryToken(p: Product) {
@@ -57,54 +54,9 @@ function getSubCategoryToken(p: Product) {
 /* ===== Partage ===== */
 function buildProductUrl(p: Product) {
   const shareBase =
-    (typeof import.meta !== "undefined" &&
-      (import.meta as any).env?.VITE_SHARE_BASE_URL) ||
+    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_SHARE_BASE_URL) ||
     "https://duumini.com";
   return `${shareBase}/share/product/${Number((p as any).id)}`;
-}
-
-/* ===== Filtrage ville ===== */
-function normalizeCityLabel(raw: string | null | undefined) {
-  if (!raw) return "";
-  return String(raw)
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "")
-    .trim();
-}
-
-function normalizeCitiesAny(input: any): string[] {
-  if (input == null) return [];
-  if (Array.isArray(input)) return input.map((x) => String(x || "").trim()).filter(Boolean);
-
-  if (typeof input === "string") {
-    const s = input.trim();
-    if (!s) return [];
-    if (s.startsWith("[") && s.endsWith("]")) {
-      try {
-        const parsed = JSON.parse(s);
-        if (Array.isArray(parsed)) {
-          return parsed.map((x) => String(x || "").trim()).filter(Boolean);
-        }
-      } catch {}
-    }
-    if (s.includes(",")) return s.split(",").map((x) => x.trim()).filter(Boolean);
-    return [s];
-  }
-
-  return [];
-}
-
-function isProductAllowedForCity(product: Product, city: CityCode | null) {
-  if (!city) return true;
-  const anyP = product as any;
-
-  const cities = normalizeCitiesAny(anyP.cities);
-  if (!cities.length) return true;
-
-  const userCityNorm = normalizeCityLabel(city);
-  return cities.some((c: any) => normalizeCityLabel(c) === userCityNorm);
 }
 
 /* ===== Helpers panier ===== */
@@ -122,6 +74,14 @@ function getQtyInCart(lines: any[], product: Product): number {
   const line = findCartLineForProduct(lines, product);
   if (!line) return 0;
   return Number(line.qty ?? line.quantity ?? 0);
+}
+
+/* ✅ helper: prix affiché (promo / override / compat backend) */
+function getDisplayPrice(anyP: any, priceOverride: number | null) {
+  if (priceOverride != null) return Number(priceOverride || 0);
+  const pc = anyP.price_client ?? anyP.client_price ?? null; // compat
+  if (pc != null && pc !== "") return Number(pc || 0);
+  return Number(anyP.price ?? 0);
 }
 
 /* ===== Component ===== */
@@ -145,7 +105,6 @@ export default function ProductCard({
   badgeText = null,
   hideSubCategories = [],
 }: Props) {
-  const { city } = useLocationCity();
   const { add, lines } = useCart();
   const anyP = product as any;
 
@@ -156,15 +115,20 @@ export default function ProductCard({
     [hideSubCategories]
   );
 
+  // ✅ si on veut masquer une sous-catégorie (slug/name/id)
   if (subCatToken && hideList.includes(subCatToken)) return null;
 
+  // ✅ actif (compat active/is_active)
   const isActive = Number(anyP.is_active ?? anyP.active ?? 1) === 1;
+
+  // ✅ stock: si null => dispo
   const stock = anyP.stock;
   const isOutOfStock = stock === 0;
 
-  const isCityAllowed = useMemo(() => isProductAllowedForCity(product, city), [product, city]);
-  if (!isActive || !isCityAllowed) return null;
+  // ✅ plus de filtre ville
+  if (!isActive) return null;
 
+  // ✅ images: cover + images[]
   const imagesRaw: string[] = useMemo(() => {
     const arr: string[] = [];
     const cover = anyP.cover || anyP.image || null;
@@ -191,58 +155,17 @@ export default function ProductCard({
   const images = useMemo(() => imagesRaw.map((u) => imgUrl(u)), [imagesRaw]);
   const coverUrl = images[0] || "";
 
+  // ✅ prix affiché
+  const displayPrice = useMemo(() => getDisplayPrice(anyP, priceOverride), [anyP, priceOverride]);
+
+  const shareUrl = useMemo(() => buildProductUrl(product), [product]);
+  const shareText = `${String(anyP.name || "Produit")} — ${moneyMAD(displayPrice)} sur Duumini`;
+
   const qtyInCart = useMemo(() => getQtyInCart(lines as any[], product), [lines, product]);
 
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imgIdx, setImgIdx] = useState(0);
-
-  const shareUrl = useMemo(() => buildProductUrl(product), [product]);
-
-  const displayPrice = Number(priceOverride ?? anyP.price_client ?? anyP.price ?? 0);
-  const shareText = `${String(anyP.name || "Produit")} — ${moneyMAD(displayPrice)} sur Duumini`;
-
-  const handleAdd = useCallback(() => {
-    if (isOutOfStock) return;
-
-    const productForCart: any = {
-      ...anyP,
-      price: displayPrice,
-      _pricing: {
-        basePrice: Number(anyP.price ?? 0),
-        finalPrice: displayPrice,
-        isPromo: priceOverride != null && oldPrice != null,
-        badge: badgeText ?? null,
-      },
-    };
-
-    if (onAdd) onAdd(productForCart);
-    else add(productForCart, 1);
-
-    trackAddToCart({
-      productId: anyP.id,
-      name: anyP.name,
-      price: displayPrice,
-      quantity: 1,
-      currency: "MAD",
-      category: subCatToken || "",
-    });
-  }, [
-    add,
-    anyP,
-    badgeText,
-    displayPrice,
-    isOutOfStock,
-    oldPrice,
-    onAdd,
-    priceOverride,
-    subCatToken,
-  ]);
-
-  const handleDecrease = useCallback(() => {
-    if (!qtyInCart) return;
-    add(anyP, -1);
-  }, [add, anyP, qtyInCart]);
 
   const openModal = useCallback(() => {
     setImgIdx(0);
@@ -262,6 +185,38 @@ export default function ProductCard({
   }, [images.length]);
 
   const currentImg = images[imgIdx] || coverUrl;
+
+  const handleAdd = useCallback(() => {
+    if (isOutOfStock) return;
+
+    const productForCart: any = {
+      ...anyP,
+      price: displayPrice,
+      _pricing: {
+        basePrice: Number(anyP.price ?? 0),
+        finalPrice: displayPrice,
+        isPromo: priceOverride != null && oldPrice != null && Number(oldPrice) > Number(displayPrice),
+        badge: badgeText ?? null,
+      },
+    };
+
+    if (onAdd) onAdd(productForCart);
+    else add(productForCart, 1);
+
+    trackAddToCart({
+      productId: anyP.id,
+      name: anyP.name,
+      price: displayPrice,
+      quantity: 1,
+      currency: "MAD",
+      category: subCatToken || "",
+    });
+  }, [add, anyP, badgeText, displayPrice, isOutOfStock, oldPrice, onAdd, priceOverride, subCatToken]);
+
+  const handleDecrease = useCallback(() => {
+    if (!qtyInCart) return;
+    add(anyP, -1);
+  }, [add, anyP, qtyInCart]);
 
   const shareProduct = useCallback(async () => {
     try {
@@ -299,9 +254,7 @@ export default function ProductCard({
           )}
 
           {isOutOfStock && (
-            <span className="badge bg-danger position-absolute top-0 start-0 m-2">
-              En rupture
-            </span>
+            <span className="badge bg-danger position-absolute top-0 start-0 m-2">En rupture</span>
           )}
 
           {!!badgeText && !isOutOfStock && (
@@ -332,7 +285,8 @@ export default function ProductCard({
 
           <div className="d-flex align-items-baseline gap-2 mb-2">
             <div className="fw-semibold">{moneyMAD(displayPrice)}</div>
-            {oldPrice != null && oldPrice > displayPrice && (
+
+            {oldPrice != null && Number(oldPrice) > Number(displayPrice) && (
               <div
                 style={{
                   textDecoration: "line-through",
@@ -363,12 +317,7 @@ export default function ProductCard({
                 </button>
               </div>
             ) : (
-              <button
-                className="btn btn-duu btn-sm flex-fill"
-                onClick={handleAdd}
-                disabled={isOutOfStock}
-                type="button"
-              >
+              <button className="btn btn-duu btn-sm flex-fill" onClick={handleAdd} disabled={isOutOfStock} type="button">
                 + Panier
               </button>
             )}
@@ -442,14 +391,15 @@ export default function ProductCard({
                     {images.length > 1 && (
                       <div className="d-flex gap-2 mt-2 flex-wrap">
                         {images.slice(0, 8).map((u, i) => {
-                          const active = i === imgIdx;
+                          const activeThumb = i === imgIdx;
                           return (
                             <button
                               key={u + i}
                               type="button"
                               onClick={() => setImgIdx(i)}
                               className={
-                                "p-0 border rounded overflow-hidden " + (active ? "border-dark" : "border-0")
+                                "p-0 border rounded overflow-hidden " +
+                                (activeThumb ? "border-dark" : "border-0")
                               }
                               style={{ width: 54, height: 54, background: "#fff" }}
                               aria-label={`Voir image ${i + 1}`}
@@ -462,7 +412,7 @@ export default function ProductCard({
                                   width: "100%",
                                   height: "100%",
                                   objectFit: "cover",
-                                  opacity: active ? 1 : 0.9,
+                                  opacity: activeThumb ? 1 : 0.9,
                                 }}
                                 loading="lazy"
                               />
@@ -476,14 +426,8 @@ export default function ProductCard({
                   <div className="col-12 col-md-6">
                     <div className="d-flex align-items-baseline gap-2">
                       <div className="h5 m-0">{moneyMAD(displayPrice)}</div>
-                      {oldPrice != null && oldPrice > displayPrice && (
-                        <div
-                          className="h6 m-0"
-                          style={{
-                            textDecoration: "line-through",
-                            color: "rgba(0,0,0,.45)",
-                          }}
-                        >
+                      {oldPrice != null && Number(oldPrice) > Number(displayPrice) && (
+                        <div className="h6 m-0" style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)" }}>
                           {moneyMAD(oldPrice)}
                         </div>
                       )}
@@ -508,9 +452,7 @@ export default function ProductCard({
                     </div>
 
                     {isOutOfStock && (
-                      <div className="alert alert-warning mt-3 py-2 small mb-0">
-                        Produit en rupture de stock.
-                      </div>
+                      <div className="alert alert-warning mt-3 py-2 small mb-0">Produit en rupture de stock.</div>
                     )}
                   </div>
                 </div>

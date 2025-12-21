@@ -195,7 +195,7 @@ function LaunchOnlyPage() {
                 <span className="blink-emoji">🎉</span>
               </h1>
               <p className="text-muted m-0 launch-note">
-                Casablanca & Marrakech • Paiement à la livraison
+                MAroc • Paiement à la livraison
               </p>
             </div>
 

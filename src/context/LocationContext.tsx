@@ -12,14 +12,13 @@ import { useAuth } from "./AuthContext";
 const STORAGE_KEY = "duumini_city";
 
 /**
- * ✅ Avant: "CASABLANCA" | "MARRAKECH"
- * ✅ Maintenant: ville libre (string)
+ * ✅ Ville libre (string)
+ * Ex: "Casablanca", "Rabat", "Mohammedia", etc.
  */
 export type CityCode = string;
 
 /**
- * ✅ Suggestions par défaut (peuvent être remplacées/complétées par la DB dans LocationGate)
- * On garde la structure pour compat avec ton UI.
+ * ✅ Suggestions par défaut (fallback si API indisponible)
  */
 export const CITY_OPTIONS: { code: CityCode; label: string }[] = [
   { code: "Casablanca", label: "Casablanca" },
@@ -31,10 +30,6 @@ export const CITY_OPTIONS: { code: CityCode; label: string }[] = [
 ];
 
 type LocationContextType = {
-  /**
-   * Ville courante (libre)
-   * Ex: "Casablanca", "Kénitra", "Oujda", etc.
-   */
   city: CityCode | null;
   setCity: (city: CityCode | null) => void;
   isReady: boolean;
@@ -46,12 +41,16 @@ const LocationContext = createContext<LocationContextType>({
   isReady: false,
 });
 
+/* ===== Helpers ===== */
+function normSpaces(s: string) {
+  return s.trim().replace(/\s+/g, " ");
+}
+
 function normalizeCityLabel(v?: string | null): string | null {
-  const s = String(v ?? "").trim();
+  const s = normSpaces(String(v ?? ""));
   if (!s) return null;
-  // On garde la casse telle quelle, mais on peut légèrement uniformiser :
-  // -> "casablanca" => "Casablanca"
-  // Si tu préfères ne pas toucher, supprime le bloc ci-dessous.
+
+  // Normalisation légère (sans être agressif)
   const lower = s.toLowerCase();
   if (lower === "casablanca") return "Casablanca";
   if (lower === "marrakech") return "Marrakech";
@@ -59,52 +58,63 @@ function normalizeCityLabel(v?: string | null): string | null {
   if (lower === "tanger") return "Tanger";
   if (lower === "fes" || lower === "fès") return "Fès";
   if (lower === "agadir") return "Agadir";
+
+  // sinon on conserve tel quel
   return s;
 }
 
+/**
+ * ✅ IMPORTANT (prod)
+ * On ne force PAS la ville du profil utilisateur.
+ * La ville choisie via LocationGate est la source de vérité UI.
+ * Le profil sert seulement de fallback au tout premier chargement (si rien en storage).
+ */
 export function LocationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
 
   const [city, setCityState] = useState<CityCode | null>(null);
   const [isReady, setIsReady] = useState(false);
 
-  // Ville du profil user (si connecté)
   const userVille = useMemo(() => {
     return normalizeCityLabel((user as any)?.ville ?? null);
   }, [user]);
 
   useEffect(() => {
-    // ✅ Si user connecté : on privilégie son profil
-    if (user) {
+    // 1) on tente localStorage (même connecté)
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      const fromStorage = normalizeCityLabel(saved);
+      if (fromStorage) {
+        setCityState(fromStorage);
+        setIsReady(true);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    // 2) fallback profil si connecté (si aucune ville en storage)
+    if (user && userVille) {
       setCityState(userVille);
       setIsReady(true);
       return;
     }
 
-    // ✅ Invité : lecture depuis localStorage
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      setCityState(normalizeCityLabel(saved));
-    } catch {
-      setCityState(null);
-    } finally {
-      setIsReady(true);
-    }
+    // 3) rien
+    setCityState(null);
+    setIsReady(true);
   }, [user?.id, userVille]);
 
   function setCity(next: CityCode | null) {
     const normalized = normalizeCityLabel(next);
-
     setCityState(normalized);
 
-    // ✅ On persiste seulement pour les invités
-    if (!user) {
-      try {
-        if (normalized) localStorage.setItem(STORAGE_KEY, normalized);
-        else localStorage.removeItem(STORAGE_KEY);
-      } catch {
-        // ignore
-      }
+    // ✅ On persiste TOUJOURS (même connecté) : la ville est un choix UI/commande
+    try {
+      if (normalized) localStorage.setItem(STORAGE_KEY, normalized);
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
     }
   }
 

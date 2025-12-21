@@ -1,43 +1,26 @@
 // src/components/LocationGate.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocationCity, type CityCode } from "../context/LocationContext";
-import { http } from "../services/http";
+import { useLocationCity, CITY_OPTIONS, type CityCode } from "../context/LocationContext";
+import { api } from "../services/http";
 
 /**
- * ✅ Objectif
- * - Charger la liste des villes disponibles depuis la base (API)
- * - Laisser l'utilisateur saisir une ville si elle n'est pas disponible
- * - Stocker le choix dans LocationContext via setCity()
- *
- * ⚠️ Important
- * - Comme ton LocationContext utilise un type CityCode (souvent "CASABLANCA"/"MARRAKECH"...),
- *   on "encode" les villes venant de la DB en CityCode sous la forme: "CITY:<slug>"
- *   (cast TypeScript -> CityCode) pour ne pas casser le contexte.
- *
- * ✅ Côté backend attendu (au choix)
- * - GET /api/locations/cities -> { items: [{ name: "Casablanca" }, ...] }
- *   ou { cities: ["Casablanca", ...] }
- *
- * Si tu as déjà une route différente, change seulement CITY_ENDPOINT + parseCities().
+ * ✅ API attendue
+ * GET /api/locations/cities?q=
+ * -> { items: ["Casablanca", ...] }
+ *    ou { items: [{name:"Casablanca"} ...] }
  */
-
 const CITY_ENDPOINT = "/api/locations/cities";
-const CITY_CUSTOM_PREFIX = "CITY:";
 
 /* ===== Helpers ===== */
 function stripDiacritics(s: string) {
-  return s
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
-
 function norm(s: string) {
   return stripDiacritics(String(s || ""))
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
 }
-
 function titleCase(s: string) {
   const t = String(s || "").trim().replace(/\s+/g, " ");
   if (!t) return "";
@@ -46,7 +29,6 @@ function titleCase(s: string) {
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
     .join(" ");
 }
-
 function uniqSorted(list: string[]) {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -61,41 +43,20 @@ function uniqSorted(list: string[]) {
   out.sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
   return out;
 }
-
-function toCityCode(name: string): CityCode {
-  const slug = norm(name).replace(/\s+/g, "-");
-  return (CITY_CUSTOM_PREFIX + slug) as unknown as CityCode;
-}
-
-function labelFromCityCode(code: CityCode | null | undefined) {
-  if (!code) return "";
-  const s = String(code);
-  if (s.startsWith(CITY_CUSTOM_PREFIX)) {
-    const slug = s.slice(CITY_CUSTOM_PREFIX.length);
-    const label = slug.replace(/-/g, " ");
-    return titleCase(label);
-  }
-  // fallback: si ton context a encore des codes historiques
-  return titleCase(s);
-}
-
-/** Parse flexible suivant réponse API */
 function parseCities(payload: any): string[] {
   if (!payload) return [];
-
-  // { cities: ["Casablanca", ...] }
+  if (Array.isArray(payload.items)) {
+    return payload.items.map((x: any) => {
+      if (typeof x === "string") return x;
+      return x?.name ?? x?.label ?? x?.city ?? String(x ?? "");
+    });
+  }
   if (Array.isArray(payload.cities)) return payload.cities.map(String);
-
-  // { items: [{name:"..."}, ...] }
-  if (Array.isArray(payload.items))
-    return payload.items
-      .map((x: any) => x?.name ?? x?.label ?? x?.city ?? x)
-      .map(String);
-
-  // direct array
   if (Array.isArray(payload)) return payload.map(String);
-
   return [];
+}
+function eqCity(a?: string | null, b?: string | null) {
+  return norm(String(a || "")) === norm(String(b || ""));
 }
 
 export default function LocationGate({ children }: { children: React.ReactNode }) {
@@ -103,106 +64,146 @@ export default function LocationGate({ children }: { children: React.ReactNode }
 
   const [showModal, setShowModal] = useState(false);
 
-  // ✅ villes DB
   const [cities, setCities] = useState<string[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
   const [citiesErr, setCitiesErr] = useState<string | null>(null);
 
-  // ✅ recherche + saisie libre
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(""); // recherche
+  const [selected, setSelected] = useState<string>(""); // ✅ valeur sélectionnée dans la dropdown
   const [customCity, setCustomCity] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
 
-  const currentLabel = useMemo(() => labelFromCityCode(city), [city]);
+  const currentLabel = useMemo(() => titleCase(city || ""), [city]);
 
-async function loadCities() {
-  abortRef.current?.abort();
-  const ac = new AbortController();
-  abortRef.current = ac;
+  const defaultFallbackCities = useMemo(() => CITY_OPTIONS.map((c) => c.label), []);
 
-  setLoadingCities(true);
-  setCitiesErr(null);
+  async function loadCities(search?: string) {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
 
-  try {
-    const res = await http<any>(CITY_ENDPOINT, { signal: ac.signal } as any);
-    if (ac.signal.aborted) return;
+    setLoadingCities(true);
+    setCitiesErr(null);
 
-    const list = uniqSorted(parseCities(res));
-    setCities(list);
-  } catch (e: any) {
-    if (ac.signal.aborted) return;
-    setCitiesErr(e?.message || "Impossible de charger la liste des villes.");
-    setCities([]);
-  } finally {
-    if (!ac.signal.aborted) setLoadingCities(false);
+    try {
+      const res = await api.get<any>(CITY_ENDPOINT, {
+        query: { q: (search || "").trim() || undefined },
+        signal: ac.signal,
+        timeout: 12000,
+      });
+
+      if (ac.signal.aborted) return;
+
+      const list = uniqSorted(parseCities(res));
+      const finalList = list.length ? list : uniqSorted(defaultFallbackCities);
+      setCities(finalList);
+
+      // ✅ sync selected
+      const current = titleCase(city || "");
+      if (current && finalList.some((x) => eqCity(x, current))) setSelected(current);
+      else if (!selected && finalList.length) setSelected(finalList[0]);
+    } catch (e: any) {
+      if (ac.signal.aborted) return;
+      setCitiesErr(e?.message || "Impossible de charger la liste des villes.");
+      const fallback = uniqSorted(defaultFallbackCities);
+      setCities(fallback);
+
+      const current = titleCase(city || "");
+      if (current && fallback.some((x) => eqCity(x, current))) setSelected(current);
+      else if (!selected && fallback.length) setSelected(fallback[0]);
+    } finally {
+      if (!ac.signal.aborted) setLoadingCities(false);
+    }
   }
-}
 
-
-  // 👉 Au premier chargement : si pas de ville, on force l'ouverture
+  // 👉 au premier chargement : si pas de ville, on force l'ouverture
   useEffect(() => {
     if (!isReady) return;
     if (!city) setShowModal(true);
   }, [isReady, city]);
 
-  // 👉 Écoute un évènement global "city:open"
+  // 👉 event global "city:open"
   useEffect(() => {
     const handler = () => setShowModal(true);
     window.addEventListener("city:open", handler);
     return () => window.removeEventListener("city:open", handler);
   }, []);
 
-  // ✅ Lock scroll
+  // ✅ lock scroll
   useEffect(() => {
     if (!showModal) return;
     document.body.classList.add("modal-open");
     return () => document.body.classList.remove("modal-open");
   }, [showModal]);
 
-  // ✅ Charger villes quand modal s'ouvre (et au besoin une seule fois)
+  // ✅ charger villes quand modal s'ouvre
   useEffect(() => {
     if (!showModal) return;
-    if (cities.length) return;
-    loadCities();
+    loadCities("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showModal]);
 
-  const filteredCities = useMemo(() => {
+  // ✅ recherche (debounce + abort)
+  useEffect(() => {
+    if (!showModal) return;
+
+    const t = window.setTimeout(() => {
+      const needle = q.trim();
+      if (needle.length >= 2) loadCities(needle);
+      else if (!needle) loadCities("");
+    }, 250);
+
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, showModal]);
+
+  async function handleSelectName(cityName: string) {
+    const label = titleCase(cityName);
+    if (!label) return;
+
+    // ✅ best-effort: enrich backend
+    try {
+      await api.post("/api/locations/cities", { city: label }, { timeout: 8000 });
+    } catch {
+      // ignore
+    }
+
+    setCity(label as CityCode);
+    setShowModal(false);
+    setQ("");
+    setCustomCity("");
+  }
+
+  async function handleSelectCustom() {
+    const label = titleCase(customCity);
+    if (!label) return;
+
+    try {
+      await api.post("/api/locations/cities", { city: label }, { timeout: 8000 });
+    } catch {
+      // ignore
+    }
+
+    setCities((prev) => uniqSorted([...prev, label]));
+    setSelected(label);
+    setCity(label as CityCode);
+
+    setShowModal(false);
+    setQ("");
+    setCustomCity("");
+  }
+
+  const dropdownOptions = useMemo(() => {
     const needle = norm(q);
-    if (!needle) return cities;
-    return cities.filter((c) => norm(c).includes(needle));
+    const list = !needle ? cities : cities.filter((c) => norm(c).includes(needle));
+    return list.slice(0, 200); // sécurité UI
   }, [cities, q]);
-
-  function handleSelectName(cityName: string) {
-    const code = toCityCode(cityName);
-    setCity(code);
-    setShowModal(false);
-    setQ("");
-    setCustomCity("");
-  }
-
-  function handleSelectCustom() {
-    const v = titleCase(customCity);
-    if (!v) return;
-
-    // ✅ option: on peut l'ajouter tout de suite visuellement (sans attendre backend),
-    // mais le vrai "source of truth" reste la DB.
-    setCities((prev) => uniqSorted([...prev, v]));
-
-    // ✅ setCity avec code "CITY:<slug>"
-    setCity(toCityCode(v));
-    setShowModal(false);
-    setQ("");
-    setCustomCity("");
-  }
 
   if (!isReady) {
     return (
       <div className="min-vh-100 d-flex align-items-center justify-content-center">
-        <div className="text-center text-muted small">
-          Chargement de votre zone de livraison…
-        </div>
+        <div className="text-center text-muted small">Chargement de votre zone de livraison…</div>
       </div>
     );
   }
@@ -233,9 +234,7 @@ async function loadCities() {
           title={currentLabel ? `Ville actuelle : ${currentLabel}` : undefined}
         >
           <span style={{ fontSize: "1rem" }}>📍</span>
-          <span className="fw-semibold">
-            {currentLabel ? `Ville : ${currentLabel}` : "Choisir ma ville"}
-          </span>
+          <span className="fw-semibold">{currentLabel ? `Ville : ${currentLabel}` : "Choisir ma ville"}</span>
         </button>
       )}
 
@@ -268,11 +267,11 @@ async function loadCities() {
 
                 <div className="modal-body">
                   <p className="small text-muted mb-2">
-                    Sélectionnez une ville disponible, ou saisissez la vôtre si elle n’apparaît pas.
+                    Choisis une ville dans la liste déroulante (tu peux aussi rechercher).
                   </p>
 
                   {/* Recherche */}
-                  <div className="input-group mb-3">
+                  <div className="input-group mb-2">
                     <input
                       className="form-control"
                       placeholder="Rechercher une ville…"
@@ -282,7 +281,7 @@ async function loadCities() {
                     <button
                       type="button"
                       className="btn btn-outline-secondary"
-                      onClick={() => loadCities()}
+                      onClick={() => loadCities(q)}
                       disabled={loadingCities}
                       title="Rafraîchir"
                     >
@@ -290,46 +289,43 @@ async function loadCities() {
                     </button>
                   </div>
 
-                  {/* Liste DB */}
-                  <div className="d-flex flex-column gap-2">
-                    {loadingCities ? (
-                      <div className="text-muted small">Chargement des villes…</div>
-                    ) : citiesErr ? (
-                      <div className="alert alert-warning py-2 mb-0">
-                        <div className="small">{citiesErr}</div>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-dark mt-2"
-                          onClick={() => loadCities()}
-                        >
-                          Réessayer
-                        </button>
-                      </div>
-                    ) : filteredCities.length ? (
-                      filteredCities.slice(0, 24).map((name) => {
-                        const active = norm(name) === norm(currentLabel);
-                        return (
-                          <button
-                            key={name}
-                            type="button"
-                            className="btn w-100"
-                            onClick={() => handleSelectName(name)}
-                            style={{
-                              borderRadius: 999,
-                              border: "1px solid rgba(0,0,0,.08)",
-                              background: active ? "var(--duu-yellow, #FFD54F)" : "#fff",
-                              color: "var(--duu-black, #111)",
-                              fontWeight: 700,
-                              textAlign: "left",
-                            }}
-                          >
-                            {name}
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <div className="text-muted small">Aucune ville trouvée.</div>
-                    )}
+                  {citiesErr && (
+                    <div className="alert alert-warning py-2 mb-2">
+                      <div className="small">{citiesErr}</div>
+                    </div>
+                  )}
+
+                  {/* ✅ Dropdown */}
+                  <label className="form-label fw-semibold mb-1">Ville</label>
+                  <select
+                    className="form-select mb-2"
+                    value={selected}
+                    onChange={(e) => setSelected(e.target.value)}
+                    disabled={loadingCities || !dropdownOptions.length}
+                  >
+                    {dropdownOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {titleCase(name)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="d-grid">
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{
+                        border: "1px solid rgba(0,0,0,.08)",
+                        background: "var(--duu-yellow, #FFD54F)",
+                        fontWeight: 900,
+                        color: "var(--duu-black, #111)",
+                        borderRadius: 999,
+                      }}
+                      onClick={() => handleSelectName(selected)}
+                      disabled={!titleCase(selected)}
+                    >
+                      Confirmer la ville
+                    </button>
                   </div>
 
                   {/* Saisie libre */}
@@ -360,12 +356,12 @@ async function loadCities() {
                     </div>
 
                     <div className="small text-muted mt-2">
-                      Si vous saisissez une nouvelle ville, elle sera utilisée pour filtrer l’affichage.
+                      La ville est enregistrée pour vos prochaines visites.
                     </div>
                   </div>
 
                   <p className="small text-muted mt-3 mb-0">
-                    La ville sélectionnée reste active même si vous êtes connecté(e).
+                    La ville sélectionnée est conservée sur cet appareil.
                   </p>
                 </div>
               </div>

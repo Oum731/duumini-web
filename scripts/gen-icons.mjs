@@ -4,7 +4,7 @@ import { mkdir } from "fs/promises";
 await mkdir("public/icons", { recursive: true });
 
 // Source = logo Duumini noir
-const src = "public/logo.png"; // ← copie ton fichier ici
+const src = "public/logo.jpeg"; // ← copie ton fichier ici
 
 await sharp(src)
   .resize(192, 192)

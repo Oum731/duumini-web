@@ -3,11 +3,24 @@ import {
   type FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Lock, UserRound, Phone, LogOut, Pencil, Eye, EyeOff } from "lucide-react";
+import {
+  Lock,
+  UserRound,
+  Phone,
+  LogOut,
+  Pencil,
+  Eye,
+  EyeOff,
+  Search,
+  Loader2,
+  Check,
+  Plus,
+} from "lucide-react";
 import {
   type User,
   login,
@@ -18,21 +31,22 @@ import {
   updateProfile,
   mapCityCodeToVille,
 } from "../services/auth";
-import { http } from "../services/http";
+import { http, api } from "../services/http";
 import { normalizePhoneInput, isValidPhoneIntl } from "../utils/phone";
 import { useLocationCity } from "../context/LocationContext";
 
 /* =========================
- * ✅ Dynamic locations (localStorage)
- * - Ajout auto des nouvelles villes
- * - Ajout auto des nouvelles communes / quartiers liés à la ville
- * - Pays = Maroc (pour le moment)
+ * ✅ Production-ready locations UX
+ * - Live search (debounced) for cities via API
+ * - Communes/quartiers loaded by city (+ optional local filter)
+ * - Caching + abort requests
+ * - Best-effort "add suggestion" to DB on submit (and also when selecting a new value)
+ * - Fallback store (localStorage) remains as resilience (offline)
  * ========================= */
 const COUNTRY_FIXED = "Maroc";
-
 const LS_LOCATIONS_KEY = "duumini:locations:v1";
 
-/** Villes de base (tu peux éditer) */
+/** Fallback cities */
 const BASE_VILLES = [
   "Casablanca",
   "Rabat",
@@ -52,7 +66,7 @@ const BASE_VILLES = [
   "Dakhla",
 ] as const;
 
-/** Communes/arrondissements de Casablanca */
+/** Fallback communes */
 const BASE_COMMUNES_CASA: string[] = [
   "Anfa",
   "Maârif",
@@ -68,7 +82,6 @@ const BASE_COMMUNES_CASA: string[] = [
   "Sidi Othmane",
 ];
 
-/** Communes/arrondissements de Marrakech */
 const BASE_COMMUNES_MARRAKECH: string[] = [
   "Guéliz",
   "Ménara",
@@ -80,11 +93,14 @@ const BASE_COMMUNES_MARRAKECH: string[] = [
 
 type LocationsStore = {
   version: 1;
-  villes: string[]; // villes connues
-  communesByVille: Record<string, string[]>; // key = villeNorm
-  quartiersByVille: Record<string, string[]>; // key = villeNorm
+  villes: string[];
+  communesByVille: Record<string, string[]>;
+  quartiersByVille: Record<string, string[]>;
 };
 
+/* =========================
+ * Utils
+ * ========================= */
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
     if (!raw) return fallback;
@@ -95,9 +111,7 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
 }
 
 function stripDiacritics(s: string) {
-  return s
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function normKey(s: string) {
@@ -131,6 +145,18 @@ function uniqSorted(arr: string[]) {
   return out;
 }
 
+function normalizeItems(input: any): string[] {
+  const arr = input?.items ?? input ?? [];
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((x: any) => {
+      if (typeof x === "string") return x;
+      return x?.value ?? x?.name ?? "";
+    })
+    .map((s: any) => titleCase(String(s || "")))
+    .filter(Boolean);
+}
+
 function loadLocations(): LocationsStore {
   const fallback: LocationsStore = {
     version: 1,
@@ -147,24 +173,27 @@ function loadLocations(): LocationsStore {
     fallback
   );
 
-  // merge base au cas où
   const villes = uniqSorted([...(stored?.villes || []), ...fallback.villes]);
 
-  const communesByVille: Record<string, string[]> = { ...(stored?.communesByVille || {}) };
-  const quartiersByVille: Record<string, string[]> = { ...(stored?.quartiersByVille || {}) };
+  const communesByVille: Record<string, string[]> = {
+    ...(stored?.communesByVille || {}),
+  };
+  const quartiersByVille: Record<string, string[]> = {
+    ...(stored?.quartiersByVille || {}),
+  };
 
   const casaKey = normKey("Casablanca");
   const marKey = normKey("Marrakech");
-  communesByVille[casaKey] = uniqSorted([...(communesByVille[casaKey] || []), ...BASE_COMMUNES_CASA]);
-  communesByVille[marKey] = uniqSorted([...(communesByVille[marKey] || []), ...BASE_COMMUNES_MARRAKECH]);
+  communesByVille[casaKey] = uniqSorted([
+    ...(communesByVille[casaKey] || []),
+    ...BASE_COMMUNES_CASA,
+  ]);
+  communesByVille[marKey] = uniqSorted([
+    ...(communesByVille[marKey] || []),
+    ...BASE_COMMUNES_MARRAKECH,
+  ]);
 
-  const out: LocationsStore = {
-    version: 1,
-    villes,
-    communesByVille,
-    quartiersByVille,
-  };
-
+  const out: LocationsStore = { version: 1, villes, communesByVille, quartiersByVille };
   localStorage.setItem(LS_LOCATIONS_KEY, JSON.stringify(out));
   return out;
 }
@@ -220,17 +249,143 @@ function addQuartier(store: LocationsStore, ville: string, quartier: string) {
 
 function communesForVille(store: LocationsStore, ville: string) {
   const key = normKey(ville);
-  const list = store.communesByVille[key] || [];
-  return uniqSorted(list);
+  return uniqSorted(store.communesByVille[key] || []);
 }
 
 function quartiersForVille(store: LocationsStore, ville: string) {
   const key = normKey(ville);
-  const list = store.quartiersByVille[key] || [];
-  return uniqSorted(list);
+  return uniqSorted(store.quartiersByVille[key] || []);
 }
 
-/* ====== Helpers UI ====== */
+function useDebouncedValue<T>(value: T, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+/* =========================
+ * Locations API (production)
+ * - caching (Map)
+ * - abort in-flight requests
+ * ========================= */
+function useLocationsApi() {
+  const citiesCache = useRef<Map<string, string[]>>(new Map()); // key = q
+  const communesCache = useRef<Map<string, string[]>>(new Map()); // key = city
+  const quartiersCache = useRef<Map<string, string[]>>(new Map()); // key = city||commune
+
+  const inFlight = useRef<{
+    cities?: AbortController | null;
+    communes?: AbortController | null;
+    quartiers?: AbortController | null;
+  }>({});
+
+  function abort(kind: "cities" | "communes" | "quartiers") {
+    try {
+      inFlight.current[kind]?.abort();
+    } catch {}
+    inFlight.current[kind] = null;
+  }
+
+  async function listCities(q: string) {
+    const key = normKey(q || "");
+    if (citiesCache.current.has(key)) return citiesCache.current.get(key)!;
+
+    abort("cities");
+    const ac = new AbortController();
+    inFlight.current.cities = ac;
+
+    const res = await api.get<any>("/api/locations/cities", {
+      query: q ? { q } : undefined,
+      signal: ac.signal as any,
+    });
+
+    const items = uniqSorted(normalizeItems(res));
+    citiesCache.current.set(key, items);
+    return items;
+  }
+
+  async function listCommunes(city: string) {
+    const c = titleCase(city);
+    const key = normKey(c);
+    if (!c) return [];
+    if (communesCache.current.has(key)) return communesCache.current.get(key)!;
+
+    abort("communes");
+    const ac = new AbortController();
+    inFlight.current.communes = ac;
+
+    const res = await api.get<any>("/api/locations/communes", {
+      query: { city: c },
+      signal: ac.signal as any,
+    });
+
+    const items = uniqSorted(normalizeItems(res));
+    communesCache.current.set(key, items);
+    return items;
+  }
+
+  async function listQuartiers(city: string, commune: string) {
+    const c = titleCase(city);
+    const m = titleCase(commune);
+    if (!c || !m) return [];
+    const key = `${normKey(c)}||${normKey(m)}`;
+    if (quartiersCache.current.has(key)) return quartiersCache.current.get(key)!;
+
+    abort("quartiers");
+    const ac = new AbortController();
+    inFlight.current.quartiers = ac;
+
+    const res = await api.get<any>("/api/locations/quartiers", {
+      query: { city: c, commune: m },
+      signal: ac.signal as any,
+    });
+
+    const items = uniqSorted(normalizeItems(res));
+    quartiersCache.current.set(key, items);
+    return items;
+  }
+
+  async function addCity(city: string) {
+    const c = titleCase(city);
+    if (!c) return;
+    try {
+      await api.post("/api/locations/cities", { city: c });
+      // invalidate broad cache by clearing only empty query cache
+      // (safe, since we merge w/ local store anyway)
+      citiesCache.current.delete("");
+    } catch {}
+  }
+
+  async function addCommune(city: string, commune: string) {
+    const c = titleCase(city);
+    const m = titleCase(commune);
+    if (!c || !m) return;
+    try {
+      await api.post("/api/locations/communes", { city: c, commune: m });
+      communesCache.current.delete(normKey(c));
+    } catch {}
+  }
+
+  async function addQuartier(city: string, commune: string, quartier: string) {
+    const c = titleCase(city);
+    const m = titleCase(commune);
+    const q = titleCase(quartier);
+    if (!c || !m || !q) return;
+    try {
+      await api.post("/api/locations/quartiers", { city: c, commune: m, quartier: q });
+      quartiersCache.current.delete(`${normKey(c)}||${normKey(m)}`);
+    } catch {}
+  }
+
+  return { listCities, listCommunes, listQuartiers, addCity, addCommune, addQuartier };
+}
+
+/* =========================
+ * UI components
+ * ========================= */
 function initials(u: User | null): string {
   const fn = (u?.first_name || "").trim();
   const ln = (u?.last_name || "").trim();
@@ -271,7 +426,6 @@ function Avatar({ user, size = 64 }: { user: User | null; size?: number }) {
   );
 }
 
-/* ====== Validation & mot de passe ====== */
 const rePassword = /^(?=.*[A-Za-z])(?=.*\d).{8,}$/;
 
 function validateRegisterForm(params: {
@@ -284,17 +438,11 @@ function validateRegisterForm(params: {
   const errors: Record<string, string> = {};
   const phoneVal = normalizePhoneInput(params.phone.trim());
 
-  if (!phoneVal) {
-    errors.phone = "Téléphone requis.";
-  } else if (!isValidPhoneIntl(phoneVal)) {
-    errors.phone = "Numéro invalide. Utilisez le format international ex : +2126…";
-  }
+  if (!phoneVal) errors.phone = "Téléphone requis.";
+  else if (!isValidPhoneIntl(phoneVal)) errors.phone = "Numéro invalide. Utilisez le format international ex : +2126…";
 
-  if (!params.password) {
-    errors.password = "Mot de passe requis.";
-  } else if (!rePassword.test(params.password)) {
-    errors.password = "Au moins 8 caractères, avec 1 lettre et 1 chiffre.";
-  }
+  if (!params.password) errors.password = "Mot de passe requis.";
+  else if (!rePassword.test(params.password)) errors.password = "Au moins 8 caractères, avec 1 lettre et 1 chiffre.";
 
   if (!params.villeText.trim()) errors.ville = "Veuillez saisir votre ville.";
   if (!params.communeText.trim()) errors.commune = "Veuillez saisir votre commune.";
@@ -312,11 +460,8 @@ function validateEditForm(params: {
   const errors: Record<string, string> = {};
   const phoneVal = normalizePhoneInput(params.phone.trim());
 
-  if (!phoneVal) {
-    errors.phone = "Téléphone requis.";
-  } else if (!isValidPhoneIntl(phoneVal)) {
-    errors.phone = "Numéro invalide. Utilisez le format international ex : +2126…";
-  }
+  if (!phoneVal) errors.phone = "Téléphone requis.";
+  else if (!isValidPhoneIntl(phoneVal)) errors.phone = "Numéro invalide. Utilisez le format international ex : +2126…";
 
   if (!params.villeText.trim()) errors.ville = "Veuillez saisir votre ville.";
   if (!params.communeText.trim()) errors.commune = "Veuillez saisir votre commune.";
@@ -325,7 +470,6 @@ function validateEditForm(params: {
   return errors;
 }
 
-/* ====== Modal & ListPicker (generic) ====== */
 function Modal({
   open,
   title,
@@ -358,7 +502,7 @@ function Modal({
     >
       <div
         className="bg-white rounded shadow-lg position-absolute start-50 translate-middle-x"
-        style={{ top: "10vh", width: "min(560px, 92vw)" }}
+        style={{ top: "10vh", width: "min(620px, 92vw)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="d-flex align-items-center justify-content-between p-3 border-bottom">
@@ -373,60 +517,6 @@ function Modal({
   );
 }
 
-function ListPicker({
-  options,
-  value,
-  onSelect,
-  placeholder = "Rechercher…",
-}: {
-  options: string[];
-  value?: string | null;
-  onSelect: (val: string) => void;
-  placeholder?: string;
-}) {
-  const [q, setQ] = useState("");
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    if (!needle) return options;
-    return options.filter((o) => o.toLowerCase().includes(needle));
-  }, [q, options]);
-
-  return (
-    <>
-      <input
-        className="form-control mb-3"
-        placeholder={placeholder}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-      />
-      <div className="border rounded" style={{ maxHeight: "50vh", overflowY: "auto" }}>
-        <ul className="list-group list-group-flush">
-          {filtered.map((opt) => {
-            const active = (value || "") === opt;
-            return (
-              <li
-                key={opt}
-                className={`list-group-item d-flex align-items-center justify-content-between ${
-                  active ? "bg-light" : ""
-                }`}
-                role="button"
-                onClick={() => onSelect(opt)}
-              >
-                <span>{opt}</span>
-                {active && <span className="badge bg-dark">Choisi</span>}
-              </li>
-            );
-          })}
-          {!filtered.length && (
-            <li className="list-group-item text-muted">Aucun résultat</li>
-          )}
-        </ul>
-      </div>
-    </>
-  );
-}
-
-/* ====== Champ mot de passe ====== */
 function PasswordField({
   id,
   value,
@@ -470,7 +560,151 @@ function PasswordField({
   );
 }
 
-/* ====== API Helpers locaux (OTP start) ====== */
+/* =========================
+ * SmartPicker (production)
+ * - search input
+ * - shows loading/error
+ * - supports "add new" action when no exact match
+ * ========================= */
+function SmartPicker({
+  value,
+  onSelect,
+  loadOptions,
+  placeholder = "Rechercher…",
+  allowCreate,
+  onCreate,
+  createLabel,
+}: {
+  value?: string | null;
+  onSelect: (val: string) => void;
+  loadOptions: (q: string) => Promise<string[]>;
+  placeholder?: string;
+  allowCreate?: boolean;
+  onCreate?: (val: string) => Promise<void> | void;
+  createLabel?: (val: string) => string;
+}) {
+  const [q, setQ] = useState("");
+  const dq = useDebouncedValue(q, 250);
+
+  const [items, setItems] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const current = titleCase(value || "");
+  const wantCreate = useMemo(() => {
+    if (!allowCreate) return false;
+    const typed = titleCase(q);
+    if (!typed) return false;
+    const exists = items.some((x) => normKey(x) === normKey(typed));
+    return !exists;
+  }, [allowCreate, q, items]);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    setErr(null);
+    loadOptions(dq)
+      .then((opts) => {
+        if (!mounted) return;
+        setItems(opts);
+      })
+      .catch((e: any) => {
+        if (!mounted) return;
+        setErr(e?.message || "Impossible de charger la liste.");
+        setItems([]);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [dq, loadOptions]);
+
+  const filtered = useMemo(() => {
+    const needle = normKey(q);
+    if (!needle) return items;
+    return items.filter((o) => normKey(o).includes(needle));
+  }, [q, items]);
+
+  return (
+    <>
+      <div className="input-group mb-3">
+        <span className="input-group-text">
+          <Search size={16} />
+        </span>
+        <input
+          className="form-control"
+          placeholder={placeholder}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          autoFocus
+        />
+        {loading && (
+          <span className="input-group-text">
+            <Loader2 className="spin" size={16} />
+          </span>
+        )}
+      </div>
+
+      {err && <div className="alert alert-warning py-2">{err}</div>}
+
+      <div className="border rounded" style={{ maxHeight: "50vh", overflowY: "auto" }}>
+        <ul className="list-group list-group-flush">
+          {allowCreate && wantCreate && (
+            <li
+              className="list-group-item d-flex align-items-center justify-content-between"
+              role="button"
+              onClick={async () => {
+                const typed = titleCase(q);
+                if (!typed) return;
+                await onCreate?.(typed);
+                onSelect(typed);
+              }}
+            >
+              <span className="d-flex align-items-center gap-2">
+                <Plus size={16} />
+                {createLabel ? createLabel(titleCase(q)) : `Ajouter "${titleCase(q)}"`}
+              </span>
+              <span className="badge bg-dark">Nouveau</span>
+            </li>
+          )}
+
+          {filtered.map((opt) => {
+            const active = normKey(current) === normKey(opt);
+            return (
+              <li
+                key={opt}
+                className={`list-group-item d-flex align-items-center justify-content-between ${active ? "bg-light" : ""}`}
+                role="button"
+                onClick={() => onSelect(opt)}
+              >
+                <span>{opt}</span>
+                {active ? (
+                  <span className="badge bg-dark d-inline-flex align-items-center gap-1">
+                    <Check size={14} /> Choisi
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
+
+          {!loading && !filtered.length && (
+            <li className="list-group-item text-muted">Aucun résultat</li>
+          )}
+        </ul>
+      </div>
+
+      <style>{`
+        .spin{ animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+      `}</style>
+    </>
+  );
+}
+
+/* ===== OTP start ===== */
 async function apiOtpStart(
   phone: string,
   purpose: "signup" | "login" | "reset" = "reset"
@@ -485,53 +719,47 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const [sp] = useSearchParams();
   const { city } = useLocationCity();
+  const locApi = useLocationsApi();
 
-  // Suggestion ville context → libellé
   const villeFromContext = useMemo(() => {
     const v = mapCityCodeToVille(city);
     return titleCase(v || "") || "Casablanca";
   }, [city]);
 
-  /* ✅ store dynamique villes/communes/quartiers */
   const [locations, setLocations] = useState<LocationsStore>(() => loadLocations());
 
-  /* User state */
+  /* User */
   const [user, setUser] = useState<User | null>(() => getCurrentUser());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  /* Tabs when not logged */
   const tabFromUrl = (sp.get("tab") as "login" | "register" | "forgot" | null) || null;
   const [tab, setTab] = useState<"login" | "register" | "forgot">(tabFromUrl || "login");
 
-  /* ===== Login ===== */
+  /* Login */
   const [loginPhone, setLoginPhone] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
 
-  /* ===== Register ===== */
+  /* Register */
   const [regPhone, setRegPhone] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regFirstName, setRegFirstName] = useState("");
   const [regLastName, setRegLastName] = useState("");
 
-  // Ville / Commune / Quartier : ✅ libres + enrichissement dynamique
   const [regVille, setRegVille] = useState<string>(() => villeFromContext);
-  const [regCommune, setRegCommune] = useState<string>(() => {
-    const list = communesForVille(loadLocations(), villeFromContext);
-    return list[0] || "";
-  });
+  const [regCommune, setRegCommune] = useState<string>("");
   const [regQuartier, setRegQuartier] = useState<string>("");
 
   const [regSexe, setRegSexe] = useState<"M" | "F">("M");
   const [regAccept, setRegAccept] = useState(false);
   const [regErrors, setRegErrors] = useState<Record<string, string>>({});
 
-  /* ===== Forgot ===== */
+  /* Forgot */
   const [forgotPhone, setForgotPhone] = useState("");
   const [forgotErrors, setForgotErrors] = useState<Record<string, string>>({});
 
-  /* ===== Edit (connected) ===== */
+  /* Edit */
   const [editing, setEditing] = useState(false);
   const [firstName, setFirstName] = useState(user?.first_name || "");
   const [lastName, setLastName] = useState(user?.last_name || "");
@@ -543,7 +771,7 @@ export default function ProfilePage() {
   const [editSexe, setEditSexe] = useState<"M" | "F">(((user as any)?.sexe as "M" | "F") || "M");
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
 
-  /* ===== Modals ===== */
+  /* Modals */
   const [openRegVille, setOpenRegVille] = useState(false);
   const [openEditVille, setOpenEditVille] = useState(false);
   const [openRegCommune, setOpenRegCommune] = useState(false);
@@ -551,7 +779,7 @@ export default function ProfilePage() {
   const [openRegQuartier, setOpenRegQuartier] = useState(false);
   const [openEditQuartier, setOpenEditQuartier] = useState(false);
 
-  // Chargement initial
+  /* Boot user */
   useEffect(() => {
     (async () => {
       try {
@@ -563,7 +791,6 @@ export default function ProfilePage() {
           const uCommune = titleCase((u as any)?.commune || "");
           const uQuartier = titleCase((u as any)?.quartier || "");
 
-          // ✅ enrichir store avec les infos existantes
           setLocations((prev) => {
             let next = prev;
             next = addVille(next, uVille);
@@ -579,7 +806,7 @@ export default function ProfilePage() {
           if ((u as any)?.sexe === "M" || (u as any)?.sexe === "F") setEditSexe((u as any).sexe);
         }
       } catch {
-        // non loggé => ok
+        // ok
       } finally {
         setLoading(false);
       }
@@ -587,7 +814,7 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync champs quand user change
+  /* Sync when user updates */
   useEffect(() => {
     setFirstName(user?.first_name || "");
     setLastName(user?.last_name || "");
@@ -605,29 +832,47 @@ export default function ProfilePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // ===== Helpers options (dépend de la ville) =====
-  const regVilleOptions = useMemo(() => uniqSorted([...locations.villes, regVille].filter(Boolean)), [locations.villes, regVille]);
-  const editVilleOptions = useMemo(() => uniqSorted([...locations.villes, editVille].filter(Boolean)), [locations.villes, editVille]);
+  /* =========================
+   * Options loaders (production)
+   * ========================= */
+  const loadCities = useMemo(() => {
+    return async (q: string) => {
+      // Merge API + local fallback for resilience
+      const apiList = await locApi.listCities(q);
+      const local = locations.villes || [];
+      return uniqSorted([...apiList, ...local]);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locApi, locations.villes]);
 
-  const regCommuneOptions = useMemo(() => {
-    const list = communesForVille(locations, regVille);
-    return uniqSorted([...list, regCommune].filter(Boolean));
-  }, [locations, regVille, regCommune]);
+  const loadCommunesFor = useMemo(() => {
+    return (cityName: string) => async (q: string) => {
+      const city = titleCase(cityName);
+      const apiList = city ? await locApi.listCommunes(city) : [];
+      const local = city ? communesForVille(locations, city) : [];
+      const merged = uniqSorted([...apiList, ...local]);
 
-  const editCommuneOptions = useMemo(() => {
-    const list = communesForVille(locations, editVille);
-    return uniqSorted([...list, editCommune].filter(Boolean));
-  }, [locations, editVille, editCommune]);
+      if (!q?.trim()) return merged;
+      const needle = normKey(q);
+      return merged.filter((x) => normKey(x).includes(needle));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locApi, locations]);
 
-  const regQuartierOptions = useMemo(() => {
-    const list = quartiersForVille(locations, regVille);
-    return uniqSorted([...list, regQuartier].filter(Boolean));
-  }, [locations, regVille, regQuartier]);
+  const loadQuartiersFor = useMemo(() => {
+    return (cityName: string, communeName: string) => async (q: string) => {
+      const city = titleCase(cityName);
+      const commune = titleCase(communeName);
+      const apiList = city && commune ? await locApi.listQuartiers(city, commune) : [];
+      const local = city ? quartiersForVille(locations, city) : [];
+      const merged = uniqSorted([...apiList, ...local]);
 
-  const editQuartierOptions = useMemo(() => {
-    const list = quartiersForVille(locations, editVille);
-    return uniqSorted([...list, editQuartier].filter(Boolean));
-  }, [locations, editVille, editQuartier]);
+      if (!q?.trim()) return merged;
+      const needle = normKey(q);
+      return merged.filter((x) => normKey(x).includes(needle));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locApi, locations]);
 
   /* ================== Handlers ================== */
   async function handleLogin(e: FormEvent) {
@@ -653,10 +898,11 @@ export default function ProfilePage() {
       const u = await login(phoneVal, loginPassword);
       setUser(u);
 
-      // ✅ enrichir store (si user a déjà ville/commune/quartier)
+      // local store enrichment
       const uVille = titleCase((u as any)?.ville || "") || villeFromContext;
       const uCommune = titleCase((u as any)?.commune || "");
       const uQuartier = titleCase((u as any)?.quartier || "");
+
       setLocations((prev) => {
         let next = prev;
         next = addVille(next, uVille);
@@ -664,6 +910,11 @@ export default function ProfilePage() {
         if (uQuartier) next = addQuartier(next, uVille, uQuartier);
         return next;
       });
+
+      // best-effort suggestions
+      locApi.addCity(uVille);
+      if (uCommune) locApi.addCommune(uVille, uCommune);
+      if (uCommune && uQuartier) locApi.addQuartier(uVille, uCommune, uQuartier);
 
       navigate("/", { replace: true });
     } catch (e: any) {
@@ -702,7 +953,6 @@ export default function ProfilePage() {
     const phoneVal = normalizePhoneInput(regPhone.trim());
 
     try {
-      // ✅ enrichir store AVANT envoi (UI instant)
       setLocations((prev) => {
         let next = prev;
         next = addVille(next, villeFinal);
@@ -710,6 +960,11 @@ export default function ProfilePage() {
         next = addQuartier(next, villeFinal, quartierFinal);
         return next;
       });
+
+      // best-effort suggestions
+      locApi.addCity(villeFinal);
+      locApi.addCommune(villeFinal, communeFinal);
+      locApi.addQuartier(villeFinal, communeFinal, quartierFinal);
 
       await register({
         phone: phoneVal,
@@ -720,7 +975,6 @@ export default function ProfilePage() {
         commune: communeFinal || null,
         quartier: quartierFinal,
         sexe: regSexe,
-        // country: COUNTRY_FIXED, // ✅ active si backend
       } as any);
 
       const u = await login(phoneVal, regPassword);
@@ -763,7 +1017,6 @@ export default function ProfilePage() {
     const phoneVal = normalizePhoneInput(phone.trim());
 
     try {
-      // ✅ enrichir store
       setLocations((prev) => {
         let next = prev;
         next = addVille(next, villeFinal);
@@ -771,6 +1024,11 @@ export default function ProfilePage() {
         next = addQuartier(next, villeFinal, quartierFinal);
         return next;
       });
+
+      // best-effort suggestions
+      locApi.addCity(villeFinal);
+      locApi.addCommune(villeFinal, communeFinal);
+      locApi.addQuartier(villeFinal, communeFinal, quartierFinal);
 
       const u = await updateProfile({
         first_name: firstName,
@@ -780,7 +1038,6 @@ export default function ProfilePage() {
         commune: communeFinal || null,
         quartier: quartierFinal,
         sexe: editSexe,
-        // country: COUNTRY_FIXED,
       } as any);
 
       setUser(u);
@@ -797,11 +1054,8 @@ export default function ProfilePage() {
     const phoneVal = normalizePhoneInput(forgotPhone.trim());
     const errors: Record<string, string> = {};
 
-    if (!phoneVal) {
-      errors.phone = "Téléphone requis.";
-    } else if (!isValidPhoneIntl(phoneVal)) {
-      errors.phone = "Téléphone invalide. Utilisez le format international ex : +2126…";
-    }
+    if (!phoneVal) errors.phone = "Téléphone requis.";
+    else if (!isValidPhoneIntl(phoneVal)) errors.phone = "Téléphone invalide. Utilisez le format international ex : +2126…";
 
     if (Object.keys(errors).length) {
       setForgotErrors(errors);
@@ -827,7 +1081,9 @@ export default function ProfilePage() {
     );
   }
 
-  // ——— CONNECTÉ ———
+  /* =========================
+   * CONNECTED
+   * ========================= */
   if (user) {
     const effectiveVille = titleCase((user as any)?.ville || editVille || villeFromContext) || "—";
     const effectiveCommune = titleCase((user as any)?.commune || editCommune) || "—";
@@ -903,9 +1159,7 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {forgotErrors.phone && (
-                      <div className="invalid-feedback">{forgotErrors.phone}</div>
-                    )}
+                    {forgotErrors.phone && <div className="invalid-feedback">{forgotErrors.phone}</div>}
                     <div className="d-grid mt-3">
                       <button className="btn btn-dark" type="submit">
                         Envoyer
@@ -968,122 +1222,121 @@ export default function ProfilePage() {
                         placeholder="+212..."
                         autoComplete="tel"
                       />
-                      {editErrors.phone && (
-                        <div className="invalid-feedback">{editErrors.phone}</div>
-                      )}
+                      {editErrors.phone && <div className="invalid-feedback">{editErrors.phone}</div>}
                     </div>
 
-                    {/* Pays (fixe) */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">Pays</label>
                       <input className="form-control" value={COUNTRY_FIXED} disabled />
                       <div className="form-text">Duumini est disponible au Maroc pour le moment.</div>
                     </div>
 
-                    {/* Ville (modal + saisie libre) */}
+                    {/* Ville */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">
                         Ville <span className="text-danger">*</span>
                       </label>
-
                       <div className="input-group">
                         <input
                           className={`form-control ${editErrors.ville ? "is-invalid" : ""}`}
                           value={editVille}
                           onChange={(e) => {
                             setEditVille(e.target.value);
-                            setEditErrors((prev) => ({ ...prev, ville: "" }));
+                            setEditCommune("");
+                            setEditQuartier("");
+                            setEditErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
                           }}
                           placeholder="Saisir votre ville"
                         />
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary"
-                          onClick={() => setOpenEditVille(true)}
-                          title="Choisir dans la liste"
-                        >
+                        <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenEditVille(true)}>
                           Liste
                         </button>
                       </div>
-                      {editErrors.ville && (
-                        <div className="invalid-feedback d-block">{editErrors.ville}</div>
-                      )}
+                      {editErrors.ville && <div className="invalid-feedback d-block">{editErrors.ville}</div>}
 
-                      <Modal
-                        open={openEditVille}
-                        title="Sélectionner une ville"
-                        onClose={() => setOpenEditVille(false)}
-                      >
-                        <ListPicker
-                          options={editVilleOptions}
-                          value={titleCase(editVille) || null}
+                      <Modal open={openEditVille} title="Sélectionner une ville" onClose={() => setOpenEditVille(false)}>
+                        <SmartPicker
+                          value={editVille}
                           onSelect={(val) => {
                             setEditVille(val);
-                            // reset commune & quartier quand ville change
                             setEditCommune("");
                             setEditQuartier("");
                             setEditErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
                             setOpenEditVille(false);
+
+                            setLocations((prev) => addVille(prev, val));
+                            locApi.addCity(val);
                           }}
+                          loadOptions={loadCities}
+                          allowCreate
+                          onCreate={async (val) => {
+                            setLocations((prev) => addVille(prev, val));
+                            await locApi.addCity(val);
+                          }}
+                          createLabel={(v) => `Ajouter la ville "${v}"`}
                           placeholder="Rechercher une ville…"
                         />
                       </Modal>
                     </div>
 
-                    {/* Commune (modal + saisie libre, liée à la ville) */}
+                    {/* Commune */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">
                         Commune <span className="text-danger">*</span>
                       </label>
-
                       <div className="input-group">
                         <input
                           className={`form-control ${editErrors.commune ? "is-invalid" : ""}`}
                           value={editCommune}
                           onChange={(e) => {
                             setEditCommune(e.target.value);
-                            setEditErrors((prev) => ({ ...prev, commune: "" }));
+                            setEditQuartier("");
+                            setEditErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
                           }}
                           placeholder="Saisir votre commune"
                         />
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary"
-                          onClick={() => setOpenEditCommune(true)}
-                          title="Choisir dans la liste"
-                        >
+                        <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenEditCommune(true)}>
                           Liste
                         </button>
                       </div>
-                      {editErrors.commune && (
-                        <div className="invalid-feedback d-block">{editErrors.commune}</div>
-                      )}
+                      {editErrors.commune && <div className="invalid-feedback d-block">{editErrors.commune}</div>}
 
                       <Modal
                         open={openEditCommune}
                         title={`Communes — ${titleCase(editVille) || "Ville"}`}
                         onClose={() => setOpenEditCommune(false)}
                       >
-                        <ListPicker
-                          options={editCommuneOptions}
-                          value={titleCase(editCommune) || null}
+                        <SmartPicker
+                          value={editCommune}
                           onSelect={(val) => {
                             setEditCommune(val);
-                            setEditErrors((prev) => ({ ...prev, commune: "" }));
+                            setEditQuartier("");
+                            setEditErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
                             setOpenEditCommune(false);
+
+                            const cityVal = titleCase(editVille);
+                            setLocations((prev) => addCommune(prev, cityVal, val));
+                            locApi.addCommune(cityVal, val);
                           }}
+                          loadOptions={loadCommunesFor(editVille)}
+                          allowCreate={!!titleCase(editVille)}
+                          onCreate={async (val) => {
+                            const cityVal = titleCase(editVille);
+                            setLocations((prev) => addCommune(prev, cityVal, val));
+                            await locApi.addCommune(cityVal, val);
+                          }}
+                          createLabel={(v) => `Ajouter la commune "${v}"`}
                           placeholder="Rechercher une commune…"
                         />
                       </Modal>
-                      <div className="form-text">La liste dépend de la ville (et s’enrichit automatiquement).</div>
+                      <div className="form-text">La liste dépend de la ville.</div>
                     </div>
 
-                    {/* Quartier (modal + saisie libre, liée à la ville) */}
+                    {/* Quartier */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">
                         Quartier <span className="text-danger">*</span>
                       </label>
-
                       <div className="input-group">
                         <input
                           className={`form-control ${editErrors.quartier ? "is-invalid" : ""}`}
@@ -1096,35 +1349,42 @@ export default function ProfilePage() {
                           autoCapitalize="words"
                           autoComplete="address-level3"
                         />
-                        <button
-                          type="button"
-                          className="btn btn-outline-secondary"
-                          onClick={() => setOpenEditQuartier(true)}
-                          title="Choisir dans la liste"
-                        >
+                        <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenEditQuartier(true)}>
                           Liste
                         </button>
                       </div>
-                      {editErrors.quartier && (
-                        <div className="invalid-feedback d-block">{editErrors.quartier}</div>
-                      )}
+                      {editErrors.quartier && <div className="invalid-feedback d-block">{editErrors.quartier}</div>}
 
                       <Modal
                         open={openEditQuartier}
-                        title={`Quartiers — ${titleCase(editVille) || "Ville"}`}
+                        title={`Quartiers — ${titleCase(editVille) || "Ville"} / ${titleCase(editCommune) || "Commune"}`}
                         onClose={() => setOpenEditQuartier(false)}
                       >
-                        <ListPicker
-                          options={editQuartierOptions}
-                          value={titleCase(editQuartier) || null}
+                        <SmartPicker
+                          value={editQuartier}
                           onSelect={(val) => {
                             setEditQuartier(val);
                             setEditErrors((prev) => ({ ...prev, quartier: "" }));
                             setOpenEditQuartier(false);
+
+                            const cityVal = titleCase(editVille);
+                            const communeVal = titleCase(editCommune);
+                            setLocations((prev) => addQuartier(prev, cityVal, val));
+                            if (communeVal) locApi.addQuartier(cityVal, communeVal, val);
                           }}
+                          loadOptions={loadQuartiersFor(editVille, editCommune)}
+                          allowCreate={!!titleCase(editVille) && !!titleCase(editCommune)}
+                          onCreate={async (val) => {
+                            const cityVal = titleCase(editVille);
+                            const communeVal = titleCase(editCommune);
+                            setLocations((prev) => addQuartier(prev, cityVal, val));
+                            await locApi.addQuartier(cityVal, communeVal, val);
+                          }}
+                          createLabel={(v) => `Ajouter le quartier "${v}"`}
                           placeholder="Rechercher un quartier…"
                         />
                       </Modal>
+                      <div className="form-text">La liste dépend de la ville + commune.</div>
                     </div>
 
                     {/* Sexe */}
@@ -1165,11 +1425,7 @@ export default function ProfilePage() {
                         <button className="btn btn-dark" type="submit">
                           Enregistrer
                         </button>
-                        <button
-                          className="btn btn-outline-secondary"
-                          type="button"
-                          onClick={() => setEditing(false)}
-                        >
+                        <button className="btn btn-outline-secondary" type="button" onClick={() => setEditing(false)}>
                           Annuler
                         </button>
                       </div>
@@ -1177,8 +1433,7 @@ export default function ProfilePage() {
 
                     <div className="col-12">
                       <div className="alert alert-light border small mb-0">
-                        ✅ Astuce : Toute nouvelle <b>ville</b>, <b>commune</b> ou <b>quartier</b> saisie sera
-                        automatiquement ajoutée aux listes (et liée à la ville).
+                        ✅ Recherche en direct + cache. Les nouvelles valeurs peuvent être ajoutées à la base (suggestions).
                       </div>
                     </div>
                   </form>
@@ -1235,7 +1490,9 @@ export default function ProfilePage() {
     );
   }
 
-  // ——— NON CONNECTÉ ———
+  /* =========================
+   * NOT CONNECTED
+   * ========================= */
   return (
     <div className="container-xxl py-4">
       {err && <div className="alert alert-danger">{err}</div>}
@@ -1295,9 +1552,7 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {loginErrors.phone && (
-                      <div className="invalid-feedback">{loginErrors.phone}</div>
-                    )}
+                    {loginErrors.phone && <div className="invalid-feedback">{loginErrors.phone}</div>}
                   </div>
 
                   <div className="col-12">
@@ -1316,9 +1571,7 @@ export default function ProfilePage() {
                       autoComplete="current-password"
                       invalid={!!loginErrors.password}
                     />
-                    {loginErrors.password && (
-                      <div className="invalid-feedback d-block">{loginErrors.password}</div>
-                    )}
+                    {loginErrors.password && <div className="invalid-feedback d-block">{loginErrors.password}</div>}
                   </div>
 
                   <div className="col-12 d-grid">
@@ -1347,9 +1600,7 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {regErrors.phone && (
-                      <div className="invalid-feedback">{regErrors.phone}</div>
-                    )}
+                    {regErrors.phone && <div className="invalid-feedback">{regErrors.phone}</div>}
                   </div>
 
                   <div className="col-12">
@@ -1368,15 +1619,10 @@ export default function ProfilePage() {
                       placeholder="Créer un mot de passe"
                       autoComplete="new-password"
                     />
-                    <div className="form-text">
-                      Min 8 caractères, inclure au moins 1 lettre et 1 chiffre.
-                    </div>
-                    {regErrors.password && (
-                      <div className="invalid-feedback d-block">{regErrors.password}</div>
-                    )}
+                    <div className="form-text">Min 8 caractères, inclure au moins 1 lettre et 1 chiffre.</div>
+                    {regErrors.password && <div className="invalid-feedback d-block">{regErrors.password}</div>}
                   </div>
 
-                  {/* Prénom / Nom */}
                   <div className="col-12 col-md-6">
                     <label className="form-label d-flex align-items-center gap-2">
                       <UserRound size={16} /> Prénom
@@ -1400,13 +1646,12 @@ export default function ProfilePage() {
                     />
                   </div>
 
-                  {/* Pays (fixe) */}
                   <div className="col-12 col-md-6">
                     <label className="form-label">Pays</label>
                     <input className="form-control" value={COUNTRY_FIXED} disabled />
                   </div>
 
-                  {/* Ville (input + liste) */}
+                  {/* Ville */}
                   <div className="col-12 col-md-6">
                     <label className="form-label">
                       Ville <span className="text-danger">*</span>
@@ -1418,45 +1663,44 @@ export default function ProfilePage() {
                         value={regVille}
                         onChange={(e) => {
                           setRegVille(e.target.value);
-                          setRegCommune(""); // reset (liée à la ville)
+                          setRegCommune("");
                           setRegQuartier("");
                           setRegErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
                         }}
                         placeholder="Saisir votre ville"
                       />
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary"
-                        onClick={() => setOpenRegVille(true)}
-                      >
+                      <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenRegVille(true)}>
                         Liste
                       </button>
                     </div>
-                    {regErrors.ville && (
-                      <div className="invalid-feedback d-block">{regErrors.ville}</div>
-                    )}
+                    {regErrors.ville && <div className="invalid-feedback d-block">{regErrors.ville}</div>}
 
-                    <Modal
-                      open={openRegVille}
-                      title="Sélectionner une ville"
-                      onClose={() => setOpenRegVille(false)}
-                    >
-                      <ListPicker
-                        options={regVilleOptions}
-                        value={titleCase(regVille) || null}
+                    <Modal open={openRegVille} title="Sélectionner une ville" onClose={() => setOpenRegVille(false)}>
+                      <SmartPicker
+                        value={regVille}
                         onSelect={(val) => {
                           setRegVille(val);
                           setRegCommune("");
                           setRegQuartier("");
                           setRegErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
                           setOpenRegVille(false);
+
+                          setLocations((prev) => addVille(prev, val));
+                          locApi.addCity(val);
                         }}
+                        loadOptions={loadCities}
+                        allowCreate
+                        onCreate={async (val) => {
+                          setLocations((prev) => addVille(prev, val));
+                          await locApi.addCity(val);
+                        }}
+                        createLabel={(v) => `Ajouter la ville "${v}"`}
                         placeholder="Rechercher une ville…"
                       />
                     </Modal>
                   </div>
 
-                  {/* Commune (input + liste) */}
+                  {/* Commune */}
                   <div className="col-12 col-md-6">
                     <label className="form-label">
                       Commune <span className="text-danger">*</span>
@@ -1468,42 +1712,49 @@ export default function ProfilePage() {
                         value={regCommune}
                         onChange={(e) => {
                           setRegCommune(e.target.value);
-                          setRegErrors((prev) => ({ ...prev, commune: "" }));
+                          setRegQuartier("");
+                          setRegErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
                         }}
                         placeholder="Saisir votre commune"
                       />
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary"
-                        onClick={() => setOpenRegCommune(true)}
-                      >
+                      <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenRegCommune(true)}>
                         Liste
                       </button>
                     </div>
-                    {regErrors.commune && (
-                      <div className="invalid-feedback d-block">{regErrors.commune}</div>
-                    )}
+                    {regErrors.commune && <div className="invalid-feedback d-block">{regErrors.commune}</div>}
 
                     <Modal
                       open={openRegCommune}
                       title={`Communes — ${titleCase(regVille) || "Ville"}`}
                       onClose={() => setOpenRegCommune(false)}
                     >
-                      <ListPicker
-                        options={regCommuneOptions}
-                        value={titleCase(regCommune) || null}
+                      <SmartPicker
+                        value={regCommune}
                         onSelect={(val) => {
                           setRegCommune(val);
-                          setRegErrors((prev) => ({ ...prev, commune: "" }));
+                          setRegQuartier("");
+                          setRegErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
                           setOpenRegCommune(false);
+
+                          const cityVal = titleCase(regVille);
+                          setLocations((prev) => addCommune(prev, cityVal, val));
+                          locApi.addCommune(cityVal, val);
                         }}
+                        loadOptions={loadCommunesFor(regVille)}
+                        allowCreate={!!titleCase(regVille)}
+                        onCreate={async (val) => {
+                          const cityVal = titleCase(regVille);
+                          setLocations((prev) => addCommune(prev, cityVal, val));
+                          await locApi.addCommune(cityVal, val);
+                        }}
+                        createLabel={(v) => `Ajouter la commune "${v}"`}
                         placeholder="Rechercher une commune…"
                       />
                     </Modal>
-                    <div className="form-text">La liste dépend de la ville (et s’enrichit automatiquement).</div>
+                    <div className="form-text">La liste dépend de la ville.</div>
                   </div>
 
-                  {/* Quartier (input + liste) */}
+                  {/* Quartier */}
                   <div className="col-12">
                     <label className="form-label">
                       Quartier <span className="text-danger">*</span>
@@ -1521,34 +1772,43 @@ export default function ProfilePage() {
                         autoCapitalize="words"
                         autoComplete="address-level3"
                       />
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary"
-                        onClick={() => setOpenRegQuartier(true)}
-                      >
+                      <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenRegQuartier(true)}>
                         Liste
                       </button>
                     </div>
-                    {regErrors.quartier && (
-                      <div className="invalid-feedback d-block">{regErrors.quartier}</div>
-                    )}
+                    {regErrors.quartier && <div className="invalid-feedback d-block">{regErrors.quartier}</div>}
 
                     <Modal
                       open={openRegQuartier}
-                      title={`Quartiers — ${titleCase(regVille) || "Ville"}`}
+                      title={`Quartiers — ${titleCase(regVille) || "Ville"} / ${titleCase(regCommune) || "Commune"}`}
                       onClose={() => setOpenRegQuartier(false)}
                     >
-                      <ListPicker
-                        options={regQuartierOptions}
-                        value={titleCase(regQuartier) || null}
+                      <SmartPicker
+                        value={regQuartier}
                         onSelect={(val) => {
                           setRegQuartier(val);
                           setRegErrors((prev) => ({ ...prev, quartier: "" }));
                           setOpenRegQuartier(false);
+
+                          const cityVal = titleCase(regVille);
+                          const communeVal = titleCase(regCommune);
+                          setLocations((prev) => addQuartier(prev, cityVal, val));
+                          if (communeVal) locApi.addQuartier(cityVal, communeVal, val);
                         }}
+                        loadOptions={loadQuartiersFor(regVille, regCommune)}
+                        allowCreate={!!titleCase(regVille) && !!titleCase(regCommune)}
+                        onCreate={async (val) => {
+                          const cityVal = titleCase(regVille);
+                          const communeVal = titleCase(regCommune);
+                          setLocations((prev) => addQuartier(prev, cityVal, val));
+                          await locApi.addQuartier(cityVal, communeVal, val);
+                        }}
+                        createLabel={(v) => `Ajouter le quartier "${v}"`}
                         placeholder="Rechercher un quartier…"
                       />
                     </Modal>
+
+                    <div className="form-text">La liste dépend de la ville + commune.</div>
                   </div>
 
                   {/* Sexe */}
@@ -1623,7 +1883,7 @@ export default function ProfilePage() {
 
                   <div className="col-12">
                     <div className="alert alert-light border small mb-0">
-                      ✅ Toute nouvelle <b>ville</b>, <b>commune</b> ou <b>quartier</b> saisi sera ajouté automatiquement aux listes.
+                      ✅ Recherche en direct + cache. Les nouvelles valeurs peuvent être ajoutées à la base (suggestions).
                     </div>
                   </div>
                 </form>
@@ -1647,9 +1907,7 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {forgotErrors.phone && (
-                      <div className="invalid-feedback">{forgotErrors.phone}</div>
-                    )}
+                    {forgotErrors.phone && <div className="invalid-feedback">{forgotErrors.phone}</div>}
                   </div>
                   <div className="col-12 d-grid">
                     <button className="btn btn-dark" type="submit">
@@ -1665,7 +1923,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Panneau d’info latéral */}
+        {/* Side panel */}
         <div className="col-12 col-lg-6">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
@@ -1681,9 +1939,7 @@ export default function ProfilePage() {
                 Utilisez votre numéro de téléphone et votre mot de passe pour vous connecter.
               </p>
               <hr />
-              <div className="small text-muted">
-                🇲🇦 Duumini est disponible au Maroc pour le moment.
-              </div>
+              <div className="small text-muted">🇲🇦 Duumini est disponible au Maroc pour le moment.</div>
             </div>
           </div>
         </div>

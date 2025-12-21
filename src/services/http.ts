@@ -16,6 +16,9 @@ export type HttpConfig = {
   noAuth?: boolean;
   /** Inclure cookies (si besoin) */
   credentials?: RequestCredentials;
+
+  /** ✅ AbortController support (pour autocomplete / cancel request) */
+  signal?: AbortSignal;
 };
 
 export type HttpErrorPayload = {
@@ -72,19 +75,43 @@ async function parseResponse<T>(res: Response): Promise<T> {
   return text as T;
 }
 
-/** Fetch avec timeout dédié (important pour retry après refresh) */
+/** Combine 2 AbortSignals (si le navigateur le supporte) */
+function mergeSignals(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined {
+  if (!a) return b;
+  if (!b) return a;
+
+  const anyAbort = () => controller.abort();
+  const controller = new AbortController();
+
+  // Si un des deux est déjà aborted
+  if (a.aborted || b.aborted) {
+    controller.abort();
+    return controller.signal;
+  }
+
+  a.addEventListener("abort", anyAbort, { once: true });
+  b.addEventListener("abort", anyAbort, { once: true });
+
+  return controller.signal;
+}
+
+/** Fetch avec timeout dédié + support signal externe */
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
-  timeout: number
+  timeout: number,
+  signal?: AbortSignal
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeout);
 
+  // ✅ on fusionne : timeoutController + signal externe
+  const mergedSignal = mergeSignals(signal, controller.signal);
+
   try {
     return await fetch(url, {
       ...init,
-      signal: controller.signal,
+      signal: mergedSignal,
     });
   } finally {
     clearTimeout(timer);
@@ -106,6 +133,7 @@ export async function http<T = unknown>(
     timeout = 20000,
     noAuth = false,
     credentials,
+    signal,
   } = config;
 
   const hdrs: Record<string, string> = {
@@ -136,19 +164,20 @@ export async function http<T = unknown>(
     }
   }
 
-  const init: RequestInit = {
+  // ⚠️ IMPORTANT: init doit être "recréé" au retry (headers peut changer après refresh)
+  const makeInit = (): RequestInit => ({
     method,
     headers: hdrs,
     body: finalBody,
     mode: "cors",
     credentials, // "include" si tu utilises des cookies côté API
-  };
+  });
 
   let res: Response;
 
   try {
     // 1) première tentative
-    res = await fetchWithTimeout(url, init, timeout);
+    res = await fetchWithTimeout(url, makeInit(), timeout, signal);
 
     // 2) si 401 → refresh 1 fois puis retry avec un NOUVEAU timeout complet
     if (res.status === 401 && !noAuth) {
@@ -158,7 +187,7 @@ export async function http<T = unknown>(
         if (newToken) {
           hdrs.Authorization = `Bearer ${newToken}`;
         }
-        res = await fetchWithTimeout(url, init, timeout);
+        res = await fetchWithTimeout(url, makeInit(), timeout, signal);
       } catch {
         clearSession();
       }
@@ -166,7 +195,7 @@ export async function http<T = unknown>(
   } catch (e: any) {
     const msg =
       e?.name === "AbortError"
-        ? "Requête annulée (timeout)"
+        ? "Requête annulée"
         : e?.message || "Erreur réseau";
     throw new HttpError(0, msg);
   }

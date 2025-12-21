@@ -70,7 +70,10 @@ export type Paginated<T> = {
 
 type Channel = "african-food" | "african-market";
 
-/* ---------- Utils ---------- */
+/* ======================================================================
+ * Utils
+ * ===================================================================== */
+
 function normalizeCityLabel(city?: string | null): string | null {
   if (!city) return null;
   const raw = String(city).trim();
@@ -139,17 +142,37 @@ function to01(v: any): 0 | 1 | null {
   return null;
 }
 
+/** ✅ helper: produit actif (compat active/is_active) */
+export function isProductActive(p: any): boolean {
+  return !!(p?.active ?? p?.is_active ?? 1);
+}
+
+/** ✅ filtre de sécurité: enlève les produits inactifs */
+function filterActive<T extends any>(arr: T[]): T[] {
+  return (arr || []).filter((p: any) => isProductActive(p));
+}
+
 /* ======================================================================
  * Products
  * ===================================================================== */
 
 /* ---------- List ---------- */
+/**
+ * ✅ Par défaut : onlyActive = true
+ * - Côté client: tu ne verras JAMAIS les produits désactivés.
+ * - Côté admin: passe onlyActive:false pour voir tout.
+ *
+ * ✅ Ajouts:
+ * - category_id / shop_id pour filtrer (tri côté admin/filtre)
+ */
 export async function listProducts(
   opts: {
     page?: number;
     pageSize?: number;
     channel?: Channel;
-    onlyActive?: boolean;
+    onlyActive?: boolean; // default true
+    category_id?: number;
+    shop_id?: number;
   } = {}
 ) {
   const page = opts.page ?? 1;
@@ -162,31 +185,63 @@ export async function listProducts(
       ? "/api/products/african-market"
       : "/api/products";
 
+  // ✅ IMPORTANT: default to active-only
+  const onlyActive = opts.onlyActive ?? true;
+
   const query: Record<string, any> = { page, pageSize };
-  if (opts.onlyActive) query.onlyActive = 1;
+  if (onlyActive) query.onlyActive = 1;
+
+  // ✅ filtres
+  if (typeof opts.category_id === "number") query.category_id = opts.category_id;
+  if (typeof opts.shop_id === "number") query.shop_id = opts.shop_id;
 
   // ⚠️ On n'envoie plus ville/city : l'API ne filtre plus dessus
-  return api.get<Paginated<Product>>(base, { query });
+  const res = await api.get<Paginated<Product>>(base, { query });
+
+  // ✅ sécurité: si l'API renvoie encore des inactifs, on les supprime
+  if (onlyActive && res?.items) {
+    return { ...res, items: filterActive(res.items) };
+  }
+
+  return res;
 }
 
 /* ---------- Promotions ---------- */
+/**
+ * ✅ Par défaut : onlyActive = true
+ */
 export async function listPromotions(
   opts: {
     limit?: number;
     channel?: "all" | Channel;
-    onlyActive?: boolean;
+    onlyActive?: boolean; // default true
+    category_id?: number;
+    shop_id?: number;
   } = {}
 ) {
   const limit = opts.limit ?? 12;
+  const onlyActive = opts.onlyActive ?? true;
 
   const query: Record<string, any> = { limit };
-  if (opts.onlyActive) query.onlyActive = 1;
+  if (onlyActive) query.onlyActive = 1;
   if (opts.channel && opts.channel !== "all") query.channel = opts.channel;
 
-  return api.get<Product[]>("/api/products/promotions", { query });
+  // ✅ optionnel (si ton backend gère)
+  if (typeof opts.category_id === "number") query.category_id = opts.category_id;
+  if (typeof opts.shop_id === "number") query.shop_id = opts.shop_id;
+
+  const arr = await api.get<Product[]>("/api/products/promotions", { query });
+
+  // ✅ sécurité: jamais d'inactifs en promo
+  return onlyActive ? filterActive(arr) : arr;
 }
 
 /* ---------- Read ---------- */
+/**
+ * ⚠️ getProduct: on ne force pas onlyActive ici,
+ * car côté admin on doit pouvoir prévisualiser un produit désactivé.
+ * Côté client, si tu veux bloquer l’accès direct, fais-le côté backend (recommandé).
+ */
 export async function getProduct(id: number) {
   return api.get<Product>(`/api/products/${id}`);
 }
@@ -207,7 +262,6 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
 
-  // ✅ sub_category_id
   if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
 
   if (draft.is_featured != null) {
@@ -292,8 +346,6 @@ export async function updateProduct(
   }
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
-
-  // ✅ sub_category_id
   if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
 
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
@@ -315,22 +367,37 @@ export async function removeProduct(id: number) {
 
 /* ---------- Top produits : les plus commandés ---------- */
 export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
-export async function listTopOrderedProducts(opts: { limit?: number }): Promise<Product[]>;
-export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: number }) {
+export async function listTopOrderedProducts(opts: { limit?: number; onlyActive?: boolean }): Promise<Product[]>;
+export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: number; onlyActive?: boolean }) {
   let limit = 8;
-  if (typeof limitOrOpts === "number") limit = limitOrOpts;
-  else if (limitOrOpts && typeof limitOrOpts === "object" && typeof limitOrOpts.limit === "number")
-    limit = limitOrOpts.limit;
+  let onlyActive = true;
 
-  return api.get<Product[]>("/api/products/top-ordered", { query: { limit } });
+  if (typeof limitOrOpts === "number") {
+    limit = limitOrOpts;
+  } else if (limitOrOpts && typeof limitOrOpts === "object") {
+    if (typeof limitOrOpts.limit === "number") limit = limitOrOpts.limit;
+    if (typeof limitOrOpts.onlyActive === "boolean") onlyActive = limitOrOpts.onlyActive;
+  }
+
+  const arr = await api.get<Product[]>("/api/products/top-ordered", {
+    query: { limit, ...(onlyActive ? { onlyActive: 1 } : {}) },
+  });
+
+  return onlyActive ? filterActive(arr) : arr;
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
-export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number }): Promise<Product[]>;
-export async function listTopRatedProducts(opts: { limit?: number; minCount?: number } = {}) {
+export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number; onlyActive?: boolean }): Promise<Product[]>;
+export async function listTopRatedProducts(opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
-  return api.get<Product[]>("/api/products/top-rated", { query: { limit, minCount } });
+  const onlyActive = opts.onlyActive ?? true;
+
+  const arr = await api.get<Product[]>("/api/products/top-rated", {
+    query: { limit, minCount, ...(onlyActive ? { onlyActive: 1 } : {}) },
+  });
+
+  return onlyActive ? filterActive(arr) : arr;
 }
 
 /* ======================================================================
