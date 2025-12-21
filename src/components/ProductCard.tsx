@@ -1,5 +1,5 @@
 // src/components/ProductCard.tsx
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
@@ -35,9 +35,17 @@ function normToken(x: any) {
     .toLowerCase();
 }
 
+/**
+ * ⚠️ IMPORTANT: on n'utilise PAS p.sub_category (n'existe plus sur Product)
+ * On utilise: sub_category_slug / sub_category_name / sub_category_id
+ */
 function getSubCategoryToken(p: Product) {
   const anyP = p as any;
-  const byName = normToken(anyP.sub_category || anyP.sub_category_slug || anyP.sub_category_name);
+
+  const bySlug = normToken(anyP.sub_category_slug);
+  if (bySlug) return bySlug;
+
+  const byName = normToken(anyP.sub_category_name);
   if (byName) return byName;
 
   const id = anyP.sub_category_id;
@@ -52,7 +60,7 @@ function buildProductUrl(p: Product) {
     (typeof import.meta !== "undefined" &&
       (import.meta as any).env?.VITE_SHARE_BASE_URL) ||
     "https://duumini.com";
-  return `${shareBase}/share/product/${(p as any).id}`;
+  return `${shareBase}/share/product/${Number((p as any).id)}`;
 }
 
 /* ===== Filtrage ville ===== */
@@ -66,12 +74,34 @@ function normalizeCityLabel(raw: string | null | undefined) {
     .trim();
 }
 
+function normalizeCitiesAny(input: any): string[] {
+  if (input == null) return [];
+  if (Array.isArray(input)) return input.map((x) => String(x || "").trim()).filter(Boolean);
+
+  if (typeof input === "string") {
+    const s = input.trim();
+    if (!s) return [];
+    if (s.startsWith("[") && s.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed)) {
+          return parsed.map((x) => String(x || "").trim()).filter(Boolean);
+        }
+      } catch {}
+    }
+    if (s.includes(",")) return s.split(",").map((x) => x.trim()).filter(Boolean);
+    return [s];
+  }
+
+  return [];
+}
+
 function isProductAllowedForCity(product: Product, city: CityCode | null) {
   if (!city) return true;
   const anyP = product as any;
 
-  const cities = Array.isArray(anyP.cities) ? anyP.cities : null;
-  if (!cities || cities.length === 0) return true;
+  const cities = normalizeCitiesAny(anyP.cities);
+  if (!cities.length) return true;
 
   const userCityNorm = normalizeCityLabel(city);
   return cities.some((c: any) => normalizeCityLabel(c) === userCityNorm);
@@ -119,25 +149,20 @@ export default function ProductCard({
   const { add, lines } = useCart();
   const anyP = product as any;
 
-  const subCat = useMemo(() => getSubCategoryToken(product), [product]);
+  const subCatToken = useMemo(() => getSubCategoryToken(product), [product]);
 
   const hideList = useMemo(
     () => hideSubCategories.map((x) => normToken(x)).filter(Boolean),
     [hideSubCategories]
   );
 
-  if (subCat && hideList.includes(subCat)) {
-    return null;
-  }
+  if (subCatToken && hideList.includes(subCatToken)) return null;
 
   const isActive = Number(anyP.is_active ?? anyP.active ?? 1) === 1;
   const stock = anyP.stock;
   const isOutOfStock = stock === 0;
 
-  const isCityAllowed = useMemo(
-    () => isProductAllowedForCity(product, city),
-    [product, city]
-  );
+  const isCityAllowed = useMemo(() => isProductAllowedForCity(product, city), [product, city]);
   if (!isActive || !isCityAllowed) return null;
 
   const imagesRaw: string[] = useMemo(() => {
@@ -166,10 +191,7 @@ export default function ProductCard({
   const images = useMemo(() => imagesRaw.map((u) => imgUrl(u)), [imagesRaw]);
   const coverUrl = images[0] || "";
 
-  const qtyInCart = useMemo(
-    () => getQtyInCart(lines as any[], product),
-    [lines, product]
-  );
+  const qtyInCart = useMemo(() => getQtyInCart(lines as any[], product), [lines, product]);
 
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -177,13 +199,10 @@ export default function ProductCard({
 
   const shareUrl = useMemo(() => buildProductUrl(product), [product]);
 
-  const displayPrice = Number(
-    priceOverride ?? anyP.price_client ?? anyP.price ?? 0
-  );
+  const displayPrice = Number(priceOverride ?? anyP.price_client ?? anyP.price ?? 0);
+  const shareText = `${String(anyP.name || "Produit")} — ${moneyMAD(displayPrice)} sur Duumini`;
 
-  const shareText = `${anyP.name} — ${moneyMAD(displayPrice)} sur Duumini`;
-
-  const handleAdd = () => {
+  const handleAdd = useCallback(() => {
     if (isOutOfStock) return;
 
     const productForCart: any = {
@@ -206,16 +225,45 @@ export default function ProductCard({
       price: displayPrice,
       quantity: 1,
       currency: "MAD",
-      category: subCat || "",
+      category: subCatToken || "",
     });
-  };
+  }, [
+    add,
+    anyP,
+    badgeText,
+    displayPrice,
+    isOutOfStock,
+    oldPrice,
+    onAdd,
+    priceOverride,
+    subCatToken,
+  ]);
 
-  const handleDecrease = () => {
+  const handleDecrease = useCallback(() => {
     if (!qtyInCart) return;
     add(anyP, -1);
-  };
+  }, [add, anyP, qtyInCart]);
 
-  async function shareProduct() {
+  const openModal = useCallback(() => {
+    setImgIdx(0);
+    setOpen(true);
+  }, []);
+
+  const closeModal = useCallback(() => setOpen(false), []);
+
+  const prevImg = useCallback(() => {
+    if (!images.length) return;
+    setImgIdx((i) => (i - 1 + images.length) % images.length);
+  }, [images.length]);
+
+  const nextImg = useCallback(() => {
+    if (!images.length) return;
+    setImgIdx((i) => (i + 1) % images.length);
+  }, [images.length]);
+
+  const currentImg = images[imgIdx] || coverUrl;
+
+  const shareProduct = useCallback(async () => {
     try {
       if (navigator.share) {
         await navigator.share({
@@ -230,26 +278,9 @@ export default function ProductCard({
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      window.setTimeout(() => setCopied(false), 2000);
     } catch {}
-  }
-
-  function openModal() {
-    setImgIdx(0);
-    setOpen(true);
-  }
-
-  function prevImg() {
-    if (!images.length) return;
-    setImgIdx((i) => (i - 1 + images.length) % images.length);
-  }
-
-  function nextImg() {
-    if (!images.length) return;
-    setImgIdx((i) => (i + 1) % images.length);
-  }
-
-  const currentImg = images[imgIdx] || coverUrl;
+  }, [anyP.name, shareText, shareUrl]);
 
   return (
     <>
@@ -258,7 +289,7 @@ export default function ProductCard({
           {coverUrl ? (
             <img
               src={coverUrl}
-              alt={anyP.name}
+              alt={String(anyP.name || "")}
               className="w-100"
               style={{ aspectRatio: "1/1", objectFit: "cover" }}
               loading="lazy"
@@ -289,13 +320,14 @@ export default function ProductCard({
               className="btn btn-link p-0 text-start text-dark"
               onClick={openModal}
               style={{ textDecoration: "none" }}
+              type="button"
             >
-              {anyP.name}
+              {String(anyP.name || "")}
             </button>
           </h3>
 
           <div className="mb-1">
-            <ProductRating productId={anyP.id} />
+            <ProductRating productId={Number(anyP.id)} />
           </div>
 
           <div className="d-flex align-items-baseline gap-2 mb-2">
@@ -314,20 +346,19 @@ export default function ProductCard({
           </div>
 
           <div className="mt-auto d-flex gap-2">
-            <button
-              className="btn btn-outline-dark btn-sm flex-fill"
-              onClick={openModal}
-            >
+            <button className="btn btn-outline-dark btn-sm flex-fill" onClick={openModal} type="button">
               Voir
             </button>
 
             {qtyInCart > 0 ? (
-              <div className="btn-group btn-group-sm flex-fill">
-                <button className="btn btn-outline-dark" onClick={handleDecrease}>
+              <div className="btn-group btn-group-sm flex-fill" role="group" aria-label="Quantité panier">
+                <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
                   −
                 </button>
-                <button className="btn btn-light disabled">{qtyInCart}</button>
-                <button className="btn btn-duu" onClick={handleAdd}>
+                <button className="btn btn-light disabled" type="button">
+                  {qtyInCart}
+                </button>
+                <button className="btn btn-duu" onClick={handleAdd} type="button">
                   +
                 </button>
               </div>
@@ -336,6 +367,7 @@ export default function ProductCard({
                 className="btn btn-duu btn-sm flex-fill"
                 onClick={handleAdd}
                 disabled={isOutOfStock}
+                type="button"
               >
                 + Panier
               </button>
@@ -348,13 +380,15 @@ export default function ProductCard({
         <div
           className="modal d-block"
           style={{ background: "rgba(0,0,0,.35)" }}
-          onClick={(e) => e.target === e.currentTarget && setOpen(false)}
+          onClick={(e) => e.target === e.currentTarget && closeModal()}
+          role="dialog"
+          aria-modal="true"
         >
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">{anyP.name}</h5>
-                <button className="btn-close" onClick={() => setOpen(false)} />
+                <h5 className="modal-title">{String(anyP.name || "")}</h5>
+                <button className="btn-close" onClick={closeModal} type="button" aria-label="Fermer" />
               </div>
 
               <div className="modal-body">
@@ -364,7 +398,7 @@ export default function ProductCard({
                       {currentImg ? (
                         <img
                           src={currentImg}
-                          alt={anyP.name}
+                          alt={String(anyP.name || "")}
                           className="w-100"
                           style={{ aspectRatio: "1/1", objectFit: "cover" }}
                         />
@@ -415,8 +449,7 @@ export default function ProductCard({
                               type="button"
                               onClick={() => setImgIdx(i)}
                               className={
-                                "p-0 border rounded overflow-hidden " +
-                                (active ? "border-dark" : "border-0")
+                                "p-0 border rounded overflow-hidden " + (active ? "border-dark" : "border-0")
                               }
                               style={{ width: 54, height: 54, background: "#fff" }}
                               aria-label={`Voir image ${i + 1}`}
@@ -431,6 +464,7 @@ export default function ProductCard({
                                   objectFit: "cover",
                                   opacity: active ? 1 : 0.9,
                                 }}
+                                loading="lazy"
                               />
                             </button>
                           );
@@ -456,25 +490,19 @@ export default function ProductCard({
                     </div>
 
                     <div className="mt-2">
-                      <ProductRating productId={anyP.id} />
+                      <ProductRating productId={Number(anyP.id)} />
                     </div>
 
                     <p className="text-muted mt-2 mb-3">
-                      {anyP.description
-                        ? shortText(anyP.description, 520)
-                        : "Aucune description."}
+                      {anyP.description ? shortText(anyP.description, 520) : "Aucune description."}
                     </p>
 
                     <div className="d-grid gap-2">
-                      <button
-                        className="btn btn-duu fw-semibold"
-                        onClick={handleAdd}
-                        disabled={isOutOfStock}
-                      >
+                      <button className="btn btn-duu fw-semibold" onClick={handleAdd} disabled={isOutOfStock} type="button">
                         + Ajouter au panier
                       </button>
 
-                      <button className="btn btn-outline-secondary" onClick={shareProduct}>
+                      <button className="btn btn-outline-secondary" onClick={shareProduct} type="button">
                         {copied ? "Lien copié" : "Partager"}
                       </button>
                     </div>
@@ -489,7 +517,7 @@ export default function ProductCard({
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" onClick={() => setOpen(false)}>
+                <button className="btn btn-outline-dark" onClick={closeModal} type="button">
                   Fermer
                 </button>
               </div>
