@@ -1,22 +1,33 @@
 // src/pages/admin/ProductsAdminPage.tsx
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  listProducts,
   getProduct,
   type Product,
+  type ProductVariant,
   createProduct,
   updateProduct,
   removeProduct,
+  listProductVariants,
+  upsertProductVariants,
+  removeProductVariant,
 } from "../../services/products";
 import {
   listCategories,
   type Category,
   createCategory,
 } from "../../services/categories";
+import {
+  listSubCategories,
+  createSubCategory,
+} from "../../services/subCategories";
 import { API_BASE, api } from "../../services/http";
 
 type ProductImage = { id: number; url: string; sort_order: number };
-type FullProduct = Product & { images?: ProductImage[]; cities?: any };
+type FullProduct = Product & { images?: ProductImage[] } & {
+  // champs "join" possibles venant de l'API
+  shop_name?: string | null;
+  sub_category_name?: string | null;
+};
 
 type Shop = {
   id: number;
@@ -33,11 +44,17 @@ type SubCategory = {
   category_id: number;
   name: string;
   slug: string;
-  category_name?: string;
-  category_slug?: string;
+
+  // join backend
+  category_name?: string | null;
+  category_slug?: string | null;
 };
 
+type ProductStyle = "food" | "market" | "fashion";
+
 type Draft = {
+  style?: ProductStyle | "";
+
   name: string;
   price?: number | null;
   currency?: string | null;
@@ -52,22 +69,19 @@ type Draft = {
 
   shop_id?: number | null;
 
-  category_name?: string;
-  sub_category_name?: string;
-
   promo_discount_type?: PromoDiscountType | null;
   promo_discount_value?: number | null;
   promo_free_delivery?: 0 | 1 | null;
 
-  cities?: string[];
-
   is_active?: 0 | 1 | null;
 };
 
-const CITY_OPTIONS = ["Casablanca", "Marrakech"] as const;
-
 type Mode = "default" | "top-ordered" | "top-rated";
-type Channel = "all" | "african-food" | "african-market";
+
+/** ✅ Ajout fashion */
+type Channel = "all" | "african-food" | "african-market" | "fashion";
+
+/* ================= Helpers ================= */
 
 function moneyMAD(n?: number | null) {
   return new Intl.NumberFormat("fr-FR", {
@@ -81,17 +95,6 @@ function imgUrl(u?: string | null) {
   if (u.startsWith("http://") || u.startsWith("https://")) return u;
   if (u.startsWith("/")) return `${API_BASE}${u}`;
   return u;
-}
-
-function toggleInArray(list: string[], value: string) {
-  const low = value.toLowerCase();
-  const idx = list.findIndex((x) => String(x).toLowerCase() === low);
-  if (idx >= 0) {
-    const copy = [...list];
-    copy.splice(idx, 1);
-    return copy;
-  }
-  return [...list, value];
 }
 
 function computePromoPrice(
@@ -113,7 +116,6 @@ function computePromoPrice(
   return Math.max(0, Number(res.toFixed(2)));
 }
 
-/** ✅ promo “réelle” uniquement si éligible + valeur > 0 + produit actif */
 function hasRealPromo(p: any) {
   const active = p?.active ?? p?.is_active ?? 1 ? 1 : 0;
   if (!active) return false;
@@ -126,39 +128,6 @@ function splitNames(raw: string) {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 10);
-}
-
-function normalizeCitiesInline(input: unknown): string[] {
-  if (input == null) return [];
-
-  if (Array.isArray(input)) {
-    return input.map((x) => String(x || "").trim()).filter(Boolean);
-  }
-
-  if (typeof input === "string") {
-    const s = input.trim();
-    if (!s) return [];
-
-    if (s.startsWith("[") && s.endsWith("]")) {
-      try {
-        const parsed = JSON.parse(s);
-        if (Array.isArray(parsed)) {
-          return parsed.map((x) => String(x || "").trim()).filter(Boolean);
-        }
-      } catch {}
-    }
-
-    if (s.includes(",")) {
-      return s
-        .split(",")
-        .map((x) => x.trim())
-        .filter(Boolean);
-    }
-
-    return [s];
-  }
-
-  return [];
 }
 
 function unwrap<T>(res: any): T {
@@ -178,6 +147,67 @@ function getPaginated(res: any): { items: Product[]; pageInfo?: any } {
   const pageInfo = body?.pageInfo ?? body?.data?.pageInfo ?? undefined;
 
   return { items, pageInfo };
+}
+
+function isActive(p: any) {
+  return p?.active ?? p?.is_active ?? 1 ? 1 : 0;
+}
+
+function inferStyleFromProduct(p: any): ProductStyle | "" {
+  const v = String(p?.vertical || "").toUpperCase();
+  if (v === "FOOD") return "food";
+  if (v === "MARKET") return "market";
+  if (v === "FASHION") return "fashion";
+  return "";
+}
+
+/* ========= Variants helpers (UI) ========= */
+type VariantDraft = {
+  id?: number;
+  size?: string | null;
+  color?: string | null;
+  sku?: string | null;
+  stock?: number;
+  price_override?: number | null;
+  is_active?: 0 | 1 | null;
+};
+
+function normStr(x: any, max = 60): string | null {
+  const s = String(x ?? "").trim();
+  if (!s) return null;
+  return s.slice(0, max);
+}
+function normStock(x: any): number {
+  const n = Number(x);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+function normPriceOverride(x: any): number | null {
+  if (x === "" || x == null) return null;
+  const n = Number(x);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+function cleanVariantsForApi(
+  list: VariantDraft[]
+): Array<Partial<ProductVariant> & { stock?: number }> {
+  const out: Array<Partial<ProductVariant> & { stock?: number }> = [];
+  for (const v of list || []) {
+    const size = normStr(v.size, 20);
+    const color = normStr(v.color, 40);
+    const sku = normStr(v.sku, 80);
+    if (!size && !color) continue;
+
+    out.push({
+      size,
+      color,
+      sku,
+      stock: normStock(v.stock),
+      price_override: normPriceOverride(v.price_override),
+      is_active: (v.is_active ?? 1) as any,
+    });
+  }
+  return out;
 }
 
 /* ========= Formulaire Produit ========= */
@@ -203,15 +233,17 @@ function ProductForm({
   onSubmit: (
     draft: Draft,
     files: File[],
-    replaceImages: boolean
+    replaceImages: boolean,
+    variants: VariantDraft[]
   ) => Promise<void> | void;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => {
     const anyInit: any = initial || {};
-    const citiesInit = normalizeCitiesInline(anyInit?.cities);
 
     return {
+      style: "",
+
       name: anyInit?.name || "",
       price: anyInit?.price ?? null,
       description: anyInit?.description || "",
@@ -239,8 +271,6 @@ function ProductForm({
 
       shop_id: anyInit?.shop_id != null ? Number(anyInit.shop_id) : null,
 
-      cities: citiesInit,
-
       promo_discount_type:
         anyInit?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT",
       promo_discount_value:
@@ -261,6 +291,16 @@ function ProductForm({
           : null,
     };
   });
+
+  useEffect(() => {
+    if (!initial) return;
+    setDraft((d) => {
+      if (d.style) return d;
+      const style = inferStyleFromProduct(initial as any);
+      return style ? { ...d, style } : d;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial]);
 
   const [files, setFiles] = useState<File[]>([]);
   const [replaceImages, setReplaceImages] = useState<boolean>(false);
@@ -284,6 +324,17 @@ function ProductForm({
 
   const [formError, setFormError] = useState<string | null>(null);
 
+  // ✅ Variants state (Fashion only)
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variantsErr, setVariantsErr] = useState<string | null>(null);
+  const [variantsOk, setVariantsOk] = useState<string | null>(null);
+  const [variants, setVariants] = useState<VariantDraft[]>([]);
+  const [variantsTouched, setVariantsTouched] = useState(false);
+
+  const productId = Number((initial as any)?.id || 0);
+  const isFashion = String(draft.style || "").toLowerCase() === "fashion";
+  const isEdit = !!productId;
+
   function addFiles(list: FileList | null) {
     if (!list || !list.length) return;
     const current = [...files];
@@ -305,11 +356,7 @@ function ProductForm({
   }
 
   const hasExistingImages = (initial as any)?.images?.length > 0;
-
   const selectedShop = shops.find((s) => s.id === (draft.shop_id ?? undefined));
-  const selectedCities = Array.isArray(draft.cities)
-    ? (draft.cities as string[])
-    : [];
 
   const promoEnabled = !!draft.promo_eligible;
   const promoType: PromoDiscountType =
@@ -324,11 +371,54 @@ function ProductForm({
     return computePromoPrice(priceNum, promoType, promoValueNum);
   }, [promoEnabled, promoType, promoValueNum, priceNum]);
 
+  const categoriesByStyle = useMemo(() => {
+    const style = String(draft.style || "").toLowerCase();
+    if (!style) return categories;
+
+    const wanted = new Set<number>();
+    for (const sc of subCategories || []) {
+      const s = String(sc.slug || "").toLowerCase();
+      if (s === style) wanted.add(Number(sc.category_id));
+    }
+    if (!wanted.size) return categories;
+    return categories.filter((c) => wanted.has(c.id));
+  }, [categories, subCategories, draft.style]);
+
   const filteredSubCats = useMemo(() => {
     const cid = Number(draft.category_id || 0);
     if (!cid) return [];
-    return (subCategories || []).filter((sc) => Number(sc.category_id) === cid);
-  }, [subCategories, draft.category_id]);
+
+    let list = (subCategories || []).filter(
+      (sc) => Number(sc.category_id) === cid
+    );
+
+    const style = String(draft.style || "").toLowerCase();
+    if (style) {
+      const byStyle = list.filter(
+        (sc) => String(sc.slug || "").toLowerCase() === style
+      );
+      if (byStyle.length) list = byStyle;
+    }
+
+    return list;
+  }, [subCategories, draft.category_id, draft.style]);
+
+  useEffect(() => {
+    setIsCustomCategory(false);
+    setIsCustomSubCategory(false);
+    setNewCategoryName("");
+    setNewSubCategoryName("");
+    setNewSubCatsRaw("");
+    setCreatedSubCatsPreview([]);
+    setDraft((d) => ({ ...d, category_id: null, sub_category_id: null }));
+
+    // reset variants UI when style changes
+    setVariantsErr(null);
+    setVariantsOk(null);
+    setVariantsTouched(false);
+    setVariants([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.style]);
 
   useEffect(() => {
     const cid = Number(draft.category_id || 0);
@@ -350,6 +440,58 @@ function ProductForm({
     const names = splitNames(newSubCatsRaw);
     setCreatedSubCatsPreview(names);
   }, [newSubCatsRaw, isCustomCategory]);
+
+  // ✅ Load variants when editing a Fashion product
+  useEffect(() => {
+    const run = async () => {
+      setVariantsErr(null);
+      setVariantsOk(null);
+
+      if (!isFashion) return;
+
+      // création : mettre une ligne vide par défaut
+      if (!isEdit) {
+        if (!variantsTouched && variants.length === 0) {
+          setVariants([
+            {
+              size: null,
+              color: null,
+              sku: null,
+              stock: 0,
+              price_override: null,
+              is_active: 1,
+            },
+          ]);
+        }
+        return;
+      }
+
+      // édition : ne recharge pas si l'utilisateur a déjà touché
+      if (variantsTouched) return;
+
+      setVariantsLoading(true);
+      try {
+        const rows = await listProductVariants(productId);
+        const mapped: VariantDraft[] = (rows || []).map((v) => ({
+          id: v.id,
+          size: v.size ?? null,
+          color: v.color ?? null,
+          sku: v.sku ?? null,
+          stock: Number(v.stock ?? 0),
+          price_override: v.price_override ?? null,
+          is_active: (v.is_active ?? 1) as any,
+        }));
+        setVariants(mapped);
+      } catch (e: any) {
+        setVariantsErr(e?.message || String(e));
+      } finally {
+        setVariantsLoading(false);
+      }
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFashion, productId, isEdit]);
 
   function validatePromo(): string | null {
     if (!promoEnabled) return null;
@@ -373,9 +515,64 @@ function ProductForm({
     return null;
   }
 
+  function addVariantRow() {
+    setVariantsTouched(true);
+    setVariants((prev) => [
+      ...prev,
+      {
+        size: null,
+        color: null,
+        sku: null,
+        stock: 0,
+        price_override: null,
+        is_active: 1,
+      },
+    ]);
+  }
+
+  function removeVariantRowAt(i: number) {
+    setVariantsTouched(true);
+    setVariants((prev) => {
+      const arr = [...prev];
+      arr.splice(i, 1);
+      return arr;
+    });
+  }
+
+  async function cleanAllVariants() {
+    if (!isEdit || !isFashion) return;
+    if (
+      !confirm("Supprimer TOUTES les variantes de ce produit ? (clean total)")
+    )
+      return;
+
+    setVariantsErr(null);
+    setVariantsOk(null);
+    setVariantsLoading(true);
+    try {
+      const rows = await listProductVariants(productId);
+      for (const v of rows || []) {
+        await removeProductVariant(v.id);
+      }
+      setVariants([]);
+      setVariantsTouched(true);
+      setVariantsOk("Toutes les variantes ont été supprimées.");
+    } catch (e: any) {
+      setVariantsErr(e?.message || String(e));
+    } finally {
+      setVariantsLoading(false);
+    }
+  }
+
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setFormError(null);
+
+    const style = String(draft.style || "").toLowerCase();
+    if (style !== "food" && style !== "market" && style !== "fashion") {
+      setFormError("Choisis d’abord le type : Food / Market / Fashion.");
+      return;
+    }
 
     const promoErr = validatePromo();
     if (promoErr) {
@@ -391,7 +588,7 @@ function ProductForm({
       const scNames = splitNames(newSubCatsRaw);
       if (!scNames.length) {
         setFormError(
-          "Ajoute au moins une sous-catégorie pour la nouvelle catégorie (ex: Épices, Riz, Huiles)."
+          "Ajoute au moins une sous-catégorie pour la nouvelle catégorie (séparées par des virgules)."
         );
         return;
       }
@@ -426,6 +623,7 @@ function ProductForm({
 
         const names = splitNames(newSubCatsRaw);
         let firstCreated: SubCategory | null = null;
+
         for (let i = 0; i < names.length; i++) {
           const created = await onCreateSubCategory(cid, names[i]);
           if (!firstCreated) firstCreated = created;
@@ -462,12 +660,9 @@ function ProductForm({
         ...draft,
         category_id: categoryId ?? null,
         sub_category_id: subCatId ?? null,
-        category_name: undefined,
-        sub_category_name: undefined,
-        cities: normalizeCitiesInline(draft.cities),
       };
 
-      await onSubmit(finalDraft, files, replaceImages);
+      await onSubmit(finalDraft, files, replaceImages, variants);
     } catch (err: any) {
       setFormError(err?.message || String(err));
     } finally {
@@ -477,7 +672,6 @@ function ProductForm({
 
   return (
     <form onSubmit={submit}>
-      {/* ====== TON JSX ORIGINAL (inchangé) ====== */}
       <div className="row g-2">
         <div className="col-12 col-md-8">
           <div className="row g-2">
@@ -517,40 +711,30 @@ function ProductForm({
             </div>
           </div>
 
-          <div className="row g-2 mt-1">
-            <div className="col-12">
-              <label className="form-label">Villes disponibles</label>
-              <div className="d-flex flex-wrap gap-3">
-                {CITY_OPTIONS.map((c) => {
-                  const checked = selectedCities.some(
-                    (x) => String(x).toLowerCase() === c.toLowerCase()
-                  );
-                  return (
-                    <div className="form-check" key={c}>
-                      <input
-                        id={`city_${c}`}
-                        className="form-check-input"
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() =>
-                          setDraft((d) => {
-                            const current = Array.isArray(d.cities)
-                              ? (d.cities as string[])
-                              : [];
-                            return { ...d, cities: toggleInArray(current, c) };
-                          })
-                        }
-                      />
-                      <label htmlFor={`city_${c}`} className="form-check-label">
-                        {c}
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
+          <div className="row g-2 mt-2">
+            <div className="col-12 col-md-6">
+              <label className="form-label">
+                Type (Food / Market / Fashion)
+              </label>
+              <select
+                className="form-select"
+                value={draft.style || ""}
+                onChange={(ev) =>
+                  setDraft((d) => ({
+                    ...d,
+                    style: (ev.target.value as any) || "",
+                  }))
+                }
+                required
+              >
+                <option value="">(Choisir le type)</option>
+                <option value="food">Food</option>
+                <option value="market">Market</option>
+                <option value="fashion">Fashion</option>
+              </select>
               <small className="text-muted">
-                Si aucune ville n’est cochée, le produit sera considéré “visible
-                partout”.
+                Choisis le type d’abord, ensuite tu sélectionnes (ou crées)
+                catégorie et sous-catégorie.
               </small>
             </div>
           </div>
@@ -597,6 +781,7 @@ function ProductForm({
               <label className="form-label">Catégorie</label>
               <select
                 className="form-select"
+                disabled={!draft.style}
                 value={
                   isCustomCategory
                     ? "__other__"
@@ -628,13 +813,17 @@ function ProductForm({
                   }
                 }}
               >
-                <option value="">(Sélectionner)</option>
-                {categories.map((c) => (
+                <option value="">
+                  {!draft.style
+                    ? "(Choisir le type d’abord)"
+                    : "(Sélectionner)"}
+                </option>
+                {categoriesByStyle.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
-                <option value="__other__">Autre…</option>
+                {draft.style ? <option value="__other__">Autre…</option> : null}
               </select>
             </div>
 
@@ -646,6 +835,7 @@ function ProductForm({
                   placeholder="Ex: Épicerie, Boissons, Hygiène…"
                   value={newCategoryName}
                   onChange={(ev) => setNewCategoryName(ev.target.value)}
+                  disabled={!draft.style}
                 />
               </div>
             )}
@@ -660,6 +850,7 @@ function ProductForm({
                   placeholder="Ex: Épices, Riz, Huiles (séparées par des virgules)"
                   value={newSubCatsRaw}
                   onChange={(ev) => setNewSubCatsRaw(ev.target.value)}
+                  disabled={!draft.style}
                 />
 
                 {createdSubCatsPreview.length ? (
@@ -679,6 +870,7 @@ function ProductForm({
                 <label className="form-label">Sous-catégorie (liée)</label>
                 <select
                   className="form-select"
+                  disabled={!draft.style || !draft.category_id}
                   value={
                     isCustomSubCategory
                       ? "__other__"
@@ -700,10 +892,11 @@ function ProductForm({
                       }));
                     }
                   }}
-                  disabled={!draft.category_id}
                 >
                   <option value="">
-                    {!draft.category_id
+                    {!draft.style
+                      ? "(Choisir le type d’abord)"
+                      : !draft.category_id
                       ? "(Choisir une catégorie d’abord)"
                       : filteredSubCats.length
                       ? "(Sélectionner)"
@@ -722,7 +915,7 @@ function ProductForm({
                 </select>
 
                 <small className="text-muted">
-                  La liste dépend de la catégorie sélectionnée.
+                  La liste dépend du type + catégorie sélectionnés.
                 </small>
               </div>
 
@@ -734,7 +927,7 @@ function ProductForm({
                     placeholder="Ex: Épices, Conserves, Snacks…"
                     value={newSubCategoryName}
                     onChange={(ev) => setNewSubCategoryName(ev.target.value)}
-                    disabled={!draft.category_id}
+                    disabled={!draft.style || !draft.category_id}
                   />
                   <small className="text-muted">
                     Elle sera créée et liée automatiquement à cette catégorie.
@@ -788,6 +981,225 @@ function ProductForm({
               />
             </div>
           </div>
+
+          {/* ✅ Variants block (Fashion only) */}
+          {isFashion && (
+            <div className="card border-0 bg-light mt-3">
+              <div className="card-body p-3">
+                <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                  <div>
+                    <div className="fw-semibold">Variantes (Fashion)</div>
+                    <div className="small text-muted">
+                      Taille / Couleur / SKU / Stock + Prix variante
+                      (optionnel).
+                    </div>
+                  </div>
+
+                  <div className="d-flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-dark"
+                      onClick={addVariantRow}
+                      disabled={variantsLoading}
+                    >
+                      + Ajouter une variante
+                    </button>
+
+                    {isEdit && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={cleanAllVariants}
+                        disabled={variantsLoading}
+                        title="Suppression réelle côté API (clean total)"
+                      >
+                        Supprimer toutes les variantes
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {variantsLoading ? (
+                  <div className="text-muted small mt-2">
+                    Chargement variantes…
+                  </div>
+                ) : null}
+                {variantsOk ? (
+                  <div className="alert alert-success py-2 mt-2 mb-0">
+                    {variantsOk}
+                  </div>
+                ) : null}
+                {variantsErr ? (
+                  <div className="alert alert-danger py-2 mt-2 mb-0">
+                    {variantsErr}
+                  </div>
+                ) : null}
+
+                <div className="table-responsive mt-2">
+                  <table className="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th style={{ minWidth: 110 }}>Taille</th>
+                        <th style={{ minWidth: 130 }}>Couleur</th>
+                        <th style={{ minWidth: 140 }}>SKU</th>
+                        <th style={{ width: 110 }}>Stock</th>
+                        <th style={{ width: 150 }}>Prix</th>
+                        <th style={{ width: 140 }}>Statut</th>
+                        <th style={{ width: 70 }} className="text-end">
+                          —
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {variants.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="text-muted small">
+                            Aucune variante. Tu peux en ajouter si ce produit a
+                            des tailles/couleurs.
+                          </td>
+                        </tr>
+                      ) : (
+                        variants.map((v, idx) => (
+                          <tr key={v.id ? `v-${v.id}` : `new-${idx}`}>
+                            <td>
+                              <input
+                                className="form-control form-control-sm"
+                                value={v.size ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setVariantsTouched(true);
+                                  setVariants((prev) =>
+                                    prev.map((x, i) =>
+                                      i === idx ? { ...x, size: val } : x
+                                    )
+                                  );
+                                }}
+                                placeholder="S / M / L / 42…"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="form-control form-control-sm"
+                                value={v.color ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setVariantsTouched(true);
+                                  setVariants((prev) =>
+                                    prev.map((x, i) =>
+                                      i === idx ? { ...x, color: val } : x
+                                    )
+                                  );
+                                }}
+                                placeholder="Noir / Blanc…"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="form-control form-control-sm"
+                                value={v.sku ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setVariantsTouched(true);
+                                  setVariants((prev) =>
+                                    prev.map((x, i) =>
+                                      i === idx ? { ...x, sku: val } : x
+                                    )
+                                  );
+                                }}
+                                placeholder="SKU (optionnel)"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className="form-control form-control-sm"
+                                value={Number(v.stock ?? 0)}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setVariantsTouched(true);
+                                  setVariants((prev) =>
+                                    prev.map((x, i) =>
+                                      i === idx
+                                        ? {
+                                            ...x,
+                                            stock: val === "" ? 0 : Number(val),
+                                          }
+                                        : x
+                                    )
+                                  );
+                                }}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="form-control form-control-sm"
+                                value={v.price_override ?? ""}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setVariantsTouched(true);
+                                  setVariants((prev) =>
+                                    prev.map((x, i) =>
+                                      i === idx
+                                        ? {
+                                            ...x,
+                                            price_override:
+                                              val === "" ? null : Number(val),
+                                          }
+                                        : x
+                                    )
+                                  );
+                                }}
+                                placeholder="optionnel"
+                              />
+                            </td>
+                            <td>
+                              <select
+                                className="form-select form-select-sm"
+                                value={
+                                  v.is_active == null
+                                    ? "1"
+                                    : String(Number(v.is_active))
+                                }
+                                onChange={(e) => {
+                                  const val = Number(e.target.value) as 0 | 1;
+                                  setVariantsTouched(true);
+                                  setVariants((prev) =>
+                                    prev.map((x, i) =>
+                                      i === idx ? { ...x, is_active: val } : x
+                                    )
+                                  );
+                                }}
+                              >
+                                <option value="1">Active</option>
+                                <option value="0">Désactivée</option>
+                              </select>
+                            </td>
+                            <td className="text-end">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => removeVariantRowAt(idx)}
+                              >
+                                ×
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="small text-muted mt-2">
+                  Astuce : si tu veux que le prix dépend de la variante, mets un{" "}
+                  <strong>Prix variante</strong>. Sinon, le prix du produit
+                  s’applique.
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="row g-2 mt-1">
             <div className="col-6">
@@ -880,9 +1292,7 @@ function ProductForm({
                               : Number(ev.target.value),
                         }))
                       }
-                      placeholder={
-                        promoType === "PERCENT" ? "Ex: 10" : "Ex: 20"
-                      }
+                      placeholder={promoType === "PERCENT" ? "Ex: 10" : "Ex: 20"}
                     />
                   </div>
 
@@ -1061,6 +1471,7 @@ export default function ProductsAdminPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
+
   const [q, setQ] = useState("");
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -1074,7 +1485,6 @@ export default function ProductsAdminPage() {
   const [mode, setMode] = useState<Mode>("default");
   const [channel, setChannel] = useState<Channel>("all");
 
-  /** ✅ filtres admin */
   const [onlyActive, setOnlyActive] = useState<boolean>(false);
   const [filterShopId, setFilterShopId] = useState<number | "">("");
   const [filterCategoryId, setFilterCategoryId] = useState<number | "">("");
@@ -1083,10 +1493,6 @@ export default function ProductsAdminPage() {
     () => (mode === "default" ? Math.max(1, Math.ceil(total / pageSize)) : 1),
     [total, pageSize, mode]
   );
-
-  function isActive(p: any) {
-    return p?.active ?? p?.is_active ?? 1 ? 1 : 0;
-  }
 
   async function refresh() {
     setLoading(true);
@@ -1109,32 +1515,35 @@ export default function ProductsAdminPage() {
           ? body.items
           : [];
 
-        // ✅ safety: jamais d'inactifs
         const activeOnly = list.filter((p: any) => isActive(p));
         setItems(activeOnly);
         setTotal(activeOnly.length);
         return;
       }
 
-      const svcChannel =
-        channel === "all"
-          ? undefined
-          : (channel as "african-food" | "african-market");
+      const base =
+        channel === "african-food"
+          ? "/api/products/african-food"
+          : channel === "african-market"
+          ? "/api/products/african-market"
+          : channel === "fashion"
+          ? "/api/products/fashion"
+          : "/api/products";
 
-      // ✅ on passe les filtres à listProducts (si ton backend supporte, super),
-      // sinon le filtrage UI plus bas prendra le relais.
-      const res = await listProducts({
-        page,
-        pageSize,
-        onlyActive,
-        channel: svcChannel,
-        category_id: filterCategoryId === "" ? undefined : filterCategoryId,
-        shop_id: filterShopId === "" ? undefined : filterShopId,
-      } as any);
+      const query: Record<string, any> = { page, pageSize };
+      if (onlyActive) query.onlyActive = 1;
+      if (filterCategoryId !== "") {
+        query.category_id = filterCategoryId;
+        query.categoryId = filterCategoryId;
+      }
+      if (filterShopId !== "") {
+        query.shop_id = filterShopId;
+        query.shopId = filterShopId;
+      }
 
-      const { items: gotItems, pageInfo } = getPaginated(res);
+      const resRaw = await api.get<any>(base, { query });
+      const { items: gotItems, pageInfo } = getPaginated(resRaw);
 
-      // total backend si dispo, sinon fallback
       setItems(gotItems);
       setTotal(Number(pageInfo?.total ?? gotItems.length ?? 0));
     } catch (e: any) {
@@ -1146,8 +1555,8 @@ export default function ProductsAdminPage() {
 
   async function refreshCategories() {
     try {
-      const res = await listCategories({ page: 1, pageSize: 200 });
-      setCategories(res.items);
+      const res = await listCategories({ page: 1, pageSize: 500 });
+      setCategories(res.items || []);
     } catch (e) {
       console.error("Erreur chargement catégories", e);
     }
@@ -1155,23 +1564,26 @@ export default function ProductsAdminPage() {
 
   async function refreshSubCategories() {
     try {
-      const resRaw = await api.get<{ items: SubCategory[] }>(
-        "/api/sub-categories",
-        {
-          query: { page: 1, pageSize: 500 },
-        }
-      );
-      const res = unwrap<{ items: SubCategory[] }>(resRaw);
-      setSubCategories(res.items || []);
+      const res = await listSubCategories({ page: 1, pageSize: 1000 } as any);
+      setSubCategories((res as any).items || []);
     } catch (e) {
-      console.error("Erreur chargement sous-catégories", e);
+      try {
+        const resRaw = await api.get<{ items: SubCategory[] }>(
+          "/api/sub-categories",
+          { query: { page: 1, pageSize: 1000 } }
+        );
+        const res = unwrap<{ items: SubCategory[] }>(resRaw);
+        setSubCategories(res.items || []);
+      } catch (e2) {
+        console.error("Erreur chargement sous-catégories", e, e2);
+      }
     }
   }
 
   async function refreshShops() {
     try {
       const resRaw = await api.get<{ items: Shop[] }>(`/api/shops`, {
-        query: { page: 1, pageSize: 200 },
+        query: { page: 1, pageSize: 500 },
       });
       const res = unwrap<{ items: Shop[] }>(resRaw);
       setShops(res.items || []);
@@ -1211,12 +1623,7 @@ export default function ProductsAdminPage() {
     setError(null);
     try {
       const p = await getProduct(id);
-      const anyP: any = p as any;
-      const fixed: any = {
-        ...anyP,
-        cities: normalizeCitiesInline(anyP?.cities),
-      };
-      setEdit(fixed as FullProduct);
+      setEdit({ ...(p as any) } as FullProduct);
       setShowForm(true);
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -1230,12 +1637,7 @@ export default function ProductsAdminPage() {
     setError(null);
     try {
       const p = await getProduct(id);
-      const anyP: any = p as any;
-      const fixed: any = {
-        ...anyP,
-        cities: normalizeCitiesInline(anyP?.cities),
-      };
-      setPreview(fixed as FullProduct);
+      setPreview({ ...(p as any) } as FullProduct);
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -1255,26 +1657,28 @@ export default function ProductsAdminPage() {
   }
 
   async function onCreateSubCategory(categoryId: number, name: string) {
-    const createdRaw = await api.post<SubCategory>("/api/sub-categories", {
-      category_id: categoryId,
-      name,
-    });
-    const created = unwrap<SubCategory>(createdRaw);
+    const created = await createSubCategory({ category_id: categoryId, name });
     await refreshSubCategories();
     return created as any;
   }
 
-  async function onSave(draft: Draft, files: File[], replaceImages: boolean) {
+  async function onSave(
+    draft: Draft,
+    files: File[],
+    replaceImages: boolean,
+    variants: VariantDraft[]
+  ) {
     setBusy(true);
     setError(null);
     setOk(null);
     try {
       const payload: any = { ...draft };
 
-      delete payload.category_name;
-      delete payload.sub_category_name;
-
-      payload.cities = normalizeCitiesInline(payload.cities);
+      const style = String(payload.style || "").toLowerCase();
+      delete payload.style;
+      if (style === "food") payload.vertical = "FOOD";
+      else if (style === "market") payload.vertical = "MARKET";
+      else if (style === "fashion") payload.vertical = "FASHION";
 
       if (!payload.promo_eligible) {
         delete payload.promo_discount_type;
@@ -1289,13 +1693,28 @@ export default function ProductsAdminPage() {
         if (!draft.category_id) throw new Error("category_id requis.");
         if (!draft.sub_category_id) throw new Error("sub_category_id requis.");
         if (payload.is_active == null) payload.is_active = 1;
-      }
 
-      if (edit == null) {
+        const cleaned =
+          style === "fashion" ? cleanVariantsForApi(variants) : [];
+        if (cleaned.length) payload.variants = cleaned;
+
         await createProduct(payload, files);
         setOk("Produit créé avec succès.");
       } else {
         await updateProduct(edit.id, payload, files, replaceImages);
+
+        if (style === "fashion") {
+          const cleaned = cleanVariantsForApi(variants);
+          // si vide => on ne touche pas (évite de supprimer par accident)
+          if (cleaned.length) {
+            await upsertProductVariants(
+              edit.id,
+              { variants: cleaned as any },
+              { replace: true }
+            );
+          }
+        }
+
         setOk("Produit mis à jour.");
       }
 
@@ -1366,38 +1785,29 @@ export default function ProductsAdminPage() {
     }
   }
 
-  /** ✅ Filtrage UI (recherche + shop + catégorie + active) */
   const filtered = useMemo(() => {
     const text = q.trim().toLowerCase();
     const shopId = filterShopId === "" ? null : Number(filterShopId);
     const catId = filterCategoryId === "" ? null : Number(filterCategoryId);
 
     return (items || []).filter((p: any) => {
-      // 1) active (si checkbox)
       if (onlyActive && !isActive(p)) return false;
 
-      // 2) filtre boutique
       if (shopId != null) {
         const pid = Number(p.shop_id ?? p.shopId ?? 0);
         if (pid !== shopId) return false;
       }
 
-      // 3) filtre catégorie
       if (catId != null) {
         const cid = Number(p.category_id ?? 0);
         if (cid !== catId) return false;
       }
 
-      // 4) recherche texte
       if (!text) return true;
       return (
-        String(p.name || "")
-          .toLowerCase()
-          .includes(text) ||
+        String(p.name || "").toLowerCase().includes(text) ||
         String(p.id || "").includes(text) ||
-        String(p.shop_name || "")
-          .toLowerCase()
-          .includes(text)
+        String(p.shop_name || "").toLowerCase().includes(text)
       );
     });
   }, [items, q, filterShopId, filterCategoryId, onlyActive]);
@@ -1406,24 +1816,20 @@ export default function ProductsAdminPage() {
     setQ("");
     setPage(1);
   }
-
   function changeMode(newMode: Mode) {
     setMode(newMode);
     setPage(1);
   }
-
   function changeChannel(newChannel: Channel) {
     setChannel(newChannel);
     setMode("default");
     setPage(1);
   }
-
   function toggleOnlyActive() {
     setOnlyActive((prev) => !prev);
     setMode("default");
     setPage(1);
   }
-
   function clearFilters() {
     setFilterShopId("");
     setFilterCategoryId("");
@@ -1452,521 +1858,315 @@ export default function ProductsAdminPage() {
       {ok && <div className="alert alert-success py-2">{ok}</div>}
       {error && <div className="alert alert-danger py-2">{error}</div>}
 
-      <div className="card mb-3">
-        <div className="card-body d-flex flex-column gap-3">
-          {/* Canal + vues rapides */}
-          <div className="d-flex flex-column flex-lg-row gap-3 align-items-lg-center justify-content-between">
+      <div className="card border-0 shadow-sm mb-3">
+        <div className="card-body p-3">
+          <div className="d-flex flex-wrap gap-2 align-items-center justify-content-between">
             <div className="d-flex flex-wrap gap-2 align-items-center">
-              <span className="text-muted small me-1">Canal :</span>
-              <div className="btn-group btn-group-sm" role="group">
+              <div className="btn-group">
                 <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (channel === "all" && mode === "default"
-                      ? "btn-dark"
-                      : "btn-outline-dark")
-                  }
+                  className={`btn ${
+                    channel === "all" ? "btn-dark" : "btn-outline-dark"
+                  }`}
                   onClick={() => changeChannel("all")}
+                  disabled={busy}
                 >
                   Tous
                 </button>
                 <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (channel === "african-food" && mode === "default"
-                      ? "btn-dark"
-                      : "btn-outline-dark")
-                  }
+                  className={`btn ${
+                    channel === "african-food" ? "btn-dark" : "btn-outline-dark"
+                  }`}
                   onClick={() => changeChannel("african-food")}
+                  disabled={busy}
                 >
                   African Food
                 </button>
                 <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (channel === "african-market" && mode === "default"
+                  className={`btn ${
+                    channel === "african-market"
                       ? "btn-dark"
-                      : "btn-outline-dark")
-                  }
+                      : "btn-outline-dark"
+                  }`}
                   onClick={() => changeChannel("african-market")}
+                  disabled={busy}
                 >
                   African Market
                 </button>
-              </div>
-
-              <div className="form-check ms-3">
-                <input
-                  id="onlyActive"
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={onlyActive}
-                  onChange={toggleOnlyActive}
-                  disabled={mode !== "default"}
-                />
-                <label htmlFor="onlyActive" className="form-check-label small">
-                  Actifs uniquement
-                </label>
-              </div>
-            </div>
-
-            <div className="d-flex flex-wrap gap-2 align-items-center">
-              <span className="text-muted small me-1">Vue rapide :</span>
-              <div className="btn-group btn-group-sm" role="group">
                 <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (mode === "top-ordered"
-                      ? "btn-warning"
-                      : "btn-outline-warning")
-                  }
-                  onClick={() =>
-                    changeMode(
-                      mode === "top-ordered" ? "default" : "top-ordered"
-                    )
-                  }
+                  className={`btn ${
+                    channel === "fashion" ? "btn-dark" : "btn-outline-dark"
+                  }`}
+                  onClick={() => changeChannel("fashion")}
+                  disabled={busy}
+                >
+                  Fashion
+                </button>
+              </div>
+
+              <div className="btn-group">
+                <button
+                  className={`btn ${
+                    mode === "default" ? "btn-dark" : "btn-outline-dark"
+                  }`}
+                  onClick={() => changeMode("default")}
+                  disabled={busy}
+                >
+                  Normal
+                </button>
+                <button
+                  className={`btn ${
+                    mode === "top-ordered" ? "btn-dark" : "btn-outline-dark"
+                  }`}
+                  onClick={() => changeMode("top-ordered")}
+                  disabled={busy}
                 >
                   Top commandés
                 </button>
                 <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (mode === "top-rated"
-                      ? "btn-success"
-                      : "btn-outline-success")
-                  }
-                  onClick={() =>
-                    changeMode(mode === "top-rated" ? "default" : "top-rated")
-                  }
+                  className={`btn ${
+                    mode === "top-rated" ? "btn-dark" : "btn-outline-dark"
+                  }`}
+                  onClick={() => changeMode("top-rated")}
+                  disabled={busy}
                 >
-                  Mieux notés
+                  Top notés
                 </button>
               </div>
+
+              <button
+                className={`btn ${onlyActive ? "btn-dark" : "btn-outline-dark"}`}
+                onClick={toggleOnlyActive}
+                disabled={busy}
+              >
+                {onlyActive ? "Actifs ✅" : "Actifs seulement"}
+              </button>
+            </div>
+
+            <div className="d-flex flex-wrap gap-2 align-items-center">
+              <input
+                className="form-control"
+                style={{ width: 320, maxWidth: "100%" }}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Rechercher (nom, id, boutique)…"
+              />
+              <button
+                className="btn btn-outline-secondary"
+                onClick={resetSearch}
+                disabled={busy && !q}
+              >
+                Reset recherche
+              </button>
+              <button
+                className="btn btn-outline-danger"
+                onClick={clearFilters}
+                disabled={busy}
+              >
+                Effacer filtres
+              </button>
             </div>
           </div>
 
-          {/* ✅ Filtres catégorie + boutique + recherche */}
-          <div className="d-flex flex-column flex-xl-row gap-2 align-items-xl-center justify-content-between">
-            <div
-              className="d-flex flex-column flex-md-row gap-2"
-              style={{ width: "100%" }}
-            >
-              <div className="input-group" style={{ maxWidth: 420 }}>
-                <input
-                  className="form-control"
-                  placeholder="Recherche par nom, boutique ou ID…"
-                  value={q}
-                  onChange={(ev) => {
-                    setPage(1);
-                    setQ(ev.target.value);
-                  }}
-                />
-                <button
-                  className="btn btn-outline-secondary"
-                  onClick={resetSearch}
-                  disabled={!q}
-                >
-                  Effacer
-                </button>
-              </div>
-
+          <div className="row g-2 mt-2">
+            <div className="col-12 col-md-6">
+              <label className="form-label small text-muted mb-1">
+                Filtrer par boutique
+              </label>
               <select
                 className="form-select"
-                style={{ maxWidth: 260 }}
                 value={filterShopId === "" ? "" : String(filterShopId)}
                 onChange={(e) => {
-                  setPage(1);
                   const v = e.target.value;
                   setFilterShopId(v ? Number(v) : "");
+                  setPage(1);
                 }}
-                disabled={mode !== "default"}
-                title={
-                  mode !== "default"
-                    ? "Disponible seulement en mode Default"
-                    : "Filtrer par boutique"
-                }
+                disabled={busy}
               >
-                <option value="">Toutes les boutiques</option>
+                <option value="">Toutes</option>
                 {shops.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}
               </select>
+            </div>
 
+            <div className="col-12 col-md-6">
+              <label className="form-label small text-muted mb-1">
+                Filtrer par catégorie
+              </label>
               <select
                 className="form-select"
-                style={{ maxWidth: 260 }}
                 value={filterCategoryId === "" ? "" : String(filterCategoryId)}
                 onChange={(e) => {
-                  setPage(1);
                   const v = e.target.value;
                   setFilterCategoryId(v ? Number(v) : "");
+                  setPage(1);
                 }}
-                disabled={mode !== "default"}
-                title={
-                  mode !== "default"
-                    ? "Disponible seulement en mode Default"
-                    : "Filtrer par catégorie"
-                }
+                disabled={busy}
               >
-                <option value="">Toutes les catégories</option>
+                <option value="">Toutes</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
               </select>
-
-              <button
-                type="button"
-                className="btn btn-outline-dark"
-                onClick={clearFilters}
-                disabled={!q && filterShopId === "" && filterCategoryId === ""}
-              >
-                Réinitialiser filtres
-              </button>
             </div>
-
-            {mode === "default" && (
-              <div className="btn-group">
-                <button
-                  className="btn btn-sm btn-outline-dark"
-                  disabled={page <= 1 || busy}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  ◀
-                </button>
-                <span className="btn btn-sm btn-outline-dark disabled">
-                  {page} / {pages}
-                </span>
-                <button
-                  className="btn btn-sm btn-outline-dark"
-                  disabled={page >= pages || busy}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  ▶
-                </button>
-              </div>
-            )}
           </div>
 
-          {/* petit hint */}
-          <div className="small text-muted">
-            Astuce : un produit <strong>désactivé</strong> ne doit pas
-            apparaître en promo ni côté client.
+          <div className="small text-muted mt-2">
+            Résultats: <strong>{filtered.length}</strong>
+            {mode === "default" ? (
+              <>
+                {" "}
+                / total: <strong>{total}</strong>
+              </>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="card shadow-sm">
-        <div className="card-body">
-          {loading ? (
-            <div className="text-muted">Chargement…</div>
-          ) : filtered.length === 0 ? (
-            <div className="text-muted">
-              {mode === "top-ordered"
-                ? "Aucun produit commandé."
-                : mode === "top-rated"
-                ? "Aucun produit noté."
-                : "Aucun produit."}
-            </div>
-          ) : (
-            <div className="table-responsive">
-              <table
-                className="table align-middle"
-                style={{ tableLayout: "fixed" }}
-              >
-                <thead>
-                  <tr>
-                    <th style={{ width: 70 }}>ID</th>
+      <div className="card border-0 shadow-sm">
+        <div className="table-responsive">
+          <table className="table align-middle mb-0">
+            <thead>
+              <tr>
+                <th style={{ width: 70 }}>ID</th>
+                <th>Produit</th>
+                <th style={{ width: 160 }}>Boutique</th>
+                <th style={{ width: 140 }}>Prix</th>
+                <th style={{ width: 120 }}>Statut</th>
+                <th style={{ width: 220 }} className="text-end">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="text-muted">
+                    Chargement…
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-muted">
+                    Aucun produit.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((p: any) => (
+                  <tr key={p.id}>
+                    <td className="text-muted">{p.id}</td>
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        {p.cover || p.image_url ? (
+                          <img
+                            src={imgUrl(p.cover || p.image_url)}
+                            alt={p.name}
+                            className="rounded border"
+                            style={{
+                              width: 46,
+                              height: 46,
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <div
+                            className="rounded border bg-light"
+                            style={{ width: 46, height: 46 }}
+                          />
+                        )}
 
-                    {/* ✅ colonne produit large */}
-                    <th style={{ width: 460 }}>Produit</th>
-
-                    {/* ✅ boutique: wrap */}
-                    <th
-                      className="d-none d-sm-table-cell"
-                      style={{ width: 220 }}
-                    >
-                      Boutique
-                    </th>
-
-                    <th
-                      className="d-none d-md-table-cell"
-                      style={{ width: 140 }}
-                    >
-                      Canal
-                    </th>
-
-                    {/* ✅ catégorie: wrap */}
-                    <th
-                      className="d-none d-lg-table-cell"
-                      style={{ width: 220 }}
-                    >
-                      Catégorie
-                    </th>
-
-                    <th
-                      className="d-none d-sm-table-cell"
-                      style={{ width: 90 }}
-                    >
-                      Stock
-                    </th>
-
-                    <th
-                      className="d-none d-sm-table-cell"
-                      style={{ width: 110 }}
-                    >
-                      Statut
-                    </th>
-
-                    <th className="text-end" style={{ width: 130 }}>
-                      Prix
-                    </th>
-
-                    <th className="text-end" style={{ width: 240 }}>
-                      Actions
-                    </th>
+                        <div>
+                          <div className="fw-semibold">{p.name}</div>
+                          <div className="small text-muted">
+                            Cat: {p.category_id ?? "—"} • Sub:{" "}
+                            {p.sub_category_name ?? p.sub_category_id ?? "—"}
+                            {hasRealPromo(p) ? (
+                              <span className="ms-2 badge bg-danger-subtle text-danger border">
+                                Promo
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="text-muted">
+                      {p.shop_name || p.shop_id || "—"}
+                    </td>
+                    <td>{moneyMAD(p.price)}</td>
+                    <td>
+                      {isActive(p) ? (
+                        <span className="badge bg-success">Actif</span>
+                      ) : (
+                        <span className="badge bg-secondary">Off</span>
+                      )}
+                    </td>
+                    <td className="text-end">
+                      <div className="d-inline-flex gap-2">
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => openPreview(p.id)}
+                          disabled={busy}
+                        >
+                          Aperçu
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-dark"
+                          onClick={() => openEdit(p.id)}
+                          disabled={busy}
+                        >
+                          Modifier
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-warning"
+                          onClick={() => onToggleActive(p)}
+                          disabled={busy}
+                        >
+                          {isActive(p) ? "Désactiver" : "Activer"}
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => onDelete(p.id)}
+                          disabled={busy}
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-
-                <tbody>
-                  {filtered.map((p) => {
-                    const active = isActive(p);
-                    const subSlug = String(
-                      (p as any).sub_category_slug || ""
-                    ).toLowerCase();
-                    const channelLabel =
-                      subSlug === "food" ? "African Food" : "African Market";
-                    const promo = hasRealPromo(p as any);
-
-                    const catName =
-                      categories.find(
-                        (c) => c.id === Number((p as any).category_id || 0)
-                      )?.name ||
-                      (p as any).category_name ||
-                      "-";
-
-                    const shopName = (p as any).shop_name || "";
-                    const shopCellText =
-                      (p as any).shop_name || (p as any).shop_id || "-";
-
-                    return (
-                      <tr key={(p as any).id}>
-                        <td>{(p as any).id}</td>
-
-                        {/* ✅ PRODUIT (wrap + 2 lignes + badges) */}
-                        <td style={{ whiteSpace: "normal" }}>
-                          <div className="d-flex align-items-start gap-2">
-                            {(p as any).cover ? (
-                              <img
-                                src={imgUrl((p as any).cover)}
-                                alt={(p as any).name}
-                                className="rounded border"
-                                style={{
-                                  width: 42,
-                                  height: 42,
-                                  objectFit: "cover",
-                                  flex: "0 0 auto",
-                                }}
-                              />
-                            ) : (
-                              <div
-                                className="rounded border bg-light"
-                                style={{
-                                  width: 42,
-                                  height: 42,
-                                  flex: "0 0 auto",
-                                }}
-                              />
-                            )}
-
-                            {/* zone texte */}
-                            <div style={{ minWidth: 0, flex: "1 1 auto" }}>
-                              <div
-                                className="d-flex align-items-center gap-2 flex-wrap"
-                                style={{ rowGap: 6 }}
-                              >
-                                {/* ✅ nom : 2 lignes max */}
-                                <span
-                                  title={(p as any).name}
-                                  style={{
-                                    display: "-webkit-box",
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: "vertical",
-                                    overflow: "hidden",
-                                    lineHeight: 1.2,
-                                    maxWidth: "100%",
-                                  }}
-                                >
-                                  {(p as any).name}
-                                </span>
-
-                                {promo && (
-                                  <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
-                                    Promo
-                                  </span>
-                                )}
-
-                                {!active && (
-                                  <span className="badge bg-secondary-subtle text-muted border">
-                                    Désactivé
-                                  </span>
-                                )}
-
-                                <button
-                                  type="button"
-                                  className="btn btn-link btn-sm p-0"
-                                  title="Voir"
-                                  style={{ whiteSpace: "nowrap" }}
-                                  onClick={() => openPreview((p as any).id)}
-                                >
-                                  (voir)
-                                </button>
-                              </div>
-
-                              {/* ✅ boutique sous le nom (wrap) */}
-                              {shopName ? (
-                                <div
-                                  className="small text-muted"
-                                  style={{
-                                    marginTop: 2,
-                                    whiteSpace: "normal",
-                                    wordBreak: "break-word",
-                                    overflowWrap: "anywhere",
-                                  }}
-                                >
-                                  {shopName}
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* ✅ BOUTIQUE (wrap) */}
-                        <td
-                          className="d-none d-sm-table-cell"
-                          style={{
-                            whiteSpace: "normal",
-                            wordBreak: "break-word",
-                            overflowWrap: "anywhere",
-                            lineHeight: 1.15,
-                          }}
-                          title={String(shopCellText)}
-                        >
-                          {shopCellText}
-                        </td>
-
-                        <td className="d-none d-md-table-cell">
-                          <span className="badge bg-light text-dark">
-                            {channelLabel}
-                          </span>
-                        </td>
-
-                        {/* ✅ CATÉGORIE (wrap) */}
-                        <td
-                          className="d-none d-lg-table-cell"
-                          style={{
-                            whiteSpace: "normal",
-                            wordBreak: "break-word",
-                            overflowWrap: "anywhere",
-                            lineHeight: 1.15,
-                          }}
-                          title={String(catName)}
-                        >
-                          {catName}
-                        </td>
-
-                        <td className="d-none d-sm-table-cell">
-                          {(p as any).stock ?? 0}
-                        </td>
-
-                        <td className="d-none d-sm-table-cell">
-                          {active ? (
-                            <span className="badge bg-success-subtle text-success">
-                              Actif
-                            </span>
-                          ) : (
-                            <span className="badge bg-secondary-subtle text-muted">
-                              Désactivé
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="text-end">
-                          {moneyMAD((p as any).price)}
-                        </td>
-
-                        <td className="text-end">
-                          <div className="btn-group">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-dark"
-                              onClick={() => openEdit((p as any).id)}
-                              disabled={busy}
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              type="button"
-                              className={`btn btn-sm ${
-                                active
-                                  ? "btn-outline-warning"
-                                  : "btn-outline-success"
-                              }`}
-                              onClick={() => onToggleActive(p)}
-                              disabled={busy}
-                            >
-                              {active ? "Désactiver" : "Activer"}
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-danger"
-                              onClick={() => onDelete((p as any).id)}
-                              disabled={busy}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {!loading && filtered.length > 0 && mode === "default" ? (
-            <div className="d-flex justify-content-between align-items-center mt-2">
-              <div className="text-muted small">{total} éléments</div>
-              <div className="btn-group">
-                <button
-                  className="btn btn-sm btn-outline-dark"
-                  disabled={page <= 1 || busy}
-                  onClick={() => setPage((p) => p - 1)}
-                >
-                  Préc.
-                </button>
-                <span className="btn btn-sm btn-outline-dark disabled">
-                  {page} / {pages}
-                </span>
-                <button
-                  className="btn btn-sm btn-outline-dark"
-                  disabled={page >= pages || busy}
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  Suiv.
-                </button>
-              </div>
-            </div>
-          ) : null}
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
+
+        {mode === "default" && pages > 1 ? (
+          <div className="card-body p-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div className="small text-muted">
+              Page <strong>{page}</strong> / <strong>{pages}</strong>
+            </div>
+
+            <div className="btn-group">
+              <button
+                className="btn btn-outline-dark"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={busy || page <= 1}
+              >
+                ← Précédent
+              </button>
+              <button
+                className="btn btn-outline-dark"
+                onClick={() => setPage((p) => Math.min(pages, p + 1))}
+                disabled={busy || page >= pages}
+              >
+                Suivant →
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {showForm && (
@@ -2107,15 +2307,6 @@ export default function ProductsAdminPage() {
                         {(preview as any).sub_category_name
                           ? (preview as any).sub_category_name
                           : (preview as any).sub_category_id ?? "—"}
-                      </li>
-
-                      <li>
-                        <strong>Villes :</strong>{" "}
-                        {normalizeCitiesInline((preview as any).cities).length
-                          ? normalizeCitiesInline((preview as any).cities).join(
-                              ", "
-                            )
-                          : "—"}
                       </li>
 
                       <li>

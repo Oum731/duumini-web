@@ -75,174 +75,64 @@ function getItemName(it: OrderItem): string {
   return it?.product_name || it?.name || `Produit #${it?.product_id ?? ""}`;
 }
 
+/** Variante label robuste */
+function getItemVariantLabel(it: OrderItem): string {
+  const anyIt = it as any;
+  return String(
+    (it as any)?.variant_label ||
+      anyIt?.variantLabel ||
+      anyIt?.variant_name ||
+      anyIt?.variant ||
+      ""
+  )
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 type ListOrDetail = Order & Partial<OrderDetail>;
 
 /* ===== Helper: code alphanumérique pour affichage ===== */
-function getOrderDisplayCode(
-  orderOrId: { id: number | string } | number | string
-): string {
+function getOrderDisplayCode(orderOrId: { id: number | string } | number | string): string {
   const rawId =
-    typeof orderOrId === "number" || typeof orderOrId === "string"
-      ? orderOrId
-      : orderOrId.id;
+    typeof orderOrId === "number" || typeof orderOrId === "string" ? orderOrId : orderOrId.id;
 
   const num = typeof rawId === "number" ? rawId : Number(rawId);
   if (Number.isFinite(num) && num > 0) {
-    // base36 → 1Z, 2A, etc. puis en majuscules
     return num.toString(36).toUpperCase();
   }
   return String(rawId ?? "").toUpperCase();
 }
 
-/* ===== Helper: construction du message WhatsApp (sans image) ===== */
-function buildWhatsappText(opts: {
-  order: ListOrDetail;
-  items: OrderItem[];
-  itemsAmount: number;
-  deliveryFee: number;
-  totalAmount: number;
-  currency: string;
-  status?: OrderStatus;
-}) {
-  const {
-    order,
-    items,
-    itemsAmount,
-    deliveryFee,
-    totalAmount,
-    currency,
-    status,
-  } = opts;
-
-  const anyOrder = order as any;
-
-  const contact = anyOrder.contact || {};
-  const address = anyOrder.address || {};
-
-  const created = order?.created_at
-    ? new Date(order.created_at).toLocaleString("fr-FR")
-    : anyOrder.date
-    ? new Date(anyOrder.date).toLocaleString("fr-FR")
-    : "";
-
-  // 🧾 Code alphanumérique pour affichage
-  const displayCode = getOrderDisplayCode(order);
-
-  // 📝 liste des produits
-  const linesText =
-    items.length === 0
-      ? "- (détails indisponibles)"
-      : items
-          .map((it) => {
-            const name = getItemName(it);
-            const qty = Number(it?.qty ?? 1);
-            const unit = Number(it?.unit_price ?? (it as any)?.price ?? 0);
-            const lineTotal = unit * qty;
-            return `* ${name} x${qty} = ${mad(lineTotal)}`;
-          })
-          .join("\n");
-
-  const contactName = [contact.first_name, contact.last_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  const phone = contact.phone || anyOrder.phone || "";
-
-  // ✅ Adresse : compat nouvelle structure (city/district) + anciens champs éventuels
-  const ville = address.city || address.ville || anyOrder.address_city || "";
-  const commune = address.commune || anyOrder.address_commune || "";
-  const quartier =
-    address.district || address.quartier || anyOrder.address_district || "";
-
-  const statusLabel = getStatusLabel(status);
-
-  const parts: string[] = [];
-
-  // 🔢 numéro + date (avec code alphanumérique)
-  parts.push(
-    `Bonjour, je souhaite avoir des infos sur ma commande #${displayCode}.`
-  );
-  if (created) {
-    parts.push(`Date de la commande : ${created}`);
-  }
-
-  // 📦 produits
-  parts.push("");
-  parts.push("📦 Récapitulatif de la commande");
-  parts.push(linesText);
-
-  // 💰 totaux
-  parts.push("");
-  parts.push(`Sous-total articles: ${mad(itemsAmount)}`);
-  if (deliveryFee > 0) {
-    parts.push(`Livraison: ${mad(deliveryFee)}`);
-  }
-  parts.push(`Total: ${mad(totalAmount)} (${currency})`);
-
-  // 👤 coordonnées
-  parts.push("");
-  parts.push("👤 Coordonnées");
-  if (contactName) parts.push(`Nom: ${contactName}`);
-  if (phone) parts.push(`Téléphone: ${phone}`);
-
-  // 📍 adresse
-  if (ville || commune || quartier) {
-    parts.push("");
-    parts.push("📍 Adresse de livraison");
-    if (ville) parts.push(`Ville: ${ville}`);
-    if (commune) parts.push(`Commune: ${commune}`);
-    if (quartier) parts.push(`Quartier: ${quartier}`);
-  }
-
-  // ✅ statut actuel
-  if (statusLabel) {
-    parts.push("");
-    parts.push(`Statut actuel: ${statusLabel}`);
-  }
-
-  parts.push("");
-  parts.push("Merci.");
-
-  return parts.join("\n");
-}
-
-/* ===== Helper: URL WhatsApp avec message détaillé ===== */
-function whatsappHref(opts: {
-  order: ListOrDetail;
-  items: OrderItem[];
-  itemsAmount: number;
-  deliveryFee: number;
-  totalAmount: number;
-  currency: string;
-  status?: OrderStatus;
-}) {
-  const text = encodeURIComponent(buildWhatsappText(opts));
-  // Numéro WhatsApp Duumini
-  return `https://wa.me/212623677884?text=${text}`;
-}
-
-/* ===== Helpers ETA & compte à rebours ===== */
-
-type DeliveryMode = "EXPRESS" | "SIMPLE";
+/* ===== Livraison (nouveau modèle) ===== */
+type DeliveryMode = "CASABLANCA" | "CITY";
 
 function inferDeliveryMode(order: ListOrDetail): DeliveryMode {
   const anyOrder = order as any;
+
   const raw =
-    (anyOrder.delivery && anyOrder.delivery.mode) ||
-    anyOrder.delivery_mode ||
+    anyOrder?.delivery?.mode ??
+    anyOrder?.delivery_mode ??
+    anyOrder?.deliveryMode ??
     "";
-  const mode = String(raw).toUpperCase();
-  return mode === "EXPRESS" ? "EXPRESS" : "SIMPLE";
+
+  const s = String(raw || "").toUpperCase();
+
+  if (s.includes("CASA")) return "CASABLANCA";
+  if (s === "CITY") return "CITY";
+
+  // fallback : si la ville contient casa, on considère CASABLANCA
+  const city =
+    String(anyOrder?.address?.city || anyOrder?.address?.ville || anyOrder?.address_city || "").toLowerCase();
+  if (city.includes("casa")) return "CASABLANCA";
+
+  return "CITY";
 }
 
-/** Calcule une fenêtre ETA à partir de la date de création */
-function computeEtaWindow(createdAt: Date, mode: DeliveryMode): {
-  start: Date;
-  end: Date;
-} {
-  const minStart = mode === "EXPRESS" ? 15 : 60; // min
-  const minEnd = mode === "EXPRESS" ? 45 : 120; // min
+/** Fenêtre ETA approximative */
+function computeEtaWindow(createdAt: Date, mode: DeliveryMode): { start: Date; end: Date } {
+  // ✅ cohérent Checkout
+  const minStart = mode === "CASABLANCA" ? 25 : 60;
+  const minEnd = mode === "CASABLANCA" ? 90 : 180;
 
   const start = new Date(createdAt.getTime() + minStart * 60_000);
   const end = new Date(createdAt.getTime() + minEnd * 60_000);
@@ -251,10 +141,7 @@ function computeEtaWindow(createdAt: Date, mode: DeliveryMode): {
 
 /** Format "13h" ou "13h15" */
 function formatTimeLabel(d: Date): string {
-  const s = d.toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const s = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   return s.replace(":", "h");
 }
 
@@ -271,13 +158,108 @@ function formatCountdownMs(ms: number): string | null {
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
 
-  if (h > 0) {
-    return `${h}h ${String(m).padStart(2, "0")}min`;
-  }
-  if (m > 0) {
-    return s > 0 ? `${m}min ${s}s` : `${m}min`;
-  }
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}min`;
+  if (m > 0) return s > 0 ? `${m}min ${s}s` : `${m}min`;
   return `${s}s`;
+}
+
+/* ===== Helper: construction du message WhatsApp (sans image) ===== */
+function buildWhatsappText(opts: {
+  order: ListOrDetail;
+  items: OrderItem[];
+  itemsAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  currency: string;
+  status?: OrderStatus;
+}) {
+  const { order, items, itemsAmount, deliveryFee, totalAmount, currency, status } = opts;
+
+  const anyOrder = order as any;
+  const contact = anyOrder.contact || {};
+  const address = anyOrder.address || {};
+
+  const created = order?.created_at
+    ? new Date(order.created_at).toLocaleString("fr-FR")
+    : anyOrder.date
+    ? new Date(anyOrder.date).toLocaleString("fr-FR")
+    : "";
+
+  const displayCode = getOrderDisplayCode(order);
+
+  const linesText =
+    items.length === 0
+      ? "- (détails indisponibles)"
+      : items
+          .map((it) => {
+            const name = getItemName(it);
+            const vLabel = getItemVariantLabel(it);
+            const qty = Number((it as any)?.qty ?? 1);
+            const unit = Number((it as any)?.unit_price ?? (it as any)?.price ?? 0);
+            const lineTotal = unit * qty;
+            const label = vLabel ? `${name} — ${vLabel}` : name;
+            return `* ${label} x${qty} = ${mad(lineTotal)}`;
+          })
+          .join("\n");
+
+  const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim();
+  const phone = contact.phone || anyOrder.phone || "";
+
+  const ville = address.city || address.ville || anyOrder.address_city || "";
+  const commune = address.commune || anyOrder.address_commune || "";
+  const quartier = address.district || address.quartier || anyOrder.address_district || "";
+
+  const statusLabel = getStatusLabel(status);
+
+  const parts: string[] = [];
+
+  parts.push(`Bonjour, je souhaite avoir des infos sur ma commande #${displayCode}.`);
+  if (created) parts.push(`Date de la commande : ${created}`);
+
+  parts.push("");
+  parts.push("📦 Récapitulatif de la commande");
+  parts.push(linesText);
+
+  parts.push("");
+  parts.push(`Sous-total articles: ${mad(itemsAmount)}`);
+  if (deliveryFee > 0) parts.push(`Livraison: ${mad(deliveryFee)}`);
+  parts.push(`Total: ${mad(totalAmount)} (${currency})`);
+
+  parts.push("");
+  parts.push("👤 Coordonnées");
+  if (contactName) parts.push(`Nom: ${contactName}`);
+  if (phone) parts.push(`Téléphone: ${phone}`);
+
+  if (ville || commune || quartier) {
+    parts.push("");
+    parts.push("📍 Adresse de livraison");
+    if (ville) parts.push(`Ville: ${ville}`);
+    if (commune) parts.push(`Commune: ${commune}`);
+    if (quartier) parts.push(`Quartier: ${quartier}`);
+  }
+
+  if (statusLabel) {
+    parts.push("");
+    parts.push(`Statut actuel: ${statusLabel}`);
+  }
+
+  parts.push("");
+  parts.push("Merci.");
+
+  return parts.join("\n");
+}
+
+function whatsappHref(opts: {
+  order: ListOrDetail;
+  items: OrderItem[];
+  itemsAmount: number;
+  deliveryFee: number;
+  totalAmount: number;
+  currency: string;
+  status?: OrderStatus;
+}) {
+  const text = encodeURIComponent(buildWhatsappText(opts));
+  return `https://wa.me/212623677884?text=${text}`;
 }
 
 export default function OrdersHistoryPage() {
@@ -287,14 +269,17 @@ export default function OrdersHistoryPage() {
   const [cancelingId, setCancelingId] = useState<number | null>(null);
   const [params] = useSearchParams();
 
-  const selectedId = params.get("order") ? Number(params.get("order")) : null;
+  const selectedId = useMemo(() => {
+    const raw = params.get("order");
+    if (!raw) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, [params]);
 
   // Tick global pour les comptes à rebours des commandes en livraison
   const [nowTs, setNowTs] = useState<number>(() => Date.now());
   useEffect(() => {
-    const t = window.setInterval(() => {
-      setNowTs(Date.now());
-    }, 1000);
+    const t = window.setInterval(() => setNowTs(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, []);
 
@@ -303,21 +288,17 @@ export default function OrdersHistoryPage() {
     try {
       setErr(null);
 
-      const res = await listOrders({ page: 1, pageSize: 20 , mineOnly: true,});
+      const res = await listOrders({ page: 1, pageSize: 20, mineOnly: true });
       const baseList: Order[] = res?.items ?? [];
 
-      const merged: ListOrDetail[] = [];
+      // ✅ plus rapide + robuste
+      const details = await Promise.allSettled(baseList.map((o) => getOrder(o.id)));
 
-      // On essaie de charger le détail pour chaque commande,
-      // si ça plante, on garde au moins la commande de base
-      for (const o of baseList) {
-        try {
-          const det = await getOrder(o.id);
-          merged.push({ ...o, ...det } as ListOrDetail);
-        } catch {
-          merged.push(o as ListOrDetail);
-        }
-      }
+      const merged: ListOrDetail[] = baseList.map((o, i) => {
+        const d = details[i];
+        if (d && d.status === "fulfilled") return { ...o, ...d.value } as ListOrDetail;
+        return o as ListOrDetail;
+      });
 
       setOrders(merged);
     } catch (e: any) {
@@ -336,21 +317,14 @@ export default function OrdersHistoryPage() {
   const sorted = useMemo(
     () =>
       [...orders].sort((a, b) => {
-        const da = new Date(
-          a?.created_at || (a as any)?.date || 0
-        ).getTime();
-        const db = new Date(
-          b?.created_at || (b as any)?.date || 0
-        ).getTime();
+        const da = new Date(a?.created_at || (a as any)?.date || 0).getTime();
+        const db = new Date(b?.created_at || (b as any)?.date || 0).getTime();
         return db - da;
       }),
     [orders]
   );
 
-  async function onCancelOrder(
-    id: number,
-    status: OrderStatus | string | undefined
-  ) {
+  async function onCancelOrder(id: number, status: OrderStatus | string | undefined) {
     const s = (status || "OPEN").toUpperCase() as OrderStatus;
     const canCancel = s === "OPEN" || s === "PREPARATION";
     if (!canCancel) return;
@@ -390,19 +364,11 @@ export default function OrdersHistoryPage() {
         </Link>
       </div>
 
-      <div
-        className="alert alert-warning"
-        role="status"
-        style={{ borderLeft: `4px solid var(--duu-red)` }}
-      >
+      <div className="alert alert-warning" role="status" style={{ borderLeft: `4px solid var(--duu-red)` }}>
         <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en
-          statut <em>En livraison</em>.
+          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en statut <em>En livraison</em>.
         </div>
-        <small className="text-muted">
-          Une fois la commande passée en livraison, l’annulation n’est plus
-          possible.
-        </small>
+        <small className="text-muted">Une fois la commande passée en livraison, l’annulation n’est plus possible.</small>
       </div>
 
       {err && <div className="alert alert-danger">{err}</div>}
@@ -419,43 +385,30 @@ export default function OrdersHistoryPage() {
           {sorted.map((o) => {
             const displayCode = getOrderDisplayCode(o);
 
-            const created = o?.created_at
-              ? new Date(o.created_at).toLocaleString("fr-FR")
-              : "";
+            const created = o?.created_at ? new Date(o.created_at).toLocaleString("fr-FR") : "";
             const createdAtDate = o?.created_at
               ? new Date(o.created_at)
               : (o as any)?.date
               ? new Date((o as any).date)
               : null;
 
-            const items: OrderItem[] = Array.isArray((o as any)?.items)
-              ? (o as any).items
-              : [];
+            const items: OrderItem[] = Array.isArray((o as any)?.items) ? (o as any).items : [];
 
-            const totals = (o as any)?.totals as
-              | OrderDetail["totals"]
-              | undefined;
+            const totals = (o as any)?.totals as OrderDetail["totals"] | undefined;
 
             const itemsAmount: number =
               totals?.items_amount ??
-              items.reduce(
-                (sum, it) =>
-                  sum +
-                  Number(it?.unit_price ?? (it as any)?.price ?? 0) *
-                    Number(it?.qty ?? 1),
-                0
-              );
+              items.reduce((sum, it) => {
+                const unit = Number((it as any)?.unit_price ?? (it as any)?.price ?? 0);
+                const qty = Number((it as any)?.qty ?? 1);
+                return sum + unit * qty;
+              }, 0);
 
             const totalAmount =
-              typeof (o as any)?.total === "number"
-                ? (o as any).total
-                : totals?.amount ?? itemsAmount;
+              typeof (o as any)?.total === "number" ? (o as any).total : totals?.amount ?? itemsAmount;
 
-            const deliveryFee =
-              totals?.delivery_fee ?? Math.max(0, totalAmount - itemsAmount);
-            const currency = (
-              totals?.currency || (o as any)?.currency || "MAD"
-            ).toUpperCase();
+            const deliveryFee = totals?.delivery_fee ?? Math.max(0, totalAmount - itemsAmount);
+            const currency = String(totals?.currency || (o as any)?.currency || "MAD").toUpperCase();
 
             const isHighlighted = selectedId === o.id;
 
@@ -472,28 +425,22 @@ export default function OrdersHistoryPage() {
               status,
             });
 
-            // 🔍 Mode de livraison pour l’ETA (Express / Simple)
+            // ✅ Mode livraison (CASABLANCA / CITY)
             const deliveryMode: DeliveryMode = inferDeliveryMode(o);
 
-            // 🕒 ETA approximatif basé sur la date de création
+            // 🕒 ETA approximatif basé sur la date de création (avant livraison)
             let etaRangeLabel: string | null = null;
-            if (createdAtDate) {
-              const { start, end } = computeEtaWindow(
-                createdAtDate,
-                deliveryMode
-              );
+            if (createdAtDate && (status === "OPEN" || status === "PREPARATION")) {
+              const { start, end } = computeEtaWindow(createdAtDate, deliveryMode);
               etaRangeLabel = formatTimeRange(start, end);
             }
 
-            // ⏱️ Compte à rebours pour statut EN LIVRAISON
+            // ⏱️ Compte à rebours si EN LIVRAISON
             let countdownText: string | null = null;
             if (status === "DELIVERY" && createdAtDate) {
               const anyOrder = o as any;
               const deliveryObj = anyOrder.delivery || {};
 
-              // Point de départ du compte à rebours :
-              // - idéalement heure de passage en livraison
-              // - sinon heure de création de la commande
               const deliveryStart: Date =
                 deliveryObj.started_at
                   ? new Date(deliveryObj.started_at)
@@ -502,96 +449,73 @@ export default function OrdersHistoryPage() {
                   : createdAtDate;
 
               const driverEtaSeconds =
-                typeof deliveryObj.driver_eta_seconds === "number"
-                  ? deliveryObj.driver_eta_seconds
-                  : null;
+                typeof deliveryObj.driver_eta_seconds === "number" ? deliveryObj.driver_eta_seconds : null;
 
               let remainingMs: number | null = null;
 
               if (driverEtaSeconds && driverEtaSeconds > 0) {
-                // ETA exact envoyé par le backend
-                const etaTarget = new Date(
-                  deliveryStart.getTime() + driverEtaSeconds * 1000
-                );
+                const etaTarget = new Date(deliveryStart.getTime() + driverEtaSeconds * 1000);
                 remainingMs = etaTarget.getTime() - nowTs;
               } else {
-                // Estimation: EXPRESS 45min / SIMPLE 120min après le début de la livraison
+                // ✅ cohérent checkout : fin fenêtre (90 / 180 min) à partir de deliveryStart
                 const defaultTarget =
-                  deliveryMode === "EXPRESS"
-                    ? new Date(deliveryStart.getTime() + 45 * 60_000)
-                    : new Date(deliveryStart.getTime() + 120 * 60_000);
+                  deliveryMode === "CASABLANCA"
+                    ? new Date(deliveryStart.getTime() + 90 * 60_000)
+                    : new Date(deliveryStart.getTime() + 180 * 60_000);
                 remainingMs = defaultTarget.getTime() - nowTs;
               }
 
-              if (remainingMs && remainingMs > 0) {
-                countdownText = formatCountdownMs(remainingMs);
-              }
+              if (remainingMs && remainingMs > 0) countdownText = formatCountdownMs(remainingMs);
             }
 
             return (
               <div
                 key={o.id}
-                className={`card border-0 shadow-sm ${
-                  isHighlighted ? "border border-dark" : ""
-                }`}
+                className={`card border-0 shadow-sm ${isHighlighted ? "border border-dark" : ""}`}
               >
                 <div className="card-body">
                   {/* En-tête commande */}
                   <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div className="d-flex align-items-center gap-2">
-                      {/* ✅ Affichage code alphanumérique */}
                       <div className="h6 m-0">Commande #{displayCode}</div>
                       {statusBadge(status)}
                     </div>
                     <div className="text-muted small">{created}</div>
                   </div>
 
-                  {/* 🔔 Message ETA / Suivi livraison */}
-                  {etaRangeLabel &&
-                    (status === "OPEN" || status === "PREPARATION") && (
-                      <div className="alert alert-info py-2 px-3 mt-2 mb-0 small">
-                        <span className="fw-semibold">
-                          Estimation de livraison :
-                        </span>{" "}
-                        Votre commande sera livrée entre{" "}
-                        <strong>{etaRangeLabel}</strong>
-                        {deliveryMode === "EXPRESS"
-                          ? " (mode Express)."
-                          : "."}
-                      </div>
-                    )}
+                  {/* ETA / livraison */}
+                  {etaRangeLabel && (
+                    <div className="alert alert-info py-2 px-3 mt-2 mb-0 small">
+                      <span className="fw-semibold">Estimation de livraison :</span>{" "}
+                      entre <strong>{etaRangeLabel}</strong>
+                      {deliveryMode === "CASABLANCA" ? " (Casablanca)." : "."}
+                    </div>
+                  )}
 
                   {status === "DELIVERY" && (
                     <div className="alert alert-info py-2 px-3 mt-2 mb-0 small">
-                      <span className="fw-semibold">
-                        Votre commande vient d’être récupérée par le livreur.
-                      </span>{" "}
+                      <span className="fw-semibold">Votre commande est en cours de livraison.</span>{" "}
                       {countdownText ? (
                         <>
-                          Il devrait arriver dans{" "}
-                          <strong style={{ color: "var(--duu-red)" }}>
-                            {countdownText}
-                          </strong>
-                          .
+                          Arrivée estimée dans{" "}
+                          <strong style={{ color: "var(--duu-red)" }}>{countdownText}</strong>.
                         </>
                       ) : (
                         <>
-                          Elle devrait arriver{" "}
-                          <strong>dans quelques instants</strong>.
+                          Elle devrait arriver <strong>dans quelques instants</strong>.
                         </>
                       )}
                     </div>
                   )}
 
-                  {/* Articles de la commande */}
+                  {/* Articles */}
                   <h3 className="h6 mt-3 mb-2">Articles de la commande</h3>
                   <ul className="list-group list-group-flush">
                     {items.map((it, idx) => {
                       const name = getItemName(it);
-                      const qty = Number(it?.qty ?? 1);
-                      const unit = Number(
-                        it?.unit_price ?? (it as any)?.price ?? 0
-                      );
+                      const vLabel = getItemVariantLabel(it);
+                      const qty = Number((it as any)?.qty ?? 1);
+                      const unit = Number((it as any)?.unit_price ?? (it as any)?.price ?? 0);
                       const img = getItemImage(it);
                       const lineTotal = unit * qty;
 
@@ -600,10 +524,7 @@ export default function OrdersHistoryPage() {
                           key={idx}
                           className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2"
                         >
-                          <div
-                            className="d-flex align-items-center gap-2 flex-grow-1"
-                            style={{ minWidth: 0 }}
-                          >
+                          <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 0 }}>
                             {img ? (
                               <div
                                 className="flex-shrink-0"
@@ -623,25 +544,25 @@ export default function OrdersHistoryPage() {
                                 />
                               </div>
                             ) : null}
+
                             <div style={{ minWidth: 0 }}>
-                              <div
-                                className="fw-semibold text-truncate"
-                                title={name}
-                              >
+                              <div className="fw-semibold text-truncate" title={name}>
                                 {name}
                               </div>
+
+                              {vLabel && (
+                                <div className="small text-muted text-truncate" title={vLabel}>
+                                  Variante : {vLabel}
+                                </div>
+                              )}
+
                               <div className="small text-muted">
-                                {mad(unit)}{" "}
-                                <span className="text-muted">×{qty}</span>
+                                {mad(unit)} <span className="text-muted">×{qty}</span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Montant total de la ligne, sans débordement */}
-                          <div
-                            className="fw-semibold text-end"
-                            style={{ minWidth: 90, fontSize: "0.9rem" }}
-                          >
+                          <div className="fw-semibold text-end" style={{ minWidth: 90, fontSize: "0.9rem" }}>
                             {mad(lineTotal)}
                           </div>
                         </li>
@@ -651,13 +572,8 @@ export default function OrdersHistoryPage() {
                     {deliveryFee > 0 && (
                       <li className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <span className="text-muted">Livraison</span>
-                        <div
-                          className="text-end"
-                          style={{ minWidth: 90, fontSize: "0.9rem" }}
-                        >
-                          <span className="fw-semibold">
-                            {mad(deliveryFee)}
-                          </span>
+                        <div className="text-end" style={{ minWidth: 90, fontSize: "0.9rem" }}>
+                          <span className="fw-semibold">{mad(deliveryFee)}</span>
                         </div>
                       </li>
                     )}
@@ -666,25 +582,15 @@ export default function OrdersHistoryPage() {
                   {/* Totaux */}
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
                     <div className="text-muted">Sous-total articles</div>
-                    <div
-                      className="fw-semibold"
-                      style={{ minWidth: 90, textAlign: "right" }}
-                    >
+                    <div className="fw-semibold" style={{ minWidth: 90, textAlign: "right" }}>
                       {mad(itemsAmount)}
                     </div>
                   </div>
+
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div className="text-muted">Total</div>
-                    <div
-                      className="h6 m-0"
-                      style={{
-                        minWidth: 90,
-                        textAlign: "right",
-                        fontSize: "1rem",
-                      }}
-                    >
-                      {mad(totalAmount)}{" "}
-                      <span className="text-muted small">{currency}</span>
+                    <div className="h6 m-0" style={{ minWidth: 90, textAlign: "right", fontSize: "1rem" }}>
+                      {mad(totalAmount)} <span className="text-muted small">{currency}</span>
                     </div>
                   </div>
 
@@ -700,10 +606,7 @@ export default function OrdersHistoryPage() {
                       WhatsApp Support
                     </a>
 
-                    <Link
-                      to={`/orders?order=${o.id}`}
-                      className="btn btn-outline-dark"
-                    >
+                    <Link to={`/orders?order=${o.id}`} className="btn btn-outline-dark">
                       Actualiser l’état
                     </Link>
 
@@ -714,9 +617,7 @@ export default function OrdersHistoryPage() {
                         onClick={() => onCancelOrder(o.id, status)}
                         title="Annuler la commande"
                       >
-                        {cancelingId === o.id
-                          ? "Annulation…"
-                          : "Annuler la commande"}
+                        {cancelingId === o.id ? "Annulation…" : "Annuler la commande"}
                       </button>
                     )}
                   </div>

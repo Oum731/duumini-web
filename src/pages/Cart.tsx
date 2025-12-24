@@ -45,15 +45,14 @@ const FocusAndLoadingStyle = () => (
 
 export default function CartPage() {
   const nav = useNavigate();
-  const { lines, setQty, remove, clear, totalItems, totalAmount } = useCart();
+  const { lines, setQtyLine, removeLine, clear, totalItems, totalAmount } = useCart();
 
   const safeLines = (lines || []) as any[];
   const hasItems = safeLines.length > 0;
 
-  // États de chargement
   const [clearing, setClearing] = useState(false);
-  const [removingId, setRemovingId] = useState<number | null>(null);
-  const [changingQtyId, setChangingQtyId] = useState<number | null>(null);
+  const [removingLineId, setRemovingLineId] = useState<string | null>(null);
+  const [changingLineId, setChangingLineId] = useState<string | null>(null);
   const [goingCheckout, setGoingCheckout] = useState(false);
 
   const onClear = useCallback(() => {
@@ -67,30 +66,30 @@ export default function CartPage() {
   }, [clearing, clear]);
 
   const onRemove = useCallback(
-    (id: number) => {
-      if (removingId !== null) return;
-      setRemovingId(id);
+    (lineId: string) => {
+      if (removingLineId !== null) return;
+      setRemovingLineId(lineId);
       try {
-        remove(id);
+        removeLine(lineId);
       } finally {
-        setRemovingId(null);
+        setRemovingLineId(null);
       }
     },
-    [removingId, remove]
+    [removingLineId, removeLine]
   );
 
   const onChangeQty = useCallback(
-    (id: number, next: number) => {
-      if (changingQtyId !== null) return;
-      const safeNext = Math.max(0, next);
-      setChangingQtyId(id);
+    (lineId: string, next: number) => {
+      if (changingLineId !== null) return;
+      const safeNext = Math.max(0, Math.min(999, Math.floor(next || 0)));
+      setChangingLineId(lineId);
       try {
-        setQty(id, safeNext);
+        setQtyLine(lineId, safeNext);
       } finally {
-        setChangingQtyId(null);
+        setChangingLineId(null);
       }
     },
-    [changingQtyId, setQty]
+    [changingLineId, setQtyLine]
   );
 
   const goCheckout = useCallback(() => {
@@ -99,7 +98,6 @@ export default function CartPage() {
     try {
       nav("/checkout");
     } finally {
-      // sécurité: si navigation bloquée, on libère le bouton
       window.setTimeout(() => setGoingCheckout(false), 800);
     }
   }, [goingCheckout, nav]);
@@ -135,13 +133,8 @@ export default function CartPage() {
             >
               {clearing ? (
                 <>
-                  <span
-                    className="spinner-border spinner-border-sm me-2"
-                    role="status"
-                    aria-hidden="true"
-                  />
-                  Vidage…
-                  <span className="visually-hidden">du panier</span>
+                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  Vidage…<span className="visually-hidden">du panier</span>
                 </>
               ) : (
                 "Vider"
@@ -181,10 +174,13 @@ export default function CartPage() {
 
               <tbody>
                 {safeLines.map((l: any) => {
-                  const rowBusy = removingId === l.id || changingQtyId === l.id;
+                  const lineId = String(l.line_id); // ✅ strict (line_id existe dans cart v2)
+                  const rowBusy = removingLineId === lineId || changingLineId === lineId;
+
+                  const variantLabel = String(l?.variant?.label || "").trim();
 
                   return (
-                    <tr key={l.id} aria-busy={rowBusy}>
+                    <tr key={lineId} aria-busy={rowBusy}>
                       <td>
                         {l.cover ? (
                           <img
@@ -200,34 +196,30 @@ export default function CartPage() {
                       </td>
 
                       <td>
-                        <Link
-                          to={`/products/${l.id}`}
-                          className="text-decoration-none text-dark"
-                        >
+                        <Link to={`/products/${l.id}`} className="text-decoration-none text-dark">
                           {l.name}
                         </Link>
+
+                        {variantLabel && (
+                          <div className="small text-muted mt-1" style={{ lineHeight: 1.15 }}>
+                            {variantLabel}
+                          </div>
+                        )}
                       </td>
 
                       <td className="text-end fw-semibold">{mad(l.price)}</td>
 
                       <td className="text-center">
-                        <div
-                          className="input-group input-group-sm"
-                          style={{ maxWidth: 200, margin: "0 auto" }}
-                        >
+                        <div className="input-group input-group-sm" style={{ maxWidth: 200, margin: "0 auto" }}>
                           <button
                             className="btn btn-outline-dark"
-                            onClick={() => onChangeQty(l.id, (l.qty || 0) - 1)}
+                            onClick={() => onChangeQty(lineId, (l.qty || 0) - 1)}
                             aria-label="Diminuer la quantité"
                             disabled={rowBusy}
-                            aria-busy={changingQtyId === l.id}
+                            aria-busy={changingLineId === lineId}
                           >
-                            {changingQtyId === l.id ? (
-                              <span
-                                className="spinner-border spinner-border-sm"
-                                role="status"
-                                aria-hidden="true"
-                              />
+                            {changingLineId === lineId ? (
+                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
                             ) : (
                               "−"
                             )}
@@ -241,26 +233,22 @@ export default function CartPage() {
                               const raw = String(e.target.value || "");
                               const v = parseInt(raw.replace(/\D+/g, "") || "0", 10);
                               if (Number.isFinite(v) && v !== Number(l.qty || 0)) {
-                                onChangeQty(l.id, v);
+                                onChangeQty(lineId, v);
                               }
                             }}
                             disabled={rowBusy}
-                            aria-busy={changingQtyId === l.id}
+                            aria-busy={changingLineId === lineId}
                           />
 
                           <button
                             className="btn btn-outline-dark"
-                            onClick={() => onChangeQty(l.id, (l.qty || 0) + 1)}
+                            onClick={() => onChangeQty(lineId, (l.qty || 0) + 1)}
                             aria-label="Augmenter la quantité"
                             disabled={rowBusy}
-                            aria-busy={changingQtyId === l.id}
+                            aria-busy={changingLineId === lineId}
                           >
-                            {changingQtyId === l.id ? (
-                              <span
-                                className="spinner-border spinner-border-sm"
-                                role="status"
-                                aria-hidden="true"
-                              />
+                            {changingLineId === lineId ? (
+                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
                             ) : (
                               "+"
                             )}
@@ -273,18 +261,14 @@ export default function CartPage() {
                       <td className="text-end">
                         <button
                           className="btn btn-sm btn-outline-danger"
-                          onClick={() => onRemove(l.id)}
+                          onClick={() => onRemove(lineId)}
                           aria-label="Retirer la ligne"
                           title="Retirer"
-                          disabled={removingId === l.id}
-                          aria-busy={removingId === l.id}
+                          disabled={removingLineId === lineId}
+                          aria-busy={removingLineId === lineId}
                         >
-                          {removingId === l.id ? (
-                            <span
-                              className="spinner-border spinner-border-sm"
-                              role="status"
-                              aria-hidden="true"
-                            />
+                          {removingLineId === lineId ? (
+                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
                           ) : (
                             "✕"
                           )}
@@ -316,27 +300,26 @@ export default function CartPage() {
               Continuer mes achats
             </Link>
 
-            <button
-              className="btn btn-duu"
-              onClick={goCheckout}
-              disabled={goingCheckout}
-              aria-busy={goingCheckout}
-            >
+            <button className="btn btn-duu" onClick={goCheckout} disabled={goingCheckout} aria-busy={goingCheckout}>
               {goingCheckout ? (
                 <>
-                  <span
-                    className="spinner-border spinner-border-sm me-2"
-                    role="status"
-                    aria-hidden="true"
-                  />
-                  Redirection…
-                  <span className="visually-hidden">vers la page de paiement</span>
+                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  Redirection…<span className="visually-hidden">vers la page de paiement</span>
                 </>
               ) : (
                 "Passer la commande"
               )}
             </button>
           </div>
+
+          <style>{`
+            .btn-duu{
+              background: var(--duu-yellow);
+              color: #1f1f1f;
+              border: none;
+            }
+            .btn-duu:hover{ filter: brightness(0.95); }
+          `}</style>
         </>
       )}
     </section>

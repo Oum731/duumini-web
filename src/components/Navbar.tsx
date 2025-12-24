@@ -10,6 +10,7 @@ import {
   Info,
   Mail,
   Package,
+  Shirt,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { DUUMINI_SLOGAN } from "../lib/brand";
@@ -98,7 +99,6 @@ export default function Navbar({ cartCount = 0 }: Props) {
               Duumini
             </span>
 
-            {/* ✅ Slogan partout (Navbar) */}
             <div className="duu-brand-slogan" title={DUUMINI_SLOGAN}>
               {DUUMINI_SLOGAN}
             </div>
@@ -122,6 +122,10 @@ export default function Navbar({ cartCount = 0 }: Props) {
         >
           <ul className="navbar-nav mb-2 mb-lg-0 me-lg-3">
             {navItem("/", "Accueil", Home, { end: true })}
+
+            {/* ✅ Fashion bien positionné (menu principal) */}
+            {navItem("/fashion", "Fashion", Shirt)}
+
             {navItem("/contact", "Contact", Mail)}
             {navItem("/about", "À propos", Info)}
 
@@ -130,7 +134,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
             {isAdmin && navItem("/admin", "Dashboard", Shield)}
             {isVendor && navItem("/ma-boutique", "Ma boutique", Store)}
 
-            {navItem("/profile", isLoggedIn ? "Profil" : "Se connecter", UserRound)}
+            {navItem(
+              "/profile",
+              isLoggedIn ? "Profil" : "Se connecter",
+              UserRound
+            )}
           </ul>
 
           <ul className="navbar-nav align-items-lg-center">

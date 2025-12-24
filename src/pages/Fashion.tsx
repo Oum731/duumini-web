@@ -1,4 +1,4 @@
-// src/pages/AfricanMarket.tsx
+// src/pages/Fashion.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
@@ -13,15 +13,25 @@ function GridSkeleton() {
   return (
     <div className="row g-3">
       {Array.from({ length: 12 }).map((_, i) => (
-        <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={i}>
-          <div className="card h-100 border-0">
-            <div
-              className="placeholder w-100"
-              style={{ aspectRatio: "1 / 1", borderRadius: ".5rem .5rem 0 0" }}
-            />
-            <div className="card-body">
-              <div className="placeholder col-8 mb-2" />
-              <div className="placeholder col-5" />
+        <div className="col-12 col-sm-6 col-md-6 col-lg-4" key={i}>
+          <div
+            className="card h-100 border-0 shadow-sm"
+            style={{ borderRadius: 16, overflow: "hidden" }}
+          >
+            <div className="d-flex">
+              {/* ✅ image plus large */}
+              <div
+                className="placeholder"
+                style={{
+                  width: "52%",
+                  minHeight: 190,
+                }}
+              />
+              <div className="card-body" style={{ flex: 1 }}>
+                <div className="placeholder col-8 mb-2" />
+                <div className="placeholder col-5 mb-2" />
+                <div className="placeholder col-10" />
+              </div>
             </div>
           </div>
         </div>
@@ -62,9 +72,21 @@ function getWindowKey(now = Date.now()) {
   return Math.floor(now / win);
 }
 
-type Channel = "african-market";
+/** === helpers ids présents dans les produits fashion === */
+function collectIds(items: Product[]) {
+  const catIds = new Set<number>();
+  const subIds = new Set<number>();
 
-/** ✅ Détection robuste "promo" */
+  for (const p of items) {
+    const cid = Number((p as any).category_id || 0);
+    const sid = Number((p as any).sub_category_id || 0);
+    if (cid) catIds.add(cid);
+    if (sid) subIds.add(sid);
+  }
+  return { catIds, subIds };
+}
+
+/** ✅ Détection robuste "promo" (même logique que Market/Food) */
 function isPromoProduct(p: Product) {
   const x = p as any;
 
@@ -78,8 +100,13 @@ function isPromoProduct(p: Product) {
 
   const price = Number(x.price_client ?? x.price ?? 0) || 0;
   const promoPrice =
-    Number(x.promo_price_client ?? x.promo_price ?? x.price_promo ?? x.sale_price ?? 0) ||
-    0;
+    Number(
+      x.promo_price_client ??
+        x.promo_price ??
+        x.price_promo ??
+        x.sale_price ??
+        0
+    ) || 0;
   if (promoPrice > 0 && price > 0 && promoPrice < price) return true;
 
   if (String(x.promo_type || x.discount_type || "").trim()) {
@@ -104,7 +131,7 @@ function uniqById(list: Product[]) {
   return out;
 }
 
-export default function AfricanMarket() {
+export default function Fashion() {
   const { city } = useLocationCity();
   const navigate = useNavigate();
   const params = useParams();
@@ -118,8 +145,8 @@ export default function AfricanMarket() {
     : "";
 
   const [items, setItems] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
+  const [allSubCategories, setAllSubCategories] = useState<SubCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -155,9 +182,9 @@ export default function AfricanMarket() {
         listProducts({
           page,
           pageSize,
-          channel: "african-market" as Channel,
           onlyActive: true,
-        }),
+          vertical: "FASHION",
+        } as any),
         listCategories({ page: 1, pageSize: 500 }),
         listSubCategories({ page: 1, pageSize: 2000 }),
       ]);
@@ -168,7 +195,7 @@ export default function AfricanMarket() {
       const windowKey = getWindowKey();
 
       const seedStr = [
-        "african-market",
+        "fashion",
         `win:${windowKey}`,
         `city:${city || "all"}`,
         `page:${page}`,
@@ -178,8 +205,9 @@ export default function AfricanMarket() {
 
       setItems(seededShuffle(rawItems, seedStr));
       setTotal(resProducts.pageInfo?.total ?? 0);
-      setCategories(resCats.items || []);
-      setSubCategories(resSubs.items || []);
+
+      setAllCategories(resCats.items || []);
+      setAllSubCategories(resSubs.items || []);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setError(e?.message || String(e));
@@ -193,7 +221,27 @@ export default function AfricanMarket() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, city, categorySlugParam, subSlugParam]);
 
-  // maps
+  const { fashionCategoryIds, fashionSubIds } = useMemo(() => {
+    const { catIds, subIds } = collectIds(items);
+    return { fashionCategoryIds: catIds, fashionSubIds: subIds };
+  }, [items]);
+
+  const categories = useMemo(() => {
+    const out = allCategories.filter((c) => fashionCategoryIds.has(Number(c.id)));
+    out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
+    return out;
+  }, [allCategories, fashionCategoryIds]);
+
+  const subCategories = useMemo(() => {
+    const out = allSubCategories.filter((s) => {
+      const sid = Number(s.id);
+      const cid = Number(s.category_id);
+      return fashionSubIds.has(sid) && fashionCategoryIds.has(cid);
+    });
+    out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
+    return out;
+  }, [allSubCategories, fashionSubIds, fashionCategoryIds]);
+
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
     for (const c of categories) map[c.id] = c;
@@ -205,12 +253,6 @@ export default function AfricanMarket() {
     for (const c of categories) map[String(c.slug || "").toLowerCase()] = c;
     return map;
   }, [categories]);
-
-  const subById = useMemo(() => {
-    const map: Record<number, SubCategory> = {};
-    for (const s of subCategories) map[s.id] = s;
-    return map;
-  }, [subCategories]);
 
   const subsByCatId = useMemo(() => {
     const m: Record<number, SubCategory[]> = {};
@@ -237,53 +279,39 @@ export default function AfricanMarket() {
     return list.find((s) => String(s.slug || "").toLowerCase() === subSlugParam) || null;
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
-  // URL invalide → redirect
   useEffect(() => {
     if (!categories.length) return;
+
     if (categorySlugParam && !selectedCategory) {
-      navigate("/african-market", { replace: true });
+      navigate("/fashion", { replace: true });
+      return;
+    }
+
+    if (categorySlugParam && selectedCategory && subSlugParam && !selectedSubCategory) {
+      navigate(`/fashion/${selectedCategory.slug}`, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories.length, categorySlugParam, selectedCategory]);
+  }, [categories.length, categorySlugParam, subSlugParam, selectedCategory, selectedSubCategory]);
 
-  // search filter
   const filteredBySearch = useMemo(() => {
     if (!qDebounced) return items;
     return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
   }, [items, qDebounced]);
 
-  // category/subcategory filter (front)
   const filtered = useMemo(() => {
     let out = filteredBySearch;
 
     if (selectedCategory) {
-      out = out.filter((p) => {
-        const cid = Number((p as any).category_id || 0);
-        if (!cid) return false;
-        const c = categoriesById[cid];
-        return (
-          c &&
-          String(c.slug || "").toLowerCase() === String(selectedCategory.slug || "").toLowerCase()
-        );
-      });
+      out = out.filter((p) => Number((p as any).category_id || 0) === Number(selectedCategory.id));
     }
 
     if (selectedSubCategory) {
-      out = out.filter((p) => {
-        const sid = Number((p as any).sub_category_id || 0);
-        if (!sid) return false;
-        const s = subById[sid];
-        return (
-          s &&
-          String(s.slug || "").toLowerCase() === String(selectedSubCategory.slug || "").toLowerCase()
-        );
-      });
+      out = out.filter((p) => Number((p as any).sub_category_id || 0) === Number(selectedSubCategory.id));
     }
 
     return out;
-  }, [filteredBySearch, selectedCategory, selectedSubCategory, categoriesById, subById]);
+  }, [filteredBySearch, selectedCategory, selectedSubCategory]);
 
-  /** ✅ PROMO + NON-PROMO (sans duplication) */
   const promoItems = useMemo(() => uniqById(filtered.filter(isPromoProduct)), [filtered]);
 
   const promoIds = useMemo(() => {
@@ -297,26 +325,47 @@ export default function AfricanMarket() {
     return filtered.filter((p) => !promoIds.has(Number((p as any).id || 0)));
   }, [filtered, promoItems.length, promoIds]);
 
-  // titre
   const title = useMemo(() => {
-    if (selectedSubCategory) return selectedSubCategory.name || "Produits";
-    if (selectedCategory) return selectedCategory.name || "Produits";
-    return "Produits";
+    if (selectedSubCategory) return selectedSubCategory.name || "Fashion";
+    if (selectedCategory) return selectedCategory.name || "Fashion";
+    return "Fashion";
   }, [selectedCategory, selectedSubCategory]);
 
   const activeCategoryId = selectedCategory?.id ?? null;
   const activeSubCategoryId = selectedSubCategory?.id ?? null;
-
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
 
   return (
     <section className="container-xxl py-4">
       <style>{`
+        .fashion-hero{
+          border-radius: 18px;
+          border: 1px solid rgba(0,0,0,.08);
+          background:
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.18), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
+            #fff;
+          padding: 14px;
+          box-shadow: 0 10px 24px rgba(0,0,0,.05);
+        }
+        .fashion-kicker{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(var(--duu-yellow-rgb), .22);
+          border: 1px solid rgba(0,0,0,.10);
+          font-weight: 900;
+          color: var(--duu-black);
+        }
+        .fashion-sub{ color: rgba(0,0,0,.6); font-weight: 600; }
+
         .btn-duu{
           background: var(--duu-yellow);
           color: #1f1f1f;
           border: none;
-          font-weight: 800;
+          font-weight: 900;
         }
         .btn-duu:hover{ filter: brightness(.96); }
         .btn-duu:focus,
@@ -331,32 +380,9 @@ export default function AfricanMarket() {
           border-color: rgba(0,0,0,.22) !important;
           color: var(--duu-black) !important;
           background: rgba(255,255,255,.92) !important;
-          font-weight: 800;
-        }
-        .duu-filter-btn .btn:hover,
-        .duu-filter-btn .dropdown > .btn:hover,
-        .duu-filter-btn > .btn:hover{
-          border-color: rgba(0,0,0,.32) !important;
-          color: var(--duu-red) !important;
-          background: rgba(255,255,255,.98) !important;
-        }
-        .duu-filter-btn .btn:focus,
-        .duu-filter-btn .dropdown > .btn:focus,
-        .duu-filter-btn > .btn:focus,
-        .duu-filter-btn .btn:focus-visible,
-        .duu-filter-btn .dropdown > .btn:focus-visible,
-        .duu-filter-btn > .btn:focus-visible{
-          outline: none !important;
-          box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
-          background: rgba(255,255,255,.98) !important;
-          color: var(--duu-black) !important;
-        }
-        .duu-filter-btn .btn:active,
-        .duu-filter-btn .dropdown > .btn:active,
-        .duu-filter-btn > .btn:active{
-          transform: translateY(0);
-          background: rgba(var(--duu-yellow-rgb), .16) !important;
-          color: var(--duu-black) !important;
+          font-weight: 900;
+          border-radius: 14px !important;
+          padding: 10px 12px !important;
         }
 
         .filter-chip{
@@ -368,6 +394,12 @@ export default function AfricanMarket() {
           display:inline-flex;
           align-items:center;
           gap: 8px;
+        }
+        .soft-clear{
+          border: 1px solid rgba(0,0,0,.12);
+          background: #fff;
+          border-radius: 12px;
+          font-weight: 800;
         }
 
         .promo-wrap{
@@ -400,14 +432,22 @@ export default function AfricanMarket() {
           border: 1px solid rgba(var(--duu-red-rgb), .20);
           font-weight: 900;
         }
+
+        /* ✅ Astuce CSS : si ton ProductCard met un wrapper pour le media, tu peux le cibler */
+        .fashion-wide-media{
+          width: 54% !important;
+          min-width: 54% !important;
+        }
       `}</style>
 
-      <div className="d-flex flex-column gap-2 mb-3">
+      <div className="fashion-hero mb-3">
         <div className="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
           <div className="min-w-0">
-            <h1 className="h4 mb-0" style={{ color: "var(--duu-black)" }}>
+            <div className="fashion-kicker">👗 DUUMINI Fashion</div>
+            <h1 className="h4 mb-1 mt-2" style={{ color: "var(--duu-black)" }}>
               {title}
             </h1>
+            <div className="fashion-sub">Tailles • Couleurs • Nouveautés — Paiement à la livraison</div>
           </div>
 
           <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
@@ -415,9 +455,9 @@ export default function AfricanMarket() {
               <span
                 className="d-inline-flex align-items-center justify-content-center"
                 style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
                   border: "1px solid rgba(0,0,0,.10)",
                   background: "rgba(255,255,255,.92)",
                 }}
@@ -433,14 +473,14 @@ export default function AfricanMarket() {
                 activeSubCategoryId={activeSubCategoryId}
                 onSelectCategory={(c) => {
                   setPage(1);
-                  navigate(`/african-market/${c.slug}`);
+                  navigate(`/fashion/${c.slug}`);
                 }}
                 onSelectSubCategory={(s) => {
                   setPage(1);
                   const cat = categoriesById[s.category_id];
                   const catSlug = cat?.slug || selectedCategory?.slug || "";
                   if (!catSlug) return;
-                  navigate(`/african-market/${catSlug}/${s.slug}`);
+                  navigate(`/fashion/${catSlug}/${s.slug}`);
                 }}
               />
             </div>
@@ -448,7 +488,7 @@ export default function AfricanMarket() {
             <div className="input-group" style={{ maxWidth: 420 }}>
               <input
                 className="form-control"
-                placeholder="Rechercher un produit…"
+                placeholder="Rechercher un article…"
                 value={q}
                 onChange={(e) => {
                   setPage(1);
@@ -471,10 +511,10 @@ export default function AfricanMarket() {
         </div>
 
         {showFiltersBar && (
-          <div className="d-flex flex-wrap align-items-center gap-2">
+          <div className="d-flex flex-wrap align-items-center gap-2 mt-3">
             {selectedCategory && (
               <span className="filter-chip">
-                <span style={{ opacity: 0.7 }}>📦</span>
+                <span style={{ opacity: 0.7 }}>🧷</span>
                 {selectedCategory.name}
               </span>
             )}
@@ -487,10 +527,10 @@ export default function AfricanMarket() {
 
             <button
               type="button"
-              className="btn btn-sm btn-outline-secondary"
+              className="btn btn-sm soft-clear"
               onClick={() => {
                 setPage(1);
-                navigate("/african-market");
+                navigate("/fashion");
               }}
             >
               Tout afficher
@@ -499,13 +539,13 @@ export default function AfricanMarket() {
         )}
 
         {selectedCategory && (
-          <div className="d-flex flex-wrap align-items-center gap-2">
+          <div className="d-flex flex-wrap align-items-center gap-2 mt-2">
             <button
               type="button"
               className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
               onClick={() => {
                 setPage(1);
-                navigate(`/african-market/${selectedCategory.slug}`);
+                navigate(`/fashion/${selectedCategory.slug}`);
               }}
             >
               Tout
@@ -520,7 +560,7 @@ export default function AfricanMarket() {
                   className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
                   onClick={() => {
                     setPage(1);
-                    navigate(`/african-market/${selectedCategory.slug}/${s.slug}`);
+                    navigate(`/fashion/${selectedCategory.slug}/${s.slug}`);
                   }}
                 >
                   {s.name}
@@ -544,7 +584,6 @@ export default function AfricanMarket() {
         <GridSkeleton />
       ) : (
         <>
-          {/* ✅ PROMOS (sans duplication) */}
           {promoItems.length > 0 && (
             <div className="promo-wrap mb-3">
               <div className="promo-head">
@@ -555,8 +594,8 @@ export default function AfricanMarket() {
               <div className="p-3">
                 <div className="row g-3">
                   {promoItems.slice(0, 12).map((p) => (
-                    <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
-                      <ProductCard product={p} />
+                    <div className="col-12 col-sm-6 col-md-6 col-lg-4" key={(p as any).id}>
+                      <ProductCard product={p} layout="fashion" miniDescMax={85} />
                     </div>
                   ))}
                 </div>
@@ -564,14 +603,13 @@ export default function AfricanMarket() {
             </div>
           )}
 
-          {/* ✅ LISTE NORMALE (hors promos) */}
           {normalItems.length === 0 ? (
-            <div className="text-center text-muted py-5">Aucun produit trouvé.</div>
+            <div className="text-center text-muted py-5">Aucun article trouvé.</div>
           ) : (
             <div className="row g-3">
               {normalItems.map((p) => (
-                <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
-                  <ProductCard product={p} />
+                <div className="col-12 col-sm-6 col-md-6 col-lg-4" key={(p as any).id}>
+                  <ProductCard product={p} layout="fashion" miniDescMax={85} />
                 </div>
               ))}
             </div>

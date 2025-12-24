@@ -6,6 +6,24 @@ export type PromoDiscountType = "PERCENT" | "AMOUNT";
 /** Images */
 export type ProductImage = { id: number; url: string; sort_order: number };
 
+/** Variantes (fashion / tailles / couleurs) */
+export type ProductVariant = {
+  id: number;
+  product_id: number;
+
+  size?: string | null; // S, M, L, XL, 42...
+  color?: string | null; // Noir, Blanc...
+  sku?: string | null;
+
+  stock: number; // stock de la variante
+  price_override?: number | null; // ✅ backend: price_override
+
+  is_active?: 0 | 1 | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 export type Product = {
   id: number;
   shop_id: number | null;
@@ -19,18 +37,31 @@ export type Product = {
   category_name?: string | null;
   category_slug?: string | null;
 
-  sub_category_slug?: string | null; // ex: "food"
-  sub_category_name?: string | null; // ex: "Alimentation"
+  sub_category_slug?: string | null; // "food" | "market" | "fashion"...
+  sub_category_name?: string | null;
+
+  // ✅ backend: products.vertical
+  vertical?: "FOOD" | "MARKET" | "FASHION" | null;
 
   name: string;
   slug: string;
 
+  /** Prix client (retourné par l'API) */
   price: number;
+
+  /** ✅ calculé backend (stripDuuminiRateFromProduct) */
   vendor_price?: number | null;
+
+  /** ✅ NEW (backend list/read): */
+  has_variants?: boolean;
+  min_price?: number | null;
 
   currency?: string | null;
   description?: string | null;
+
+  /** stock global (si pas de variantes) */
   stock?: number | null;
+
   is_featured?: 0 | 1 | null;
 
   promo_eligible?: 0 | 1 | null;
@@ -51,13 +82,16 @@ export type Product = {
   shop_city_code?: string | null;
 
   is_active?: 0 | 1 | null;
-  active?: 0 | 1 | null; // compat si certains endpoints renvoient "active"
+  active?: 0 | 1 | null; // compat
 
   cities?: string[] | null;
 
   total_qty?: number | null;
   avg_rating?: number | null;
   rating_count?: number | null;
+
+  /** ✅ Variantes (si backend les renvoie via ?variants=1 ou /variants) */
+  variants?: ProductVariant[];
 
   // ✅ Anti-bug : si quelqu’un tente product.sub_category => TS hurle
   sub_category?: never;
@@ -69,6 +103,7 @@ export type Paginated<T> = {
 };
 
 type Channel = "african-food" | "african-market";
+type Vertical = "FOOD" | "MARKET" | "FASHION";
 
 /* ======================================================================
  * Utils
@@ -142,9 +177,26 @@ function to01(v: any): 0 | 1 | null {
   return null;
 }
 
+function normalizeVertical(v: any): Vertical | null {
+  const s = String(v ?? "").trim().toUpperCase();
+  if (s === "FOOD" || s === "MARKET" || s === "FASHION") return s;
+  return null;
+}
+
 /** ✅ helper: produit actif (compat active/is_active) */
 export function isProductActive(p: any): boolean {
   return !!(p?.active ?? p?.is_active ?? 1);
+}
+
+/** ✅ helper: variante active */
+export function isVariantActive(v: any): boolean {
+  return !!(v?.is_active ?? 1);
+}
+
+/** ✅ helper: un produit a des variantes actives ? */
+export function hasActiveVariants(p: any): boolean {
+  const vs: any[] = Array.isArray(p?.variants) ? p.variants : [];
+  return vs.some((x) => isVariantActive(x));
 }
 
 /** ✅ filtre de sécurité: enlève les produits inactifs */
@@ -159,20 +211,21 @@ function filterActive<T extends any>(arr: T[]): T[] {
 /* ---------- List ---------- */
 /**
  * ✅ Par défaut : onlyActive = true
- * - Côté client: tu ne verras JAMAIS les produits désactivés.
- * - Côté admin: passe onlyActive:false pour voir tout.
- *
- * ✅ Ajouts:
- * - category_id / shop_id pour filtrer (tri côté admin/filtre)
+ * ✅ Aligné backend:
+ * - category_id / sub_category_id / shop_id / q
+ * - vertical (FOOD|MARKET|FASHION) ✅ (prioritaire côté backend)
  */
 export async function listProducts(
   opts: {
     page?: number;
     pageSize?: number;
-    channel?: Channel;
+    channel?: Channel; // compat
     onlyActive?: boolean; // default true
     category_id?: number;
+    sub_category_id?: number;
     shop_id?: number;
+    q?: string;
+    vertical?: Vertical; // ✅ NEW
   } = {}
 ) {
   const page = opts.page ?? 1;
@@ -185,30 +238,40 @@ export async function listProducts(
       ? "/api/products/african-market"
       : "/api/products";
 
-  // ✅ IMPORTANT: default to active-only
   const onlyActive = opts.onlyActive ?? true;
 
   const query: Record<string, any> = { page, pageSize };
   if (onlyActive) query.onlyActive = 1;
 
-  // ✅ filtres
-  if (typeof opts.category_id === "number") query.category_id = opts.category_id;
-  if (typeof opts.shop_id === "number") query.shop_id = opts.shop_id;
-
-  // ⚠️ On n'envoie plus ville/city : l'API ne filtre plus dessus
-  const res = await api.get<Paginated<Product>>(base, { query });
-
-  // ✅ sécurité: si l'API renvoie encore des inactifs, on les supprime
-  if (onlyActive && res?.items) {
-    return { ...res, items: filterActive(res.items) };
+  const vert = normalizeVertical(opts.vertical);
+  if (vert) {
+    query.vertical = vert;
+    query.v = vert; // compat
   }
 
+  if (typeof opts.category_id === "number") {
+    query.category_id = opts.category_id;
+    query.categoryId = opts.category_id;
+  }
+  if (typeof opts.sub_category_id === "number") {
+    query.sub_category_id = opts.sub_category_id;
+    query.subCategoryId = opts.sub_category_id;
+  }
+  if (typeof opts.shop_id === "number") {
+    query.shop_id = opts.shop_id;
+    query.shopId = opts.shop_id;
+  }
+  if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
+
+  const res = await api.get<Paginated<Product>>(base, { query });
+  if (onlyActive && res?.items) return { ...res, items: filterActive(res.items) };
   return res;
 }
 
 /* ---------- Promotions ---------- */
 /**
- * ✅ Par défaut : onlyActive = true
+ * ✅ backend: GET /api/products/promotions
+ * - limit, onlyActive, channel, categoryId/category_id, subCategoryId/sub_category_id, shopId/shop_id, q, vertical
  */
 export async function listPromotions(
   opts: {
@@ -216,7 +279,10 @@ export async function listPromotions(
     channel?: "all" | Channel;
     onlyActive?: boolean; // default true
     category_id?: number;
+    sub_category_id?: number;
     shop_id?: number;
+    q?: string;
+    vertical?: Vertical; // ✅ NEW
   } = {}
 ) {
   const limit = opts.limit ?? 12;
@@ -226,43 +292,134 @@ export async function listPromotions(
   if (onlyActive) query.onlyActive = 1;
   if (opts.channel && opts.channel !== "all") query.channel = opts.channel;
 
-  // ✅ optionnel (si ton backend gère)
-  if (typeof opts.category_id === "number") query.category_id = opts.category_id;
-  if (typeof opts.shop_id === "number") query.shop_id = opts.shop_id;
+  const vert = normalizeVertical(opts.vertical);
+  if (vert) {
+    query.vertical = vert;
+    query.v = vert;
+  }
+
+  if (typeof opts.category_id === "number") {
+    query.category_id = opts.category_id;
+    query.categoryId = opts.category_id;
+  }
+  if (typeof opts.sub_category_id === "number") {
+    query.sub_category_id = opts.sub_category_id;
+    query.subCategoryId = opts.sub_category_id;
+  }
+  if (typeof opts.shop_id === "number") {
+    query.shop_id = opts.shop_id;
+    query.shopId = opts.shop_id;
+  }
+  if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
 
   const arr = await api.get<Product[]>("/api/products/promotions", { query });
-
-  // ✅ sécurité: jamais d'inactifs en promo
   return onlyActive ? filterActive(arr) : arr;
 }
 
 /* ---------- Read ---------- */
 /**
- * ⚠️ getProduct: on ne force pas onlyActive ici,
- * car côté admin on doit pouvoir prévisualiser un produit désactivé.
- * Côté client, si tu veux bloquer l’accès direct, fais-le côté backend (recommandé).
+ * ✅ backend: GET /api/products/:id
+ * - option: ?variants=1 pour inclure variants
  */
-export async function getProduct(id: number) {
-  return api.get<Product>(`/api/products/${id}`);
+export async function getProduct(id: number, opts?: { variants?: boolean }) {
+  const query: Record<string, any> = {};
+  if (opts?.variants) query.variants = 1;
+  return api.get<Product>(`/api/products/${id}`, { query });
+}
+
+/* ======================================================================
+ * Variants (aligné backend actuel)
+ * ✅ backend:
+ * - GET    /api/products/:id/variants
+ * - POST   /api/products/:id/variants   (bulk upsert)  { variants: [...] } + ?replace=1
+ * - PUT    /api/products/variants/:variantId
+ * - DELETE /api/products/variants/:variantId
+ * ===================================================================== */
+
+export async function listProductVariants(productId: number) {
+  return api.get<ProductVariant[]>(`/api/products/${productId}/variants`);
+}
+
+/**
+ * ✅ bulk upsert
+ * payload:
+ *  { variants: [{size,color,sku,stock,price_override,is_active}, ...] }
+ * opts.replace=true => ?replace=1
+ */
+export async function upsertProductVariants(
+  productId: number,
+  payload: { variants: Array<Partial<ProductVariant> & { stock?: number }> },
+  opts?: { replace?: boolean }
+) {
+  const query: Record<string, any> = {};
+  if (opts?.replace) query.replace = 1;
+
+  return api.post<{ ok: true; items: ProductVariant[] }>(
+    `/api/products/${productId}/variants`,
+    payload,
+    { query }
+  );
+}
+
+/** ✅ update 1 variante */
+export async function updateProductVariant(
+  variantId: number,
+  payload: Partial<{
+    size: string | null;
+    color: string | null;
+    sku: string | null;
+    stock: number;
+    price_override: number | null;
+    is_active: 0 | 1 | null;
+  }>
+) {
+  return api.put<{ ok: true }>(`/api/products/variants/${variantId}`, payload);
+}
+
+/** ✅ delete 1 variante */
+export async function removeProductVariant(variantId: number) {
+  return api.delete<{ ok: true }>(`/api/products/variants/${variantId}`);
 }
 
 /* ---------- Create ---------- */
-export async function createProduct(draft: Partial<Product>, files: File[]) {
+/**
+ * ✅ backend: POST /api/products (multipart)
+ * Champs acceptés côté backend:
+ * - name, price, currency, description, stock
+ * - category_id, sub_category_id
+ * - is_featured, promo_*, is_active
+ * - shop_id (admin), cities
+ * - vertical ✅
+ * - variants ✅ (JSON) + replace_variants
+ */
+export async function createProduct(
+  draft: Partial<Product> & {
+    variants?: Array<{
+      size?: string | null;
+      color?: string | null;
+      sku?: string | null;
+      stock?: number;
+      price_override?: number | null;
+      is_active?: 0 | 1 | null;
+    }>;
+    replace_variants?: boolean;
+  },
+  files: File[]
+) {
   const fd = new FormData();
 
   if (draft.name) fd.append("name", draft.name);
 
-  const finalPrice =
-    draft.price != null ? draft.price : draft.vendor_price != null ? draft.vendor_price : null;
-  if (finalPrice != null) fd.append("price", String(finalPrice));
-
+  if (draft.price != null) fd.append("price", String(draft.price));
   if (draft.currency) fd.append("currency", String(draft.currency));
   if (draft.description != null) fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
-
   if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
+
+  const vert = normalizeVertical(draft.vertical);
+  if (vert) fd.append("vertical", vert);
 
   if (draft.is_featured != null) {
     const v = to01(draft.is_featured);
@@ -295,12 +452,28 @@ export async function createProduct(draft: Partial<Product>, files: File[]) {
   const cities = uniqCities(draft.cities);
   if (cities != null) fd.append("cities", JSON.stringify(cities));
 
+  if (Array.isArray(draft.variants) && draft.variants.length) {
+    fd.append("variants", JSON.stringify(draft.variants));
+  }
+  if (draft.replace_variants) fd.append("replace_variants", "1");
+
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
-  return api.post<{ id: number; channel: Channel }>("/api/products", fd as any);
+  return api.post<{ id: number; channel: Channel; vertical?: Vertical }>(
+    "/api/products",
+    fd as any
+  );
 }
 
 /* ---------- Update ---------- */
+/**
+ * ✅ backend: PUT /api/products/:id (multipart)
+ * Champs acceptés:
+ * - name, price, currency, description, stock
+ * - is_featured, promo_*, is_active, category_id, sub_category_id, shop_id, vertical
+ * - replace_images, cities
+ * (variants bulk via endpoint dédié /:id/variants)
+ */
 export async function updateProduct(
   id: number,
   draft: Partial<Product>,
@@ -310,10 +483,7 @@ export async function updateProduct(
   const fd = new FormData();
 
   if (draft.name) fd.append("name", draft.name);
-
-  const finalPrice =
-    draft.price != null ? draft.price : draft.vendor_price != null ? draft.vendor_price : null;
-  if (finalPrice != null) fd.append("price", String(finalPrice));
+  if (draft.price != null) fd.append("price", String(draft.price));
 
   if (draft.currency) fd.append("currency", String(draft.currency));
   if (draft.description != null) fd.append("description", String(draft.description || ""));
@@ -346,7 +516,10 @@ export async function updateProduct(
   }
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
-  if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
+  if (draft.sub_category_id !=null) fd.append("sub_category_id", String(draft.sub_category_id));
+
+  const vert = normalizeVertical(draft.vertical);
+  if (vert) fd.append("vertical", vert);
 
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
@@ -368,7 +541,9 @@ export async function removeProduct(id: number) {
 /* ---------- Top produits : les plus commandés ---------- */
 export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
 export async function listTopOrderedProducts(opts: { limit?: number; onlyActive?: boolean }): Promise<Product[]>;
-export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: number; onlyActive?: boolean }) {
+export async function listTopOrderedProducts(
+  limitOrOpts?: number | { limit?: number; onlyActive?: boolean }
+) {
   let limit = 8;
   let onlyActive = true;
 
@@ -388,7 +563,9 @@ export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: nu
 
 /* ---------- Top produits : les mieux notés ---------- */
 export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number; onlyActive?: boolean }): Promise<Product[]>;
-export async function listTopRatedProducts(opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}) {
+export async function listTopRatedProducts(
+  opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}
+) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
   const onlyActive = opts.onlyActive ?? true;
@@ -440,7 +617,10 @@ export async function getPendingRatingProduct() {
   return api.get<PendingRatingProduct>(`/api/products/pending-rating`);
 }
 
-export async function rateProduct(productId: number, payload: { rating: number; comment?: string | null }) {
+export async function rateProduct(
+  productId: number,
+  payload: { rating: number; comment?: string | null }
+) {
   return api.post<{
     ok: true;
     average: number;

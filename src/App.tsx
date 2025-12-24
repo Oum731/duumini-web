@@ -64,6 +64,7 @@ import PromotionsPage from "./pages/PromotionsPage";
 import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
 import CanKickLottie from "./components/CanKickLottie";
 import AiCopyPage from "./pages/admin/AiCopyPage";
+import Fashion from "./pages/Fashion";
 
 function Page({ title }: { title: string }) {
   return (
@@ -198,7 +199,11 @@ function GlobalRatingModal(props: {
     setError(null);
     setSuccess(null);
     try {
-      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
+      await rateProduct(
+        pending.product_id,
+        rating,
+        comment.trim() || undefined
+      );
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch (e) {
@@ -219,12 +224,22 @@ function GlobalRatingModal(props: {
   return (
     <>
       <div className="modal-backdrop fade show" />
-      <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+      <div
+        className="modal fade show d-block"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">Donnez votre avis</h5>
-              <button type="button" className="btn-close" aria-label="Fermer" onClick={onClose} />
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Fermer"
+                onClick={onClose}
+              />
             </div>
             <div className="modal-body">
               <p className="small text-muted mb-2">
@@ -233,14 +248,18 @@ function GlobalRatingModal(props: {
               </p>
 
               <div className="mb-3">
-                <span className="small d-block mb-1 fw-semibold">Votre note :</span>
+                <span className="small d-block mb-1 fw-semibold">
+                  Votre note :
+                </span>
                 <div className="d-flex align-items-center gap-2">
                   {[1, 2, 3, 4, 5].map((i) => renderStar(i))}
                 </div>
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">Votre avis (optionnel)</label>
+                <label className="form-label small">
+                  Votre avis (optionnel)
+                </label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -251,14 +270,28 @@ function GlobalRatingModal(props: {
                 />
               </div>
 
-              {error && <div className="alert alert-danger py-1 small">{error}</div>}
-              {success && <div className="alert alert-success py-1 small">{success}</div>}
+              {error && (
+                <div className="alert alert-danger py-1 small">{error}</div>
+              )}
+              {success && (
+                <div className="alert alert-success py-1 small">{success}</div>
+              )}
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose} disabled={saving}>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={onClose}
+                disabled={saving}
+              >
                 Plus tard
               </button>
-              <button type="button" className="btn btn-sm btn-duu" onClick={handleSubmit} disabled={saving}>
+              <button
+                type="button"
+                className="btn btn-sm btn-duu"
+                onClick={handleSubmit}
+                disabled={saving}
+              >
                 {saving ? "Envoi…" : "Envoyer mon avis"}
               </button>
             </div>
@@ -271,7 +304,8 @@ function GlobalRatingModal(props: {
 
 export default function App() {
   const { user } = useAuth();
-  const [pendingRating, setPendingRating] = useState<PendingProductRating | null>(null);
+  const [pendingRating, setPendingRating] =
+    useState<PendingProductRating | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -307,7 +341,11 @@ export default function App() {
           <NavbarWithCount />
 
           <main className="flex-fill">
-            <React.Suspense fallback={<div className="container-xxl py-5 text-muted">Chargement…</div>}>
+            <React.Suspense
+              fallback={
+                <div className="container-xxl py-5 text-muted">Chargement…</div>
+              }
+            >
               <Routes>
                 <Route path="/" element={<LandingRedirect />} />
 
@@ -322,12 +360,30 @@ export default function App() {
 
                 {/* ✅ Vitrine (routes dynamiques) */}
                 <Route path="/african-food" element={<AfricanFood />} />
-                <Route path="/african-food/:categorySlug" element={<AfricanFood />} />
-                <Route path="/african-food/:categorySlug/:subCategorySlug" element={<AfricanFood />} />
+                <Route
+                  path="/african-food/:categorySlug"
+                  element={<AfricanFood />}
+                />
+                <Route
+                  path="/african-food/:categorySlug/:subCategorySlug"
+                  element={<AfricanFood />}
+                />
 
                 <Route path="/african-market" element={<AfricanMarket />} />
-                <Route path="/african-market/:categorySlug" element={<AfricanMarket />} />
-                <Route path="/african-market/:categorySlug/:subCategorySlug" element={<AfricanMarket />} />
+                <Route
+                  path="/african-market/:categorySlug"
+                  element={<AfricanMarket />}
+                />
+                <Route
+                  path="/african-market/:categorySlug/:subCategorySlug"
+                  element={<AfricanMarket />}
+                />
+                <Route path="/fashion" element={<Fashion />} />
+                <Route path="/fashion/:categorySlug" element={<Fashion />} />
+                <Route
+                  path="/fashion/:categorySlug/:subCategorySlug"
+                  element={<Fashion />}
+                />
 
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
                 <Route path="/top-products" element={<TopProductsPage />} />
@@ -346,7 +402,10 @@ export default function App() {
                     <Route path="products" element={<ProductsAdminPage />} />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
-                    <Route path="promotions" element={<PromotionsAdminPage />} />
+                    <Route
+                      path="promotions"
+                      element={<PromotionsAdminPage />}
+                    />
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
@@ -372,7 +431,10 @@ export default function App() {
           <NotificationBubble />
 
           {pendingRating && (
-            <GlobalRatingModal pending={pendingRating} onClose={() => setPendingRating(null)} />
+            <GlobalRatingModal
+              pending={pendingRating}
+              onClose={() => setPendingRating(null)}
+            />
           )}
         </div>
       </LocationGate>

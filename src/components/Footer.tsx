@@ -110,6 +110,27 @@ export default function Footer() {
                 </li>
               )}
 
+              {/* ✅ Duumini Food → visible SEULEMENT après ouverture 
+              {isOpen && (
+                <li>
+                  <TopLink
+                    className="link-dark d-block py-1"
+                    to="/african-food"
+                  >
+                    Duumini Food
+                  </TopLink>
+                </li>
+              )}
+*/}
+              {/* ✅ Fashion → visible SEULEMENT après ouverture */}
+              {isOpen && (
+                <li>
+                  <TopLink className="link-dark d-block py-1" to="/fashion">
+                    Duumini Fashion
+                  </TopLink>
+                </li>
+              )}
+
               <li>
                 <TopLink className="link-dark d-block py-1" to="/cart">
                   Panier
@@ -198,24 +219,15 @@ export default function Footer() {
             © {new Date().getFullYear()} Duumini — Tous droits réservés.
           </div>
           <div className="small">
-            <TopLink
-              to="/legal/privacy"
-              className="link-dark text-decoration-none"
-            >
+            <TopLink to="/legal/privacy" className="link-dark text-decoration-none">
               Confidentialité
             </TopLink>
             <span className="text-muted mx-2">•</span>
-            <TopLink
-              to="/legal/terms"
-              className="link-dark text-decoration-none"
-            >
+            <TopLink to="/legal/terms" className="link-dark text-decoration-none">
               Conditions
             </TopLink>
             <span className="text-muted mx-2">•</span>
-            <TopLink
-              to="/legal/returns"
-              className="link-dark text-decoration-none"
-            >
+            <TopLink to="/legal/returns" className="link-dark text-decoration-none">
               Retours
             </TopLink>
           </div>

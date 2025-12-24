@@ -3,18 +3,10 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
 import { me, getAccessToken } from "../services/auth";
-import {
-  createOrder,
-  createGuestOrder,
-  type CreateOrderPayload,
-} from "../services/orders";
+import { createOrder, createGuestOrder, type CreateOrderPayload } from "../services/orders";
 import { normalizePhoneInput, isValidPhoneIntl } from "../utils/phone";
 import { trackPurchase } from "../lib/analytics";
-import {
-  useLocationCity,
-  CITY_OPTIONS,
-  type CityCode,
-} from "../context/LocationContext";
+import { useLocationCity, CITY_OPTIONS, type CityCode } from "../context/LocationContext";
 import { api } from "../services/http";
 
 /* ——— Style local : focus rouge + état loading ——— */
@@ -60,6 +52,13 @@ const FocusAndLoadingStyle = () => (
       font-weight:600;
       color:rgba(0,0,0,.62);
     }
+
+    .btn-duu{
+      background: var(--duu-yellow);
+      color: #1f1f1f;
+      border: none;
+    }
+    .btn-duu:hover{ filter: brightness(0.95); }
   `}</style>
 );
 
@@ -78,11 +77,9 @@ type ItemsEnvelope<T> = { items: T[] };
 function normalizeSuggestionItems(input: any): LocationSuggestion[] {
   const arr = input?.items ?? input ?? [];
   if (!Array.isArray(arr)) return [];
-  // items: string[]
   if (arr.length && typeof arr[0] === "string") {
     return arr.map((s: string) => ({ value: String(s) }));
   }
-  // items: {value,count}[]
   return arr
     .map((x: any) => ({
       value: String(x?.value ?? x?.name ?? "").trim(),
@@ -114,18 +111,15 @@ async function trackLocationSuggestion(
   kind: "VILLE" | "COMMUNE" | "QUARTIER",
   payload: { ville?: string; commune?: string; quartier?: string }
 ) {
-  // Best-effort (pas bloquant)
   try {
     await api.post("/api/locations/track", { kind, ...payload });
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 /* =========================
-   ✅ Livraison pro (sans Simple/Express)
+   ✅ Livraison
    - Casablanca: 25 DH
-   - Hors Casablanca: dès 60 DH (selon la ville)
+   - Hors Casablanca: dès 60 DH
    ========================= */
 
 function normToken(x: any) {
@@ -149,7 +143,6 @@ function isFoodLike(p: any) {
   return normToken(p?.category) === "food";
 }
 
-/** ✅ Barème pro: configurable */
 const DELIVERY_RULES = {
   CASABLANCA_FEE: 25,
   DEFAULT_MIN_OUTSIDE_CASA: 60,
@@ -167,6 +160,31 @@ function computeDeliveryFeeByCity(cityLabel: string) {
   if (!cityLabel) return DELIVERY_RULES.DEFAULT_MIN_OUTSIDE_CASA;
   if (isCasablanca(cityLabel)) return DELIVERY_RULES.CASABLANCA_FEE;
   return DELIVERY_RULES.DEFAULT_MIN_OUTSIDE_CASA;
+}
+
+/* =========================
+   ✅ Variantes (panier v2)
+   ========================= */
+
+function getLineVariantKey(l: any) {
+  // ✅ store v2 : l.variant.variant_key
+  return String(l?.variant?.variant_key || "default").trim() || "default";
+}
+function getLineVariantLabel(l: any) {
+  const label = String(l?.variant?.label || "").trim();
+  return label;
+}
+function getLineVariantId(l: any) {
+  const id = l?.variant?.variant_id ?? null;
+  const n = id == null ? 0 : Number(id) || 0;
+  return n > 0 ? n : null;
+}
+function lineKey(l: any) {
+  // ✅ line_id = unique produit + variante
+  const lid = String(l?.line_id || "").trim();
+  if (lid) return lid;
+  const pid = Number(l?.id ?? 0) || 0;
+  return `${pid}:${getLineVariantKey(l)}`;
 }
 
 /* =========================
@@ -219,7 +237,6 @@ export default function CheckoutPage() {
 
   const [showGuestSuccess, setShowGuestSuccess] = useState(false);
 
-  // (info uniquement)
   const hasPromoInCart = useMemo(() => {
     return (lines || []).some((l: any) => {
       const p = l?.product ?? l;
@@ -252,15 +269,11 @@ export default function CheckoutPage() {
     : guestName.trim().length > 0;
 
   const addressOk = hasToken
-    ? !!cityLabel && (useGps ? !!coords : (communeVal.length > 0 && quartier.trim().length > 0))
+    ? !!cityLabel && (useGps ? !!coords : communeVal.length > 0 && quartier.trim().length > 0)
     : !!cityLabel && (useGps ? !!coords : guestAddress.trim().length > 0);
 
   const canSubmit =
-    lines.length > 0 &&
-    hasName &&
-    validPhone &&
-    addressOk &&
-    (hasToken || guestConfirmed);
+    lines.length > 0 && hasName && validPhone && addressOk && (hasToken || guestConfirmed);
 
   const askGps = useCallback(() => {
     setGpsErr(null);
@@ -278,8 +291,7 @@ export default function CheckoutPage() {
       },
       (err) => {
         setGpsErr(
-          err?.message ||
-            "Impossible d’obtenir la position (permission refusée ou indisponible)."
+          err?.message || "Impossible d’obtenir la position (permission refusée ou indisponible)."
         );
         setLoadingGps(false);
       },
@@ -321,11 +333,14 @@ export default function CheckoutPage() {
           setCommuneOther("");
           setQuartier(q || "");
 
+          setUseGps(false);
+          setCoords(null);
+          setGpsErr(null);
+
           setEditingAddress(false);
           setSaveAddressToProfile(false);
         }
       } catch {
-        // ignore
       } finally {
         setLoading(false);
       }
@@ -349,6 +364,10 @@ export default function CheckoutPage() {
         setCommuneOther("");
         setQuartier(q || "");
 
+        setUseGps(false);
+        setCoords(null);
+        setGpsErr(null);
+
         setEditingAddress(false);
         setSaveAddressToProfile(false);
       }
@@ -364,6 +383,13 @@ export default function CheckoutPage() {
     if (!isReady) return;
     const v = String(cityLabel || "").trim();
     if (!v) return;
+
+    // si changement de ville : reset adresse locale (évite incohérence)
+    setQuartier("");
+    setQuartierSuggestions([]);
+    setUseGps(false);
+    setCoords(null);
+    setGpsErr(null);
 
     setLoadingSuggest(true);
     (async () => {
@@ -428,11 +454,7 @@ export default function CheckoutPage() {
           };
 
       const fullName = hasToken
-        ? (
-            `${firstName.trim()} ${lastName.trim()}`.trim() ||
-            firstName.trim() ||
-            lastName.trim()
-          ).trim()
+        ? (`${firstName.trim()} ${lastName.trim()}`.trim() || firstName.trim() || lastName.trim()).trim()
         : guestName.trim();
 
       const contact = {
@@ -453,12 +475,25 @@ export default function CheckoutPage() {
           fee: finalDeliveryFee,
           currency: "MAD",
         },
-        items: lines.map((l: any) => ({
-          product_id: l.id,
-          name: l.name,
-          price: l.price,
-          qty: l.qty,
-        })),
+
+        // ✅ Variantes incluses (panier v2)
+        items: lines.map((l: any) => {
+          const variant_key = getLineVariantKey(l);
+          const variant_label = getLineVariantLabel(l) || null;
+          const variant_id = getLineVariantId(l);
+
+          return {
+            product_id: Number(l.id),
+            name: String(l.name || ""),
+            price: Number(l.price || 0),
+            qty: Number(l.qty || 0),
+
+            variant_key,
+            variant_label,
+            variant_id,
+          };
+        }),
+
         totals: {
           items_count: totalItems,
           items_amount: totalAmount,
@@ -471,6 +506,7 @@ export default function CheckoutPage() {
           note: "Paiement à la livraison. Aucun acompte requis.",
         },
 
+        // compat legacy
         address_city: address.ville,
         address_commune: (address as any).commune ?? null,
         address_district: address.quartier,
@@ -478,23 +514,14 @@ export default function CheckoutPage() {
         address_gps_lng: address.gps?.lng ?? null,
       };
 
-      const result = hasToken
-        ? await createOrder(payload)
-        : await createGuestOrder(payload);
-
+      const result = hasToken ? await createOrder(payload) : await createGuestOrder(payload);
       const orderId = (result as any).id;
 
-      const createdAtStr =
-        (result as any).created_at ||
-        (result as any).created ||
-        new Date().toISOString();
+      const createdAtStr = (result as any).created_at || (result as any).created || new Date().toISOString();
       const createdAt = new Date(createdAtStr);
 
-      const numericId =
-        typeof orderId === "number" ? orderId : Number(orderId) || 0;
-      const displayCode = numericId
-        ? numericId.toString(36).toUpperCase()
-        : String(orderId ?? "").toUpperCase();
+      const numericId = typeof orderId === "number" ? orderId : Number(orderId) || 0;
+      const displayCode = numericId ? numericId.toString(36).toUpperCase() : String(orderId ?? "").toUpperCase();
 
       try {
         trackPurchase({
@@ -506,16 +533,17 @@ export default function CheckoutPage() {
               l.category_name ||
               l.sub_category_name ||
               l.sub_category_slug ||
-              (l.sub_category_id != null && String(l.sub_category_id).trim() !== ""
-                ? String(l.sub_category_id)
-                : "") ||
+              (l.sub_category_id != null && String(l.sub_category_id).trim() !== "" ? String(l.sub_category_id) : "") ||
               "";
 
+            const vLabel = getLineVariantLabel(l);
+            const name = vLabel ? `${l.name} — ${vLabel}` : l.name;
+
             return {
-              id: l.id,
-              name: l.name,
-              price: l.price,
-              quantity: l.qty,
+              id: Number(l.id),
+              name: String(name || ""),
+              price: Number(l.price || 0),
+              quantity: Number(l.qty || 0),
               category,
             };
           }),
@@ -564,9 +592,7 @@ export default function CheckoutPage() {
             commune: communeVal || null,
             quartier: useGps ? null : quartier.trim() || null,
           });
-        } catch {
-          // non bloquant
-        }
+        } catch {}
       }
 
       clear();
@@ -645,7 +671,6 @@ export default function CheckoutPage() {
     <section className="container-xxl py-4 checkout">
       <FocusAndLoadingStyle />
 
-      {/* ✅ Modale de succès invité */}
       {showGuestSuccess && (
         <>
           <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
@@ -736,11 +761,7 @@ export default function CheckoutPage() {
               Changer de ville
             </button>
 
-            {hasPromoInCart && (
-              <span className="badge text-bg-warning">
-                Promo active (sans livraison gratuite)
-              </span>
-            )}
+            {hasPromoInCart && <span className="badge text-bg-warning">Promo active (sans livraison gratuite)</span>}
           </div>
         </div>
 
@@ -756,31 +777,19 @@ export default function CheckoutPage() {
             Vous pouvez finaliser votre commande <strong>en tant qu’invité</strong>.
           </p>
           <div className="d-flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-sm btn-dark"
-              onClick={() => setGuestConfirmed(true)}
-            >
+            <button type="button" className="btn btn-sm btn-dark" onClick={() => setGuestConfirmed(true)}>
               Continuer en tant qu’invité
             </button>
-            <Link
-              to="/profile?tab=login&next=/checkout"
-              className="btn btn-sm btn-outline-dark"
-            >
+            <Link to="/profile?tab=login&next=/checkout" className="btn btn-sm btn-outline-dark">
               Se connecter
             </Link>
-            <Link
-              to="/profile?tab=register&next=/checkout"
-              className="btn btn-sm btn-outline-secondary"
-            >
+            <Link to="/profile?tab=register&next=/checkout" className="btn btn-sm btn-outline-secondary">
               Créer un compte
             </Link>
           </div>
 
           {guestConfirmed && (
-            <p className="mt-2 small mb-0">
-              ✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.
-            </p>
+            <p className="mt-2 small mb-0">✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.</p>
           )}
         </div>
       )}
@@ -804,8 +813,7 @@ export default function CheckoutPage() {
                     {loadingRefill ? (
                       <>
                         <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-                        Rechargement…
-                        <span className="visually-hidden">en cours</span>
+                        Rechargement…<span className="visually-hidden">en cours</span>
                       </>
                     ) : (
                       "Recharger depuis mon profil"
@@ -814,26 +822,15 @@ export default function CheckoutPage() {
                 )}
               </div>
 
-              {/* ✅ Formulaire connecté vs invité */}
               {hasToken ? (
                 <div className="row g-3">
                   <div className="col-12 col-md-6">
                     <label className="form-label">Prénom</label>
-                    <input
-                      className="form-control"
-                      value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
-                      placeholder="Prénom"
-                    />
+                    <input className="form-control" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Prénom" />
                   </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label">Nom</label>
-                    <input
-                      className="form-control"
-                      value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
-                      placeholder="Nom"
-                    />
+                    <input className="form-control" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Nom" />
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -850,9 +847,7 @@ export default function CheckoutPage() {
                         Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
-                    <div className="form-text">
-                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
-                    </div>
+                    <div className="form-text">🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.</div>
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -871,7 +866,6 @@ export default function CheckoutPage() {
                     <div className="form-text">La ville vient de votre sélection (LocationGate).</div>
                   </div>
 
-                  {/* ✅ Adresse pro */}
                   <div className="col-12">
                     {!editingAddress ? (
                       <div className="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -881,17 +875,11 @@ export default function CheckoutPage() {
                             {cityLabel || "—"}
                             {communeVal ? `, ${communeVal}` : ""}
                             {quartier ? ` — ${quartier}` : ""}
-                            {useGps && coords
-                              ? ` (GPS ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
-                              : ""}
+                            {useGps && coords ? ` (GPS ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}
                           </div>
                         </div>
                         <div className="d-flex gap-2">
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-dark"
-                            onClick={() => setEditingAddress(true)}
-                          >
+                          <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => setEditingAddress(true)}>
                             Changer d’adresse
                           </button>
                         </div>
@@ -905,8 +893,19 @@ export default function CheckoutPage() {
                             value={commune || "__other__"}
                             onChange={(e) => {
                               const v = e.target.value;
-                              setCommune(v === "__other__" ? "" : v);
-                              if (v !== "__other__") setCommuneOther("");
+                              setUseGps(false);
+                              setCoords(null);
+                              setGpsErr(null);
+
+                              setQuartier("");
+                              setQuartierSuggestions([]);
+
+                              if (v === "__other__") {
+                                setCommune("");
+                              } else {
+                                setCommune(v);
+                                setCommuneOther("");
+                              }
                             }}
                           >
                             <option value="__other__">Autre…</option>
@@ -927,11 +926,7 @@ export default function CheckoutPage() {
                             />
                           )}
 
-                          <div className="form-text">
-                            {loadingSuggest
-                              ? "Chargement suggestions…"
-                              : "Choisissez une commune ou saisissez-la."}
-                          </div>
+                          <div className="form-text">{loadingSuggest ? "Chargement suggestions…" : "Choisissez une commune ou saisissez-la."}</div>
                         </div>
 
                         <div className="col-12 col-md-6">
@@ -950,16 +945,11 @@ export default function CheckoutPage() {
                                   <option key={s.value} value={s.value} />
                                 ))}
                               </datalist>
-                              <div className="form-text">
-                                Astuce : commence à taper pour voir des suggestions.
-                              </div>
+                              <div className="form-text">Astuce : commence à taper pour voir des suggestions.</div>
                             </>
                           ) : (
                             <div className="alert alert-info d-flex justify-content-between align-items-center">
-                              <span>
-                                Localisation GPS activée{" "}
-                                {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
-                              </span>
+                              <span>Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.</span>
                               <button
                                 className="btn btn-sm btn-outline-dark"
                                 type="button"
@@ -996,9 +986,7 @@ export default function CheckoutPage() {
                               checked={saveAddressToProfile}
                               onChange={(e) => setSaveAddressToProfile(e.target.checked)}
                             />
-                            <span className="form-check-label ms-2">
-                              Enregistrer cette adresse dans mon profil
-                            </span>
+                            <span className="form-check-label ms-2">Enregistrer cette adresse dans mon profil</span>
                           </label>
 
                           <button
@@ -1042,9 +1030,7 @@ export default function CheckoutPage() {
                         Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
-                    <div className="form-text">
-                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
-                    </div>
+                    <div className="form-text">🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.</div>
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -1067,9 +1053,7 @@ export default function CheckoutPage() {
                       <span>Adresse complète / Localisation</span>
                       <span className="small">
                         {useGps && coords ? (
-                          <span className="text-success">
-                            GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
-                          </span>
+                          <span className="text-success">GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</span>
                         ) : (
                           <button
                             type="button"
@@ -1099,10 +1083,7 @@ export default function CheckoutPage() {
                     ) : (
                       <>
                         <div className="alert alert-info d-flex justify-content-between align-items-center">
-                          <span>
-                            Localisation GPS activée{" "}
-                            {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
-                          </span>
+                          <span>Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.</span>
                           <button
                             className="btn btn-sm btn-outline-dark"
                             type="button"
@@ -1131,25 +1112,20 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Livraison (nouveau modèle) */}
           <div className="card border-0 shadow-sm mt-3">
             <div className="card-body">
               <h2 className="h6 mb-2">Livraison</h2>
 
               <div className="alert alert-light border mb-0">
                 <div className="fw-semibold">🚚 {deliveryTitle}</div>
-                <div className="small text-muted">
-                  La livraison est calculée automatiquement selon votre ville.
-                </div>
+                <div className="small text-muted">La livraison est calculée automatiquement selon votre ville.</div>
                 <div className="small mt-2">
-                  Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais :{" "}
-                  <strong>{mad(deliveryFee)}</strong>
+                  Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais : <strong>{mad(deliveryFee)}</strong>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* CTA */}
           <div className="d-grid d-sm-flex gap-2 mt-3">
             <Link to="/cart" className="btn btn-outline-dark">
               Retour au panier
@@ -1165,8 +1141,7 @@ export default function CheckoutPage() {
               {submitting ? (
                 <>
                   <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-                  Confirmation…
-                  <span className="visually-hidden">de la commande</span>
+                  Confirmation…<span className="visually-hidden">de la commande</span>
                 </>
               ) : (
                 "Confirmer la commande"
@@ -1182,17 +1157,20 @@ export default function CheckoutPage() {
               <h2 className="h6 mb-3">Récapitulatif</h2>
 
               <ul className="list-group list-group-flush">
-                {lines.map((l: any) => (
-                  <li
-                    key={l.id}
-                    className="list-group-item d-flex justify-content-between align-items-center"
-                  >
-                    <span className="text-truncate" style={{ maxWidth: 260 }}>
-                      {l.name} <span className="text-muted">×{l.qty}</span>
-                    </span>
-                    <span className="fw-semibold">{mad(l.qty * l.price)}</span>
-                  </li>
-                ))}
+                {lines.map((l: any) => {
+                  const vLabel = getLineVariantLabel(l);
+                  return (
+                    <li key={lineKey(l)} className="list-group-item d-flex justify-content-between align-items-start">
+                      <div className="me-3 text-truncate" style={{ maxWidth: 280 }}>
+                        <div className="text-truncate">
+                          {l.name} <span className="text-muted">×{l.qty}</span>
+                        </div>
+                        {vLabel && <div className="small text-muted text-truncate">Variante : {vLabel}</div>}
+                      </div>
+                      <span className="fw-semibold">{mad((l.qty || 0) * (l.price || 0))}</span>
+                    </li>
+                  );
+                })}
 
                 <li className="list-group-item d-flex justify-content-between align-items-center">
                   <span className="text-muted">Livraison</span>
@@ -1213,8 +1191,7 @@ export default function CheckoutPage() {
               <div className="alert alert-secondary mt-3 mb-0">
                 <div className="fw-semibold mb-1">Paiement à la livraison</div>
                 <small className="d-block text-muted">
-                  Vous réglez <strong>à la réception</strong> — en{" "}
-                  <strong>espèces</strong>. Aucun acompte requis.
+                  Vous réglez <strong>à la réception</strong> — en <strong>espèces</strong>. Aucun acompte requis.
                 </small>
               </div>
             </div>

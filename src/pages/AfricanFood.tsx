@@ -39,7 +39,6 @@ function mulberry32(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
 function hashSeed(input: string) {
   let h = 2166136261;
   for (let i = 0; i < input.length; i++) {
@@ -48,7 +47,6 @@ function hashSeed(input: string) {
   }
   return h >>> 0;
 }
-
 function seededShuffle<T>(arr: T[], seedStr: string): T[] {
   const out = arr.slice();
   const rand = mulberry32(hashSeed(seedStr));
@@ -58,7 +56,6 @@ function seededShuffle<T>(arr: T[], seedStr: string): T[] {
   }
   return out;
 }
-
 const RANDOM_WINDOW_HOURS = 5;
 function getWindowKey(now = Date.now()) {
   const win = RANDOM_WINDOW_HOURS * 60 * 60 * 1000;
@@ -66,6 +63,51 @@ function getWindowKey(now = Date.now()) {
 }
 
 type Channel = "african-food";
+
+/** ✅ Détection robuste "promo" (compatible avec plusieurs schémas) */
+function isPromoProduct(p: Product) {
+  const x = p as any;
+
+  // bool explicite
+  if (x.is_promo === true || x.promo === true || x.on_promo === true) return true;
+
+  // valeurs de promo (percent/amount)
+  const promoPercent =
+    Number(x.promo_percent ?? x.discount_percent ?? x.percent_off ?? 0) || 0;
+  const promoAmount =
+    Number(x.promo_amount ?? x.discount_amount ?? x.amount_off ?? 0) || 0;
+  if (promoPercent > 0 || promoAmount > 0) return true;
+
+  // prix promo vs prix normal
+  const price = Number(x.price_client ?? x.price ?? 0) || 0;
+  const promoPrice =
+    Number(x.promo_price_client ?? x.promo_price ?? x.price_promo ?? x.sale_price ?? 0) ||
+    0;
+
+  if (promoPrice > 0 && price > 0 && promoPrice < price) return true;
+
+  // type/valeur
+  if (String(x.promo_type || x.discount_type || "").trim()) {
+    const v = Number(x.promo_value ?? x.discount_value ?? 0) || 0;
+    if (v > 0) return true;
+  }
+
+  return false;
+}
+
+/** ✅ Uniq by id (évite les doublons si l’API renvoie 2 fois) */
+function uniqById(list: Product[]) {
+  const seen = new Set<number>();
+  const out: Product[] = [];
+  for (const p of list) {
+    const id = Number((p as any).id || 0);
+    if (!id) continue;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(p);
+  }
+  return out;
+}
 
 export default function AfricanFood() {
   const { city } = useLocationCity();
@@ -83,7 +125,6 @@ export default function AfricanFood() {
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,7 +156,6 @@ export default function AfricanFood() {
     setError(null);
 
     try {
-      // ✅ On ne filtre plus par ville côté API
       const [resProducts, resCats, resSubs] = await Promise.all([
         listProducts({
           page,
@@ -132,7 +172,6 @@ export default function AfricanFood() {
       const rawItems = resProducts.items || [];
       const windowKey = getWindowKey();
 
-      // ✅ City uniquement pour le shuffle stable (pas envoyé à l'API)
       const seedStr = [
         "african-food",
         `win:${windowKey}`,
@@ -142,9 +181,7 @@ export default function AfricanFood() {
         `sub:${subSlugParam || "all"}`,
       ].join("|");
 
-      const finalItems = seededShuffle(rawItems, seedStr);
-
-      setItems(finalItems);
+      setItems(seededShuffle(rawItems, seedStr));
       setTotal(resProducts.pageInfo?.total ?? 0);
       setCategories(resCats.items || []);
       setSubCategories(resSubs.items || []);
@@ -251,6 +288,22 @@ export default function AfricanFood() {
     return out;
   }, [filteredBySearch, selectedCategory, selectedSubCategory, categoriesById, subById]);
 
+  /** ✅ PROMO + NON-PROMO (sans duplication) */
+  const promoItems = useMemo(() => {
+    return uniqById(filtered.filter(isPromoProduct));
+  }, [filtered]);
+
+  const promoIds = useMemo(() => {
+    const s = new Set<number>();
+    for (const p of promoItems) s.add(Number((p as any).id || 0));
+    return s;
+  }, [promoItems]);
+
+  const normalItems = useMemo(() => {
+    if (!promoItems.length) return filtered;
+    return filtered.filter((p) => !promoIds.has(Number((p as any).id || 0)));
+  }, [filtered, promoItems.length, promoIds]);
+
   // ✅ titre simple
   const title = useMemo(() => {
     if (selectedSubCategory) return selectedSubCategory.name || "Produits";
@@ -276,10 +329,9 @@ export default function AfricanFood() {
         .btn-duu:focus,
         .btn-duu:focus-visible{
           outline: none !important;
-          box-shadow: 0 0 0 .2rem rgba(255,213,79,.40) !important;
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
         }
 
-        /* ✅ Fix focus/active du bouton Filtrer */
         .duu-filter-btn .btn,
         .duu-filter-btn .dropdown > .btn,
         .duu-filter-btn > .btn{
@@ -302,14 +354,14 @@ export default function AfricanFood() {
         .duu-filter-btn .dropdown > .btn:focus-visible,
         .duu-filter-btn > .btn:focus-visible{
           outline: none !important;
-          box-shadow: 0 0 0 .2rem rgba(255,213,79,.40) !important;
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
           background: rgba(255,255,255,.98) !important;
           color: var(--duu-black) !important;
         }
         .duu-filter-btn .btn:active,
         .duu-filter-btn .dropdown > .btn:active,
         .duu-filter-btn > .btn:active{
-          background: rgba(255,213,79,.20) !important;
+          background: rgba(var(--duu-yellow-rgb), .16) !important;
           color: var(--duu-black) !important;
         }
 
@@ -323,6 +375,37 @@ export default function AfricanFood() {
           align-items:center;
           gap: 8px;
         }
+
+        .promo-wrap{
+          border: 1px solid rgba(0,0,0,.08);
+          border-radius: 18px;
+          background:
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.18), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
+            #fff;
+          box-shadow: 0 10px 24px rgba(0,0,0,.05);
+          overflow: hidden;
+        }
+        .promo-head{
+          padding: 12px 14px;
+          border-bottom: 1px solid rgba(0,0,0,.06);
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap: 10px;
+          font-weight: 900;
+          color: var(--duu-black);
+        }
+        .promo-badge{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(var(--duu-red-rgb), .08);
+          border: 1px solid rgba(var(--duu-red-rgb), .20);
+          font-weight: 900;
+        }
       `}</style>
 
       <div className="d-flex flex-column gap-2 mb-3">
@@ -334,7 +417,7 @@ export default function AfricanFood() {
           </div>
 
           <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
-            {/* ✅ Filtrer */}
+            {/* Filtrer */}
             <div className="d-flex align-items-center gap-2 flex-shrink-0 duu-filter-btn">
               <span
                 className="d-inline-flex align-items-center justify-content-center"
@@ -395,7 +478,6 @@ export default function AfricanFood() {
           </div>
         </div>
 
-        {/* ✅ barre filtres actifs */}
         {showFiltersBar && (
           <div className="d-flex flex-wrap align-items-center gap-2">
             {selectedCategory && (
@@ -424,7 +506,6 @@ export default function AfricanFood() {
           </div>
         )}
 
-        {/* ✅ sous-catégories */}
         {selectedCategory && (
           <div className="d-flex flex-wrap align-items-center gap-2">
             <button
@@ -469,19 +550,43 @@ export default function AfricanFood() {
 
       {loading ? (
         <GridSkeleton />
-      ) : filtered.length === 0 ? (
-        <div className="text-center text-muted py-5">Aucun produit trouvé.</div>
       ) : (
-        <div className="row g-3">
-          {filtered.map((p) => (
-            <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={p.id}>
-              <ProductCard product={p} />
+        <>
+          {/* ✅ PROMOS (sans duplication) */}
+          {promoItems.length > 0 && (
+            <div className="promo-wrap mb-3">
+              <div className="promo-head">
+                <span>Promos du moment</span>
+                <span className="promo-badge">🔥 {promoItems.length}</span>
+              </div>
+
+              <div className="p-3">
+                <div className="row g-3">
+                  {promoItems.slice(0, 12).map((p) => (
+                    <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
+                      <ProductCard product={p} />
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+          )}
+
+          {/* ✅ LISTE NORMALE (on exclut les promos => pas de doublons) */}
+          {normalItems.length === 0 ? (
+            <div className="text-center text-muted py-5">Aucun produit trouvé.</div>
+          ) : (
+            <div className="row g-3">
+              {normalItems.map((p) => (
+                <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
+                  <ProductCard product={p} />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* ✅ Pagination : pas de compteur X éléments */}
       {!loading && pages > 1 && (
         <div className="d-flex justify-content-end align-items-center mt-3">
           <div className="btn-group">

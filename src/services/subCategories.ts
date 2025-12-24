@@ -1,14 +1,23 @@
 // src/services/subCategories.ts
 import { api } from "./http";
-import type { Paginated } from "./types";
+
+/** ✅ Aligne avec ton backend: { items, pageInfo } */
+export type Paginated<T> = {
+  items: T[];
+  pageInfo: { page: number; pageSize: number; total: number };
+};
 
 export type SubCategory = {
   id: number;
   category_id: number;
   name: string;
   slug: string;
-  created_at?: string;
-  updated_at?: string;
+
+  // optionnels
+  vertical?: "FOOD" | "MARKET" | "FASHION" | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
 
   // join backend
   category_name?: string | null;
@@ -18,7 +27,8 @@ export type SubCategory = {
 type ListOpts = {
   page?: number;
   pageSize?: number;
-  categoryId?: number | null;
+  category_id?: number | null; // ✅ backend: category_id
+  categoryId?: number | null; // compat front
 };
 
 export async function listSubCategories(opts: ListOpts = {}) {
@@ -27,7 +37,8 @@ export async function listSubCategories(opts: ListOpts = {}) {
 
   const query: Record<string, any> = { page, pageSize };
 
-  const cid = Number(opts.categoryId || 0);
+  // ✅ backend attend category_id (mais on accepte aussi categoryId côté caller)
+  const cid = Number((opts.category_id ?? opts.categoryId) || 0);
   if (cid > 0) query.category_id = cid;
 
   return api.get<Paginated<SubCategory>>("/api/sub-categories", { query });
@@ -37,11 +48,15 @@ export async function createSubCategory(payload: {
   category_id: number;
   name: string;
   slug?: string;
+  // ⚠️ backend sub-categories.js (celui que tu as montré) n'accepte pas vertical en body.
+  // Donc on le garde seulement en type, mais on ne l'envoie pas.
 }) {
   return api.post<SubCategory>("/api/sub-categories", {
     category_id: Number(payload.category_id),
     name: String(payload.name || "").trim(),
-    ...(payload.slug ? { slug: String(payload.slug).trim() } : {}),
+    ...(payload.slug != null && String(payload.slug).trim()
+      ? { slug: String(payload.slug).trim() }
+      : {}),
   });
 }
 
@@ -54,9 +69,11 @@ export async function updateSubCategory(
   if (payload.name !== undefined) body.name = String(payload.name || "").trim();
   if (payload.slug !== undefined) body.slug = String(payload.slug || "").trim();
 
+  // ✅ backend: si category_id absent => inchangé
+  // ⚠️ ton backend ignore newCategoryId si null/0 => donc on n'envoie rien si invalide
   if (payload.category_id !== undefined) {
     const cid = Number(payload.category_id || 0);
-    body.category_id = cid > 0 ? cid : null;
+    if (cid > 0) body.category_id = cid;
   }
 
   return api.put<{ ok: true; id: number; category_id: number; name: string; slug: string }>(

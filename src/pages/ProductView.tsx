@@ -2,10 +2,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Product } from "../services/products";
-import { listProducts } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { API_BASE } from "../services/http";
 import ProductRating from "../components/ProductRating";
+import { useCart } from "../store/cart";
+import { trackAddToCart } from "../lib/analytics";
 
 function imgUrl(u?: string | null) {
   if (!u) return "";
@@ -31,7 +32,9 @@ function isActiveProduct(p: Product | null | undefined) {
 function subToken(p: Product | null | undefined) {
   if (!p) return "";
   const anyP = p as any;
-  const s = String(anyP.sub_category_slug ?? anyP.sub_category_name ?? "").trim().toLowerCase();
+  const s = String(anyP.sub_category_slug ?? anyP.sub_category_name ?? "")
+    .trim()
+    .toLowerCase();
   if (s) return s;
 
   const id = anyP.sub_category_id;
@@ -46,9 +49,88 @@ function sectionPathFor(p: Product | null | undefined) {
   return "/african-market";
 }
 
+/* ===== Variantes (même logique que ProductCard) ===== */
+type UiVariant = {
+  id: number;
+  key: string; // id:xx
+  label: string;
+  price: number | null;
+  stock: number | null;
+};
+
+function buildVariantLabel(v: any) {
+  const name = String(v?.name || v?.title || "").trim();
+  if (name) return name;
+
+  const attrs = v?.attrs && typeof v.attrs === "object" ? v.attrs : null;
+  const parts: string[] = [];
+
+  const size = String(v?.size ?? attrs?.size ?? "").trim();
+  const color = String(v?.color ?? attrs?.color ?? "").trim();
+
+  if (size) parts.push(`Taille: ${size}`);
+  if (color) parts.push(`Couleur: ${color}`);
+
+  if (attrs) {
+    for (const k of Object.keys(attrs)) {
+      if (k === "size" || k === "color") continue;
+      const val = String(attrs[k] ?? "").trim();
+      if (val) parts.push(`${k}: ${val}`);
+    }
+  }
+
+  if (parts.length) return parts.join(" • ");
+
+  const sku = String(v?.sku || "").trim();
+  if (sku) return sku;
+
+  return `Variante #${Number(v?.id || 0) || "?"}`;
+}
+
+function parseVariants(product: Product | null): UiVariant[] {
+  if (!product) return [];
+  const anyP = product as any;
+  const raw = Array.isArray(anyP.variants) ? anyP.variants : [];
+
+  const out: UiVariant[] = [];
+  for (const v of raw) {
+    const id = Number(v?.id || 0);
+    if (!id) continue;
+
+    const label = buildVariantLabel(v);
+
+    const priceRaw = v?.price ?? v?.price_client ?? v?.client_price ?? null;
+    const price = priceRaw == null || priceRaw === "" ? null : Number(priceRaw);
+
+    const stockRaw = v?.stock ?? v?.qty ?? null;
+    const stock = stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
+
+    out.push({
+      id,
+      key: `id:${id}`,
+      label,
+      price: Number.isFinite(price as any) ? (price as number) : null,
+      stock: Number.isFinite(stock as any) ? (stock as number) : null,
+    });
+  }
+
+  const seen = new Set<string>();
+  return out.filter((x) => {
+    if (seen.has(x.key)) return false;
+    seen.add(x.key);
+    return true;
+  });
+}
+
+function isVariantOutOfStock(v: UiVariant) {
+  return v.stock === 0;
+}
+
 export default function ProductView() {
   const { idOrSlug } = useParams<{ idOrSlug: string }>();
   const nav = useNavigate();
+
+  const { add, qtyForProductVariant, qtyForProduct } = useCart();
 
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<Product | null>(null);
@@ -59,10 +141,7 @@ export default function ProductView() {
 
   const title = useMemo(() => String(anyP?.name || "Produit"), [anyP?.name]);
 
-  const cover = useMemo(() => {
-    return anyP?.cover || anyP?.images?.[0]?.url || anyP?.image || null;
-  }, [anyP?.cover, anyP?.images, anyP?.image]);
-
+  const cover = useMemo(() => anyP?.cover || anyP?.images?.[0]?.url || anyP?.image || null, [anyP?.cover, anyP?.images, anyP?.image]);
   const coverUrl = useMemo(() => imgUrl(cover), [cover]);
 
   const productIsActive = useMemo(() => isActiveProduct(product), [product]);
@@ -76,6 +155,7 @@ export default function ProductView() {
     nav(sectionPath);
   }, [nav, sectionPath]);
 
+  // ===== load product by id or slug =====
   useEffect(() => {
     let stop = false;
 
@@ -97,9 +177,7 @@ export default function ProductView() {
           }
         }
 
-        const resSlug = await fetch(`${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`, {
-          credentials: "omit",
-        });
+        const resSlug = await fetch(`${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}`, { credentials: "omit" });
         if (resSlug.ok) {
           const p = (await resSlug.json()) as Product;
           if (!stop) setProduct(p || null);
@@ -119,6 +197,7 @@ export default function ProductView() {
     };
   }, [idOrSlug]);
 
+  // ===== related products (même groupe) =====
   useEffect(() => {
     let stop = false;
 
@@ -126,10 +205,13 @@ export default function ProductView() {
       if (!product) return;
 
       try {
-        const res = await listProducts({ page: 1, pageSize: 48 } as any);
-        const items: Product[] = Array.isArray((res as any)?.items) ? (res as any).items : [];
+        // ✅ plus besoin de listProducts → évite l’avertissement TS
+        const res = await fetch(`${API_BASE}/api/products?page=1&pageSize=60`, { credentials: "omit" });
+        const data = res.ok ? await res.json() : null;
 
+        const items: Product[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
         const pAny = product as any;
+
         const subId = Number(pAny?.sub_category_id || 0);
         const catId = Number(pAny?.category_id || 0);
         const subSlug = String(pAny?.sub_category_slug || "").trim().toLowerCase();
@@ -161,6 +243,92 @@ export default function ProductView() {
     };
   }, [product]);
 
+  // ===== pricing / stock =====
+  const basePrice = useMemo(() => Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0), [anyP?.price_client, anyP?.client_price, anyP?.price]);
+  const stock = useMemo(() => anyP?.stock, [anyP?.stock]);
+  const isOutOfStock = stock === 0;
+
+  // ===== variants state =====
+  const variants = useMemo(() => parseVariants(product), [product]);
+  const hasVariants = variants.length > 0;
+
+  const [selectedKey, setSelectedKey] = useState<string>("");
+
+  useEffect(() => {
+    if (!hasVariants) {
+      setSelectedKey("");
+      return;
+    }
+    setSelectedKey((prev) => {
+      if (prev && variants.some((v) => v.key === prev)) return prev;
+      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      return firstOk?.key || "";
+    });
+  }, [hasVariants, variants]);
+
+  const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
+
+  const displayPrice = useMemo(() => {
+    if (selectedVariant?.price != null) return Number(selectedVariant.price);
+    return basePrice;
+  }, [basePrice, selectedVariant]);
+
+  const badge = useMemo(() => (String(anyP?.sub_category_slug || "").toLowerCase() === "food" ? "Food" : "Market"), [anyP?.sub_category_slug]);
+
+  const qtySelected = useMemo(() => {
+    if (!product) return 0;
+    const pid = Number((product as any).id);
+    if (!hasVariants) return qtyForProduct(pid);
+    const key = selectedVariant?.key || "default";
+    return qtyForProductVariant(pid, key);
+  }, [product, hasVariants, qtyForProduct, qtyForProductVariant, selectedVariant]);
+
+  const canAddNow = !isOutOfStock && (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
+
+  const handleAdd = useCallback(() => {
+    if (!product) return;
+    if (!canAddNow) return;
+
+    const pAny = product as any;
+
+    add(product, 1, {
+      variant: hasVariants && selectedVariant
+        ? {
+            variant_id: selectedVariant.id,
+            variant_key: selectedVariant.key,
+            label: selectedVariant.label,
+            price: selectedVariant.price ?? displayPrice,
+          }
+        : { variant_id: null, variant_key: "default", label: null, price: displayPrice },
+    });
+
+    trackAddToCart({
+      productId: pAny.id,
+      name: pAny.name,
+      price: displayPrice,
+      quantity: 1,
+      currency: "MAD",
+      category: String(pAny?.sub_category_slug || pAny?.sub_category_name || ""),
+    });
+  }, [add, canAddNow, displayPrice, hasVariants, product, selectedVariant]);
+
+  const handleDecrease = useCallback(() => {
+    if (!product) return;
+    if (!qtySelected) return;
+
+    add(product, -1, {
+      variant: hasVariants && selectedVariant
+        ? {
+            variant_id: selectedVariant.id,
+            variant_key: selectedVariant.key,
+            label: selectedVariant.label,
+            price: selectedVariant.price ?? displayPrice,
+          }
+        : { variant_id: null, variant_key: "default", label: null, price: displayPrice },
+    });
+  }, [add, displayPrice, hasVariants, product, qtySelected, selectedVariant]);
+
+  // ===== UI states =====
   if (loading) {
     return (
       <div className="container-xxl py-4">
@@ -195,16 +363,11 @@ export default function ProductView() {
 
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
-          <span>
-            {product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}
-          </span>
+          <span>{product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}</span>
         </div>
       </div>
     );
   }
-
-  const displayPrice = Number(anyP?.price_client ?? anyP?.price ?? 0);
-  const badge = String(anyP?.sub_category_slug || "").toLowerCase() === "food" ? "Food" : "Market";
 
   return (
     <div className="container-xxl py-4">
@@ -229,18 +392,75 @@ export default function ProductView() {
         </div>
 
         <div className="col-12 col-md-6">
-          <div className="d-flex align-items-center gap-2 mb-2">
+          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
             <div className="h5 m-0">{moneyMAD(displayPrice)}</div>
-            <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
-              {badge}
-            </span>
+            <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{badge}</span>
+            {hasVariants && selectedVariant?.price != null && (
+              <span className="badge text-bg-light border">Variante</span>
+            )}
           </div>
 
           <div className="mb-3">
             <ProductRating productId={Number(anyP?.id)} />
           </div>
 
-          {anyP?.description ? <p className="text-muted">{String(anyP.description)}</p> : <p className="text-muted">Aucune description fournie.</p>}
+          {/* ✅ Variantes */}
+          {hasVariants && (
+            <div className="mb-3">
+              <div className="small text-muted mb-1">Choisir une variante</div>
+              <select className="form-select" value={selectedKey || ""} onChange={(e) => setSelectedKey(e.target.value)}>
+                {variants.map((v) => (
+                  <option key={v.key} value={v.key} disabled={isVariantOutOfStock(v)}>
+                    {v.label}
+                    {v.price != null ? ` — ${moneyMAD(v.price)}` : ""}
+                    {isVariantOutOfStock(v) ? " (rupture)" : ""}
+                  </option>
+                ))}
+              </select>
+
+              {selectedVariant && isVariantOutOfStock(selectedVariant) && (
+                <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
+              )}
+            </div>
+          )}
+
+          {/* ✅ Actions panier */}
+          <div className="d-flex gap-2 mb-3">
+            {qtySelected > 0 ? (
+              <div className="btn-group" role="group" aria-label="Quantité panier">
+                <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
+                  −
+                </button>
+                <button className="btn btn-light disabled" type="button">
+                  {qtySelected}
+                </button>
+                <button className="btn btn-duu" onClick={handleAdd} type="button" disabled={!canAddNow}>
+                  +
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-duu fw-semibold" onClick={handleAdd} disabled={!canAddNow} type="button">
+                + Ajouter au panier
+              </button>
+            )}
+
+            {isOutOfStock && <span className="badge text-bg-danger align-self-center">En rupture</span>}
+          </div>
+
+          {anyP?.description ? (
+            <p className="text-muted">{String(anyP.description)}</p>
+          ) : (
+            <p className="text-muted">Aucune description fournie.</p>
+          )}
+
+          <style>{`
+            .btn-duu{
+              background: var(--duu-yellow);
+              color: #1f1f1f;
+              border: none;
+            }
+            .btn-duu:hover{ filter: brightness(0.95); }
+          `}</style>
         </div>
       </div>
 
