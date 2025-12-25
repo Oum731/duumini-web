@@ -1,5 +1,5 @@
 // src/components/ProductCard.tsx
-import { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
@@ -16,10 +16,7 @@ function imgUrl(u?: string | null) {
 
 function moneyMAD(n?: number | null) {
   const v = Number(n || 0);
-  return `${v.toLocaleString("fr-FR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })} MAD`;
+  return `${v.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} MAD`;
 }
 
 function shortText(s?: string | null, max = 200) {
@@ -29,9 +26,7 @@ function shortText(s?: string | null, max = 200) {
 }
 
 function normToken(x: any) {
-  return String(x ?? "")
-    .trim()
-    .toLowerCase();
+  return String(x ?? "").trim().toLowerCase();
 }
 
 /**
@@ -56,17 +51,22 @@ function getSubCategoryToken(p: Product) {
 /* ===== Partage (FRONT, pas API) ===== */
 function getFrontBaseUrl() {
   const fromEnv =
-    (typeof import.meta !== "undefined" &&
-      (import.meta as any).env?.VITE_SHARE_BASE_URL) ||
-    "";
+    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_SHARE_BASE_URL) || "";
 
-  if (fromEnv && typeof fromEnv === "string")
-    return fromEnv.replace(/\/+$/, "");
+  const clean = (x: string) => String(x || "").trim().replace(/\/+$/, "");
 
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin.replace(/\/+$/, "");
+  // ✅ protection: si quelqu’un a mis l’API dans VITE_SHARE_BASE_URL, on ignore
+  if (fromEnv && typeof fromEnv === "string") {
+    const v = clean(fromEnv);
+    if (v && !v.includes("onrender.com") && !v.includes("duumini-api")) return v;
   }
 
+  // ✅ domaine courant (ton front Nindohost)
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return clean(window.location.origin);
+  }
+
+  // ✅ dernier fallback
   return "https://www.duumini.com";
 }
 
@@ -75,7 +75,7 @@ function buildSharePageUrl(p: Product) {
   return `${base}/share/product/${Number((p as any).id)}`;
 }
 
-/* ✅ NEW: liens de partage (Facebook/WhatsApp/etc.) */
+/* ✅ liens de partage (Facebook/WhatsApp/etc.) */
 function buildShareLinks(shareUrl: string, title: string) {
   const u = encodeURIComponent(shareUrl);
   const t = encodeURIComponent(title);
@@ -208,10 +208,7 @@ export default function ProductCard({
   const anyP = product as any;
 
   const subCatToken = useMemo(() => getSubCategoryToken(product), [product]);
-  const hideList = useMemo(
-    () => hideSubCategories.map((x) => normToken(x)).filter(Boolean),
-    [hideSubCategories]
-  );
+  const hideList = useMemo(() => hideSubCategories.map((x) => normToken(x)).filter(Boolean), [hideSubCategories]);
 
   if (subCatToken && hideList.includes(subCatToken)) return null;
 
@@ -219,8 +216,7 @@ export default function ProductCard({
   if (!isActive) return null;
 
   const baseStockRaw = anyP.stock;
-  const baseStock =
-    baseStockRaw == null || baseStockRaw === "" ? null : Number(baseStockRaw);
+  const baseStock = baseStockRaw == null || baseStockRaw === "" ? null : Number(baseStockRaw);
 
   const imagesRaw: string[] = useMemo(() => {
     const arr: string[] = [];
@@ -248,23 +244,14 @@ export default function ProductCard({
   const images = useMemo(() => imagesRaw.map((u) => imgUrl(u)), [imagesRaw]);
   const coverUrl = images[0] || "";
 
-  const baseDisplayPrice = useMemo(
-    () => getDisplayPrice(anyP, priceOverride),
-    [anyP, priceOverride]
-  );
+  const baseDisplayPrice = useMemo(() => getDisplayPrice(anyP, priceOverride), [anyP, priceOverride]);
 
   const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
   const shareTitle = useMemo(
-    () =>
-      `${String(anyP.name || "Produit")} — ${moneyMAD(
-        baseDisplayPrice
-      )} sur Duumini`,
+    () => `${String(anyP.name || "Produit")} — ${moneyMAD(baseDisplayPrice)} sur Duumini`,
     [anyP.name, baseDisplayPrice]
   );
-  const shareLinks = useMemo(
-    () => buildShareLinks(shareUrl, shareTitle),
-    [shareUrl, shareTitle]
-  );
+  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareTitle), [shareUrl, shareTitle]);
 
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
@@ -282,16 +269,12 @@ export default function ProductCard({
     }
     setSelectedKey((prev) => {
       if (prev && variants.some((v) => v.key === prev)) return prev;
-      const firstOk =
-        variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
       return firstOk?.key || "";
     });
   }, [hasVariants, variants]);
 
-  const selectedVariant = useMemo(
-    () => variants.find((v) => v.key === selectedKey) || null,
-    [variants, selectedKey]
-  );
+  const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
 
   const displayPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
@@ -299,8 +282,7 @@ export default function ProductCard({
   }, [baseDisplayPrice, selectedVariant]);
 
   const effectiveStock = useMemo(() => {
-    if (hasVariants && selectedVariant?.stock != null)
-      return selectedVariant.stock;
+    if (hasVariants && selectedVariant?.stock != null) return selectedVariant.stock;
     return baseStock;
   }, [baseStock, hasVariants, selectedVariant]);
 
@@ -310,10 +292,7 @@ export default function ProductCard({
     return `${stockLabel}:${effectiveStock}`;
   }, [effectiveStock, stockLabel]);
 
-  const qtyTotal = useMemo(
-    () => qtyForProduct(Number(anyP.id)),
-    [anyP.id, qtyForProduct]
-  );
+  const qtyTotal = useMemo(() => qtyForProduct(Number(anyP.id)), [anyP.id, qtyForProduct]);
 
   const qtySelected = useMemo(() => {
     if (!hasVariants) return qtyTotal;
@@ -321,13 +300,9 @@ export default function ProductCard({
     return qtyForProductVariant(Number(anyP.id), key);
   }, [anyP.id, hasVariants, qtyForProductVariant, qtyTotal, selectedVariant]);
 
-  // ✅ open modal en démarrant sur l'image cliquée
   const openModal = useCallback(
     (startIdx = 0) => {
-      const safe = Math.max(
-        0,
-        Math.min(startIdx, Math.max(0, images.length - 1))
-      );
+      const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
       setImgIdx(safe);
       setOpen(true);
     },
@@ -335,16 +310,8 @@ export default function ProductCard({
   );
 
   const closeModal = useCallback(() => setOpen(false), []);
-
-  const prevImg = useCallback(() => {
-    if (!images.length) return;
-    setImgIdx((i) => (i - 1 + images.length) % images.length);
-  }, [images.length]);
-
-  const nextImg = useCallback(() => {
-    if (!images.length) return;
-    setImgIdx((i) => (i + 1) % images.length);
-  }, [images.length]);
+  const prevImg = useCallback(() => { if (!images.length) return; setImgIdx((i) => (i - 1 + images.length) % images.length); }, [images.length]);
+  const nextImg = useCallback(() => { if (!images.length) return; setImgIdx((i) => (i + 1) % images.length); }, [images.length]);
 
   const currentImg = images[imgIdx] || coverUrl;
 
@@ -370,13 +337,9 @@ export default function ProductCard({
       const isDefault = !hasVariants || !variant;
 
       if (!hasVariants && baseStock === 0 && delta > 0) return;
-      if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0)
-        return;
+      if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0) return;
 
-      const finalPrice =
-        !isDefault && variant?.price != null
-          ? Number(variant.price)
-          : baseDisplayPrice;
+      const finalPrice = !isDefault && variant?.price != null ? Number(variant.price) : baseDisplayPrice;
 
       const productForCart: any = {
         ...anyP,
@@ -384,28 +347,15 @@ export default function ProductCard({
         _pricing: {
           basePrice: Number(anyP.price ?? 0),
           finalPrice,
-          isPromo:
-            priceOverride != null &&
-            oldPrice != null &&
-            Number(oldPrice) > Number(finalPrice),
+          isPromo: priceOverride != null && oldPrice != null && Number(oldPrice) > Number(finalPrice),
           badge: badgeText ?? null,
         },
       };
 
       add(productForCart, delta, {
         variant: isDefault
-          ? {
-              variant_id: null,
-              variant_key: "default",
-              label: null,
-              price: finalPrice,
-            }
-          : {
-              variant_id: variant!.id,
-              variant_key: variant!.key,
-              label: variant!.label,
-              price: variant!.price ?? finalPrice,
-            },
+          ? { variant_id: null, variant_key: "default", label: null, price: finalPrice }
+          : { variant_id: variant!.id, variant_key: variant!.key, label: variant!.label, price: variant!.price ?? finalPrice },
       });
 
       if (delta > 0) {
@@ -420,18 +370,7 @@ export default function ProductCard({
         });
       }
     },
-    [
-      add,
-      anyP,
-      badgeText,
-      baseDisplayPrice,
-      baseStock,
-      hasVariants,
-      oldPrice,
-      onAdd,
-      priceOverride,
-      subCatToken,
-    ]
+    [add, anyP, badgeText, baseDisplayPrice, baseStock, hasVariants, oldPrice, onAdd, priceOverride, subCatToken]
   );
 
   const handleAdd = useCallback(() => {
@@ -446,49 +385,65 @@ export default function ProductCard({
 
   /* =========================
    * Share (ALL platforms)
-   * - 1) Web Share API (try with image)
-   * - 2) Web Share API (no files)
-   * - 3) Open share menu (links) + copy
+   * Objectif:
+   *  - tenter "image + lien" (comme avant)
+   *  - si iOS / app ignore le lien => fallback "lien seul" (pour OG preview)
    * ========================= */
   const shareProduct = useCallback(async () => {
-    // 1) Mobile share with image (best for Instagram/WhatsApp share sheets)
-    try {
-      const navAny: any = navigator as any;
-      if (navAny?.share && currentImg) {
-        try {
-          const r = await fetch(currentImg, { mode: "cors" });
-          const blob = await r.blob();
-          const ext = blob.type.includes("png") ? "png" : "jpg";
-          const file = new File([blob], `duumini-${Number(anyP.id)}.${ext}`, {
-            type: blob.type || "image/jpeg",
-          });
+    const navAny: any = navigator as any;
 
-          if (navAny?.canShare?.({ files: [file] })) {
-            await navAny.share({
-              title: String(anyP.name || "Duumini"),
-              text: shareTitle,
-              url: shareUrl,
-              files: [file],
-            });
-            return;
-          }
-        } catch {
-          // ignore, fallback below
-        }
-
-        // 2) Web share without files
-        await navAny.share({
-          title: String(anyP.name || "Duumini"),
-          text: shareTitle,
-          url: shareUrl,
-        });
-        return;
-      }
-    } catch {
-      // ignore, fallback below
+    // pas support -> menu
+    if (!navAny?.share) {
+      setShareMenuOpen(true);
+      return;
     }
 
-    // 3) Desktop fallback menu
+    // ✅ 1) essayer image + lien (si possible)
+    if (currentImg) {
+      try {
+        const r = await fetch(currentImg, { mode: "cors" });
+        const blob = await r.blob();
+        const ext = blob.type.includes("png") ? "png" : "jpg";
+        const file = new File([blob], `duumini-${Number(anyP.id)}.${ext}`, { type: blob.type || "image/jpeg" });
+
+        if (navAny?.canShare?.({ files: [file] })) {
+          // ⚠️ certaines apps iOS enverront seulement l’image (sans lien)
+          await navAny.share({
+            title: String(anyP.name || "Duumini"),
+            text: shareTitle,
+            url: shareUrl,
+            files: [file],
+          });
+
+          // ✅ fallback automatique: on repropose lien seul (OG)
+          // (on le fait après un petit délai pour laisser l'action se terminer)
+          window.setTimeout(async () => {
+            try {
+              await navAny.share({
+                title: String(anyP.name || "Duumini"),
+                text: shareTitle,
+                url: shareUrl,
+              });
+            } catch {
+              // si l'utilisateur annule, on ignore
+            }
+          }, 450);
+
+          return;
+        }
+      } catch {
+        // ignore -> fallback lien seul
+      }
+    }
+
+    // ✅ 2) lien seul (le plus fiable pour previews OG)
+    try {
+      await navAny.share({ title: String(anyP.name || "Duumini"), text: shareTitle, url: shareUrl });
+      return;
+    } catch {
+      // ignore -> menu desktop
+    }
+
     setShareMenuOpen(true);
   }, [anyP.id, anyP.name, currentImg, shareTitle, shareUrl]);
 
@@ -516,7 +471,6 @@ export default function ProductCard({
     const scrollerRef = useRef<HTMLDivElement | null>(null);
     const [active, setActive] = useState(0);
 
-    // empêcher "click" quand l'utilisateur swipe
     const dragRef = useRef({ downX: 0, downY: 0, dragging: false });
     const onPointerDown = (e: React.PointerEvent) => {
       dragRef.current.downX = e.clientX;
@@ -538,8 +492,7 @@ export default function ProductCard({
       if (!el) return;
       const w = el.clientWidth || 1;
       const idx = Math.round(el.scrollLeft / w);
-      if (Number.isFinite(idx))
-        setActive(Math.max(0, Math.min(idx, images.length - 1)));
+      if (Number.isFinite(idx)) setActive(Math.max(0, Math.min(idx, images.length - 1)));
     }, [images.length]);
 
     const jumpTo = (idx: number) => {
@@ -549,21 +502,15 @@ export default function ProductCard({
       el.scrollTo({ left: idx * w, behavior: "smooth" });
     };
 
-    // index visuel pour thumbs sous carte
     useEffect(() => {
       if (!open) setImgIdx(active);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [active]);
 
     if (!coverUrl) {
-      return variant === "square" ? (
-        <div className="w-100 bg-light" style={{ aspectRatio: "1/1" }} />
-      ) : (
-        <div className="duu-fashion-img" />
-      );
+      return variant === "square" ? <div className="w-100 bg-light" style={{ aspectRatio: "1/1" }} /> : <div className="duu-fashion-img" />;
     }
 
-    // une seule image => simple
     if (!hasMany) {
       if (variant === "square") {
         return (
@@ -571,11 +518,7 @@ export default function ProductCard({
             src={coverUrl}
             alt={String(anyP.name || "")}
             className="w-100"
-            style={{
-              aspectRatio: "1/1",
-              objectFit: "cover",
-              cursor: "pointer",
-            }}
+            style={{ aspectRatio: "1/1", objectFit: "cover", cursor: "pointer" }}
             loading="lazy"
             onClick={() => openModal(0)}
           />
@@ -593,33 +536,15 @@ export default function ProductCard({
       );
     }
 
-    // plusieurs images => swipe
     return (
       <div className="duu-swipe-wrap position-relative">
-        <div
-          ref={scrollerRef}
-          className="duu-swipe"
-          onScroll={onScroll}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-        >
+        <div ref={scrollerRef} className="duu-swipe" onScroll={onScroll} onPointerDown={onPointerDown} onPointerMove={onPointerMove}>
           {images.map((u, i) => (
-            <button
-              key={u + i}
-              type="button"
-              className="duu-swipe-slide"
-              onClick={() => onClickSlide(i)}
-              aria-label={`Voir image ${i + 1}`}
-              title={`Image ${i + 1}`}
-            >
+            <button key={u + i} type="button" className="duu-swipe-slide" onClick={() => onClickSlide(i)} aria-label={`Voir image ${i + 1}`} title={`Image ${i + 1}`}>
               <img
                 src={u}
                 alt={String(anyP.name || "")}
-                className={
-                  variant === "square"
-                    ? "duu-swipe-img-square"
-                    : "duu-swipe-img-fashion"
-                }
+                className={variant === "square" ? "duu-swipe-img-square" : "duu-swipe-img-fashion"}
                 loading="lazy"
                 draggable={false}
               />
@@ -640,10 +565,7 @@ export default function ProductCard({
           ))}
         </div>
 
-        <span
-          className="badge position-absolute bottom-0 end-0 m-2 text-white"
-          style={{ background: "rgba(17,17,17,.75)" }}
-        >
+        <span className="badge position-absolute bottom-0 end-0 m-2 text-white" style={{ background: "rgba(17,17,17,.75)" }}>
           {active + 1}/{images.length}
         </span>
 
@@ -723,10 +645,7 @@ export default function ProductCard({
                 key={u + i}
                 type="button"
                 onClick={() => openModal(i)}
-                className={
-                  "duu-thumb-btn border rounded overflow-hidden " +
-                  (activeThumb ? "border-dark" : "border-0")
-                }
+                className={"duu-thumb-btn border rounded overflow-hidden " + (activeThumb ? "border-dark" : "border-0")}
                 aria-label={`Voir image ${i + 1}`}
                 title={`Image ${i + 1}`}
               >
@@ -736,13 +655,7 @@ export default function ProductCard({
           })}
 
           {images.length > max && (
-            <button
-              type="button"
-              className="btn btn-sm btn-light ms-auto"
-              onClick={() => openModal(0)}
-              style={{ fontWeight: 900 }}
-              title="Voir toutes les images"
-            >
+            <button type="button" className="btn btn-sm btn-light ms-auto" onClick={() => openModal(0)} style={{ fontWeight: 900 }} title="Voir toutes les images">
               +{images.length - max}
             </button>
           )}
@@ -778,15 +691,11 @@ export default function ProductCard({
       return sc || v.label;
     };
 
-    const qv = selected
-      ? qtyForProductVariant(Number(anyP.id), selected.key)
-      : 0;
+    const qv = selected ? qtyForProductVariant(Number(anyP.id), selected.key) : 0;
 
     const infoParts: string[] = [];
-    if (selected?.stock != null)
-      infoParts.push(`${stockLabel}:${selected.stock}`);
-    else if (effectiveStock != null)
-      infoParts.push(`${stockLabel}:${effectiveStock}`);
+    if (selected?.stock != null) infoParts.push(`${stockLabel}:${selected.stock}`);
+    else if (effectiveStock != null) infoParts.push(`${stockLabel}:${effectiveStock}`);
 
     const p = selected?.price != null ? selected.price : null;
     if (p != null) infoParts.push(`Prix:${moneyMAD(p)}`);
@@ -798,21 +707,13 @@ export default function ProductCard({
         <div className="d-flex align-items-center justify-content-between">
           <div className="small text-muted fw-semibold">Variante</div>
           {qv > 0 ? (
-            <div
-              className="small fw-bold"
-              style={{ color: "var(--duu-black)" }}
-            >
+            <div className="small fw-bold" style={{ color: "var(--duu-black)" }}>
               Dans le panier : {qv}
             </div>
           ) : null}
         </div>
 
-        <select
-          className="form-select form-select-sm mt-2"
-          value={selectedKey}
-          onChange={(e) => setSelectedKey(e.target.value)}
-          aria-label="Sélection de variante"
-        >
+        <select className="form-select form-select-sm mt-2" value={selectedKey} onChange={(e) => setSelectedKey(e.target.value)} aria-label="Sélection de variante">
           {variants.map((v) => (
             <option key={v.key} value={v.key} disabled={isVariantOutOfStock(v)}>
               {optionLabel(v)}
@@ -821,38 +722,21 @@ export default function ProductCard({
         </select>
 
         {infoLine ? (
-          <div
-            className="small mt-2"
-            style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}
-          >
+          <div className="small mt-2" style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}>
             {infoLine}
           </div>
         ) : null}
 
-        {selected && isVariantOutOfStock(selected) ? (
-          <div className="alert alert-warning mt-2 py-2 small mb-0">
-            Cette variante est en rupture.
-          </div>
-        ) : null}
+        {selected && isVariantOutOfStock(selected) ? <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div> : null}
 
         <div className="mt-2 d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-outline-dark btn-sm"
-            onClick={() => selected && addWithVariant(selected, -1)}
-            disabled={!selected || qv <= 0}
-          >
+          <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => selected && addWithVariant(selected, -1)} disabled={!selected || qv <= 0}>
             −
           </button>
           <button type="button" className="btn btn-light btn-sm" disabled>
             {qv || 0}
           </button>
-          <button
-            type="button"
-            className="btn btn-duu btn-sm"
-            onClick={() => selected && addWithVariant(selected, +1)}
-            disabled={!selected || isVariantOutOfStock(selected)}
-          >
+          <button type="button" className="btn btn-duu btn-sm" onClick={() => selected && addWithVariant(selected, +1)} disabled={!selected || isVariantOutOfStock(selected)}>
             +
           </button>
         </div>
@@ -863,11 +747,7 @@ export default function ProductCard({
             box-shadow: 0 0 0 .22rem rgba(255,213,79,.40) !important;
             border-color: rgba(229,57,53,.35) !important;
           }
-          .btn-duu{
-            background: var(--duu-yellow);
-            color: #1f1f1f;
-            border: none;
-          }
+          .btn-duu{ background: var(--duu-yellow); color: #1f1f1f; border: none; }
           .btn-duu:hover{ filter: brightness(0.95); }
         `}</style>
       </div>
@@ -880,27 +760,11 @@ export default function ProductCard({
       <div className="fw-semibold">Prix:{moneyMAD(displayPrice)}</div>
 
       {oldPrice != null && Number(oldPrice) > Number(displayPrice) && (
-        <div
-          style={{
-            textDecoration: "line-through",
-            color: "rgba(0,0,0,.45)",
-            fontWeight: 800,
-          }}
-        >
-          {moneyMAD(oldPrice)}
-        </div>
+        <div style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800 }}>{moneyMAD(oldPrice)}</div>
       )}
 
       {stockText ? (
-        <span
-          className={
-            "badge " +
-            (effectiveStock != null && effectiveStock <= 0
-              ? "bg-danger"
-              : "bg-light text-dark")
-          }
-          style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
-        >
+        <span className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")} style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}>
           {stockText}
         </span>
       ) : null}
@@ -909,12 +773,7 @@ export default function ProductCard({
 
   return (
     <>
-      <div
-        className={
-          "card border-0 shadow-sm " +
-          (layout === "fashion" ? "duu-fashion-card h-100" : "h-100")
-        }
-      >
+      <div className={"card border-0 shadow-sm " + (layout === "fashion" ? "duu-fashion-card h-100" : "h-100")}>
         <style>{`
           .btn-duu{ background: var(--duu-yellow); color:#1f1f1f; border:none; }
           .btn-duu:hover{ filter: brightness(0.95); }
@@ -980,41 +839,26 @@ export default function ProductCard({
                 <CardImageSwiper variant="fashion" minHeight={190} />
 
                 {effectiveStock != null && effectiveStock <= 0 && (
-                  <span className="badge bg-danger position-absolute top-0 start-0 m-2">
-                    En rupture
-                  </span>
+                  <span className="badge bg-danger position-absolute top-0 start-0 m-2">En rupture</span>
                 )}
 
-                {!!badgeText &&
-                  !(effectiveStock != null && effectiveStock <= 0) && (
-                    <span
-                      className="badge position-absolute top-0 end-0 m-2 text-white"
-                      style={{ background: "var(--duu-red)" }}
-                    >
-                      {badgeText}
-                    </span>
-                  )}
+                {!!badgeText && !(effectiveStock != null && effectiveStock <= 0) && (
+                  <span className="badge position-absolute top-0 end-0 m-2 text-white" style={{ background: "var(--duu-red)" }}>
+                    {badgeText}
+                  </span>
+                )}
               </div>
 
               <CardThumbStrip max={5} />
             </div>
 
             <div className="duu-fashion-side">
-              <button
-                className="btn btn-link p-0 text-start"
-                onClick={() => openModal(0)}
-                type="button"
-                style={{ textDecoration: "none" }}
-              >
+              <button className="btn btn-link p-0 text-start" onClick={() => openModal(0)} type="button" style={{ textDecoration: "none" }}>
                 <h3 className="duu-fashion-title">{String(anyP.name || "")}</h3>
               </button>
 
               {!!anyP.description && (
-                <button
-                  type="button"
-                  className="duu-mini-desc-btn"
-                  onClick={() => openModal(0)}
-                >
+                <button type="button" className="duu-mini-desc-btn" onClick={() => openModal(0)}>
                   {shortText(String(anyP.description), miniDescMax)}
                 </button>
               )}
@@ -1027,55 +871,31 @@ export default function ProductCard({
               <VariantSelector size="sm" />
 
               <div className="mt-auto d-flex gap-2 pt-3">
-                <button
-                  className="btn btn-outline-dark btn-sm flex-fill"
-                  onClick={() => openModal(0)}
-                  type="button"
-                >
+                <button className="btn btn-outline-dark btn-sm flex-fill" onClick={() => openModal(0)} type="button">
                   Voir
                 </button>
 
                 {qtySelected > 0 ? (
-                  <div
-                    className="btn-group btn-group-sm flex-fill"
-                    role="group"
-                  >
-                    <button
-                      className="btn btn-outline-dark"
-                      onClick={handleDecrease}
-                      type="button"
-                    >
+                  <div className="btn-group btn-group-sm flex-fill" role="group">
+                    <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
                       −
                     </button>
                     <button className="btn btn-light disabled" type="button">
                       {qtySelected}
                     </button>
-                    <button
-                      className="btn btn-duu"
-                      onClick={handleAdd}
-                      type="button"
-                      disabled={!canAddNow}
-                    >
+                    <button className="btn btn-duu" onClick={handleAdd} type="button" disabled={!canAddNow}>
                       +
                     </button>
                   </div>
                 ) : (
-                  <button
-                    className="btn btn-duu btn-sm flex-fill"
-                    onClick={handleAdd}
-                    disabled={!canAddNow}
-                    type="button"
-                  >
+                  <button className="btn btn-duu btn-sm flex-fill" onClick={handleAdd} disabled={!canAddNow} type="button">
                     + Panier
                   </button>
                 )}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
-                <div
-                  className="small text-muted mt-2"
-                  style={{ lineHeight: 1.1 }}
-                >
+                <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
                   Total dans le panier : <strong>{qtyTotal}</strong>
                 </div>
               )}
@@ -1087,32 +907,21 @@ export default function ProductCard({
               <CardImageSwiper variant="square" />
 
               {effectiveStock != null && effectiveStock <= 0 && (
-                <span className="badge bg-danger position-absolute top-0 start-0 m-2">
-                  En rupture
-                </span>
+                <span className="badge bg-danger position-absolute top-0 start-0 m-2">En rupture</span>
               )}
 
-              {!!badgeText &&
-                !(effectiveStock != null && effectiveStock <= 0) && (
-                  <span
-                    className="badge position-absolute top-0 end-0 m-2 text-white"
-                    style={{ background: "var(--duu-red)" }}
-                  >
-                    {badgeText}
-                  </span>
-                )}
+              {!!badgeText && !(effectiveStock != null && effectiveStock <= 0) && (
+                <span className="badge position-absolute top-0 end-0 m-2 text-white" style={{ background: "var(--duu-red)" }}>
+                  {badgeText}
+                </span>
+              )}
             </div>
 
             <CardThumbStrip max={5} />
 
             <div className="card-body d-flex flex-column">
               <h3 className="h6 mb-1">
-                <button
-                  className="btn btn-link p-0 text-start text-dark"
-                  onClick={() => openModal(0)}
-                  type="button"
-                  style={{ textDecoration: "none" }}
-                >
+                <button className="btn btn-link p-0 text-start text-dark" onClick={() => openModal(0)} type="button" style={{ textDecoration: "none" }}>
                   {String(anyP.name || "")}
                 </button>
               </h3>
@@ -1122,12 +931,7 @@ export default function ProductCard({
                   type="button"
                   onClick={() => openModal(0)}
                   className="btn btn-link p-0 text-start"
-                  style={{
-                    textDecoration: "none",
-                    color: "rgba(0,0,0,.62)",
-                    fontWeight: 600,
-                    fontSize: ".86rem",
-                  }}
+                  style={{ textDecoration: "none", color: "rgba(0,0,0,.62)", fontWeight: 600, fontSize: ".86rem" }}
                 >
                   {shortText(String(anyP.description), miniDescMax)}
                 </button>
@@ -1141,57 +945,32 @@ export default function ProductCard({
               <VariantSelector size="sm" />
 
               <div className="mt-auto d-flex gap-2 pt-3">
-                <button
-                  className="btn btn-outline-dark btn-sm flex-fill"
-                  onClick={() => openModal(0)}
-                  type="button"
-                >
+                <button className="btn btn-outline-dark btn-sm flex-fill" onClick={() => openModal(0)} type="button">
                   Voir
                 </button>
 
                 {qtySelected > 0 ? (
-                  <div
-                    className="btn-group btn-group-sm flex-fill"
-                    role="group"
-                  >
-                    <button
-                      className="btn btn-outline-dark"
-                      onClick={handleDecrease}
-                      type="button"
-                    >
+                  <div className="btn-group btn-group-sm flex-fill" role="group">
+                    <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
                       −
                     </button>
                     <button className="btn btn-light disabled" type="button">
                       {qtySelected}
                     </button>
-                    <button
-                      className="btn btn-duu"
-                      onClick={handleAdd}
-                      type="button"
-                      disabled={!canAddNow}
-                    >
+                    <button className="btn btn-duu" onClick={handleAdd} type="button" disabled={!canAddNow}>
                       +
                     </button>
                   </div>
                 ) : (
-                  <button
-                    className="btn btn-duu btn-sm flex-fill"
-                    onClick={handleAdd}
-                    disabled={!canAddNow}
-                    type="button"
-                  >
+                  <button className="btn btn-duu btn-sm flex-fill" onClick={handleAdd} disabled={!canAddNow} type="button">
                     + Panier
                   </button>
                 )}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
-                <div
-                  className="small text-muted mt-2"
-                  style={{ lineHeight: 1.1 }}
-                >
-                  Total dans le panier (toutes variantes) :{" "}
-                  <strong>{qtyTotal}</strong>
+                <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
+                  Total dans le panier (toutes variantes) : <strong>{qtyTotal}</strong>
                 </div>
               )}
             </div>
@@ -1201,23 +980,12 @@ export default function ProductCard({
 
       {/* ===== MODAL ===== */}
       {open && (
-        <div
-          className="modal d-block"
-          style={{ background: "rgba(0,0,0,.35)" }}
-          onClick={(e) => e.target === e.currentTarget && closeModal()}
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="modal d-block" style={{ background: "rgba(0,0,0,.35)" }} onClick={(e) => e.target === e.currentTarget && closeModal()} role="dialog" aria-modal="true">
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">{String(anyP.name || "")}</h5>
-                <button
-                  className="btn-close"
-                  onClick={closeModal}
-                  type="button"
-                  aria-label="Fermer"
-                />
+                <button className="btn-close" onClick={closeModal} type="button" aria-label="Fermer" />
               </div>
 
               <div className="modal-body">
@@ -1225,12 +993,7 @@ export default function ProductCard({
                   <div className="col-12 col-md-6">
                     <div className="position-relative rounded overflow-hidden bg-light">
                       {currentImg ? (
-                        <img
-                          src={currentImg}
-                          alt={String(anyP.name || "")}
-                          className="w-100"
-                          style={{ aspectRatio: "1/1", objectFit: "cover" }}
-                        />
+                        <img src={currentImg} alt={String(anyP.name || "")} className="w-100" style={{ aspectRatio: "1/1", objectFit: "cover" }} />
                       ) : (
                         <div className="w-100" style={{ aspectRatio: "1/1" }} />
                       )}
@@ -1256,10 +1019,7 @@ export default function ProductCard({
                             ▶
                           </button>
 
-                          <span
-                            className="badge position-absolute bottom-0 end-0 m-2 text-white"
-                            style={{ background: "rgba(17,17,17,.75)" }}
-                          >
+                          <span className="badge position-absolute bottom-0 end-0 m-2 text-white" style={{ background: "rgba(17,17,17,.75)" }}>
                             {imgIdx + 1}/{images.length}
                           </span>
                         </>
@@ -1275,27 +1035,10 @@ export default function ProductCard({
                               key={u + i}
                               type="button"
                               onClick={() => setImgIdx(i)}
-                              className={
-                                "p-0 border rounded overflow-hidden " +
-                                (activeThumb ? "border-dark" : "border-0")
-                              }
-                              style={{
-                                width: 54,
-                                height: 54,
-                                background: "#fff",
-                              }}
+                              className={"p-0 border rounded overflow-hidden " + (activeThumb ? "border-dark" : "border-0")}
+                              style={{ width: 54, height: 54, background: "#fff" }}
                             >
-                              <img
-                                src={u}
-                                alt=""
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                  opacity: activeThumb ? 1 : 0.9,
-                                }}
-                                loading="lazy"
-                              />
+                              <img src={u} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", opacity: activeThumb ? 1 : 0.9 }} loading="lazy" />
                             </button>
                           );
                         })}
@@ -1305,37 +1048,17 @@ export default function ProductCard({
 
                   <div className="col-12 col-md-6">
                     <div className="d-flex align-items-baseline gap-2">
-                      <div className="h5 m-0">
-                        Prix:{moneyMAD(displayPrice)}
-                      </div>
-                      {oldPrice != null &&
-                        Number(oldPrice) > Number(displayPrice) && (
-                          <div
-                            className="h6 m-0"
-                            style={{
-                              textDecoration: "line-through",
-                              color: "rgba(0,0,0,.45)",
-                            }}
-                          >
-                            {moneyMAD(oldPrice)}
-                          </div>
-                        )}
+                      <div className="h5 m-0">Prix:{moneyMAD(displayPrice)}</div>
+                      {oldPrice != null && Number(oldPrice) > Number(displayPrice) && (
+                        <div className="h6 m-0" style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)" }}>
+                          {moneyMAD(oldPrice)}
+                        </div>
+                      )}
                     </div>
 
                     {stockText ? (
                       <div className="mt-2">
-                        <span
-                          className={
-                            "badge " +
-                            (effectiveStock != null && effectiveStock <= 0
-                              ? "bg-danger"
-                              : "bg-light text-dark")
-                          }
-                          style={{
-                            border: "1px solid rgba(0,0,0,.10)",
-                            fontWeight: 900,
-                          }}
-                        >
+                        <span className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")} style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}>
                           {stockText}
                         </span>
                       </div>
@@ -1347,80 +1070,38 @@ export default function ProductCard({
 
                     <VariantSelector size="md" />
 
-                    <p className="text-muted mt-3 mb-3">
-                      {anyP.description
-                        ? shortText(anyP.description, 520)
-                        : "Aucune description."}
-                    </p>
+                    <p className="text-muted mt-3 mb-3">{anyP.description ? shortText(anyP.description, 520) : "Aucune description."}</p>
 
                     <div className="d-grid gap-2 position-relative">
-                      <button
-                        className="btn btn-duu fw-semibold"
-                        onClick={handleAdd}
-                        disabled={!canAddNow}
-                        type="button"
-                      >
+                      <button className="btn btn-duu fw-semibold" onClick={handleAdd} disabled={!canAddNow} type="button">
                         + Ajouter au panier
                       </button>
 
-                      <button
-                        className="btn btn-outline-secondary"
-                        onClick={shareProduct}
-                        type="button"
-                      >
+                      <button className="btn btn-outline-secondary" onClick={shareProduct} type="button">
                         Partager
                       </button>
 
-                      {/* Fallback menu (desktop) */}
                       {shareMenuOpen && (
                         <div className="duu-share-pop" role="menu">
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.facebook)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.facebook)} type="button">
                             Facebook / Meta
                           </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.whatsapp)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.whatsapp)} type="button">
                             WhatsApp
                           </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.telegram)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.telegram)} type="button">
                             Telegram
                           </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.x)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.x)} type="button">
                             X (Twitter)
                           </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.linkedin)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.linkedin)} type="button">
                             LinkedIn
                           </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.pinterest)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.pinterest)} type="button">
                             Pinterest
                           </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.email)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.email)} type="button">
                             Email
                           </button>
                           <div className="duu-share-sep" />
@@ -1435,32 +1116,20 @@ export default function ProductCard({
                             {copied ? "Lien copié ✅" : "Copier le lien"}
                           </button>
                           <div className="duu-share-sep" />
-                          <button
-                            className="duu-share-item"
-                            onClick={() => setShareMenuOpen(false)}
-                            type="button"
-                          >
+                          <button className="duu-share-item" onClick={() => setShareMenuOpen(false)} type="button">
                             Fermer
                           </button>
                         </div>
                       )}
                     </div>
 
-                    {effectiveStock != null && effectiveStock <= 0 && (
-                      <div className="alert alert-warning mt-3 py-2 small mb-0">
-                        Produit en rupture de stock.
-                      </div>
-                    )}
+                    {effectiveStock != null && effectiveStock <= 0 && <div className="alert alert-warning mt-3 py-2 small mb-0">Produit en rupture de stock.</div>}
                   </div>
                 </div>
               </div>
 
               <div className="modal-footer">
-                <button
-                  className="btn btn-outline-dark"
-                  onClick={closeModal}
-                  type="button"
-                >
+                <button className="btn btn-outline-dark" onClick={closeModal} type="button">
                   Fermer
                 </button>
               </div>
