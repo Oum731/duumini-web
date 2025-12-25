@@ -205,6 +205,35 @@ function filterActive<T extends any>(arr: T[]): T[] {
 }
 
 /* ======================================================================
+ * Normalizers (anti-bug: e.map is not a function)
+ * ===================================================================== */
+
+function asArray<T = any>(x: any): T[] {
+  if (Array.isArray(x)) return x;
+
+  // formats fréquents: { items: [...] } ou { data: [...] }
+  if (x && Array.isArray(x.items)) return x.items;
+  if (x && Array.isArray(x.data)) return x.data;
+  if (x && Array.isArray(x.rows)) return x.rows;
+  if (x && Array.isArray(x.results)) return x.results;
+
+  return [];
+}
+
+function asPaginated<T = any>(x: any): Paginated<T> {
+  if (x && Array.isArray(x.items) && x.pageInfo) return x as Paginated<T>;
+
+  const items = asArray<T>(x);
+  const pageInfo = {
+    page: Number(x?.pageInfo?.page ?? 1),
+    pageSize: Number(x?.pageInfo?.pageSize ?? items.length),
+    total: Number(x?.pageInfo?.total ?? items.length),
+  };
+
+  return { items, pageInfo };
+}
+
+/* ======================================================================
  * Products
  * ===================================================================== */
 
@@ -263,8 +292,10 @@ export async function listProducts(
   }
   if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
 
-  const res = await api.get<Paginated<Product>>(base, { query });
-  if (onlyActive && res?.items) return { ...res, items: filterActive(res.items) };
+  const raw = await api.get<any>(base, { query });
+  const res = asPaginated<Product>(raw);
+
+  if (onlyActive) return { ...res, items: filterActive(res.items) };
   return res;
 }
 
@@ -312,7 +343,9 @@ export async function listPromotions(
   }
   if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
 
-  const arr = await api.get<Product[]>("/api/products/promotions", { query });
+  const raw = await api.get<any>("/api/products/promotions", { query });
+  const arr = asArray<Product>(raw);
+
   return onlyActive ? filterActive(arr) : arr;
 }
 
@@ -337,7 +370,8 @@ export async function getProduct(id: number, opts?: { variants?: boolean }) {
  * ===================================================================== */
 
 export async function listProductVariants(productId: number) {
-  return api.get<ProductVariant[]>(`/api/products/${productId}/variants`);
+  const raw = await api.get<any>(`/api/products/${productId}/variants`);
+  return asArray<ProductVariant>(raw);
 }
 
 /**
@@ -516,7 +550,7 @@ export async function updateProduct(
   }
 
   if (draft.category_id != null) fd.append("category_id", String(draft.category_id));
-  if (draft.sub_category_id !=null) fd.append("sub_category_id", String(draft.sub_category_id));
+  if (draft.sub_category_id != null) fd.append("sub_category_id", String(draft.sub_category_id));
 
   const vert = normalizeVertical(draft.vertical);
   if (vert) fd.append("vertical", vert);
@@ -554,15 +588,20 @@ export async function listTopOrderedProducts(
     if (typeof limitOrOpts.onlyActive === "boolean") onlyActive = limitOrOpts.onlyActive;
   }
 
-  const arr = await api.get<Product[]>("/api/products/top-ordered", {
+  const raw = await api.get<any>("/api/products/top-ordered", {
     query: { limit, ...(onlyActive ? { onlyActive: 1 } : {}) },
   });
 
+  const arr = asArray<Product>(raw);
   return onlyActive ? filterActive(arr) : arr;
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
-export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number; onlyActive?: boolean }): Promise<Product[]>;
+export async function listTopRatedProducts(opts?: {
+  limit?: number;
+  minCount?: number;
+  onlyActive?: boolean;
+}): Promise<Product[]>;
 export async function listTopRatedProducts(
   opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}
 ) {
@@ -570,10 +609,11 @@ export async function listTopRatedProducts(
   const minCount = opts.minCount ?? 2;
   const onlyActive = opts.onlyActive ?? true;
 
-  const arr = await api.get<Product[]>("/api/products/top-rated", {
+  const raw = await api.get<any>("/api/products/top-rated", {
     query: { limit, minCount, ...(onlyActive ? { onlyActive: 1 } : {}) },
   });
 
+  const arr = asArray<Product>(raw);
   return onlyActive ? filterActive(arr) : arr;
 }
 
@@ -610,7 +650,8 @@ export async function getProductRatingSummary(productId: number) {
 }
 
 export async function listProductRatings(productId: number) {
-  return api.get<ProductRatingRow[]>(`/api/products/${productId}/ratings/list`);
+  const raw = await api.get<any>(`/api/products/${productId}/ratings/list`);
+  return asArray<ProductRatingRow>(raw);
 }
 
 export async function getPendingRatingProduct() {

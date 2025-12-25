@@ -57,10 +57,11 @@ function getSubCategoryToken(p: Product) {
 /* =========================
  * URL Share (OG) — PUBLIC (www.duumini.com)
  * -> on partage www.duumini.com/share/product/:id
- * -> et on tente d'envoyer image + lien via Web Share API (files)
  * =======================*/
 function cleanBase(x: string) {
-  return String(x || "").trim().replace(/\/+$/, "");
+  return String(x || "")
+    .trim()
+    .replace(/\/+$/, "");
 }
 
 /** ✅ Domaine PUBLIC du site (pas l'API). */
@@ -334,8 +335,7 @@ function parseVariants(product: Product): UiVariant[] {
     const price = po == null || po === "" ? null : Number(po);
 
     const stockRaw = v?.stock ?? v?.qty ?? null;
-    const stock =
-      stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
+    const stock = stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
 
     const { size, color } = extractSizeColor(v);
     const key = `id:${id}`;
@@ -477,8 +477,7 @@ export default function ProductCard({
     }
     setSelectedKey((prev) => {
       if (prev && variants.some((v) => v.key === prev)) return prev;
-      const firstOk =
-        variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
       return firstOk?.key || "";
     });
   }, [hasVariants, variants]);
@@ -499,8 +498,7 @@ export default function ProductCard({
   );
 
   const effectiveOldPrice = useMemo(() => {
-    if (oldPrice != null && Number(oldPrice) > Number(displayPrice))
-      return Number(oldPrice);
+    if (oldPrice != null && Number(oldPrice) > Number(displayPrice)) return Number(oldPrice);
     if (promoMeta.isPromo && rawPrice > displayPrice) return rawPrice;
     return null;
   }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice]);
@@ -522,10 +520,7 @@ export default function ProductCard({
     return `${stockLabel}:${effectiveStock}`;
   }, [effectiveStock, stockLabel]);
 
-  const qtyTotal = useMemo(
-    () => qtyForProduct(Number(anyP.id)),
-    [anyP.id, qtyForProduct]
-  );
+  const qtyTotal = useMemo(() => qtyForProduct(Number(anyP.id)), [anyP.id, qtyForProduct]);
 
   const qtySelected = useMemo(() => {
     if (!hasVariants) return qtyTotal;
@@ -535,10 +530,7 @@ export default function ProductCard({
 
   const openModal = useCallback(
     (startIdx = 0) => {
-      const safe = Math.max(
-        0,
-        Math.min(startIdx, Math.max(0, images.length - 1))
-      );
+      const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
       setImgIdx(safe);
       setOpen(true);
     },
@@ -643,7 +635,9 @@ export default function ProductCard({
   const shareTitle = useMemo(() => {
     const name = String(anyP.name || "Produit");
     if (effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice)) {
-      return `${name} — Promo ${moneyMAD(displayPrice)} (au lieu de ${moneyMAD(effectiveOldPrice)})`;
+      return `${name} — Promo ${moneyMAD(displayPrice)} (au lieu de ${moneyMAD(
+        effectiveOldPrice
+      )})`;
     }
     return `${name} — ${moneyMAD(displayPrice)}`;
   }, [anyP.name, displayPrice, effectiveOldPrice]);
@@ -654,10 +648,7 @@ export default function ProductCard({
     return `${shareTitle}\n${short}`;
   }, [anyP.description, shareTitle]);
 
-  const shareLinks = useMemo(
-    () => buildShareLinks(shareUrl, shareText),
-    [shareUrl, shareText]
-  );
+  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareText), [shareUrl, shareText]);
 
   const copyShareUrl = useCallback(async () => {
     try {
@@ -755,8 +746,7 @@ export default function ProductCard({
       if (!el) return;
       const w = el.clientWidth || 1;
       const idx = Math.round(el.scrollLeft / w);
-      if (Number.isFinite(idx))
-        setActive(Math.max(0, Math.min(idx, images.length - 1)));
+      if (Number.isFinite(idx)) setActive(Math.max(0, Math.min(idx, images.length - 1)));
     }, [images.length]);
 
     const jumpTo = (idx: number) => {
@@ -825,9 +815,7 @@ export default function ProductCard({
                 src={u}
                 alt={String(anyP.name || "")}
                 className={
-                  variant === "square"
-                    ? "duu-swipe-img-square"
-                    : "duu-swipe-img-fashion"
+                  variant === "square" ? "duu-swipe-img-square" : "duu-swipe-img-fashion"
                 }
                 loading="lazy"
                 draggable={false}
@@ -974,9 +962,7 @@ export default function ProductCard({
         ) : null}
 
         {selected && isVariantOutOfStock(selected) ? (
-          <div className="alert alert-warning mt-2 py-2 small mb-0">
-            Cette variante est en rupture.
-          </div>
+          <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
         ) : null}
 
         <div className="mt-2 d-flex gap-2">
@@ -1026,7 +1012,10 @@ export default function ProductCard({
 
       {stockText ? (
         <span
-          className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")}
+          className={
+            "badge " +
+            (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")
+          }
           style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
         >
           {stockText}
@@ -1114,7 +1103,12 @@ export default function ProductCard({
             </div>
 
             <div className="duu-fashion-side">
-              <button className="btn btn-link p-0 text-start" onClick={() => openModal(0)} type="button" style={{ textDecoration: "none" }}>
+              <button
+                className="btn btn-link p-0 text-start"
+                onClick={() => openModal(0)}
+                type="button"
+                style={{ textDecoration: "none" }}
+              >
                 <h3 className="duu-fashion-title">{String(anyP.name || "")}</h3>
               </button>
 
@@ -1154,55 +1148,8 @@ export default function ProductCard({
                   </button>
                 )}
 
-                <button
-                  className="btn btn-outline-secondary btn-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    shareProduct();
-                  }}
-                  type="button"
-                  title="Partager"
-                >
-                  ↗
-                </button>
-
-                {shareMenuOpen && (
-                  <div className="duu-share-pop" role="menu" onClick={(e) => e.stopPropagation()}>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.whatsapp)} type="button">
-                      WhatsApp
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.facebook)} type="button">
-                      Facebook / Meta
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.telegram)} type="button">
-                      Telegram
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.x)} type="button">
-                      X (Twitter)
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.linkedin)} type="button">
-                      LinkedIn
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.email)} type="button">
-                      Email
-                    </button>
-                    <div className="duu-share-sep" />
-                    <button
-                      className="duu-share-item"
-                      onClick={async () => {
-                        await copyShareUrl();
-                        setShareMenuOpen(false);
-                      }}
-                      type="button"
-                    >
-                      {copied ? "Lien copié ✅" : "Copier le lien"}
-                    </button>
-                    <div className="duu-share-sep" />
-                    <button className="duu-share-item" onClick={() => setShareMenuOpen(false)} type="button">
-                      Fermer
-                    </button>
-                  </div>
-                )}
+                {/* ✅ Supprimé: bouton "↗" (flèche partager) */}
+                {/* Le partage reste dispo uniquement dans le MODAL via le bouton "Partager". */}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
@@ -1230,7 +1177,12 @@ export default function ProductCard({
 
             <div className="card-body d-flex flex-column">
               <h3 className="h6 mb-1">
-                <button className="btn btn-link p-0 text-start text-dark" onClick={() => openModal(0)} type="button" style={{ textDecoration: "none" }}>
+                <button
+                  className="btn btn-link p-0 text-start text-dark"
+                  onClick={() => openModal(0)}
+                  type="button"
+                  style={{ textDecoration: "none" }}
+                >
                   {String(anyP.name || "")}
                 </button>
               </h3>
@@ -1240,7 +1192,12 @@ export default function ProductCard({
                   type="button"
                   onClick={() => openModal(0)}
                   className="btn btn-link p-0 text-start"
-                  style={{ textDecoration: "none", color: "rgba(0,0,0,.62)", fontWeight: 600, fontSize: ".86rem" }}
+                  style={{
+                    textDecoration: "none",
+                    color: "rgba(0,0,0,.62)",
+                    fontWeight: 600,
+                    fontSize: ".86rem",
+                  }}
                 >
                   {shortText(String(anyP.description), miniDescMax)}
                 </button>
@@ -1276,55 +1233,8 @@ export default function ProductCard({
                   </button>
                 )}
 
-                <button
-                  className="btn btn-outline-secondary btn-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    shareProduct();
-                  }}
-                  type="button"
-                  title="Partager"
-                >
-                  ↗
-                </button>
-
-                {shareMenuOpen && (
-                  <div className="duu-share-pop" role="menu" onClick={(e) => e.stopPropagation()}>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.whatsapp)} type="button">
-                      WhatsApp
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.facebook)} type="button">
-                      Facebook / Meta
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.telegram)} type="button">
-                      Telegram
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.x)} type="button">
-                      X (Twitter)
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.linkedin)} type="button">
-                      LinkedIn
-                    </button>
-                    <button className="duu-share-item" onClick={() => openShareLink(shareLinks.email)} type="button">
-                      Email
-                    </button>
-                    <div className="duu-share-sep" />
-                    <button
-                      className="duu-share-item"
-                      onClick={async () => {
-                        await copyShareUrl();
-                        setShareMenuOpen(false);
-                      }}
-                      type="button"
-                    >
-                      {copied ? "Lien copié ✅" : "Copier le lien"}
-                    </button>
-                    <div className="duu-share-sep" />
-                    <button className="duu-share-item" onClick={() => setShareMenuOpen(false)} type="button">
-                      Fermer
-                    </button>
-                  </div>
-                )}
+                {/* ✅ Supprimé: bouton "↗" (flèche partager) */}
+                {/* Le partage reste dispo uniquement dans le MODAL via le bouton "Partager". */}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
@@ -1338,7 +1248,7 @@ export default function ProductCard({
       </div>
 
       {/* =========================
-       * MODAL (SANS bloc Site/API/Copier lien)
+       * MODAL (Partage via lien /share/product/:id)
        * =======================*/}
       {open && (
         <div
@@ -1443,6 +1353,7 @@ export default function ProductCard({
                         + Ajouter au panier
                       </button>
 
+                      {/* ✅ Partage: lien = https://www.duumini.com/share/product/:id */}
                       <button
                         className="btn btn-outline-secondary"
                         onClick={(e) => {
