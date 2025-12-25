@@ -8,6 +8,7 @@ import ProductRating from "../components/ProductRating";
 import { useCart } from "../store/cart";
 import { trackAddToCart } from "../lib/analytics";
 
+/* ===== Helpers ===== */
 function imgUrl(u?: string | null) {
   if (!u) return "";
   if (u.startsWith("http://") || u.startsWith("https://")) return u;
@@ -32,6 +33,7 @@ function isActiveProduct(p: Product | null | undefined) {
 function subToken(p: Product | null | undefined) {
   if (!p) return "";
   const anyP = p as any;
+
   const s = String(anyP.sub_category_slug ?? anyP.sub_category_name ?? "")
     .trim()
     .toLowerCase();
@@ -197,7 +199,6 @@ export default function ProductView() {
   // ===== CONTEXTE d’origine (la catégorie du lien par lequel l’utilisateur est arrivé) =====
   const origin = useMemo(() => {
     const st: any = (location.state as any) || {};
-    // accepte plusieurs formes (pratique si tu changes côté list)
     const from = st.from || st.origin || st.ctx || st || {};
 
     const originCategoryId = Number(from.categoryId ?? from.category_id ?? 0) || 0;
@@ -206,8 +207,8 @@ export default function ProductView() {
     const originCategorySlug = String(from.categorySlug ?? from.category_slug ?? "").trim();
     const originSubCategorySlug = String(from.subCategorySlug ?? from.sub_category_slug ?? "").trim();
 
-    const originSectionPath = String(from.sectionPath ?? from.section_path ?? "").trim(); // /african-food, /african-market, /fashion
-    const originListPath = String(from.listPath ?? from.list_path ?? from.fromPath ?? "").trim(); // ex: /african-food/riz/...
+    const originSectionPath = String(from.sectionPath ?? from.section_path ?? "").trim();
+    const originListPath = String(from.listPath ?? from.list_path ?? from.fromPath ?? "").trim();
     const originLabel = String(from.label ?? "").trim();
 
     return {
@@ -222,20 +223,17 @@ export default function ProductView() {
   }, [location.state]);
 
   const backPath = useMemo(() => {
-    // priorité : revenir à la liste d’origine si fournie
     if (origin?.listPath) return origin.listPath;
     if (origin?.sectionPath) return origin.sectionPath;
     return sectionPath;
   }, [origin?.listPath, origin?.sectionPath, sectionPath]);
 
   const handleBack = useCallback(() => {
-    // si on a une "liste d'origine", on y revient (plus logique que nav(-1))
     if (origin?.listPath || origin?.sectionPath) {
       nav(backPath);
       return;
     }
 
-    // fallback historique
     if (window.history && window.history.length > 1 && document.referrer) {
       nav(-1);
       return;
@@ -257,8 +255,9 @@ export default function ProductView() {
 
         const asId = Number(idOrSlug);
         if (Number.isFinite(asId) && asId > 0) {
-          // ✅ on peut demander variants=1 pour avoir variantes si dispo
-          const res = await fetch(`${API_BASE}/api/products/${asId}?variants=1`, { credentials: "omit" });
+          const res = await fetch(`${API_BASE}/api/products/${asId}?variants=1`, {
+            credentials: "omit",
+          });
           if (res.ok) {
             const p = (await res.json()) as Product;
             if (!stop) setProduct(p || null);
@@ -266,9 +265,10 @@ export default function ProductView() {
           }
         }
 
-        const resSlug = await fetch(`${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}?variants=1`, {
-          credentials: "omit",
-        });
+        const resSlug = await fetch(
+          `${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}?variants=1`,
+          { credentials: "omit" }
+        );
         if (resSlug.ok) {
           const p = (await resSlug.json()) as Product;
           if (!stop) setProduct(p || null);
@@ -299,8 +299,6 @@ export default function ProductView() {
         const pAny = product as any;
         const currentId = Number(pAny?.id || 0);
 
-        // 1) Déterminer le "groupe" à afficher :
-        // priorité ORIGIN (lien), sinon fallback sur le produit.
         const originSubId = origin?.subCategoryId ? Number(origin.subCategoryId) : 0;
         const originCatId = origin?.categoryId ? Number(origin.categoryId) : 0;
 
@@ -312,7 +310,6 @@ export default function ProductView() {
 
         const vertical = String(pAny?.vertical || "").trim().toUpperCase() || null;
 
-        // 2) Appeler l’API avec filtres (plus efficace que tout charger)
         const qs = new URLSearchParams();
         qs.set("page", "1");
         qs.set("pageSize", "48");
@@ -321,7 +318,6 @@ export default function ProductView() {
         else if (catId) qs.set("categoryId", String(catId));
 
         if (vertical) qs.set("vertical", vertical);
-        // ✅ si FASHION : on inclut variantes
         if (vertical === "FASHION") qs.set("includeVariants", "1");
 
         const url = `${API_BASE}/api/products?${qs.toString()}`;
@@ -344,7 +340,11 @@ export default function ProductView() {
 
           const label =
             origin?.label ||
-            (subId ? "Plus de produits de la même sous-catégorie" : catId ? "Plus de produits de la même catégorie" : "Vous aimerez aussi");
+            (subId
+              ? "Plus de produits de la même sous-catégorie"
+              : catId
+              ? "Plus de produits de la même catégorie"
+              : "Vous aimerez aussi");
 
           setRelatedTitle(label);
         }
@@ -412,8 +412,7 @@ export default function ProductView() {
   }, [product, hasVariants, qtyForProduct, qtyForProductVariant, selectedVariant]);
 
   const canAddNow =
-    !isOutOfStock &&
-    (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
+    !isOutOfStock && (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
   const handleAdd = useCallback(() => {
     if (!product) return;
@@ -496,9 +495,7 @@ export default function ProductView() {
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
           <span>
-            {product && !productIsActive
-              ? "Ce produit n'est plus disponible."
-              : error || "Produit introuvable"}
+            {product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}
           </span>
         </div>
       </div>
@@ -532,12 +529,8 @@ export default function ProductView() {
         <div className="col-12 col-md-6">
           <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
             <div className="h5 m-0">{moneyMAD(displayPrice)}</div>
-            <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
-              {badge}
-            </span>
-            {hasVariants && (
-              <span className="badge text-bg-light border">Variantes</span>
-            )}
+            <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{badge}</span>
+            {hasVariants && <span className="badge text-bg-light border">Variantes</span>}
           </div>
 
           <div className="mb-3">
@@ -549,11 +542,7 @@ export default function ProductView() {
             <div className="mb-3">
               <div className="small text-muted mb-1">Choisir une variante</div>
 
-              <select
-                className="form-select"
-                value={selectedKey || ""}
-                onChange={(e) => setSelectedKey(e.target.value)}
-              >
+              <select className="form-select" value={selectedKey || ""} onChange={(e) => setSelectedKey(e.target.value)}>
                 {variants.map((v) => (
                   <option key={v.key} value={v.key} disabled={isVariantOutOfStock(v)}>
                     {v.label}
@@ -578,9 +567,7 @@ export default function ProductView() {
               )}
 
               {selectedVariant && isVariantOutOfStock(selectedVariant) && (
-                <div className="alert alert-warning mt-2 py-2 small mb-0">
-                  Cette variante est en rupture.
-                </div>
+                <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
               )}
             </div>
           )}

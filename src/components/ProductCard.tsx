@@ -61,12 +61,10 @@ function getFrontBaseUrl() {
     if (v && !v.includes("onrender.com") && !v.includes("duumini-api")) return v;
   }
 
-  // ✅ domaine courant (ton front Nindohost)
   if (typeof window !== "undefined" && window.location?.origin) {
     return clean(window.location.origin);
   }
 
-  // ✅ dernier fallback
   return "https://www.duumini.com";
 }
 
@@ -75,7 +73,6 @@ function buildSharePageUrl(p: Product) {
   return `${base}/share/product/${Number((p as any).id)}`;
 }
 
-/* ✅ liens de partage (Facebook/WhatsApp/etc.) */
 function buildShareLinks(shareUrl: string, title: string) {
   const u = encodeURIComponent(shareUrl);
   const t = encodeURIComponent(title);
@@ -90,12 +87,142 @@ function buildShareLinks(shareUrl: string, title: string) {
   };
 }
 
-/* ✅ helper: prix affiché (promo / override / compat backend) */
+/* ✅ helper: prix base */
 function getDisplayPrice(anyP: any, priceOverride: number | null) {
   if (priceOverride != null) return Number(priceOverride || 0);
   const pc = anyP.price_client ?? anyP.client_price ?? null;
   if (pc != null && pc !== "") return Number(pc || 0);
   return Number(anyP.price ?? 0);
+}
+
+/* =========================
+ * ✅ PROMO (AUTO)
+ * Objectif:
+ *  - si produit a des champs promo => ProductCard affiche automatiquement:
+ *    prix promo, ancien prix, badge promo + partage avec promo.
+ *  - s’applique aussi aux variantes (même réduction en %/montant OU ratio si promoPrice fourni)
+ * ========================= */
+
+type PromoRule =
+  | { kind: "PERCENT"; value: number }
+  | { kind: "AMOUNT"; value: number }
+  | { kind: "RATIO"; factor: number }
+  | null;
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function computePromoPriceFromRule(price: number, rule: PromoRule) {
+  const p = Number(price || 0);
+  if (!p || !rule) return p;
+
+  if (rule.kind === "PERCENT") {
+    const pct = clamp(Number(rule.value || 0), 0, 100);
+    return Math.max(0, Number((p - (p * pct) / 100).toFixed(2)));
+  }
+
+  if (rule.kind === "AMOUNT") {
+    const amt = Math.max(0, Number(rule.value || 0));
+    return Math.max(0, Number((p - amt).toFixed(2)));
+  }
+
+  // RATIO
+  const f = clamp(Number(rule.factor || 1), 0, 1);
+  return Math.max(0, Number((p * f).toFixed(2)));
+}
+
+function formatPromoBadge(rule: PromoRule, base: number, promo: number) {
+  if (!rule) return "PROMO";
+  if (rule.kind === "PERCENT") return `PROMO -${Math.round(rule.value)}%`;
+  if (rule.kind === "AMOUNT") return `PROMO -${moneyMAD(rule.value)}`;
+  // ratio: essaie d’afficher comme % si possible
+  if (base > 0 && promo >= 0 && promo < base) {
+    const pct = Math.round(((base - promo) / base) * 100);
+    if (pct > 0) return `PROMO -${pct}%`;
+  }
+  return "PROMO";
+}
+
+/**
+ * ✅ Détecte promo via plusieurs champs possibles (robuste)
+ * Retourne:
+ *  - rule (percent/amount/ratio)
+ *  - oldPrice (prix normal)
+ *  - badgeText
+ *  - isPromo
+ */
+function getPromoMeta(anyP: any, basePrice: number) {
+  const base = Number(basePrice || 0);
+  if (!base) return { isPromo: false, rule: null as PromoRule, oldPrice: null as number | null, badgeText: null as string | null };
+
+  // flags
+  const flag =
+    anyP.is_promo === true ||
+    anyP.promo === true ||
+    anyP.on_promo === true ||
+    Number(anyP.promo_eligible ?? 0) === 1;
+
+  // 1) promo price direct (si présent)
+  const promoPriceDirect =
+    Number(anyP.promo_price_client ?? anyP.promo_price ?? anyP.price_promo ?? anyP.sale_price ?? 0) || 0;
+
+  if (promoPriceDirect > 0 && promoPriceDirect < base) {
+    const factor = clamp(promoPriceDirect / base, 0, 1);
+    const rule: PromoRule = { kind: "RATIO", factor };
+    return {
+      isPromo: true,
+      rule,
+      oldPrice: base,
+      badgeText: formatPromoBadge(rule, base, promoPriceDirect),
+    };
+  }
+
+  // 2) discount type/value (style CAN)
+  const typeRaw = String(anyP.promo_discount_type ?? anyP.discount_type ?? anyP.promo_type ?? "").trim().toUpperCase();
+  const valueRaw = Number(anyP.promo_discount_value ?? anyP.discount_value ?? anyP.promo_value ?? 0) || 0;
+
+  if (valueRaw > 0 && (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")) {
+    const rule: PromoRule = { kind: "PERCENT", value: clamp(valueRaw, 0, 100) };
+    const promo = computePromoPriceFromRule(base, rule);
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
+  }
+
+  if (valueRaw > 0 && (typeRaw === "AMOUNT" || typeRaw === "MAD" || typeRaw === "PRICE" || typeRaw === "VALUE")) {
+    const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, valueRaw) };
+    const promo = computePromoPriceFromRule(base, rule);
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
+  }
+
+  // 3) autres champs (promo_percent / promo_amount, etc.)
+  const promoPercent = Number(anyP.promo_percent ?? anyP.discount_percent ?? anyP.percent_off ?? 0) || 0;
+  if (promoPercent > 0) {
+    const rule: PromoRule = { kind: "PERCENT", value: clamp(promoPercent, 0, 100) };
+    const promo = computePromoPriceFromRule(base, rule);
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
+  }
+
+  const promoAmount = Number(anyP.promo_amount ?? anyP.discount_amount ?? anyP.amount_off ?? 0) || 0;
+  if (promoAmount > 0) {
+    const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, promoAmount) };
+    const promo = computePromoPriceFromRule(base, rule);
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
+  }
+
+  // 4) fallback: si flag true mais sans valeur exploitable => pas de promo affichable
+  if (flag) {
+    return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
+  }
+
+  return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 }
 
 /* ===== Variantes (générique) ===== */
@@ -181,6 +308,7 @@ type Props = {
   product: Product;
   onAdd?: (p: Product) => void;
 
+  // tu peux encore override manuellement, mais maintenant la promo est auto
   priceOverride?: number | null;
   oldPrice?: number | null;
   badgeText?: string | null;
@@ -244,14 +372,12 @@ export default function ProductCard({
   const images = useMemo(() => imagesRaw.map((u) => imgUrl(u)), [imagesRaw]);
   const coverUrl = images[0] || "";
 
+  // ===== base price (avant promo)
   const baseDisplayPrice = useMemo(() => getDisplayPrice(anyP, priceOverride), [anyP, priceOverride]);
 
-  const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
-  const shareTitle = useMemo(
-    () => `${String(anyP.name || "Produit")} — ${moneyMAD(baseDisplayPrice)} sur Duumini`,
-    [anyP.name, baseDisplayPrice]
-  );
-  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareTitle), [shareUrl, shareTitle]);
+  // ===== promo auto
+  const promoMeta = useMemo(() => getPromoMeta(anyP, baseDisplayPrice), [anyP, baseDisplayPrice]);
+  const effectiveRule = promoMeta.isPromo ? promoMeta.rule : null;
 
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
@@ -276,10 +402,27 @@ export default function ProductCard({
 
   const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
 
-  const displayPrice = useMemo(() => {
+  // prix avant promo (variante si override, sinon base)
+  const rawPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
     return baseDisplayPrice;
   }, [baseDisplayPrice, selectedVariant]);
+
+  // prix final (promo appliquée)
+  const displayPrice = useMemo(() => computePromoPriceFromRule(rawPrice, effectiveRule), [rawPrice, effectiveRule]);
+
+  // ancien prix final (si promo => rawPrice)
+  const effectiveOldPrice = useMemo(() => {
+    if (oldPrice != null && Number(oldPrice) > Number(displayPrice)) return Number(oldPrice);
+    if (promoMeta.isPromo && rawPrice > displayPrice) return rawPrice;
+    return null;
+  }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice]);
+
+  const effectiveBadgeText = useMemo(() => {
+    if (badgeText) return badgeText;
+    if (promoMeta.isPromo) return promoMeta.badgeText || "PROMO";
+    return null;
+  }, [badgeText, promoMeta.badgeText, promoMeta.isPromo]);
 
   const effectiveStock = useMemo(() => {
     if (hasVariants && selectedVariant?.stock != null) return selectedVariant.stock;
@@ -339,23 +482,27 @@ export default function ProductCard({
       if (!hasVariants && baseStock === 0 && delta > 0) return;
       if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0) return;
 
-      const finalPrice = !isDefault && variant?.price != null ? Number(variant.price) : baseDisplayPrice;
+      // prix avant promo
+      const raw = !isDefault && variant?.price != null ? Number(variant.price) : baseDisplayPrice;
+      // prix final (promo)
+      const finalPrice = computePromoPriceFromRule(raw, effectiveRule);
 
       const productForCart: any = {
         ...anyP,
         price: finalPrice,
         _pricing: {
-          basePrice: Number(anyP.price ?? 0),
+          rawPrice: raw,
           finalPrice,
-          isPromo: priceOverride != null && oldPrice != null && Number(oldPrice) > Number(finalPrice),
-          badge: badgeText ?? null,
+          isPromo: finalPrice < raw,
+          badge: effectiveBadgeText ?? null,
+          oldPrice: finalPrice < raw ? raw : null,
         },
       };
 
       add(productForCart, delta, {
         variant: isDefault
           ? { variant_id: null, variant_key: "default", label: null, price: finalPrice }
-          : { variant_id: variant!.id, variant_key: variant!.key, label: variant!.label, price: variant!.price ?? finalPrice },
+          : { variant_id: variant!.id, variant_key: variant!.key, label: variant!.label, price: variant!.price ?? raw },
       });
 
       if (delta > 0) {
@@ -370,7 +517,7 @@ export default function ProductCard({
         });
       }
     },
-    [add, anyP, badgeText, baseDisplayPrice, baseStock, hasVariants, oldPrice, onAdd, priceOverride, subCatToken]
+    [add, anyP, baseDisplayPrice, baseStock, effectiveBadgeText, effectiveRule, hasVariants, onAdd, subCatToken]
   );
 
   const handleAdd = useCallback(() => {
@@ -383,22 +530,30 @@ export default function ProductCard({
     addWithVariant(hasVariants ? selectedVariant : null, -1);
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
+  // ===== partage (avec infos promo)
+  const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
+
+  const shareTitle = useMemo(() => {
+    const name = String(anyP.name || "Produit");
+    if (effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice)) {
+      return `${name} — Promo ${moneyMAD(displayPrice)} au lieu de ${moneyMAD(effectiveOldPrice)} sur Duumini`;
+    }
+    return `${name} — ${moneyMAD(displayPrice)} sur Duumini`;
+  }, [anyP.name, displayPrice, effectiveOldPrice]);
+
+  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareTitle), [shareUrl, shareTitle]);
+
   /* =========================
    * Share (ALL platforms)
-   * Objectif:
-   *  - tenter "image + lien" (comme avant)
-   *  - si iOS / app ignore le lien => fallback "lien seul" (pour OG preview)
    * ========================= */
   const shareProduct = useCallback(async () => {
     const navAny: any = navigator as any;
 
-    // pas support -> menu
     if (!navAny?.share) {
       setShareMenuOpen(true);
       return;
     }
 
-    // ✅ 1) essayer image + lien (si possible)
     if (currentImg) {
       try {
         const r = await fetch(currentImg, { mode: "cors" });
@@ -407,7 +562,6 @@ export default function ProductCard({
         const file = new File([blob], `duumini-${Number(anyP.id)}.${ext}`, { type: blob.type || "image/jpeg" });
 
         if (navAny?.canShare?.({ files: [file] })) {
-          // ⚠️ certaines apps iOS enverront seulement l’image (sans lien)
           await navAny.share({
             title: String(anyP.name || "Duumini"),
             text: shareTitle,
@@ -415,8 +569,6 @@ export default function ProductCard({
             files: [file],
           });
 
-          // ✅ fallback automatique: on repropose lien seul (OG)
-          // (on le fait après un petit délai pour laisser l'action se terminer)
           window.setTimeout(async () => {
             try {
               await navAny.share({
@@ -424,25 +576,18 @@ export default function ProductCard({
                 text: shareTitle,
                 url: shareUrl,
               });
-            } catch {
-              // si l'utilisateur annule, on ignore
-            }
+            } catch {}
           }, 450);
 
           return;
         }
-      } catch {
-        // ignore -> fallback lien seul
-      }
+      } catch {}
     }
 
-    // ✅ 2) lien seul (le plus fiable pour previews OG)
     try {
       await navAny.share({ title: String(anyP.name || "Duumini"), text: shareTitle, url: shareUrl });
       return;
-    } catch {
-      // ignore -> menu desktop
-    }
+    } catch {}
 
     setShareMenuOpen(true);
   }, [anyP.id, anyP.name, currentImg, shareTitle, shareUrl]);
@@ -630,7 +775,6 @@ export default function ProductCard({
     );
   };
 
-  /* ✅ Thumbnails sous la carte (mini-images) */
   const CardThumbStrip = ({ max = 5 }: { max?: number }) => {
     if (images.length <= 1) return null;
     const list = images.slice(0, max);
@@ -680,7 +824,6 @@ export default function ProductCard({
     );
   };
 
-  /* ===== Variant Selector (dropdown) ===== */
   const VariantSelector = ({ size = "sm" }: { size?: "sm" | "md" }) => {
     if (!hasVariants) return null;
 
@@ -697,8 +840,13 @@ export default function ProductCard({
     if (selected?.stock != null) infoParts.push(`${stockLabel}:${selected.stock}`);
     else if (effectiveStock != null) infoParts.push(`${stockLabel}:${effectiveStock}`);
 
-    const p = selected?.price != null ? selected.price : null;
-    if (p != null) infoParts.push(`Prix:${moneyMAD(p)}`);
+    const raw = selected?.price != null ? selected.price : null;
+    if (raw != null) {
+      const final = computePromoPriceFromRule(raw, effectiveRule);
+      infoParts.push(`Prix:${moneyMAD(final)}`);
+      const old = final < raw ? raw : null;
+      if (old != null) infoParts.push(`Ancien:${moneyMAD(old)}`);
+    }
 
     const infoLine = infoParts.join(" • ");
 
@@ -754,13 +902,12 @@ export default function ProductCard({
     );
   };
 
-  /* ===== UI Price + Stock row ===== */
   const PriceStockLine = () => (
     <div className="d-flex flex-wrap align-items-center gap-2 mt-1">
       <div className="fw-semibold">Prix:{moneyMAD(displayPrice)}</div>
 
-      {oldPrice != null && Number(oldPrice) > Number(displayPrice) && (
-        <div style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800 }}>{moneyMAD(oldPrice)}</div>
+      {effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice) && (
+        <div style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800 }}>{moneyMAD(effectiveOldPrice)}</div>
       )}
 
       {stockText ? (
@@ -842,9 +989,9 @@ export default function ProductCard({
                   <span className="badge bg-danger position-absolute top-0 start-0 m-2">En rupture</span>
                 )}
 
-                {!!badgeText && !(effectiveStock != null && effectiveStock <= 0) && (
+                {!!effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) && (
                   <span className="badge position-absolute top-0 end-0 m-2 text-white" style={{ background: "var(--duu-red)" }}>
-                    {badgeText}
+                    {effectiveBadgeText}
                   </span>
                 )}
               </div>
@@ -910,9 +1057,9 @@ export default function ProductCard({
                 <span className="badge bg-danger position-absolute top-0 start-0 m-2">En rupture</span>
               )}
 
-              {!!badgeText && !(effectiveStock != null && effectiveStock <= 0) && (
+              {!!effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) && (
                 <span className="badge position-absolute top-0 end-0 m-2 text-white" style={{ background: "var(--duu-red)" }}>
-                  {badgeText}
+                  {effectiveBadgeText}
                 </span>
               )}
             </div>
@@ -1049,12 +1196,20 @@ export default function ProductCard({
                   <div className="col-12 col-md-6">
                     <div className="d-flex align-items-baseline gap-2">
                       <div className="h5 m-0">Prix:{moneyMAD(displayPrice)}</div>
-                      {oldPrice != null && Number(oldPrice) > Number(displayPrice) && (
+                      {effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice) && (
                         <div className="h6 m-0" style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)" }}>
-                          {moneyMAD(oldPrice)}
+                          {moneyMAD(effectiveOldPrice)}
                         </div>
                       )}
                     </div>
+
+                    {!!effectiveBadgeText && (
+                      <div className="mt-2">
+                        <span className="badge text-white" style={{ background: "var(--duu-red)", fontWeight: 900 }}>
+                          {effectiveBadgeText}
+                        </span>
+                      </div>
+                    )}
 
                     {stockText ? (
                       <div className="mt-2">
