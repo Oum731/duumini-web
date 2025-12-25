@@ -16,7 +16,10 @@ function imgUrl(u?: string | null) {
 
 function moneyMAD(n?: number | null) {
   const v = Number(n || 0);
-  return `${v.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} MAD`;
+  return `${v.toLocaleString("fr-FR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })} MAD`;
 }
 
 function shortText(s?: string | null, max = 200) {
@@ -48,29 +51,56 @@ function getSubCategoryToken(p: Product) {
   return "";
 }
 
-/* ===== Partage (FRONT, pas API) ===== */
+/* ===== Liens affichés (front + api) ===== */
+function cleanBase(x: string) {
+  return String(x || "").trim().replace(/\/+$/, "");
+}
+
+function prettyHost(u: string) {
+  try {
+    const url = new URL(u);
+    return url.host || u;
+  } catch {
+    return u;
+  }
+}
+
+/** Base FRONT pour partager (doit être duumini.com, pas l’API) */
 function getFrontBaseUrl() {
   const fromEnv =
     (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_SHARE_BASE_URL) || "";
 
-  const clean = (x: string) => String(x || "").trim().replace(/\/+$/, "");
-
   // ✅ protection: si quelqu’un a mis l’API dans VITE_SHARE_BASE_URL, on ignore
   if (fromEnv && typeof fromEnv === "string") {
-    const v = clean(fromEnv);
+    const v = cleanBase(fromEnv);
     if (v && !v.includes("onrender.com") && !v.includes("duumini-api")) return v;
   }
 
+  // ✅ si le site tourne sur duumini.com, on utilise l'origin
   if (typeof window !== "undefined" && window.location?.origin) {
-    return clean(window.location.origin);
+    const o = cleanBase(window.location.origin);
+    if (o.includes("duumini.com")) return o;
   }
 
+  // ✅ fallback stable
   return "https://www.duumini.com";
+}
+
+/** Base API (pour afficher au user si besoin) */
+function getApiBaseUrl() {
+  return cleanBase(API_BASE || "");
 }
 
 function buildSharePageUrl(p: Product) {
   const base = getFrontBaseUrl();
   return `${base}/share/product/${Number((p as any).id)}`;
+}
+
+function buildApiProductUrl(p: Product) {
+  const apiBase = getApiBaseUrl();
+  const id = Number((p as any).id);
+  if (!apiBase || !id) return "";
+  return `${apiBase}/api/products/${id}`;
 }
 
 function buildShareLinks(shareUrl: string, title: string) {
@@ -97,12 +127,7 @@ function getDisplayPrice(anyP: any, priceOverride: number | null) {
 
 /* =========================
  * ✅ PROMO (AUTO)
- * Objectif:
- *  - si produit a des champs promo => ProductCard affiche automatiquement:
- *    prix promo, ancien prix, badge promo + partage avec promo.
- *  - s’applique aussi aux variantes (même réduction en %/montant OU ratio si promoPrice fourni)
  * ========================= */
-
 type PromoRule =
   | { kind: "PERCENT"; value: number }
   | { kind: "AMOUNT"; value: number }
@@ -136,7 +161,6 @@ function formatPromoBadge(rule: PromoRule, base: number, promo: number) {
   if (!rule) return "PROMO";
   if (rule.kind === "PERCENT") return `PROMO -${Math.round(rule.value)}%`;
   if (rule.kind === "AMOUNT") return `PROMO -${moneyMAD(rule.value)}`;
-  // ratio: essaie d’afficher comme % si possible
   if (base > 0 && promo >= 0 && promo < base) {
     const pct = Math.round(((base - promo) / base) * 100);
     if (pct > 0) return `PROMO -${pct}%`;
@@ -144,28 +168,30 @@ function formatPromoBadge(rule: PromoRule, base: number, promo: number) {
   return "PROMO";
 }
 
-/**
- * ✅ Détecte promo via plusieurs champs possibles (robuste)
- * Retourne:
- *  - rule (percent/amount/ratio)
- *  - oldPrice (prix normal)
- *  - badgeText
- *  - isPromo
- */
 function getPromoMeta(anyP: any, basePrice: number) {
   const base = Number(basePrice || 0);
-  if (!base) return { isPromo: false, rule: null as PromoRule, oldPrice: null as number | null, badgeText: null as string | null };
+  if (!base)
+    return {
+      isPromo: false,
+      rule: null as PromoRule,
+      oldPrice: null as number | null,
+      badgeText: null as string | null,
+    };
 
-  // flags
   const flag =
     anyP.is_promo === true ||
     anyP.promo === true ||
     anyP.on_promo === true ||
     Number(anyP.promo_eligible ?? 0) === 1;
 
-  // 1) promo price direct (si présent)
   const promoPriceDirect =
-    Number(anyP.promo_price_client ?? anyP.promo_price ?? anyP.price_promo ?? anyP.sale_price ?? 0) || 0;
+    Number(
+      anyP.promo_price_client ??
+        anyP.promo_price ??
+        anyP.price_promo ??
+        anyP.sale_price ??
+        0
+    ) || 0;
 
   if (promoPriceDirect > 0 && promoPriceDirect < base) {
     const factor = clamp(promoPriceDirect / base, 0, 1);
@@ -178,49 +204,41 @@ function getPromoMeta(anyP: any, basePrice: number) {
     };
   }
 
-  // 2) discount type/value (style CAN)
-  const typeRaw = String(anyP.promo_discount_type ?? anyP.discount_type ?? anyP.promo_type ?? "").trim().toUpperCase();
-  const valueRaw = Number(anyP.promo_discount_value ?? anyP.discount_value ?? anyP.promo_value ?? 0) || 0;
+  const typeRaw = String(
+    anyP.promo_discount_type ?? anyP.discount_type ?? anyP.promo_type ?? ""
+  )
+    .trim()
+    .toUpperCase();
+  const valueRaw =
+    Number(anyP.promo_discount_value ?? anyP.discount_value ?? anyP.promo_value ?? 0) || 0;
 
   if (valueRaw > 0 && (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")) {
     const rule: PromoRule = { kind: "PERCENT", value: clamp(valueRaw, 0, 100) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base) {
-      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
-    }
+    if (promo < base) return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
   }
 
   if (valueRaw > 0 && (typeRaw === "AMOUNT" || typeRaw === "MAD" || typeRaw === "PRICE" || typeRaw === "VALUE")) {
     const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, valueRaw) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base) {
-      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
-    }
+    if (promo < base) return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
   }
 
-  // 3) autres champs (promo_percent / promo_amount, etc.)
   const promoPercent = Number(anyP.promo_percent ?? anyP.discount_percent ?? anyP.percent_off ?? 0) || 0;
   if (promoPercent > 0) {
     const rule: PromoRule = { kind: "PERCENT", value: clamp(promoPercent, 0, 100) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base) {
-      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
-    }
+    if (promo < base) return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
   }
 
   const promoAmount = Number(anyP.promo_amount ?? anyP.discount_amount ?? anyP.amount_off ?? 0) || 0;
   if (promoAmount > 0) {
     const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, promoAmount) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base) {
-      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
-    }
+    if (promo < base) return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
   }
 
-  // 4) fallback: si flag true mais sans valeur exploitable => pas de promo affichable
-  if (flag) {
-    return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
-  }
+  if (flag) return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 
   return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 }
@@ -308,7 +326,6 @@ type Props = {
   product: Product;
   onAdd?: (p: Product) => void;
 
-  // tu peux encore override manuellement, mais maintenant la promo est auto
   priceOverride?: number | null;
   oldPrice?: number | null;
   badgeText?: string | null;
@@ -336,7 +353,10 @@ export default function ProductCard({
   const anyP = product as any;
 
   const subCatToken = useMemo(() => getSubCategoryToken(product), [product]);
-  const hideList = useMemo(() => hideSubCategories.map((x) => normToken(x)).filter(Boolean), [hideSubCategories]);
+  const hideList = useMemo(
+    () => hideSubCategories.map((x) => normToken(x)).filter(Boolean),
+    [hideSubCategories]
+  );
 
   if (subCatToken && hideList.includes(subCatToken)) return null;
 
@@ -373,7 +393,10 @@ export default function ProductCard({
   const coverUrl = images[0] || "";
 
   // ===== base price (avant promo)
-  const baseDisplayPrice = useMemo(() => getDisplayPrice(anyP, priceOverride), [anyP, priceOverride]);
+  const baseDisplayPrice = useMemo(
+    () => getDisplayPrice(anyP, priceOverride),
+    [anyP, priceOverride]
+  );
 
   // ===== promo auto
   const promoMeta = useMemo(() => getPromoMeta(anyP, baseDisplayPrice), [anyP, baseDisplayPrice]);
@@ -400,7 +423,10 @@ export default function ProductCard({
     });
   }, [hasVariants, variants]);
 
-  const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
+  const selectedVariant = useMemo(
+    () => variants.find((v) => v.key === selectedKey) || null,
+    [variants, selectedKey]
+  );
 
   // prix avant promo (variante si override, sinon base)
   const rawPrice = useMemo(() => {
@@ -409,7 +435,10 @@ export default function ProductCard({
   }, [baseDisplayPrice, selectedVariant]);
 
   // prix final (promo appliquée)
-  const displayPrice = useMemo(() => computePromoPriceFromRule(rawPrice, effectiveRule), [rawPrice, effectiveRule]);
+  const displayPrice = useMemo(
+    () => computePromoPriceFromRule(rawPrice, effectiveRule),
+    [rawPrice, effectiveRule]
+  );
 
   // ancien prix final (si promo => rawPrice)
   const effectiveOldPrice = useMemo(() => {
@@ -453,8 +482,14 @@ export default function ProductCard({
   );
 
   const closeModal = useCallback(() => setOpen(false), []);
-  const prevImg = useCallback(() => { if (!images.length) return; setImgIdx((i) => (i - 1 + images.length) % images.length); }, [images.length]);
-  const nextImg = useCallback(() => { if (!images.length) return; setImgIdx((i) => (i + 1) % images.length); }, [images.length]);
+  const prevImg = useCallback(() => {
+    if (!images.length) return;
+    setImgIdx((i) => (i - 1 + images.length) % images.length);
+  }, [images.length]);
+  const nextImg = useCallback(() => {
+    if (!images.length) return;
+    setImgIdx((i) => (i + 1) % images.length);
+  }, [images.length]);
 
   const currentImg = images[imgIdx] || coverUrl;
 
@@ -502,7 +537,12 @@ export default function ProductCard({
       add(productForCart, delta, {
         variant: isDefault
           ? { variant_id: null, variant_key: "default", label: null, price: finalPrice }
-          : { variant_id: variant!.id, variant_key: variant!.key, label: variant!.label, price: variant!.price ?? raw },
+          : {
+              variant_id: variant!.id,
+              variant_key: variant!.key,
+              label: variant!.label,
+              price: variant!.price ?? raw,
+            },
       });
 
       if (delta > 0) {
@@ -530,8 +570,12 @@ export default function ProductCard({
     addWithVariant(hasVariants ? selectedVariant : null, -1);
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
-  // ===== partage (avec infos promo)
+  // ===== partage (avec infos promo) + affichage du domaine FRONT + API
   const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
+  const apiUrl = useMemo(() => buildApiProductUrl(product), [product]);
+
+  const frontDomain = useMemo(() => prettyHost(getFrontBaseUrl()), []);
+  const apiDomain = useMemo(() => (getApiBaseUrl() ? prettyHost(getApiBaseUrl()) : ""), []);
 
   const shareTitle = useMemo(() => {
     const name = String(anyP.name || "Produit");
@@ -543,9 +587,6 @@ export default function ProductCard({
 
   const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareTitle), [shareUrl, shareTitle]);
 
-  /* =========================
-   * Share (ALL platforms)
-   * ========================= */
   const shareProduct = useCallback(async () => {
     const navAny: any = navigator as any;
 
@@ -559,7 +600,9 @@ export default function ProductCard({
         const r = await fetch(currentImg, { mode: "cors" });
         const blob = await r.blob();
         const ext = blob.type.includes("png") ? "png" : "jpg";
-        const file = new File([blob], `duumini-${Number(anyP.id)}.${ext}`, { type: blob.type || "image/jpeg" });
+        const file = new File([blob], `duumini-${Number(anyP.id)}.${ext}`, {
+          type: blob.type || "image/jpeg",
+        });
 
         if (navAny?.canShare?.({ files: [file] })) {
           await navAny.share({
@@ -653,7 +696,11 @@ export default function ProductCard({
     }, [active]);
 
     if (!coverUrl) {
-      return variant === "square" ? <div className="w-100 bg-light" style={{ aspectRatio: "1/1" }} /> : <div className="duu-fashion-img" />;
+      return variant === "square" ? (
+        <div className="w-100 bg-light" style={{ aspectRatio: "1/1" }} />
+      ) : (
+        <div className="duu-fashion-img" />
+      );
     }
 
     if (!hasMany) {
@@ -683,9 +730,22 @@ export default function ProductCard({
 
     return (
       <div className="duu-swipe-wrap position-relative">
-        <div ref={scrollerRef} className="duu-swipe" onScroll={onScroll} onPointerDown={onPointerDown} onPointerMove={onPointerMove}>
+        <div
+          ref={scrollerRef}
+          className="duu-swipe"
+          onScroll={onScroll}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+        >
           {images.map((u, i) => (
-            <button key={u + i} type="button" className="duu-swipe-slide" onClick={() => onClickSlide(i)} aria-label={`Voir image ${i + 1}`} title={`Image ${i + 1}`}>
+            <button
+              key={u + i}
+              type="button"
+              className="duu-swipe-slide"
+              onClick={() => onClickSlide(i)}
+              aria-label={`Voir image ${i + 1}`}
+              title={`Image ${i + 1}`}
+            >
               <img
                 src={u}
                 alt={String(anyP.name || "")}
@@ -799,7 +859,13 @@ export default function ProductCard({
           })}
 
           {images.length > max && (
-            <button type="button" className="btn btn-sm btn-light ms-auto" onClick={() => openModal(0)} style={{ fontWeight: 900 }} title="Voir toutes les images">
+            <button
+              type="button"
+              className="btn btn-sm btn-light ms-auto"
+              onClick={() => openModal(0)}
+              style={{ fontWeight: 900 }}
+              title="Voir toutes les images"
+            >
               +{images.length - max}
             </button>
           )}
@@ -836,6 +902,7 @@ export default function ProductCard({
 
     const qv = selected ? qtyForProductVariant(Number(anyP.id), selected.key) : 0;
 
+    // ✅ comme tu veux: juste "Reste:10" / "Disponible:10" + "Prix:100"
     const infoParts: string[] = [];
     if (selected?.stock != null) infoParts.push(`${stockLabel}:${selected.stock}`);
     else if (effectiveStock != null) infoParts.push(`${stockLabel}:${effectiveStock}`);
@@ -861,7 +928,12 @@ export default function ProductCard({
           ) : null}
         </div>
 
-        <select className="form-select form-select-sm mt-2" value={selectedKey} onChange={(e) => setSelectedKey(e.target.value)} aria-label="Sélection de variante">
+        <select
+          className="form-select form-select-sm mt-2"
+          value={selectedKey}
+          onChange={(e) => setSelectedKey(e.target.value)}
+          aria-label="Sélection de variante"
+        >
           {variants.map((v) => (
             <option key={v.key} value={v.key} disabled={isVariantOutOfStock(v)}>
               {optionLabel(v)}
@@ -875,16 +947,28 @@ export default function ProductCard({
           </div>
         ) : null}
 
-        {selected && isVariantOutOfStock(selected) ? <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div> : null}
+        {selected && isVariantOutOfStock(selected) ? (
+          <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
+        ) : null}
 
         <div className="mt-2 d-flex gap-2">
-          <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => selected && addWithVariant(selected, -1)} disabled={!selected || qv <= 0}>
+          <button
+            type="button"
+            className="btn btn-outline-dark btn-sm"
+            onClick={() => selected && addWithVariant(selected, -1)}
+            disabled={!selected || qv <= 0}
+          >
             −
           </button>
           <button type="button" className="btn btn-light btn-sm" disabled>
             {qv || 0}
           </button>
-          <button type="button" className="btn btn-duu btn-sm" onClick={() => selected && addWithVariant(selected, +1)} disabled={!selected || isVariantOutOfStock(selected)}>
+          <button
+            type="button"
+            className="btn btn-duu btn-sm"
+            onClick={() => selected && addWithVariant(selected, +1)}
+            disabled={!selected || isVariantOutOfStock(selected)}
+          >
             +
           </button>
         </div>
@@ -907,11 +991,16 @@ export default function ProductCard({
       <div className="fw-semibold">Prix:{moneyMAD(displayPrice)}</div>
 
       {effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice) && (
-        <div style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800 }}>{moneyMAD(effectiveOldPrice)}</div>
+        <div style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800 }}>
+          {moneyMAD(effectiveOldPrice)}
+        </div>
       )}
 
       {stockText ? (
-        <span className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")} style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}>
+        <span
+          className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")}
+          style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
+        >
           {stockText}
         </span>
       ) : null}
@@ -968,6 +1057,32 @@ export default function ProductCard({
           .duu-share-item:hover{ background: rgba(0,0,0,.04); }
           .duu-share-sep{ height:1px; background: rgba(0,0,0,.06); }
 
+          .duu-linkline{
+            display:flex;
+            gap:8px;
+            align-items:center;
+            flex-wrap:wrap;
+            margin-top:6px;
+            font-size:.78rem;
+            color: rgba(0,0,0,.55);
+            font-weight: 800;
+          }
+          .duu-pill{
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(0,0,0,.10);
+            background: rgba(255,255,255,.8);
+          }
+          .duu-pill strong{ color: rgba(0,0,0,.78); }
+          .duu-pill a{
+            color: rgba(0,0,0,.72);
+            text-decoration: none;
+          }
+          .duu-pill a:hover{ text-decoration: underline; color: rgba(0,0,0,.9); }
+
           @media (max-width: 992px){
             .duu-fashion-media{ flex:0 0 52%; max-width:52%; }
             .duu-fashion-img{ min-height:180px; }
@@ -1003,6 +1118,24 @@ export default function ProductCard({
               <button className="btn btn-link p-0 text-start" onClick={() => openModal(0)} type="button" style={{ textDecoration: "none" }}>
                 <h3 className="duu-fashion-title">{String(anyP.name || "")}</h3>
               </button>
+
+              {/* ✅ Affichage des domaines (front + api) */}
+              <div className="duu-linkline">
+                <span className="duu-pill">
+                  <strong>Site:</strong>{" "}
+                  <a href={shareUrl} target="_blank" rel="noreferrer">
+                    {frontDomain}
+                  </a>
+                </span>
+                {apiUrl ? (
+                  <span className="duu-pill">
+                    <strong>API:</strong>{" "}
+                    <a href={apiUrl} target="_blank" rel="noreferrer">
+                      {apiDomain || "API"}
+                    </a>
+                  </span>
+                ) : null}
+              </div>
 
               {!!anyP.description && (
                 <button type="button" className="duu-mini-desc-btn" onClick={() => openModal(0)}>
@@ -1073,6 +1206,24 @@ export default function ProductCard({
                 </button>
               </h3>
 
+              {/* ✅ Affichage des domaines (front + api) */}
+              <div className="duu-linkline">
+                <span className="duu-pill">
+                  <strong>Site:</strong>{" "}
+                  <a href={shareUrl} target="_blank" rel="noreferrer">
+                    {frontDomain}
+                  </a>
+                </span>
+                {apiUrl ? (
+                  <span className="duu-pill">
+                    <strong>API:</strong>{" "}
+                    <a href={apiUrl} target="_blank" rel="noreferrer">
+                      {apiDomain || "API"}
+                    </a>
+                  </span>
+                ) : null}
+              </div>
+
               {!!anyP.description && (
                 <button
                   type="button"
@@ -1127,7 +1278,13 @@ export default function ProductCard({
 
       {/* ===== MODAL ===== */}
       {open && (
-        <div className="modal d-block" style={{ background: "rgba(0,0,0,.35)" }} onClick={(e) => e.target === e.currentTarget && closeModal()} role="dialog" aria-modal="true">
+        <div
+          className="modal d-block"
+          style={{ background: "rgba(0,0,0,.35)" }}
+          onClick={(e) => e.target === e.currentTarget && closeModal()}
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
@@ -1194,7 +1351,25 @@ export default function ProductCard({
                   </div>
 
                   <div className="col-12 col-md-6">
-                    <div className="d-flex align-items-baseline gap-2">
+                    {/* ✅ Ligne domaines dans le modal aussi */}
+                    <div className="duu-linkline">
+                      <span className="duu-pill">
+                        <strong>Site:</strong>{" "}
+                        <a href={shareUrl} target="_blank" rel="noreferrer">
+                          {frontDomain}
+                        </a>
+                      </span>
+                      {apiUrl ? (
+                        <span className="duu-pill">
+                          <strong>API:</strong>{" "}
+                          <a href={apiUrl} target="_blank" rel="noreferrer">
+                            {apiDomain || "API"}
+                          </a>
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="d-flex align-items-baseline gap-2 mt-2">
                       <div className="h5 m-0">Prix:{moneyMAD(displayPrice)}</div>
                       {effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice) && (
                         <div className="h6 m-0" style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)" }}>
@@ -1213,7 +1388,10 @@ export default function ProductCard({
 
                     {stockText ? (
                       <div className="mt-2">
-                        <span className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")} style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}>
+                        <span
+                          className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")}
+                          style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
+                        >
                           {stockText}
                         </span>
                       </div>
@@ -1278,7 +1456,9 @@ export default function ProductCard({
                       )}
                     </div>
 
-                    {effectiveStock != null && effectiveStock <= 0 && <div className="alert alert-warning mt-3 py-2 small mb-0">Produit en rupture de stock.</div>}
+                    {effectiveStock != null && effectiveStock <= 0 && (
+                      <div className="alert alert-warning mt-3 py-2 small mb-0">Produit en rupture de stock.</div>
+                    )}
                   </div>
                 </div>
               </div>
