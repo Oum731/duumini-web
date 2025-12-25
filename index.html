@@ -6,9 +6,21 @@
 
     <title>Duumini</title>
 
-    <meta name="theme-color" content="#FFD200" />
+    <!-- PWA -->
+    <meta name="theme-color" content="#fddc00" />
     <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Favicon -->
     <link rel="icon" href="/logo.jpeg" />
+
+    <!-- iOS PWA (IMPORTANT) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Duumini" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
+
+    <!-- Optionnel (Windows tiles) -->
+    <meta name="msapplication-TileColor" content="#fddc00" />
 
     <!-- ========================= -->
     <!--      Google Tag Manager   -->
@@ -21,8 +33,7 @@
           j = d.createElement(s),
           dl = l != "dataLayer" ? "&l=" + l : "";
         j.async = true;
-        j.src =
-          "https://www.googletagmanager.com/gtm.js?id=" + i + dl;
+        j.src = "https://www.googletagmanager.com/gtm.js?id=" + i + dl;
         f.parentNode.insertBefore(j, f);
       })(window, document, "script", "dataLayer", "GTM-W28W9XJ3");
     </script>
@@ -57,7 +68,6 @@
     <!-- ========================= -->
     <!--     End Metricool Tracker -->
     <!-- ========================= -->
-
   </head>
 
   <body>

@@ -1,5 +1,5 @@
 // src/pages/PromotionsPage.tsx
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import ProductCard from "../components/ProductCard";
 import { api } from "../services/http";
 import type { Product } from "../services/products";
@@ -45,7 +45,6 @@ function normToken(x: any) {
 }
 
 function subToken(p: any) {
-  // priorités: slug -> name -> id
   const bySlug = normToken(p?.sub_category_slug);
   if (bySlug) return bySlug;
 
@@ -61,7 +60,6 @@ function subToken(p: any) {
 function isFoodLike(p: any) {
   const t = subToken(p);
   if (t) return t === "food" || t.includes("food") || t.includes("alimentation");
-  // fallback legacy (si jamais)
   return normToken(p?.category) === "food";
 }
 
@@ -74,7 +72,6 @@ function looksLikeDrink(p: any) {
     "";
 
   const sub = normToken(p?.sub_category_name) || normToken(p?.sub_category_slug) || "";
-
   const hay = `${name} ${cat} ${sub}`;
 
   return (
@@ -90,11 +87,6 @@ function looksLikeDrink(p: any) {
   );
 }
 
-/**
- * ✅ Produits "OFFRE CAN"
- * - si promo_can = 1 => on accepte (si tu ajoutes ce champ plus tard)
- * - sinon on exclut food + boissons
- */
 function isCanProductOffer(p: any) {
   if (Number(p?.promo_can ?? 0) === 1) return true;
   if (isFoodLike(p)) return false;
@@ -104,7 +96,6 @@ function isCanProductOffer(p: any) {
 
 /* =========================
  * Safe unwrap API response
- * (évite le bug: res.data vs res)
  * ========================= */
 function unwrap<T>(res: any): T {
   if (res == null) return res as T;
@@ -124,19 +115,18 @@ function asArray<T>(x: any): T[] {
   return [];
 }
 
-export default function PromotionsPage() {
-  const [items, setItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
-  const offer: CanOffer = useMemo(
-    () => ({
-      label: "OFFRE CAN 2025",
-      title: "Promo & Livraison Casablanca 25 DH • Hors Casablanca dès 60 DH (selon la ville).",
-    }),
-    []
-  );
-
+/* =========================
+ * Header animé isolé (IMPORTANT iOS)
+ * ========================= */
+const PromoHeader = React.memo(function PromoHeader({
+  offer,
+  loading,
+  onRefresh,
+}: {
+  offer: CanOffer;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
   const blink = useBlink(650);
   const cd = useCountdown(PROMO_END_ISO);
 
@@ -155,52 +145,8 @@ export default function PromotionsPage() {
     "0"
   )}:${String(cd.secs).padStart(2, "0")}`;
 
-  const fetchPromos = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
-
-    try {
-      // 1) endpoint promos
-      try {
-        const res = await api.get<any>("/api/products/promotions", {
-          query: { limit: 250, onlyActive: 1 },
-        });
-
-        const arr = asArray<Product>(res);
-        setItems(arr.filter(isRealPromo));
-        return;
-      } catch {
-        // fallback
-      }
-
-      // 2) fallback : /api/products
-      const res2 = await api.get<any>("/api/products", {
-        query: { page: 1, pageSize: 250, onlyActive: 1 },
-      });
-
-      const arr2 = asArray<Product>(res2);
-      setItems(arr2.filter(isRealPromo));
-    } catch (e: any) {
-      setErr(e?.message || String(e));
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPromos();
-  }, [fetchPromos]);
-
-  const canItems = useMemo(() => {
-    const list = (items || []).filter((p: any) => isCanProductOffer(p));
-    return [...list].sort(
-      (a: any, b: any) => Number(b?.promo_discount_value ?? 0) - Number(a?.promo_discount_value ?? 0)
-    );
-  }, [items]);
-
   return (
-    <div className="container-xxl py-4">
+    <div className="can-card mb-3">
       <style>{`
         .can-card{
           border-radius: 18px;
@@ -282,62 +228,129 @@ export default function PromotionsPage() {
         }
       `}</style>
 
-      <div className="can-card mb-3">
-        <div className="can-grid">
-          <div className="can-anim-wrap">
-            <CanKickLottie variant="hero" className="w-100 h-100" offer={offer} blink={blink} />
-          </div>
+      <div className="can-grid">
+        <div className="can-anim-wrap">
+          <CanKickLottie variant="hero" className="w-100 h-100" offer={offer} blink={blink} />
+        </div>
 
-          <div className="can-text">
-            <h2 className="can-title">{offer.title}</h2>
-            <p className="can-sub">Fin le 22 janvier 2026</p>
+        <div className="can-text">
+          <h2 className="can-title">{offer.title}</h2>
+          <p className="can-sub">Fin le 22 janvier 2026</p>
 
-            <div className="can-meta">
-              <span className={`can-count ${pulseClass}`}>
-                ⏳ {cd.isOver ? "Terminé" : `${cd.days}j ${timeStr}`}
-              </span>
+          <div className="can-meta">
+            <span className={`can-count ${pulseClass}`}>
+              ⏳ {cd.isOver ? "Terminé" : `${cd.days}j ${timeStr}`}
+            </span>
 
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-dark ms-auto"
-                onClick={fetchPromos}
-                disabled={loading}
-                title="Actualiser"
-              >
-                {loading ? "…" : "Actualiser"}
-              </button>
-            </div>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-dark ms-auto"
+              onClick={onRefresh}
+              disabled={loading}
+              title="Actualiser"
+            >
+              {loading ? "…" : "Actualiser"}
+            </button>
           </div>
         </div>
       </div>
+    </div>
+  );
+});
 
-      {err && <div className="alert alert-danger py-2">{err}</div>}
+export default function PromotionsPage() {
+  const [items, setItems] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-      {loading ? (
-        <div className="text-muted">Chargement des offres CAN…</div>
-      ) : canItems.length === 0 ? (
+  const offer: CanOffer = useMemo(
+    () => ({
+      label: "OFFRE CAN 2025",
+      title: "Promo & Livraison Casablanca 25 DH • Hors Casablanca dès 60 DH (selon la ville).",
+    }),
+    []
+  );
+
+  const fetchPromos = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+
+    try {
+      try {
+        const res = await api.get<any>("/api/products/promotions", {
+          query: { limit: 250, onlyActive: 1 },
+        });
+        const arr = asArray<Product>(res);
+        setItems(arr.filter(isRealPromo));
+        return;
+      } catch {
+        // fallback
+      }
+
+      const res2 = await api.get<any>("/api/products", {
+        query: { page: 1, pageSize: 250, onlyActive: 1 },
+      });
+      const arr2 = asArray<Product>(res2);
+      setItems(arr2.filter(isRealPromo));
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPromos();
+  }, [fetchPromos]);
+
+  const canItems = useMemo(() => {
+    const list = (items || []).filter((p: any) => isCanProductOffer(p));
+    return [...list].sort(
+      (a: any, b: any) => Number(b?.promo_discount_value ?? 0) - Number(a?.promo_discount_value ?? 0)
+    );
+  }, [items]);
+
+  // ✅ IMPORTANT: on mémorise le rendu de la grille => pas de rerender sur le timer du header
+  const grid = useMemo(() => {
+    if (loading) return <div className="text-muted">Chargement des offres CAN…</div>;
+
+    if (canItems.length === 0) {
+      return (
         <div className="alert alert-light border small">
           Aucune offre CAN pour le moment. Revenez bientôt 👀
         </div>
-      ) : (
-        <div className="row g-3">
-          {canItems.map((p: any) => {
-            const promo = getPromoMeta(p);
-            if (!promo) return null;
+      );
+    }
 
-            return (
-              <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={p.id}>
-                <ProductCard
-                  product={p}
-                  priceOverride={promo.promoPrice}
-                  oldPrice={promo.oldPrice}
-                  badgeText={`OFFRE CAN ${promo.label}`}
-                />
-              </div>
-            );
-          })}
-        </div>
-      )}
+    return (
+      <div className="row g-3">
+        {canItems.map((p: any) => {
+          const promo = getPromoMeta(p);
+          if (!promo) return null;
+
+          return (
+            <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={p.id}>
+              <ProductCard
+                product={p}
+                priceOverride={promo.promoPrice}
+                oldPrice={promo.oldPrice}
+                badgeText={`OFFRE CAN ${promo.label}`}
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [canItems, loading]);
+
+  return (
+    <div className="container-xxl py-4">
+      <PromoHeader offer={offer} loading={loading} onRefresh={fetchPromos} />
+
+      {err && <div className="alert alert-danger py-2">{err}</div>}
+
+      {grid}
     </div>
   );
 }

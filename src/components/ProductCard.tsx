@@ -378,7 +378,7 @@ type Props = {
   stockLabel?: "Disponible" | "Reste";
 };
 
-export default function ProductCard({
+function ProductCardInner({
   product,
   onAdd,
   priceOverride = null,
@@ -498,7 +498,8 @@ export default function ProductCard({
   );
 
   const effectiveOldPrice = useMemo(() => {
-    if (oldPrice != null && Number(oldPrice) > Number(displayPrice)) return Number(oldPrice);
+    if (oldPrice != null && Number(oldPrice) > Number(displayPrice))
+      return Number(oldPrice);
     if (promoMeta.isPromo && rawPrice > displayPrice) return rawPrice;
     return null;
   }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice]);
@@ -520,7 +521,10 @@ export default function ProductCard({
     return `${stockLabel}:${effectiveStock}`;
   }, [effectiveStock, stockLabel]);
 
-  const qtyTotal = useMemo(() => qtyForProduct(Number(anyP.id)), [anyP.id, qtyForProduct]);
+  const qtyTotal = useMemo(
+    () => qtyForProduct(Number(anyP.id)),
+    [anyP.id, qtyForProduct]
+  );
 
   const qtySelected = useMemo(() => {
     if (!hasVariants) return qtyTotal;
@@ -648,7 +652,10 @@ export default function ProductCard({
     return `${shareTitle}\n${short}`;
   }, [anyP.description, shareTitle]);
 
-  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareText), [shareUrl, shareText]);
+  const shareLinks = useMemo(
+    () => buildShareLinks(shareUrl, shareText),
+    [shareUrl, shareText]
+  );
 
   const copyShareUrl = useCallback(async () => {
     try {
@@ -746,7 +753,8 @@ export default function ProductCard({
       if (!el) return;
       const w = el.clientWidth || 1;
       const idx = Math.round(el.scrollLeft / w);
-      if (Number.isFinite(idx)) setActive(Math.max(0, Math.min(idx, images.length - 1)));
+      if (Number.isFinite(idx))
+        setActive(Math.max(0, Math.min(idx, images.length - 1)));
     }, [images.length]);
 
     const jumpTo = (idx: number) => {
@@ -764,10 +772,35 @@ export default function ProductCard({
       );
     }
 
+    const ImgTag = ({
+      src,
+      className,
+      style,
+      alt,
+      onClick,
+    }: {
+      src: string;
+      className?: string;
+      style?: React.CSSProperties;
+      alt: string;
+      onClick?: () => void;
+    }) => (
+      <img
+        src={src}
+        alt={alt}
+        className={className}
+        style={style}
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        onClick={onClick}
+      />
+    );
+
     if (!hasMany) {
       if (variant === "square") {
         return (
-          <img
+          <ImgTag
             src={coverUrl}
             alt={String(anyP.name || "")}
             className="w-100"
@@ -776,17 +809,15 @@ export default function ProductCard({
               objectFit: "cover",
               cursor: "pointer",
             }}
-            loading="lazy"
             onClick={() => openModal(0)}
           />
         );
       }
       return (
-        <img
+        <ImgTag
           src={coverUrl}
           alt={String(anyP.name || "")}
           className="duu-fashion-img"
-          loading="lazy"
           style={{ cursor: "pointer", minHeight: minHeight ?? undefined }}
           onClick={() => openModal(0)}
         />
@@ -811,14 +842,14 @@ export default function ProductCard({
               aria-label={`Voir image ${i + 1}`}
               title={`Image ${i + 1}`}
             >
-              <img
+              <ImgTag
                 src={u}
                 alt={String(anyP.name || "")}
                 className={
-                  variant === "square" ? "duu-swipe-img-square" : "duu-swipe-img-fashion"
+                  variant === "square"
+                    ? "duu-swipe-img-square"
+                    : "duu-swipe-img-fashion"
                 }
-                loading="lazy"
-                draggable={false}
               />
             </button>
           ))}
@@ -962,7 +993,9 @@ export default function ProductCard({
         ) : null}
 
         {selected && isVariantOutOfStock(selected) ? (
-          <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
+          <div className="alert alert-warning mt-2 py-2 small mb-0">
+            Cette variante est en rupture.
+          </div>
         ) : null}
 
         <div className="mt-2 d-flex gap-2">
@@ -1026,7 +1059,12 @@ export default function ProductCard({
 
   return (
     <>
-      <div className={"card border-0 shadow-sm " + (layout === "fashion" ? "duu-fashion-card h-100" : "h-100")}>
+      <div
+        className={
+          "card border-0 shadow-sm " +
+          (layout === "fashion" ? "duu-fashion-card h-100" : "h-100")
+        }
+      >
         <style>{`
           .btn-duu{ background: var(--duu-yellow); color:#1f1f1f; border:none; }
           .btn-duu:hover{ filter: brightness(0.95); }
@@ -1091,11 +1129,16 @@ export default function ProductCard({
                 <CardImageSwiper variant="fashion" minHeight={190} />
 
                 {effectiveStock != null && effectiveStock <= 0 && (
-                  <span className="badge bg-danger position-absolute top-0 start-0 m-2">En rupture</span>
+                  <span className="badge bg-danger position-absolute top-0 start-0 m-2">
+                    En rupture
+                  </span>
                 )}
 
                 {!!effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) && (
-                  <span className="badge position-absolute top-0 end-0 m-2 text-white" style={{ background: "var(--duu-red)" }}>
+                  <span
+                    className="badge position-absolute top-0 end-0 m-2 text-white"
+                    style={{ background: "var(--duu-red)" }}
+                  >
                     {effectiveBadgeText}
                   </span>
                 )}
@@ -1113,7 +1156,11 @@ export default function ProductCard({
               </button>
 
               {!!anyP.description && (
-                <button type="button" className="duu-mini-desc-btn" onClick={() => openModal(0)}>
+                <button
+                  type="button"
+                  className="duu-mini-desc-btn"
+                  onClick={() => openModal(0)}
+                >
                   {shortText(String(anyP.description), miniDescMax)}
                 </button>
               )}
@@ -1126,24 +1173,42 @@ export default function ProductCard({
               <VariantSelector size="sm" />
 
               <div className="mt-auto d-flex gap-2 pt-3 position-relative">
-                <button className="btn btn-outline-dark btn-sm flex-fill" onClick={() => openModal(0)} type="button">
+                <button
+                  className="btn btn-outline-dark btn-sm flex-fill"
+                  onClick={() => openModal(0)}
+                  type="button"
+                >
                   Voir
                 </button>
 
                 {qtySelected > 0 ? (
                   <div className="btn-group btn-group-sm flex-fill" role="group">
-                    <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
+                    <button
+                      className="btn btn-outline-dark"
+                      onClick={handleDecrease}
+                      type="button"
+                    >
                       −
                     </button>
                     <button className="btn btn-light disabled" type="button">
                       {qtySelected}
                     </button>
-                    <button className="btn btn-duu" onClick={handleAdd} type="button" disabled={!canAddNow}>
+                    <button
+                      className="btn btn-duu"
+                      onClick={handleAdd}
+                      type="button"
+                      disabled={!canAddNow}
+                    >
                       +
                     </button>
                   </div>
                 ) : (
-                  <button className="btn btn-duu btn-sm flex-fill" onClick={handleAdd} disabled={!canAddNow} type="button">
+                  <button
+                    className="btn btn-duu btn-sm flex-fill"
+                    onClick={handleAdd}
+                    disabled={!canAddNow}
+                    type="button"
+                  >
                     + Panier
                   </button>
                 )}
@@ -1165,11 +1230,16 @@ export default function ProductCard({
               <CardImageSwiper variant="square" />
 
               {effectiveStock != null && effectiveStock <= 0 && (
-                <span className="badge bg-danger position-absolute top-0 start-0 m-2">En rupture</span>
+                <span className="badge bg-danger position-absolute top-0 start-0 m-2">
+                  En rupture
+                </span>
               )}
 
               {!!effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) && (
-                <span className="badge position-absolute top-0 end-0 m-2 text-white" style={{ background: "var(--duu-red)" }}>
+                <span
+                  className="badge position-absolute top-0 end-0 m-2 text-white"
+                  style={{ background: "var(--duu-red)" }}
+                >
                   {effectiveBadgeText}
                 </span>
               )}
@@ -1211,24 +1281,42 @@ export default function ProductCard({
               <VariantSelector size="sm" />
 
               <div className="mt-auto d-flex gap-2 pt-3 position-relative">
-                <button className="btn btn-outline-dark btn-sm flex-fill" onClick={() => openModal(0)} type="button">
+                <button
+                  className="btn btn-outline-dark btn-sm flex-fill"
+                  onClick={() => openModal(0)}
+                  type="button"
+                >
                   Voir
                 </button>
 
                 {qtySelected > 0 ? (
                   <div className="btn-group btn-group-sm flex-fill" role="group">
-                    <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
+                    <button
+                      className="btn btn-outline-dark"
+                      onClick={handleDecrease}
+                      type="button"
+                    >
                       −
                     </button>
                     <button className="btn btn-light disabled" type="button">
                       {qtySelected}
                     </button>
-                    <button className="btn btn-duu" onClick={handleAdd} type="button" disabled={!canAddNow}>
+                    <button
+                      className="btn btn-duu"
+                      onClick={handleAdd}
+                      type="button"
+                      disabled={!canAddNow}
+                    >
                       +
                     </button>
                   </div>
                 ) : (
-                  <button className="btn btn-duu btn-sm flex-fill" onClick={handleAdd} disabled={!canAddNow} type="button">
+                  <button
+                    className="btn btn-duu btn-sm flex-fill"
+                    onClick={handleAdd}
+                    disabled={!canAddNow}
+                    type="button"
+                  >
                     + Panier
                   </button>
                 )}
@@ -1239,7 +1327,8 @@ export default function ProductCard({
 
               {hasVariants && qtyTotal > 0 && (
                 <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
-                  Total dans le panier (toutes variantes) : <strong>{qtyTotal}</strong>
+                  Total dans le panier (toutes variantes) :{" "}
+                  <strong>{qtyTotal}</strong>
                 </div>
               )}
             </div>
@@ -1262,7 +1351,12 @@ export default function ProductCard({
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">{String(anyP.name || "")}</h5>
-                <button className="btn-close" onClick={closeModal} type="button" aria-label="Fermer" />
+                <button
+                  className="btn-close"
+                  onClick={closeModal}
+                  type="button"
+                  aria-label="Fermer"
+                />
               </div>
 
               <div className="modal-body">
@@ -1275,6 +1369,8 @@ export default function ProductCard({
                           alt={String(anyP.name || "")}
                           className="w-100"
                           style={{ aspectRatio: "1/1", objectFit: "cover" }}
+                          loading="eager"
+                          decoding="async"
                         />
                       ) : (
                         <div className="w-100" style={{ aspectRatio: "1/1" }} />
@@ -1301,7 +1397,10 @@ export default function ProductCard({
                             ▶
                           </button>
 
-                          <span className="badge position-absolute bottom-0 end-0 m-2 text-white" style={{ background: "rgba(17,17,17,.75)" }}>
+                          <span
+                            className="badge position-absolute bottom-0 end-0 m-2 text-white"
+                            style={{ background: "rgba(17,17,17,.75)" }}
+                          >
                             {imgIdx + 1}/{images.length}
                           </span>
                         </>
@@ -1312,16 +1411,26 @@ export default function ProductCard({
                   <div className="col-12 col-md-6">
                     <div className="d-flex align-items-baseline gap-2">
                       <div className="h5 m-0">Prix:{moneyMAD(displayPrice)}</div>
-                      {effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice) && (
-                        <div className="h6 m-0" style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)" }}>
-                          {moneyMAD(effectiveOldPrice)}
-                        </div>
-                      )}
+                      {effectiveOldPrice != null &&
+                        Number(effectiveOldPrice) > Number(displayPrice) && (
+                          <div
+                            className="h6 m-0"
+                            style={{
+                              textDecoration: "line-through",
+                              color: "rgba(0,0,0,.45)",
+                            }}
+                          >
+                            {moneyMAD(effectiveOldPrice)}
+                          </div>
+                        )}
                     </div>
 
                     {!!effectiveBadgeText && (
                       <div className="mt-2">
-                        <span className="badge text-white" style={{ background: "var(--duu-red)", fontWeight: 900 }}>
+                        <span
+                          className="badge text-white"
+                          style={{ background: "var(--duu-red)", fontWeight: 900 }}
+                        >
                           {effectiveBadgeText}
                         </span>
                       </div>
@@ -1330,7 +1439,12 @@ export default function ProductCard({
                     {stockText ? (
                       <div className="mt-2">
                         <span
-                          className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")}
+                          className={
+                            "badge " +
+                            (effectiveStock != null && effectiveStock <= 0
+                              ? "bg-danger"
+                              : "bg-light text-dark")
+                          }
                           style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
                         >
                           {stockText}
@@ -1345,15 +1459,21 @@ export default function ProductCard({
                     <VariantSelector size="md" />
 
                     <p className="text-muted mt-3 mb-3">
-                      {anyP.description ? shortText(anyP.description, 520) : "Aucune description."}
+                      {anyP.description
+                        ? shortText(anyP.description, 520)
+                        : "Aucune description."}
                     </p>
 
                     <div className="d-grid gap-2 position-relative">
-                      <button className="btn btn-duu fw-semibold" onClick={handleAdd} disabled={!canAddNow} type="button">
+                      <button
+                        className="btn btn-duu fw-semibold"
+                        onClick={handleAdd}
+                        disabled={!canAddNow}
+                        type="button"
+                      >
                         + Ajouter au panier
                       </button>
 
-                      {/* ✅ Partage: lien = https://www.duumini.com/share/product/:id */}
                       <button
                         className="btn btn-outline-secondary"
                         onClick={(e) => {
@@ -1366,23 +1486,51 @@ export default function ProductCard({
                       </button>
 
                       {shareMenuOpen && (
-                        <div className="duu-share-pop" role="menu" onClick={(e) => e.stopPropagation()}>
-                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.whatsapp)} type="button">
+                        <div
+                          className="duu-share-pop"
+                          role="menu"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            className="duu-share-item"
+                            onClick={() => openShareLink(shareLinks.whatsapp)}
+                            type="button"
+                          >
                             WhatsApp
                           </button>
-                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.facebook)} type="button">
+                          <button
+                            className="duu-share-item"
+                            onClick={() => openShareLink(shareLinks.facebook)}
+                            type="button"
+                          >
                             Facebook / Meta
                           </button>
-                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.telegram)} type="button">
+                          <button
+                            className="duu-share-item"
+                            onClick={() => openShareLink(shareLinks.telegram)}
+                            type="button"
+                          >
                             Telegram
                           </button>
-                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.x)} type="button">
+                          <button
+                            className="duu-share-item"
+                            onClick={() => openShareLink(shareLinks.x)}
+                            type="button"
+                          >
                             X (Twitter)
                           </button>
-                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.linkedin)} type="button">
+                          <button
+                            className="duu-share-item"
+                            onClick={() => openShareLink(shareLinks.linkedin)}
+                            type="button"
+                          >
                             LinkedIn
                           </button>
-                          <button className="duu-share-item" onClick={() => openShareLink(shareLinks.email)} type="button">
+                          <button
+                            className="duu-share-item"
+                            onClick={() => openShareLink(shareLinks.email)}
+                            type="button"
+                          >
                             Email
                           </button>
                           <div className="duu-share-sep" />
@@ -1397,7 +1545,11 @@ export default function ProductCard({
                             {copied ? "Lien copié ✅" : "Copier le lien"}
                           </button>
                           <div className="duu-share-sep" />
-                          <button className="duu-share-item" onClick={() => setShareMenuOpen(false)} type="button">
+                          <button
+                            className="duu-share-item"
+                            onClick={() => setShareMenuOpen(false)}
+                            type="button"
+                          >
                             Fermer
                           </button>
                         </div>
@@ -1405,7 +1557,9 @@ export default function ProductCard({
                     </div>
 
                     {effectiveStock != null && effectiveStock <= 0 && (
-                      <div className="alert alert-warning mt-3 py-2 small mb-0">Produit en rupture de stock.</div>
+                      <div className="alert alert-warning mt-3 py-2 small mb-0">
+                        Produit en rupture de stock.
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1423,3 +1577,28 @@ export default function ProductCard({
     </>
   );
 }
+
+/* =========================
+ * React.memo: stop rerenders inutiles (iOS)
+ * =======================*/
+function areEqual(prev: Props, next: Props) {
+  const prevId = Number((prev.product as any)?.id || 0);
+  const nextId = Number((next.product as any)?.id || 0);
+  if (prevId !== nextId) return false;
+
+  if (Number(prev.priceOverride ?? 0) !== Number(next.priceOverride ?? 0)) return false;
+  if (Number(prev.oldPrice ?? 0) !== Number(next.oldPrice ?? 0)) return false;
+  if (String(prev.badgeText ?? "") !== String(next.badgeText ?? "")) return false;
+
+  if (prev.layout !== next.layout) return false;
+  if (prev.miniDescMax !== next.miniDescMax) return false;
+  if (prev.stockLabel !== next.stockLabel) return false;
+
+  if ((prev.hideSubCategories?.join("|") || "") !== (next.hideSubCategories?.join("|") || ""))
+    return false;
+
+  // onAdd peut changer à chaque render -> on l'ignore pour ne pas déclencher de rerender
+  return true;
+}
+
+export default React.memo(ProductCardInner, areEqual);

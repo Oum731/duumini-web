@@ -9,17 +9,19 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 function isStandalone() {
-  // iOS + Android/desktop
   const iosStandalone =
     typeof navigator !== "undefined" && (navigator as any).standalone === true;
 
-  const dmStandalone =
+  const dm =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(display-mode: standalone)").matches;
+    (window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: fullscreen)").matches ||
+      window.matchMedia("(display-mode: minimal-ui)").matches);
 
-  return iosStandalone || dmStandalone;
+  return iosStandalone || dm;
 }
+
 
 export function usePWAInstall() {
   const [installed, setInstalled] = useState(false);
