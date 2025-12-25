@@ -55,33 +55,35 @@ function getSubCategoryToken(p: Product) {
 }
 
 /* =========================
- * URL Share (OG) => API /share/product/:id
+ * URL Share (OG) — PUBLIC (www.duumini.com)
+ * -> on partage www.duumini.com/share/product/:id
+ * -> et on tente d'envoyer image + lien via Web Share API (files)
  * =======================*/
 function cleanBase(x: string) {
   return String(x || "").trim().replace(/\/+$/, "");
 }
 
-function getApiOriginForShare() {
+/** ✅ Domaine PUBLIC du site (pas l'API). */
+function getWebOriginForShare() {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
-      (import.meta as any).env?.VITE_API_PUBLIC_ORIGIN) ||
+      ((import.meta as any).env?.VITE_WEB_ORIGIN ||
+        (import.meta as any).env?.VITE_SITE_ORIGIN)) ||
     "";
 
-  if (fromEnv && typeof fromEnv === "string") {
-    const v = cleanBase(fromEnv);
-    if (v) return v;
-  }
+  const v = cleanBase(fromEnv);
+  if (v) return v;
 
-  if (API_BASE) return cleanBase(API_BASE);
-  return "";
+  // ✅ fallback demandé
+  return "https://www.duumini.com";
 }
 
-/** ✅ URL OG (API) => /share/product/:id (redirige ensuite vers /products/:slugOrId) */
+/** ✅ URL OG (PUBLIC) => /share/product/:id */
 function buildSharePageUrl(p: Product) {
-  const api = getApiOriginForShare();
+  const web = getWebOriginForShare();
   const id = Number((p as any).id);
-  if (!api || !id) return "";
-  return `${api}/share/product/${id}`;
+  if (!web || !id) return "";
+  return `${web}/share/product/${id}`;
 }
 
 /** liens fallback (quand WebShare indispo) */
@@ -96,6 +98,45 @@ function buildShareLinks(shareUrl: string, text: string) {
     linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${u}`,
     email: `mailto:?subject=${encodeURIComponent("Duumini")}&body=${t}%0A${u}`,
   };
+}
+
+/* =========================
+ * Share image helper (Web Share API files)
+ * =======================*/
+async function fetchAsFile(url: string, filename: string): Promise<File | null> {
+  try {
+    if (!url) return null;
+
+    const res = await fetch(url, { mode: "cors", cache: "no-store" });
+    if (!res.ok) return null;
+
+    const blob = await res.blob();
+    if (!blob || !blob.size) return null;
+
+    // limite prudente
+    const MAX = 10 * 1024 * 1024;
+    if (blob.size > MAX) return null;
+
+    const type = blob.type || "image/jpeg";
+    const safeName =
+      filename.endsWith(".jpg") || filename.endsWith(".png")
+        ? filename
+        : `${filename}.jpg`;
+
+    return new File([blob], safeName, { type });
+  } catch {
+    return null;
+  }
+}
+
+function canShareFiles(file: File) {
+  const navAny: any = navigator as any;
+  if (!navAny?.canShare) return false;
+  try {
+    return navAny.canShare({ files: [file] });
+  } catch {
+    return false;
+  }
 }
 
 /* ✅ helper: prix base */
@@ -198,23 +239,46 @@ function getPromoMeta(anyP: any, basePrice: number) {
         0
     ) || 0;
 
-  if (valueRaw > 0 && (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")) {
-    const rule: PromoRule = { kind: "PERCENT", value: clamp(valueRaw, 0, 100) };
+  if (
+    valueRaw > 0 &&
+    (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")
+  ) {
+    const rule: PromoRule = {
+      kind: "PERCENT",
+      value: clamp(valueRaw, 0, 100),
+    };
     const promo = computePromoPriceFromRule(base, rule);
     if (promo < base) {
-      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+      return {
+        isPromo: true,
+        rule,
+        oldPrice: base,
+        badgeText: formatPromoBadge(rule, base, promo),
+      };
     }
   }
 
-  if (valueRaw > 0 && (typeRaw === "AMOUNT" || typeRaw === "MAD" || typeRaw === "PRICE" || typeRaw === "VALUE")) {
+  if (
+    valueRaw > 0 &&
+    (typeRaw === "AMOUNT" ||
+      typeRaw === "MAD" ||
+      typeRaw === "PRICE" ||
+      typeRaw === "VALUE")
+  ) {
     const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, valueRaw) };
     const promo = computePromoPriceFromRule(base, rule);
     if (promo < base) {
-      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+      return {
+        isPromo: true,
+        rule,
+        oldPrice: base,
+        badgeText: formatPromoBadge(rule, base, promo),
+      };
     }
   }
 
-  if (flag) return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
+  if (flag)
+    return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
   return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 }
 
@@ -270,7 +334,8 @@ function parseVariants(product: Product): UiVariant[] {
     const price = po == null || po === "" ? null : Number(po);
 
     const stockRaw = v?.stock ?? v?.qty ?? null;
-    const stock = stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
+    const stock =
+      stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
 
     const { size, color } = extractSizeColor(v);
     const key = `id:${id}`;
@@ -412,7 +477,8 @@ export default function ProductCard({
     }
     setSelectedKey((prev) => {
       if (prev && variants.some((v) => v.key === prev)) return prev;
-      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      const firstOk =
+        variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
       return firstOk?.key || "";
     });
   }, [hasVariants, variants]);
@@ -433,7 +499,8 @@ export default function ProductCard({
   );
 
   const effectiveOldPrice = useMemo(() => {
-    if (oldPrice != null && Number(oldPrice) > Number(displayPrice)) return Number(oldPrice);
+    if (oldPrice != null && Number(oldPrice) > Number(displayPrice))
+      return Number(oldPrice);
     if (promoMeta.isPromo && rawPrice > displayPrice) return rawPrice;
     return null;
   }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice]);
@@ -455,7 +522,10 @@ export default function ProductCard({
     return `${stockLabel}:${effectiveStock}`;
   }, [effectiveStock, stockLabel]);
 
-  const qtyTotal = useMemo(() => qtyForProduct(Number(anyP.id)), [anyP.id, qtyForProduct]);
+  const qtyTotal = useMemo(
+    () => qtyForProduct(Number(anyP.id)),
+    [anyP.id, qtyForProduct]
+  );
 
   const qtySelected = useMemo(() => {
     if (!hasVariants) return qtyTotal;
@@ -465,7 +535,10 @@ export default function ProductCard({
 
   const openModal = useCallback(
     (startIdx = 0) => {
-      const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
+      const safe = Math.max(
+        0,
+        Math.min(startIdx, Math.max(0, images.length - 1))
+      );
       setImgIdx(safe);
       setOpen(true);
     },
@@ -540,7 +613,17 @@ export default function ProductCard({
         });
       }
     },
-    [add, anyP, baseDisplayPrice, baseStock, effectiveBadgeText, effectiveRule, hasVariants, onAdd, subCatToken]
+    [
+      add,
+      anyP,
+      baseDisplayPrice,
+      baseStock,
+      effectiveBadgeText,
+      effectiveRule,
+      hasVariants,
+      onAdd,
+      subCatToken,
+    ]
   );
 
   const handleAdd = useCallback(() => {
@@ -553,7 +636,7 @@ export default function ProductCard({
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
   /* =========================
-   * Partage (SANS bloc Site/API)
+   * Partage (PUBLIC www + image + lien)
    * =======================*/
   const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
 
@@ -571,7 +654,10 @@ export default function ProductCard({
     return `${shareTitle}\n${short}`;
   }, [anyP.description, shareTitle]);
 
-  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareText), [shareUrl, shareText]);
+  const shareLinks = useMemo(
+    () => buildShareLinks(shareUrl, shareText),
+    [shareUrl, shareText]
+  );
 
   const copyShareUrl = useCallback(async () => {
     try {
@@ -591,7 +677,35 @@ export default function ProductCard({
   const shareProduct = useCallback(async () => {
     const navAny: any = navigator as any;
 
-    if (navAny?.share && shareUrl) {
+    if (!shareUrl) {
+      setShareMenuOpen(true);
+      return;
+    }
+
+    // 🖼️ best-effort: image + lien (si supporté)
+    const img = coverUrl || currentImg || "";
+    if (navAny?.share && img) {
+      const file = await fetchAsFile(
+        img,
+        `duumini-${Number(anyP.id || 0) || "product"}.jpg`
+      );
+      if (file && canShareFiles(file)) {
+        try {
+          await navAny.share({
+            title: String(anyP.name || "Duumini"),
+            text: shareText,
+            url: shareUrl,
+            files: [file],
+          });
+          return;
+        } catch {
+          // fallback ci-dessous
+        }
+      }
+    }
+
+    // 🔗 fallback: share texte + lien
+    if (navAny?.share) {
       try {
         await navAny.share({
           title: String(anyP.name || "Duumini"),
@@ -599,10 +713,14 @@ export default function ProductCard({
           url: shareUrl,
         });
         return;
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
+
+    // menu fallback
     setShareMenuOpen(true);
-  }, [anyP.name, shareText, shareUrl]);
+  }, [anyP.id, anyP.name, coverUrl, currentImg, shareText, shareUrl]);
 
   /* ===== Image swiper (CARD VIEW) ===== */
   const CardImageSwiper = ({
@@ -637,7 +755,8 @@ export default function ProductCard({
       if (!el) return;
       const w = el.clientWidth || 1;
       const idx = Math.round(el.scrollLeft / w);
-      if (Number.isFinite(idx)) setActive(Math.max(0, Math.min(idx, images.length - 1)));
+      if (Number.isFinite(idx))
+        setActive(Math.max(0, Math.min(idx, images.length - 1)));
     }, [images.length]);
 
     const jumpTo = (idx: number) => {
@@ -662,7 +781,11 @@ export default function ProductCard({
             src={coverUrl}
             alt={String(anyP.name || "")}
             className="w-100"
-            style={{ aspectRatio: "1/1", objectFit: "cover", cursor: "pointer" }}
+            style={{
+              aspectRatio: "1/1",
+              objectFit: "cover",
+              cursor: "pointer",
+            }}
             loading="lazy"
             onClick={() => openModal(0)}
           />
@@ -682,7 +805,13 @@ export default function ProductCard({
 
     return (
       <div className="duu-swipe-wrap position-relative">
-        <div ref={scrollerRef} className="duu-swipe" onScroll={onScroll} onPointerDown={onPointerDown} onPointerMove={onPointerMove}>
+        <div
+          ref={scrollerRef}
+          className="duu-swipe"
+          onScroll={onScroll}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+        >
           {images.map((u, i) => (
             <button
               key={u + i}
@@ -695,7 +824,11 @@ export default function ProductCard({
               <img
                 src={u}
                 alt={String(anyP.name || "")}
-                className={variant === "square" ? "duu-swipe-img-square" : "duu-swipe-img-fashion"}
+                className={
+                  variant === "square"
+                    ? "duu-swipe-img-square"
+                    : "duu-swipe-img-fashion"
+                }
                 loading="lazy"
                 draggable={false}
               />
@@ -716,7 +849,10 @@ export default function ProductCard({
           ))}
         </div>
 
-        <span className="badge position-absolute bottom-0 end-0 m-2 text-white" style={{ background: "rgba(17,17,17,.75)" }}>
+        <span
+          className="badge position-absolute bottom-0 end-0 m-2 text-white"
+          style={{ background: "rgba(17,17,17,.75)" }}
+        >
           {active + 1}/{images.length}
         </span>
 
@@ -838,17 +974,29 @@ export default function ProductCard({
         ) : null}
 
         {selected && isVariantOutOfStock(selected) ? (
-          <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
+          <div className="alert alert-warning mt-2 py-2 small mb-0">
+            Cette variante est en rupture.
+          </div>
         ) : null}
 
         <div className="mt-2 d-flex gap-2">
-          <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => selected && addWithVariant(selected, -1)} disabled={!selected || qv <= 0}>
+          <button
+            type="button"
+            className="btn btn-outline-dark btn-sm"
+            onClick={() => selected && addWithVariant(selected, -1)}
+            disabled={!selected || qv <= 0}
+          >
             −
           </button>
           <button type="button" className="btn btn-light btn-sm" disabled>
             {qv || 0}
           </button>
-          <button type="button" className="btn btn-duu btn-sm" onClick={() => selected && addWithVariant(selected, +1)} disabled={!selected || isVariantOutOfStock(selected)}>
+          <button
+            type="button"
+            className="btn btn-duu btn-sm"
+            onClick={() => selected && addWithVariant(selected, +1)}
+            disabled={!selected || isVariantOutOfStock(selected)}
+          >
             +
           </button>
         </div>
@@ -1193,7 +1341,13 @@ export default function ProductCard({
        * MODAL (SANS bloc Site/API/Copier lien)
        * =======================*/}
       {open && (
-        <div className="modal d-block" style={{ background: "rgba(0,0,0,.35)" }} onClick={(e) => e.target === e.currentTarget && closeModal()} role="dialog" aria-modal="true">
+        <div
+          className="modal d-block"
+          style={{ background: "rgba(0,0,0,.35)" }}
+          onClick={(e) => e.target === e.currentTarget && closeModal()}
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
@@ -1206,7 +1360,12 @@ export default function ProductCard({
                   <div className="col-12 col-md-6">
                     <div className="position-relative rounded overflow-hidden bg-light">
                       {currentImg ? (
-                        <img src={currentImg} alt={String(anyP.name || "")} className="w-100" style={{ aspectRatio: "1/1", objectFit: "cover" }} />
+                        <img
+                          src={currentImg}
+                          alt={String(anyP.name || "")}
+                          className="w-100"
+                          style={{ aspectRatio: "1/1", objectFit: "cover" }}
+                        />
                       ) : (
                         <div className="w-100" style={{ aspectRatio: "1/1" }} />
                       )}
@@ -1260,7 +1419,10 @@ export default function ProductCard({
 
                     {stockText ? (
                       <div className="mt-2">
-                        <span className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")} style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}>
+                        <span
+                          className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")}
+                          style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
+                        >
                           {stockText}
                         </span>
                       </div>
@@ -1272,7 +1434,9 @@ export default function ProductCard({
 
                     <VariantSelector size="md" />
 
-                    <p className="text-muted mt-3 mb-3">{anyP.description ? shortText(anyP.description, 520) : "Aucune description."}</p>
+                    <p className="text-muted mt-3 mb-3">
+                      {anyP.description ? shortText(anyP.description, 520) : "Aucune description."}
+                    </p>
 
                     <div className="d-grid gap-2 position-relative">
                       <button className="btn btn-duu fw-semibold" onClick={handleAdd} disabled={!canAddNow} type="button">
