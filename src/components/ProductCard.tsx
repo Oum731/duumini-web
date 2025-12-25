@@ -54,62 +54,34 @@ function getSubCategoryToken(p: Product) {
   return "";
 }
 
-/* ===== Liens share (prod) ===== */
+/* =========================
+ * URL Share (OG) => API /share/product/:id
+ * =======================*/
 function cleanBase(x: string) {
   return String(x || "").trim().replace(/\/+$/, "");
 }
 
-function prettyHost(u: string) {
-  try {
-    return new URL(u).host || u;
-  } catch {
-    return u;
-  }
-}
-
-/**
- * Base FRONT pour partager.
- * ✅ Production: forcer www pour éviter les liens "duumini.com/..." qui ne marchent pas.
- */
-function getFrontBaseUrl() {
+function getApiOriginForShare() {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
-      (import.meta as any).env?.VITE_SHARE_BASE_URL) ||
+      (import.meta as any).env?.VITE_API_PUBLIC_ORIGIN) ||
     "";
 
   if (fromEnv && typeof fromEnv === "string") {
     const v = cleanBase(fromEnv);
-    if (v && !v.includes("onrender.com") && !v.includes("duumini-api"))
-      return v;
+    if (v) return v;
   }
 
-  if (typeof window !== "undefined" && window.location?.origin) {
-    const o = cleanBase(window.location.origin);
-
-    if (o.includes("www.duumini.com")) return o;
-    if (o === "https://duumini.com" || o === "http://duumini.com")
-      return "https://www.duumini.com";
-    if (o.includes("duumini.com")) return o;
-  }
-
-  return "https://www.duumini.com";
+  if (API_BASE) return cleanBase(API_BASE);
+  return "";
 }
 
-function getApiBaseUrl() {
-  return cleanBase(API_BASE || "");
-}
-
-/** ✅ URL OG (PHP) => /share/product/:id */
+/** ✅ URL OG (API) => /share/product/:id (redirige ensuite vers /products/:slugOrId) */
 function buildSharePageUrl(p: Product) {
-  const base = getFrontBaseUrl();
-  return `${base}/share/product/${Number((p as any).id)}`;
-}
-
-function buildApiProductUrl(p: Product) {
-  const apiBase = getApiBaseUrl();
+  const api = getApiOriginForShare();
   const id = Number((p as any).id);
-  if (!apiBase || !id) return "";
-  return `${apiBase}/api/products/${id}`;
+  if (!api || !id) return "";
+  return `${api}/share/product/${id}`;
 }
 
 /** liens fallback (quand WebShare indispo) */
@@ -226,84 +198,19 @@ function getPromoMeta(anyP: any, basePrice: number) {
         0
     ) || 0;
 
-  if (
-    valueRaw > 0 &&
-    (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")
-  ) {
-    const rule: PromoRule = {
-      kind: "PERCENT",
-      value: clamp(valueRaw, 0, 100),
-    };
+  if (valueRaw > 0 && (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")) {
+    const rule: PromoRule = { kind: "PERCENT", value: clamp(valueRaw, 0, 100) };
     const promo = computePromoPriceFromRule(base, rule);
     if (promo < base) {
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
     }
   }
 
-  if (
-    valueRaw > 0 &&
-    (typeRaw === "AMOUNT" ||
-      typeRaw === "MAD" ||
-      typeRaw === "PRICE" ||
-      typeRaw === "VALUE")
-  ) {
+  if (valueRaw > 0 && (typeRaw === "AMOUNT" || typeRaw === "MAD" || typeRaw === "PRICE" || typeRaw === "VALUE")) {
     const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, valueRaw) };
     const promo = computePromoPriceFromRule(base, rule);
     if (promo < base) {
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
-    }
-  }
-
-  const promoPercent =
-    Number(
-      anyP.promo_percent ??
-        anyP.discount_percent ??
-        anyP.percent_off ??
-        0
-    ) || 0;
-  if (promoPercent > 0) {
-    const rule: PromoRule = {
-      kind: "PERCENT",
-      value: clamp(promoPercent, 0, 100),
-    };
-    const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base) {
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
-    }
-  }
-
-  const promoAmount =
-    Number(
-      anyP.promo_amount ??
-        anyP.discount_amount ??
-        anyP.amount_off ??
-        0
-    ) || 0;
-  if (promoAmount > 0) {
-    const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, promoAmount) };
-    const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base) {
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
     }
   }
 
@@ -404,8 +311,6 @@ type Props = {
   layout?: "default" | "fashion";
   miniDescMax?: number;
   stockLabel?: "Disponible" | "Reste";
-  /** ✅ production: ne pas afficher Site/API dans les cartes */
-  showShareDebug?: boolean;
 };
 
 export default function ProductCard({
@@ -418,7 +323,6 @@ export default function ProductCard({
   layout = "default",
   miniDescMax = 88,
   stockLabel = "Disponible",
-  showShareDebug = false,
 }: Props) {
   const { add, qtyForProduct, qtyForProductVariant } = useCart();
   const anyP = product as any;
@@ -484,7 +388,6 @@ export default function ProductCard({
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // ferme le menu share si ESC ou clic dehors
   useEffect(() => {
     if (!shareMenuOpen) return;
 
@@ -530,8 +433,7 @@ export default function ProductCard({
   );
 
   const effectiveOldPrice = useMemo(() => {
-    if (oldPrice != null && Number(oldPrice) > Number(displayPrice))
-      return Number(oldPrice);
+    if (oldPrice != null && Number(oldPrice) > Number(displayPrice)) return Number(oldPrice);
     if (promoMeta.isPromo && rawPrice > displayPrice) return rawPrice;
     return null;
   }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice]);
@@ -553,10 +455,7 @@ export default function ProductCard({
     return `${stockLabel}:${effectiveStock}`;
   }, [effectiveStock, stockLabel]);
 
-  const qtyTotal = useMemo(
-    () => qtyForProduct(Number(anyP.id)),
-    [anyP.id, qtyForProduct]
-  );
+  const qtyTotal = useMemo(() => qtyForProduct(Number(anyP.id)), [anyP.id, qtyForProduct]);
 
   const qtySelected = useMemo(() => {
     if (!hasVariants) return qtyTotal;
@@ -566,10 +465,7 @@ export default function ProductCard({
 
   const openModal = useCallback(
     (startIdx = 0) => {
-      const safe = Math.max(
-        0,
-        Math.min(startIdx, Math.max(0, images.length - 1))
-      );
+      const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
       setImgIdx(safe);
       setOpen(true);
     },
@@ -603,13 +499,10 @@ export default function ProductCard({
       const isDefault = !hasVariants || !variant;
 
       if (!hasVariants && baseStock === 0 && delta > 0) return;
-      if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0)
-        return;
+      if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0) return;
 
       const raw =
-        !isDefault && variant?.price != null
-          ? Number(variant.price)
-          : baseDisplayPrice;
+        !isDefault && variant?.price != null ? Number(variant.price) : baseDisplayPrice;
       const finalPrice = computePromoPriceFromRule(raw, effectiveRule);
 
       const productForCart: any = {
@@ -647,17 +540,7 @@ export default function ProductCard({
         });
       }
     },
-    [
-      add,
-      anyP,
-      baseDisplayPrice,
-      baseStock,
-      effectiveBadgeText,
-      effectiveRule,
-      hasVariants,
-      onAdd,
-      subCatToken,
-    ]
+    [add, anyP, baseDisplayPrice, baseStock, effectiveBadgeText, effectiveRule, hasVariants, onAdd, subCatToken]
   );
 
   const handleAdd = useCallback(() => {
@@ -670,23 +553,14 @@ export default function ProductCard({
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
   /* =========================
-   * Partage SIMPLE (prod)
+   * Partage (SANS bloc Site/API)
    * =======================*/
   const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
-  const apiUrl = useMemo(() => buildApiProductUrl(product), [product]);
-
-  const frontDomain = useMemo(() => prettyHost(getFrontBaseUrl()), []);
-  const apiDomain = useMemo(
-    () => (getApiBaseUrl() ? prettyHost(getApiBaseUrl()) : ""),
-    []
-  );
 
   const shareTitle = useMemo(() => {
     const name = String(anyP.name || "Produit");
     if (effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice)) {
-      return `${name} — Promo ${moneyMAD(displayPrice)} (au lieu de ${moneyMAD(
-        effectiveOldPrice
-      )})`;
+      return `${name} — Promo ${moneyMAD(displayPrice)} (au lieu de ${moneyMAD(effectiveOldPrice)})`;
     }
     return `${name} — ${moneyMAD(displayPrice)}`;
   }, [anyP.name, displayPrice, effectiveOldPrice]);
@@ -697,18 +571,16 @@ export default function ProductCard({
     return `${shareTitle}\n${short}`;
   }, [anyP.description, shareTitle]);
 
-  const shareLinks = useMemo(
-    () => buildShareLinks(shareUrl, shareText),
-    [shareUrl, shareText]
-  );
+  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareText), [shareUrl, shareText]);
 
   const copyShareUrl = useCallback(async () => {
     try {
+      if (!shareUrl) return;
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
-      // silencieux en prod
+      // silencieux
     }
   }, [shareUrl]);
 
@@ -719,7 +591,7 @@ export default function ProductCard({
   const shareProduct = useCallback(async () => {
     const navAny: any = navigator as any;
 
-    if (navAny?.share) {
+    if (navAny?.share && shareUrl) {
       try {
         await navAny.share({
           title: String(anyP.name || "Duumini"),
@@ -727,9 +599,7 @@ export default function ProductCard({
           url: shareUrl,
         });
         return;
-      } catch {
-        // user cancel => ok
-      }
+      } catch {}
     }
     setShareMenuOpen(true);
   }, [anyP.name, shareText, shareUrl]);
@@ -767,8 +637,7 @@ export default function ProductCard({
       if (!el) return;
       const w = el.clientWidth || 1;
       const idx = Math.round(el.scrollLeft / w);
-      if (Number.isFinite(idx))
-        setActive(Math.max(0, Math.min(idx, images.length - 1)));
+      if (Number.isFinite(idx)) setActive(Math.max(0, Math.min(idx, images.length - 1)));
     }, [images.length]);
 
     const jumpTo = (idx: number) => {
@@ -813,13 +682,7 @@ export default function ProductCard({
 
     return (
       <div className="duu-swipe-wrap position-relative">
-        <div
-          ref={scrollerRef}
-          className="duu-swipe"
-          onScroll={onScroll}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-        >
+        <div ref={scrollerRef} className="duu-swipe" onScroll={onScroll} onPointerDown={onPointerDown} onPointerMove={onPointerMove}>
           {images.map((u, i) => (
             <button
               key={u + i}
@@ -832,11 +695,7 @@ export default function ProductCard({
               <img
                 src={u}
                 alt={String(anyP.name || "")}
-                className={
-                  variant === "square"
-                    ? "duu-swipe-img-square"
-                    : "duu-swipe-img-fashion"
-                }
+                className={variant === "square" ? "duu-swipe-img-square" : "duu-swipe-img-fashion"}
                 loading="lazy"
                 draggable={false}
               />
@@ -857,10 +716,7 @@ export default function ProductCard({
           ))}
         </div>
 
-        <span
-          className="badge position-absolute bottom-0 end-0 m-2 text-white"
-          style={{ background: "rgba(17,17,17,.75)" }}
-        >
+        <span className="badge position-absolute bottom-0 end-0 m-2 text-white" style={{ background: "rgba(17,17,17,.75)" }}>
           {active + 1}/{images.length}
         </span>
 
@@ -986,23 +842,13 @@ export default function ProductCard({
         ) : null}
 
         <div className="mt-2 d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-outline-dark btn-sm"
-            onClick={() => selected && addWithVariant(selected, -1)}
-            disabled={!selected || qv <= 0}
-          >
+          <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => selected && addWithVariant(selected, -1)} disabled={!selected || qv <= 0}>
             −
           </button>
           <button type="button" className="btn btn-light btn-sm" disabled>
             {qv || 0}
           </button>
-          <button
-            type="button"
-            className="btn btn-duu btn-sm"
-            onClick={() => selected && addWithVariant(selected, +1)}
-            disabled={!selected || isVariantOutOfStock(selected)}
-          >
+          <button type="button" className="btn btn-duu btn-sm" onClick={() => selected && addWithVariant(selected, +1)} disabled={!selected || isVariantOutOfStock(selected)}>
             +
           </button>
         </div>
@@ -1032,73 +878,12 @@ export default function ProductCard({
 
       {stockText ? (
         <span
-          className={
-            "badge " +
-            (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")
-          }
+          className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")}
           style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
         >
           {stockText}
         </span>
       ) : null}
-    </div>
-  );
-
-  const LinkLine = () => (
-    <div className="duu-linkline">
-      <span className="duu-pill">
-        <strong>Site:</strong>{" "}
-        <a href={shareUrl} target="_blank" rel="noreferrer">
-          {frontDomain}
-        </a>
-      </span>
-      {apiUrl ? (
-        <span className="duu-pill">
-          <strong>API:</strong>{" "}
-          <a href={apiUrl} target="_blank" rel="noreferrer">
-            {apiDomain || "API"}
-          </a>
-        </span>
-      ) : null}
-
-      <button
-        type="button"
-        className="btn btn-sm btn-outline-secondary ms-auto"
-        onClick={copyShareUrl}
-        title="Copier le lien de partage"
-      >
-        {copied ? "Copié ✅" : "Copier lien"}
-      </button>
-
-      <style>{`
-        .duu-linkline{
-          display:flex;
-          gap:8px;
-          align-items:center;
-          flex-wrap:wrap;
-          margin-top:6px;
-          font-size:.78rem;
-          color: rgba(0,0,0,.55);
-          font-weight: 800;
-        }
-        .duu-pill{
-          display:inline-flex;
-          align-items:center;
-          gap:6px;
-          padding: 4px 8px;
-          border-radius: 999px;
-          border: 1px solid rgba(0,0,0,.10);
-          background: rgba(255,255,255,.8);
-        }
-        .duu-pill strong{ color: rgba(0,0,0,.78); }
-        .duu-pill a{
-          color: rgba(0,0,0,.72);
-          text-decoration: none;
-          word-break: break-word;
-          overflow-wrap: anywhere;
-        }
-        .duu-pill a:hover{ text-decoration: underline; color: rgba(0,0,0,.9); }
-      `}</style>
     </div>
   );
 
@@ -1181,17 +966,9 @@ export default function ProductCard({
             </div>
 
             <div className="duu-fashion-side">
-              <button
-                className="btn btn-link p-0 text-start"
-                onClick={() => openModal(0)}
-                type="button"
-                style={{ textDecoration: "none" }}
-              >
+              <button className="btn btn-link p-0 text-start" onClick={() => openModal(0)} type="button" style={{ textDecoration: "none" }}>
                 <h3 className="duu-fashion-title">{String(anyP.name || "")}</h3>
               </button>
-
-              {/* ✅ PRODUCTION: on ne montre pas LinkLine dans la carte */}
-              {showShareDebug ? <LinkLine /> : null}
 
               {!!anyP.description && (
                 <button type="button" className="duu-mini-desc-btn" onClick={() => openModal(0)}>
@@ -1305,30 +1082,17 @@ export default function ProductCard({
 
             <div className="card-body d-flex flex-column">
               <h3 className="h6 mb-1">
-                <button
-                  className="btn btn-link p-0 text-start text-dark"
-                  onClick={() => openModal(0)}
-                  type="button"
-                  style={{ textDecoration: "none" }}
-                >
+                <button className="btn btn-link p-0 text-start text-dark" onClick={() => openModal(0)} type="button" style={{ textDecoration: "none" }}>
                   {String(anyP.name || "")}
                 </button>
               </h3>
-
-              {/* ✅ PRODUCTION: on ne montre pas LinkLine dans la carte */}
-              {showShareDebug ? <LinkLine /> : null}
 
               {!!anyP.description && (
                 <button
                   type="button"
                   onClick={() => openModal(0)}
                   className="btn btn-link p-0 text-start"
-                  style={{
-                    textDecoration: "none",
-                    color: "rgba(0,0,0,.62)",
-                    fontWeight: 600,
-                    fontSize: ".86rem",
-                  }}
+                  style={{ textDecoration: "none", color: "rgba(0,0,0,.62)", fontWeight: 600, fontSize: ".86rem" }}
                 >
                   {shortText(String(anyP.description), miniDescMax)}
                 </button>
@@ -1426,16 +1190,10 @@ export default function ProductCard({
       </div>
 
       {/* =========================
-       * MODAL
+       * MODAL (SANS bloc Site/API/Copier lien)
        * =======================*/}
       {open && (
-        <div
-          className="modal d-block"
-          style={{ background: "rgba(0,0,0,.35)" }}
-          onClick={(e) => e.target === e.currentTarget && closeModal()}
-          role="dialog"
-          aria-modal="true"
-        >
+        <div className="modal d-block" style={{ background: "rgba(0,0,0,.35)" }} onClick={(e) => e.target === e.currentTarget && closeModal()} role="dialog" aria-modal="true">
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div className="modal-content">
               <div className="modal-header">
@@ -1448,12 +1206,7 @@ export default function ProductCard({
                   <div className="col-12 col-md-6">
                     <div className="position-relative rounded overflow-hidden bg-light">
                       {currentImg ? (
-                        <img
-                          src={currentImg}
-                          alt={String(anyP.name || "")}
-                          className="w-100"
-                          style={{ aspectRatio: "1/1", objectFit: "cover" }}
-                        />
+                        <img src={currentImg} alt={String(anyP.name || "")} className="w-100" style={{ aspectRatio: "1/1", objectFit: "cover" }} />
                       ) : (
                         <div className="w-100" style={{ aspectRatio: "1/1" }} />
                       )}
@@ -1479,10 +1232,7 @@ export default function ProductCard({
                             ▶
                           </button>
 
-                          <span
-                            className="badge position-absolute bottom-0 end-0 m-2 text-white"
-                            style={{ background: "rgba(17,17,17,.75)" }}
-                          >
+                          <span className="badge position-absolute bottom-0 end-0 m-2 text-white" style={{ background: "rgba(17,17,17,.75)" }}>
                             {imgIdx + 1}/{images.length}
                           </span>
                         </>
@@ -1491,10 +1241,7 @@ export default function ProductCard({
                   </div>
 
                   <div className="col-12 col-md-6">
-                    {/* ✅ OK: ici c'est logique d'avoir “Copier lien” dans le modal */}
-                    <LinkLine />
-
-                    <div className="d-flex align-items-baseline gap-2 mt-2">
+                    <div className="d-flex align-items-baseline gap-2">
                       <div className="h5 m-0">Prix:{moneyMAD(displayPrice)}</div>
                       {effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice) && (
                         <div className="h6 m-0" style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)" }}>
@@ -1513,13 +1260,7 @@ export default function ProductCard({
 
                     {stockText ? (
                       <div className="mt-2">
-                        <span
-                          className={
-                            "badge " +
-                            (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")
-                          }
-                          style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
-                        >
+                        <span className={"badge " + (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")} style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}>
                           {stockText}
                         </span>
                       </div>
@@ -1531,9 +1272,7 @@ export default function ProductCard({
 
                     <VariantSelector size="md" />
 
-                    <p className="text-muted mt-3 mb-3">
-                      {anyP.description ? shortText(anyP.description, 520) : "Aucune description."}
-                    </p>
+                    <p className="text-muted mt-3 mb-3">{anyP.description ? shortText(anyP.description, 520) : "Aucune description."}</p>
 
                     <div className="d-grid gap-2 position-relative">
                       <button className="btn btn-duu fw-semibold" onClick={handleAdd} disabled={!canAddNow} type="button">
