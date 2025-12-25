@@ -1,54 +1,83 @@
 // src/hooks/usePWAInstall.ts
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+type BIPOutcome = "accepted" | "dismissed";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+  userChoice: Promise<{ outcome: BIPOutcome; platform: string }>;
 };
 
+function isStandalone() {
+  // iOS + Android/desktop
+  const iosStandalone =
+    typeof navigator !== "undefined" && (navigator as any).standalone === true;
+
+  const dmStandalone =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(display-mode: standalone)").matches;
+
+  return iosStandalone || dmStandalone;
+}
+
 export function usePWAInstall() {
-  const [supportsPrompt, setSupportsPrompt] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installed, setInstalled] = useState<boolean>(false);
+  const [installed, setInstalled] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
 
-  // detect installé (Chrome) : display-mode ou related apps
+  // état installé + listener appinstalled
   useEffect(() => {
-    const isStandalone =
-      window.matchMedia?.("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true;
-    setInstalled(isStandalone);
+    setInstalled(isStandalone());
 
-    const onInstalled = () => setInstalled(true);
+    const onInstalled = () => {
+      setInstalled(true);
+      setDeferredPrompt(null);
+    };
+
     window.addEventListener("appinstalled", onInstalled);
     return () => window.removeEventListener("appinstalled", onInstalled);
   }, []);
 
-  // capture beforeinstallprompt (Android/Chrome)
+  // capture beforeinstallprompt (Chrome/Android/Desktop)
   useEffect(() => {
     const onBIP = (e: Event) => {
-      e.preventDefault?.();
+      // ✅ si on empêche la bannière auto, on DOIT afficher plus tard via prompt()
+      e.preventDefault();
+
+      // certains navigateurs peuvent émettre plusieurs fois : on garde le dernier
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setSupportsPrompt(true);
-      try {
-        // facultatif : analytics "eligible"
-      } catch {}
     };
+
     window.addEventListener("beforeinstallprompt", onBIP as any);
     return () => window.removeEventListener("beforeinstallprompt", onBIP as any);
   }, []);
 
+  const supportsPrompt = useMemo(() => !!deferredPrompt?.prompt, [deferredPrompt]);
+
   const promptInstall = useCallback(async () => {
-    if (!deferredPrompt) return { shown: false, outcome: null as any };
-    await deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);            // le prompt ne peut être montré qu’une fois
-    setSupportsPrompt(false);
-    return { shown: true, outcome: choice.outcome };
+    if (!deferredPrompt?.prompt) {
+      return { shown: false, outcome: null as BIPOutcome | null };
+    }
+
+    // ⚠️ l’event est “one-shot” : on le consomme et on l’efface avant prompt()
+    const e = deferredPrompt;
+    setDeferredPrompt(null);
+
+    try {
+      await e.prompt(); // ✅ affiche la bannière
+      const choice = await e.userChoice;
+
+      if (choice?.outcome === "accepted") {
+        // appinstalled arrivera souvent après, mais on met déjà à jour
+        setInstalled(true);
+      }
+
+      return { shown: true, outcome: choice?.outcome || "dismissed" };
+    } catch {
+      return { shown: false, outcome: null as BIPOutcome | null };
+    }
   }, [deferredPrompt]);
 
-  return {
-    installed,
-    supportsPrompt,
-    promptInstall,
-  };
+  return { installed, supportsPrompt, promptInstall };
 }

@@ -100,11 +100,6 @@ function PageViewTracker() {
   return null;
 }
 
-/** 🧭 Page d’atterrissage publique */
-function LandingRedirect() {
-  return <Home />;
-}
-
 // Layout admin
 function AdminShell() {
   return (
@@ -199,11 +194,7 @@ function GlobalRatingModal(props: {
     setError(null);
     setSuccess(null);
     try {
-      await rateProduct(
-        pending.product_id,
-        rating,
-        comment.trim() || undefined
-      );
+      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch (e) {
@@ -257,9 +248,7 @@ function GlobalRatingModal(props: {
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">
-                  Votre avis (optionnel)
-                </label>
+                <label className="form-label small">Votre avis (optionnel)</label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -343,11 +332,14 @@ export default function App() {
           <main className="flex-fill">
             <React.Suspense
               fallback={
-                <div className="container-xxl py-5 text-muted">Chargement…</div>
+                <div className="container-xxl py-5 text-muted">
+                  Chargement…
+                </div>
               }
             >
               <Routes>
-                <Route path="/" element={<LandingRedirect />} />
+                {/* ✅ Pas de redirection : Home direct */}
+                <Route path="/" element={<Home />} />
 
                 {/* Public */}
                 <Route path="/profile" element={<ProfilePage />} />
@@ -378,6 +370,7 @@ export default function App() {
                   path="/african-market/:categorySlug/:subCategorySlug"
                   element={<AfricanMarket />}
                 />
+
                 <Route path="/fashion" element={<Fashion />} />
                 <Route path="/fashion/:categorySlug" element={<Fashion />} />
                 <Route
@@ -385,7 +378,15 @@ export default function App() {
                   element={<Fashion />}
                 />
 
+                {/* ✅ Partage produit (PAS de redirection) */}
+                <Route
+                  path="/share/product/:idOrSlug"
+                  element={<ProductView />}
+                />
+
+                {/* ✅ Produit normal */}
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
+
                 <Route path="/top-products" element={<TopProductsPage />} />
                 <Route path="/promos" element={<PromotionsPage />} />
                 <Route path="/test-can" element={<CanKickLottie />} />
