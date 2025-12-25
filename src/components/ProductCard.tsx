@@ -6,12 +6,15 @@ import { useCart } from "../store/cart";
 import ProductRating from "./ProductRating";
 import { trackAddToCart } from "../lib/analytics";
 
-/* ===== Helpers ===== */
+/* =========================
+ * Helpers
+ * =======================*/
 function imgUrl(u?: string | null) {
   if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
+  const s = String(u);
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("/")) return `${API_BASE}${s}`;
+  return s;
 }
 
 function moneyMAD(n?: number | null) {
@@ -25,7 +28,7 @@ function moneyMAD(n?: number | null) {
 function shortText(s?: string | null, max = 200) {
   const t = (s || "").trim();
   if (t.length <= max) return t;
-  return t.slice(0, max - 1) + "…";
+  return t.slice(0, Math.max(0, max - 1)) + "…";
 }
 
 function normToken(x: any) {
@@ -51,26 +54,26 @@ function getSubCategoryToken(p: Product) {
   return "";
 }
 
-/* ===== Liens share ===== */
+/* ===== Liens share (prod) ===== */
 function cleanBase(x: string) {
   return String(x || "").trim().replace(/\/+$/, "");
 }
 
 function prettyHost(u: string) {
   try {
-    const url = new URL(u);
-    return url.host || u;
+    return new URL(u).host || u;
   } catch {
     return u;
   }
 }
 
-/** Base FRONT pour partager (duumini.com) */
+/**
+ * Base FRONT pour partager.
+ * ✅ Production: forcer www pour éviter les liens "duumini.com/..." qui ne marchent pas.
+ */
 function getFrontBaseUrl() {
   const fromEnv =
-    (typeof import.meta !== "undefined" &&
-      (import.meta as any).env?.VITE_SHARE_BASE_URL) ||
-    "";
+    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_SHARE_BASE_URL) || "";
 
   if (fromEnv && typeof fromEnv === "string") {
     const v = cleanBase(fromEnv);
@@ -79,6 +82,14 @@ function getFrontBaseUrl() {
 
   if (typeof window !== "undefined" && window.location?.origin) {
     const o = cleanBase(window.location.origin);
+
+    // ✅ si tu es déjà sur www.duumini.com => ok
+    if (o.includes("www.duumini.com")) return o;
+
+    // ✅ si tu es sur duumini.com (sans www) => on force www (car share sans www ne marche pas chez toi)
+    if (o === "https://duumini.com" || o === "http://duumini.com") return "https://www.duumini.com";
+
+    // ✅ si un sous-domaine duumini => ok
     if (o.includes("duumini.com")) return o;
   }
 
@@ -89,6 +100,7 @@ function getApiBaseUrl() {
   return cleanBase(API_BASE || "");
 }
 
+/** ✅ URL OG (PHP) => /share/product/:id */
 function buildSharePageUrl(p: Product) {
   const base = getFrontBaseUrl();
   return `${base}/share/product/${Number((p as any).id)}`;
@@ -101,18 +113,17 @@ function buildApiProductUrl(p: Product) {
   return `${apiBase}/api/products/${id}`;
 }
 
-/** liens “fallback” */
-function buildShareLinks(shareUrl: string, title: string) {
+/** liens fallback (quand WebShare indispo) */
+function buildShareLinks(shareUrl: string, text: string) {
   const u = encodeURIComponent(shareUrl);
-  const t = encodeURIComponent(title);
+  const t = encodeURIComponent(text);
   return {
-    facebook: `https://www.facebook.com/sharer/sharer.php?u=${u}`,
     whatsapp: `https://wa.me/?text=${t}%20${u}`,
+    facebook: `https://www.facebook.com/sharer/sharer.php?u=${u}`,
     telegram: `https://t.me/share/url?url=${u}&text=${t}`,
     x: `https://twitter.com/intent/tweet?text=${t}&url=${u}`,
     linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${u}`,
-    pinterest: `https://pinterest.com/pin/create/button/?url=${u}&description=${t}`,
-    email: `mailto:?subject=${t}&body=${t}%0A${u}`,
+    email: `mailto:?subject=${encodeURIComponent("Duumini")}&body=${t}%0A${u}`,
   };
 }
 
@@ -125,8 +136,8 @@ function getDisplayPrice(anyP: any, priceOverride: number | null) {
 }
 
 /* =========================
- * ✅ PROMO (AUTO)
- * ========================= */
+ * PROMO (AUTO)
+ * =======================*/
 type PromoRule =
   | { kind: "PERCENT"; value: number }
   | { kind: "AMOUNT"; value: number }
@@ -183,13 +194,8 @@ function getPromoMeta(anyP: any, basePrice: number) {
     Number(anyP.promo_eligible ?? 0) === 1;
 
   const promoPriceDirect =
-    Number(
-      anyP.promo_price_client ??
-        anyP.promo_price ??
-        anyP.price_promo ??
-        anyP.sale_price ??
-        0
-    ) || 0;
+    Number(anyP.promo_price_client ?? anyP.promo_price ?? anyP.price_promo ?? anyP.sale_price ?? 0) ||
+    0;
 
   if (promoPriceDirect > 0 && promoPriceDirect < base) {
     const factor = clamp(promoPriceDirect / base, 0, 1);
@@ -202,90 +208,57 @@ function getPromoMeta(anyP: any, basePrice: number) {
     };
   }
 
-  const typeRaw = String(
-    anyP.promo_discount_type ?? anyP.discount_type ?? anyP.promo_type ?? ""
-  )
+  const typeRaw = String(anyP.promo_discount_type ?? anyP.discount_type ?? anyP.promo_type ?? "")
     .trim()
     .toUpperCase();
-  const valueRaw =
-    Number(
-      anyP.promo_discount_value ??
-        anyP.discount_value ??
-        anyP.promo_value ??
-        0
-    ) || 0;
 
-  if (
-    valueRaw > 0 &&
-    (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")
-  ) {
+  const valueRaw =
+    Number(anyP.promo_discount_value ?? anyP.discount_value ?? anyP.promo_value ?? 0) || 0;
+
+  if (valueRaw > 0 && (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")) {
     const rule: PromoRule = { kind: "PERCENT", value: clamp(valueRaw, 0, 100) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base)
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
   }
 
   if (
     valueRaw > 0 &&
-    (typeRaw === "AMOUNT" ||
-      typeRaw === "MAD" ||
-      typeRaw === "PRICE" ||
-      typeRaw === "VALUE")
+    (typeRaw === "AMOUNT" || typeRaw === "MAD" || typeRaw === "PRICE" || typeRaw === "VALUE")
   ) {
     const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, valueRaw) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base)
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
   }
 
-  const promoPercent =
-    Number(anyP.promo_percent ?? anyP.discount_percent ?? anyP.percent_off ?? 0) ||
-    0;
+  const promoPercent = Number(anyP.promo_percent ?? anyP.discount_percent ?? anyP.percent_off ?? 0) || 0;
   if (promoPercent > 0) {
-    const rule: PromoRule = {
-      kind: "PERCENT",
-      value: clamp(promoPercent, 0, 100),
-    };
+    const rule: PromoRule = { kind: "PERCENT", value: clamp(promoPercent, 0, 100) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base)
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
   }
 
-  const promoAmount =
-    Number(anyP.promo_amount ?? anyP.discount_amount ?? anyP.amount_off ?? 0) ||
-    0;
+  const promoAmount = Number(anyP.promo_amount ?? anyP.discount_amount ?? anyP.amount_off ?? 0) || 0;
   if (promoAmount > 0) {
     const rule: PromoRule = { kind: "AMOUNT", value: Math.max(0, promoAmount) };
     const promo = computePromoPriceFromRule(base, rule);
-    if (promo < base)
-      return {
-        isPromo: true,
-        rule,
-        oldPrice: base,
-        badgeText: formatPromoBadge(rule, base, promo),
-      };
+    if (promo < base) {
+      return { isPromo: true, rule, oldPrice: base, badgeText: formatPromoBadge(rule, base, promo) };
+    }
   }
 
   if (flag) return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
   return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 }
 
-/* ===== Variantes (générique) ===== */
+/* =========================
+ * Variantes
+ * =======================*/
 type UiVariant = {
   id: number;
   key: string;
@@ -330,6 +303,7 @@ function parseVariants(product: Product): UiVariant[] {
     if (!id) continue;
 
     const label = buildVariantLabel(v);
+
     const po = v?.price_override;
     const price = po == null || po === "" ? null : Number(po);
 
@@ -362,20 +336,18 @@ function isVariantOutOfStock(v: UiVariant) {
   return v.stock === 0;
 }
 
-/* ===== Component ===== */
+/* =========================
+ * Component
+ * =======================*/
 type Props = {
   product: Product;
   onAdd?: (p: Product) => void;
-
   priceOverride?: number | null;
   oldPrice?: number | null;
   badgeText?: string | null;
-
   hideSubCategories?: string[];
-
   layout?: "default" | "fashion";
   miniDescMax?: number;
-
   stockLabel?: "Disponible" | "Reste";
 };
 
@@ -394,10 +366,7 @@ export default function ProductCard({
   const anyP = product as any;
 
   const subCatToken = useMemo(() => getSubCategoryToken(product), [product]);
-  const hideList = useMemo(
-    () => hideSubCategories.map((x) => normToken(x)).filter(Boolean),
-    [hideSubCategories]
-  );
+  const hideList = useMemo(() => hideSubCategories.map((x) => normToken(x)).filter(Boolean), [hideSubCategories]);
 
   if (subCatToken && hideList.includes(subCatToken)) return null;
 
@@ -405,8 +374,7 @@ export default function ProductCard({
   if (!isActive) return null;
 
   const baseStockRaw = anyP.stock;
-  const baseStock =
-    baseStockRaw == null || baseStockRaw === "" ? null : Number(baseStockRaw);
+  const baseStock = baseStockRaw == null || baseStockRaw === "" ? null : Number(baseStockRaw);
 
   const imagesRaw: string[] = useMemo(() => {
     const arr: string[] = [];
@@ -434,15 +402,9 @@ export default function ProductCard({
   const images = useMemo(() => imagesRaw.map((u) => imgUrl(u)), [imagesRaw]);
   const coverUrl = images[0] || "";
 
-  const baseDisplayPrice = useMemo(
-    () => getDisplayPrice(anyP, priceOverride),
-    [anyP, priceOverride]
-  );
+  const baseDisplayPrice = useMemo(() => getDisplayPrice(anyP, priceOverride), [anyP, priceOverride]);
 
-  const promoMeta = useMemo(
-    () => getPromoMeta(anyP, baseDisplayPrice),
-    [anyP, baseDisplayPrice]
-  );
+  const promoMeta = useMemo(() => getPromoMeta(anyP, baseDisplayPrice), [anyP, baseDisplayPrice]);
   const effectiveRule = promoMeta.isPromo ? promoMeta.rule : null;
 
   const variants = useMemo(() => parseVariants(product), [product]);
@@ -453,6 +415,21 @@ export default function ProductCard({
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // ferme le menu share si on clique dehors ou ESC
+  useEffect(() => {
+    if (!shareMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShareMenuOpen(false);
+    };
+    const onClick = () => setShareMenuOpen(false);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("click", onClick, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("click", onClick, { capture: true } as any);
+    };
+  }, [shareMenuOpen]);
 
   useEffect(() => {
     if (!hasVariants) {
@@ -466,20 +443,14 @@ export default function ProductCard({
     });
   }, [hasVariants, variants]);
 
-  const selectedVariant = useMemo(
-    () => variants.find((v) => v.key === selectedKey) || null,
-    [variants, selectedKey]
-  );
+  const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
 
   const rawPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
     return baseDisplayPrice;
   }, [baseDisplayPrice, selectedVariant]);
 
-  const displayPrice = useMemo(
-    () => computePromoPriceFromRule(rawPrice, effectiveRule),
-    [rawPrice, effectiveRule]
-  );
+  const displayPrice = useMemo(() => computePromoPriceFromRule(rawPrice, effectiveRule), [rawPrice, effectiveRule]);
 
   const effectiveOldPrice = useMemo(() => {
     if (oldPrice != null && Number(oldPrice) > Number(displayPrice)) return Number(oldPrice);
@@ -504,10 +475,7 @@ export default function ProductCard({
     return `${stockLabel}:${effectiveStock}`;
   }, [effectiveStock, stockLabel]);
 
-  const qtyTotal = useMemo(
-    () => qtyForProduct(Number(anyP.id)),
-    [anyP.id, qtyForProduct]
-  );
+  const qtyTotal = useMemo(() => qtyForProduct(Number(anyP.id)), [anyP.id, qtyForProduct]);
 
   const qtySelected = useMemo(() => {
     if (!hasVariants) return qtyTotal;
@@ -515,11 +483,14 @@ export default function ProductCard({
     return qtyForProductVariant(Number(anyP.id), key);
   }, [anyP.id, hasVariants, qtyForProductVariant, qtyTotal, selectedVariant]);
 
-  const openModal = useCallback((startIdx = 0) => {
-    const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
-    setImgIdx(safe);
-    setOpen(true);
-  }, [images.length]);
+  const openModal = useCallback(
+    (startIdx = 0) => {
+      const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
+      setImgIdx(safe);
+      setOpen(true);
+    },
+    [images.length]
+  );
 
   const closeModal = useCallback(() => setOpen(false), []);
   const prevImg = useCallback(() => {
@@ -577,7 +548,7 @@ export default function ProductCard({
       });
 
       if (delta > 0) {
-        if (onAdd) onAdd(productForCart);
+        onAdd?.(productForCart);
         trackAddToCart({
           productId: anyP.id,
           name: anyP.name,
@@ -600,9 +571,14 @@ export default function ProductCard({
     addWithVariant(hasVariants ? selectedVariant : null, -1);
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
-  /** ===== Partage SIMPLE (lien /share/product/:id) ===== */
+  /* =========================
+   * Partage SIMPLE (prod)
+   * - Toujours partager /share/product/:id (OG)
+   * - Pas de share fichiers/images (trop instable selon device)
+   * =======================*/
   const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
   const apiUrl = useMemo(() => buildApiProductUrl(product), [product]);
+
   const frontDomain = useMemo(() => prettyHost(getFrontBaseUrl()), []);
   const apiDomain = useMemo(() => (getApiBaseUrl() ? prettyHost(getApiBaseUrl()) : ""), []);
 
@@ -620,17 +596,16 @@ export default function ProductCard({
     return `${shareTitle}\n${short}`;
   }, [anyP.description, shareTitle]);
 
-  const shareLinks = useMemo(
-    () => buildShareLinks(shareUrl, shareTitle),
-    [shareUrl, shareTitle]
-  );
+  const shareLinks = useMemo(() => buildShareLinks(shareUrl, shareText), [shareUrl, shareText]);
 
   const copyShareUrl = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
-    } catch {}
+    } catch {
+      // silencieux en prod
+    }
   }, [shareUrl]);
 
   const openShareLink = useCallback((u: string) => {
@@ -640,7 +615,6 @@ export default function ProductCard({
   const shareProduct = useCallback(async () => {
     const navAny: any = navigator as any;
 
-    // ✅ Web Share natif si dispo (lien only)
     if (navAny?.share) {
       try {
         await navAny.share({
@@ -650,11 +624,9 @@ export default function ProductCard({
         });
         return;
       } catch {
-        // si user annule => on ne force pas un menu
+        // user cancel => ok
       }
     }
-
-    // ✅ fallback : menu
     setShareMenuOpen(true);
   }, [anyP.name, shareText, shareUrl]);
 
@@ -691,8 +663,7 @@ export default function ProductCard({
       if (!el) return;
       const w = el.clientWidth || 1;
       const idx = Math.round(el.scrollLeft / w);
-      if (Number.isFinite(idx))
-        setActive(Math.max(0, Math.min(idx, images.length - 1)));
+      if (Number.isFinite(idx)) setActive(Math.max(0, Math.min(idx, images.length - 1)));
     }, [images.length]);
 
     const jumpTo = (idx: number) => {
@@ -777,10 +748,7 @@ export default function ProductCard({
           ))}
         </div>
 
-        <span
-          className="badge position-absolute bottom-0 end-0 m-2 text-white"
-          style={{ background: "rgba(17,17,17,.75)" }}
-        >
+        <span className="badge position-absolute bottom-0 end-0 m-2 text-white" style={{ background: "rgba(17,17,17,.75)" }}>
           {active + 1}/{images.length}
         </span>
 
@@ -902,9 +870,7 @@ export default function ProductCard({
         ) : null}
 
         {selected && isVariantOutOfStock(selected) ? (
-          <div className="alert alert-warning mt-2 py-2 small mb-0">
-            Cette variante est en rupture.
-          </div>
+          <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
         ) : null}
 
         <div className="mt-2 d-flex gap-2">
@@ -979,6 +945,7 @@ export default function ProductCard({
           </a>
         </span>
       ) : null}
+
       <button
         type="button"
         className="btn btn-sm btn-outline-secondary ms-auto"
@@ -1089,7 +1056,10 @@ export default function ProductCard({
                 )}
 
                 {!!effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) && (
-                  <span className="badge position-absolute top-0 end-0 m-2 text-white" style={{ background: "var(--duu-red)" }}>
+                  <span
+                    className="badge position-absolute top-0 end-0 m-2 text-white"
+                    style={{ background: "var(--duu-red)" }}
+                  >
                     {effectiveBadgeText}
                   </span>
                 )}
@@ -1144,12 +1114,24 @@ export default function ProductCard({
                   </button>
                 )}
 
-                <button className="btn btn-outline-secondary btn-sm" onClick={shareProduct} type="button" title="Partager">
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    shareProduct();
+                  }}
+                  type="button"
+                  title="Partager"
+                >
                   ↗
                 </button>
 
                 {shareMenuOpen && (
-                  <div className="duu-share-pop" role="menu">
+                  <div
+                    className="duu-share-pop"
+                    role="menu"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <button className="duu-share-item" onClick={() => openShareLink(shareLinks.whatsapp)} type="button">
                       WhatsApp
                     </button>
@@ -1265,12 +1247,20 @@ export default function ProductCard({
                   </button>
                 )}
 
-                <button className="btn btn-outline-secondary btn-sm" onClick={shareProduct} type="button" title="Partager">
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    shareProduct();
+                  }}
+                  type="button"
+                  title="Partager"
+                >
                   ↗
                 </button>
 
                 {shareMenuOpen && (
-                  <div className="duu-share-pop" role="menu">
+                  <div className="duu-share-pop" role="menu" onClick={(e) => e.stopPropagation()}>
                     <button className="duu-share-item" onClick={() => openShareLink(shareLinks.whatsapp)} type="button">
                       WhatsApp
                     </button>
@@ -1318,7 +1308,9 @@ export default function ProductCard({
         )}
       </div>
 
-      {/* ===== MODAL ===== */}
+      {/* =========================
+       * MODAL
+       * =======================*/}
       {open && (
         <div
           className="modal d-block"
@@ -1424,12 +1416,19 @@ export default function ProductCard({
                         + Ajouter au panier
                       </button>
 
-                      <button className="btn btn-outline-secondary" onClick={shareProduct} type="button">
+                      <button
+                        className="btn btn-outline-secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          shareProduct();
+                        }}
+                        type="button"
+                      >
                         Partager
                       </button>
 
                       {shareMenuOpen && (
-                        <div className="duu-share-pop" role="menu">
+                        <div className="duu-share-pop" role="menu" onClick={(e) => e.stopPropagation()}>
                           <button className="duu-share-item" onClick={() => openShareLink(shareLinks.whatsapp)} type="button">
                             WhatsApp
                           </button>
