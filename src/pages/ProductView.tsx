@@ -8,12 +8,15 @@ import ProductRating from "../components/ProductRating";
 import { useCart } from "../store/cart";
 import { trackAddToCart } from "../lib/analytics";
 
-/* ===== Helpers ===== */
+/* =========================
+ * Helpers
+ * =======================*/
 function imgUrl(u?: string | null) {
   if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
+  const s = String(u);
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("/")) return `${API_BASE}${s}`;
+  return s;
 }
 
 function moneyMAD(n?: number | null) {
@@ -52,12 +55,65 @@ function sectionPathFor(p: Product | null | undefined) {
   return "/african-market";
 }
 
-/* ===== Variantes (même logique que ProductCard) ===== */
+/* ===== Share path helpers ===== */
+function safeDecodeURIComponent(x: string) {
+  try {
+    return decodeURIComponent(x);
+  } catch {
+    return x;
+  }
+}
+
+function normalizeIdOrSlug(x: string) {
+  const v = String(x || "").trim();
+  if (!v) return "";
+  // si on te passe "product/51" par erreur, on garde seulement l'id/slug
+  const m1 = v.match(/^product\/(.+)$/i);
+  if (m1?.[1]) return m1[1].trim();
+  // si on te passe "/share/product/51" ou "/products/51"
+  const m2 = v.match(/\/(share\/product|products)\/([^/?#]+)/i);
+  if (m2?.[2]) return m2[2].trim();
+  return v;
+}
+
+/** ✅ Récupère l'ID dans l'URL de partage si présent (ex: ?p=51, ?id=51, ?product=51, ... ou hash) */
+function extractSharedProductId(locationSearch: string, locationHash: string) {
+  const qs = new URLSearchParams(locationSearch || "");
+  const candidates = [
+    qs.get("p"),
+    qs.get("id"),
+    qs.get("product"),
+    qs.get("pid"),
+    qs.get("productId"),
+    qs.get("product_id"),
+  ]
+    .map((x) => (x == null ? "" : String(x).trim()))
+    .filter(Boolean);
+
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return String(n);
+  }
+
+  // hash fallback: #/product/51 ou #product=51
+  const h = String(locationHash || "");
+  const m1 = h.match(/product\/(\d+)/i);
+  if (m1?.[1]) return m1[1];
+  const m2 = h.match(/product(?:Id)?=(\d+)/i);
+  if (m2?.[1]) return m2[1];
+
+  return "";
+}
+
+/* =========================
+ * Variantes (même logique que ProductCard)
+ * ⚠️ IMPORTANT: prix variant = price_override en priorité
+ * =======================*/
 type UiVariant = {
   id: number;
   key: string; // id:xx
   label: string;
-  price: number | null;
+  price: number | null; // price_override
   stock: number | null;
 };
 
@@ -102,8 +158,9 @@ function parseVariants(product: Product | null): UiVariant[] {
 
     const label = buildVariantLabel(v);
 
-    const priceRaw = v?.price ?? v?.price_client ?? v?.client_price ?? null;
-    const price = priceRaw == null || priceRaw === "" ? null : Number(priceRaw);
+    // ✅ aligné sur ProductCard: price_override uniquement
+    const po = v?.price_override;
+    const price = po == null || po === "" ? null : Number(po);
 
     const stockRaw = v?.stock ?? v?.qty ?? null;
     const stock = stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
@@ -135,10 +192,15 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
 
   useEffect(() => {
     document.body.classList.add("modal-open");
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
     return () => {
       document.body.classList.remove("modal-open");
+      window.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [onClose]);
 
   return (
     <>
@@ -168,7 +230,7 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
 }
 
 export default function ProductView() {
-  const { idOrSlug } = useParams<{ idOrSlug: string }>();
+  const { idOrSlug: rawParam } = useParams<{ idOrSlug: string }>();
   const nav = useNavigate();
   const location = useLocation();
 
@@ -195,6 +257,22 @@ export default function ProductView() {
 
   const productIsActive = useMemo(() => isActiveProduct(product), [product]);
   const sectionPath = useMemo(() => sectionPathFor(product), [product]);
+
+  /**
+   * ✅ IMPORTANT (Partage)
+   * - Ton lien partage = /share/product/:id (PHP) redirige vers /products/:id
+   * - Parfois sur iOS / apps, tu peux te retrouver sur /products/:id?p=51 etc.
+   * => On accepte:
+   *   - /products/:idOrSlug (normal)
+   *   - /products/:idOrSlug?p=51 (fallback)
+   *   - /products/:idOrSlug?id=51 etc.
+   */
+  const resolvedIdOrSlug = useMemo(() => {
+    const p = normalizeIdOrSlug(safeDecodeURIComponent(String(rawParam || "")));
+    const fromShareQuery = extractSharedProductId(location.search, location.hash);
+    // Priorité: param URL /products/:id ; sinon query (?p=) si param manquant/incorrect
+    return p || fromShareQuery || "";
+  }, [rawParam, location.search, location.hash]);
 
   // ===== CONTEXTE d’origine (la catégorie du lien par lequel l’utilisateur est arrivé) =====
   const origin = useMemo(() => {
@@ -241,7 +319,7 @@ export default function ProductView() {
     nav(sectionPath);
   }, [nav, origin?.listPath, origin?.sectionPath, backPath, sectionPath]);
 
-  // ===== load product by id or slug =====
+  // ===== load product by id or slug (résout share links) =====
   useEffect(() => {
     let stop = false;
 
@@ -251,13 +329,12 @@ export default function ProductView() {
       setProduct(null);
 
       try {
-        if (!idOrSlug) throw new Error("Produit introuvable");
+        if (!resolvedIdOrSlug) throw new Error("Produit introuvable");
 
-        const asId = Number(idOrSlug);
+        // 1) tente ID direct
+        const asId = Number(resolvedIdOrSlug);
         if (Number.isFinite(asId) && asId > 0) {
-          const res = await fetch(`${API_BASE}/api/products/${asId}?variants=1`, {
-            credentials: "omit",
-          });
+          const res = await fetch(`${API_BASE}/api/products/${asId}?variants=1`, { credentials: "omit" });
           if (res.ok) {
             const p = (await res.json()) as Product;
             if (!stop) setProduct(p || null);
@@ -265,14 +342,27 @@ export default function ProductView() {
           }
         }
 
+        // 2) tente slug
         const resSlug = await fetch(
-          `${API_BASE}/api/products/slug/${encodeURIComponent(idOrSlug)}?variants=1`,
+          `${API_BASE}/api/products/slug/${encodeURIComponent(resolvedIdOrSlug)}?variants=1`,
           { credentials: "omit" }
         );
         if (resSlug.ok) {
           const p = (await resSlug.json()) as Product;
           if (!stop) setProduct(p || null);
           return;
+        }
+
+        // 3) fallback: si le param ressemble à "product/51" ou "51?x" (parfois encodé)
+        const cleaned = String(resolvedIdOrSlug).split("?")[0].split("#")[0].trim();
+        const n2 = Number(cleaned);
+        if (Number.isFinite(n2) && n2 > 0 && cleaned !== resolvedIdOrSlug) {
+          const res2 = await fetch(`${API_BASE}/api/products/${n2}?variants=1`, { credentials: "omit" });
+          if (res2.ok) {
+            const p = (await res2.json()) as Product;
+            if (!stop) setProduct(p || null);
+            return;
+          }
         }
 
         throw new Error("Produit introuvable");
@@ -286,7 +376,7 @@ export default function ProductView() {
     return () => {
       stop = true;
     };
-  }, [idOrSlug]);
+  }, [resolvedIdOrSlug]);
 
   // ===== related products : basé sur la catégorie du LIEN d’origine =====
   useEffect(() => {
@@ -324,11 +414,7 @@ export default function ProductView() {
         const res = await fetch(url, { credentials: "omit" });
         const data = res.ok ? await res.json() : null;
 
-        const items: Product[] = Array.isArray(data?.items)
-          ? data.items
-          : Array.isArray(data)
-          ? data
-          : [];
+        const items: Product[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
 
         const rel = items
           .filter((x) => isActiveProduct(x))
@@ -366,7 +452,12 @@ export default function ProductView() {
     () => Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0),
     [anyP?.price_client, anyP?.client_price, anyP?.price]
   );
-  const stock = useMemo(() => anyP?.stock, [anyP?.stock]);
+
+  const stock = useMemo(() => {
+    const s = anyP?.stock;
+    return s == null || s === "" ? null : Number(s);
+  }, [anyP?.stock]);
+
   const isOutOfStock = stock === 0;
 
   // ===== variants state =====
@@ -387,10 +478,7 @@ export default function ProductView() {
     });
   }, [hasVariants, variants]);
 
-  const selectedVariant = useMemo(
-    () => variants.find((v) => v.key === selectedKey) || null,
-    [variants, selectedKey]
-  );
+  const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
 
   const displayPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
@@ -411,8 +499,7 @@ export default function ProductView() {
     return qtyForProductVariant(pid, key);
   }, [product, hasVariants, qtyForProduct, qtyForProductVariant, selectedVariant]);
 
-  const canAddNow =
-    !isOutOfStock && (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
+  const canAddNow = !isOutOfStock && (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
   const handleAdd = useCallback(() => {
     if (!product) return;
@@ -484,7 +571,7 @@ export default function ProductView() {
     return (
       <div className="container-xxl py-4">
         <div className="d-flex flex-wrap gap-2 mb-3">
-          <button className="btn btn-outline-dark" onClick={handleBack}>
+          <button className="btn btn-outline-dark" onClick={handleBack} type="button">
             ← Retour
           </button>
           <Link to={backPath} className="btn btn-dark">
@@ -494,9 +581,7 @@ export default function ProductView() {
 
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
-          <span>
-            {product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}
-          </span>
+          <span>{product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}</span>
         </div>
       </div>
     );
@@ -507,7 +592,7 @@ export default function ProductView() {
   return (
     <div className="container-xxl py-4">
       <div className="d-flex flex-wrap gap-2 mb-3">
-        <button className="btn btn-outline-dark" onClick={handleBack}>
+        <button className="btn btn-outline-dark" onClick={handleBack} type="button">
           ← Retour
         </button>
         <Link to={backPath} className="btn btn-dark">
@@ -649,11 +734,7 @@ export default function ProductView() {
       </div>
 
       {infoOpen && (
-        <InfoModal
-          title={String(anyP?.name || "Infos produit")}
-          body={desc || "Aucune description."}
-          onClose={() => setInfoOpen(false)}
-        />
+        <InfoModal title={String(anyP?.name || "Infos produit")} body={desc || "Aucune description."} onClose={() => setInfoOpen(false)} />
       )}
     </div>
   );
