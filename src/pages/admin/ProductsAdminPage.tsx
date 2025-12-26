@@ -74,12 +74,32 @@ type Channel = "all" | "african-food" | "african-market" | "fashion";
 
 /* ================= Helpers ================= */
 
-function moneyMAD(n?: number | null) {
+/** ✅ Anti-bug float: tout calcul promo en centimes */
+const MAD_SCALE = 100;
+
+function toCents(n: any): number {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * MAD_SCALE);
+}
+function fromCents(c: any): number {
+  const x = Number(c);
+  if (!Number.isFinite(x)) return 0;
+  return x / MAD_SCALE;
+}
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function moneyMAD(n?: number | null, digits: 0 | 2 = 0) {
+  const v = Number(n ?? 0);
+  const safe = Number.isFinite(v) ? v : 0;
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "MAD",
-    maximumFractionDigits: 0,
-  }).format(Number(n || 0));
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(safe);
 }
 
 function imgUrl(u?: string | null) {
@@ -90,18 +110,20 @@ function imgUrl(u?: string | null) {
 }
 
 function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
-  const p = Number(price || 0);
-  const v = Number(value || 0);
-  if (!p || !v) return p;
+  const priceC = toCents(price);
+  const v = Number(value);
+  if (priceC <= 0 || !Number.isFinite(v) || v <= 0) return fromCents(priceC);
 
   if (type === "PERCENT") {
-    const pct = Math.max(0, Math.min(100, v));
-    const res = p - (p * pct) / 100;
-    return Math.max(0, Number(res.toFixed(2)));
+    const pct = clamp(v, 0, 100);
+    const discountC = Math.round((priceC * pct) / 100);
+    const outC = Math.max(0, priceC - discountC);
+    return fromCents(outC);
   }
 
-  const res = p - v;
-  return Math.max(0, Number(res.toFixed(2)));
+  const discountC = toCents(v);
+  const outC = Math.max(0, priceC - discountC);
+  return fromCents(outC);
 }
 
 function isActive(p: any) {
@@ -147,21 +169,25 @@ function basePriceForAdmin(p: any): number {
   return Number.isFinite(price) ? price : 0;
 }
 
+/** ✅ Fallback local promo (en centimes => pas de 100.86) */
 function computePromoPriceLocal(base: number, eligible: any, type: any, value: any) {
   if (Number(eligible) !== 1) return null;
-  const b = Number(base);
+
+  const baseC = toCents(base);
   const v = Number(value);
-  if (!Number.isFinite(b) || b <= 0) return null;
-  if (!Number.isFinite(v) || v <= 0) return null;
+  if (baseC <= 0 || !Number.isFinite(v) || v <= 0) return null;
 
   const t = String(type || "").toUpperCase();
-  let out = b;
-  if (t === "AMOUNT") out = b - v;
-  else out = b * (1 - v / 100);
 
-  if (!Number.isFinite(out)) return null;
-  if (out < 0) out = 0;
-  return +out.toFixed(2);
+  if (t === "AMOUNT") {
+    const outC = Math.max(0, baseC - toCents(v));
+    return fromCents(outC);
+  }
+
+  const pct = clamp(v, 0, 100);
+  const discountC = Math.round((baseC * pct) / 100);
+  const outC = Math.max(0, baseC - discountC);
+  return fromCents(outC);
 }
 
 /**
@@ -1031,7 +1057,11 @@ function ProductForm({
             </div>
             <div className="col-4">
               <label className="form-label">Devise</label>
-              <input className="form-control duu-focus" value={draft.currency || "MAD"} onChange={(ev) => setDraft((d) => ({ ...d, currency: ev.target.value }))} />
+              <input
+                className="form-control duu-focus"
+                value={draft.currency || "MAD"}
+                onChange={(ev) => setDraft((d) => ({ ...d, currency: ev.target.value }))}
+              />
             </div>
             <div className="col-4">
               <label className="form-label">Stock</label>
@@ -1714,7 +1744,6 @@ export default function ProductsAdminPage() {
       } else {
         await updateProduct(edit.id, payload, files, replaceImages);
 
-        // ✅ Fashion: on remplace TOUJOURS (même si liste vide) => permet de supprimer les variantes depuis l’UI
         if (style === "fashion") {
           const cleaned = cleanVariantsForApi(variants);
           await upsertProductVariants(edit.id, { variants: cleaned as any }, { replace: true });

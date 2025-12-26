@@ -17,27 +17,38 @@ function imgUrl(u?: string | null) {
   return s;
 }
 
-/**
- * ✅ MAD SANS afficher ",00"
- * - garde au max 2 décimales si nécessaire
- * - supprime automatiquement les zéros inutiles (",00", ",50" => ",5")
- */
+/* =========================
+ * ✅ Prix robustes (évite float + arrondis bizarres)
+ * - on calcule en CENTIMES (int)
+ * - on affiche en MAD entiers (0 décimale)
+ * =======================*/
+function toNum(x: any): number {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+function toCents(x: any): number {
+  return Math.round(toNum(x) * 100);
+}
+function fromCents(c: any): number {
+  const n = Number(c);
+  return Number.isFinite(n) ? Math.round(n) / 100 : 0;
+}
+/** ✅ Arrondit toujours au MAD entier (multiple de 100 cents) */
+function roundToMAD(cents: number) {
+  return Math.round((cents || 0) / 100) * 100;
+}
+
+/** ✅ Affichage MAD: entier, jamais ",86" */
 function moneyMAD(n?: number | null) {
-  const v = Number(n ?? 0);
-  const safe = Number.isFinite(v) ? v : 0;
+  const cents = roundToMAD(toCents(n ?? 0));
+  const v = fromCents(cents);
 
   const s = new Intl.NumberFormat("fr-FR", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(safe);
+    maximumFractionDigits: 0,
+  }).format(v);
 
-  // fr-FR -> virgule décimale
-  // supprime ",00" ou ",0" en fin
-  const no00 = s.replace(/,00$/, "").replace(/,0$/, "");
-  // supprime zéros traînants: ",50" -> ",5" ; ",20" -> ",2"
-  const trimmed = no00.replace(/,(\d*[1-9])0$/, ",$1");
-
-  return `${trimmed} MAD`;
+  return `${s} MAD`;
 }
 
 function shortText(s?: string | null, max = 200) {
@@ -74,9 +85,7 @@ function getSubCategoryToken(p: Product) {
  * -> on partage www.duumini.com/share/product/:id
  * =======================*/
 function cleanBase(x: string) {
-  return String(x || "")
-    .trim()
-    .replace(/\/+$/, "");
+  return String(x || "").trim().replace(/\/+$/, "");
 }
 
 /** ✅ Domaine PUBLIC du site (pas l'API). */
@@ -157,14 +166,14 @@ function canShareFiles(file: File) {
 
 /* ✅ helper: prix base */
 function getDisplayPrice(anyP: any, priceOverride: number | null) {
-  if (priceOverride != null) return Number(priceOverride || 0);
+  if (priceOverride != null) return toNum(priceOverride || 0);
   const pc = anyP.price_client ?? anyP.client_price ?? null;
-  if (pc != null && pc !== "") return Number(pc || 0);
-  return Number(anyP.price ?? 0);
+  if (pc != null && pc !== "") return toNum(pc || 0);
+  return toNum(anyP.price ?? 0);
 }
 
 /* =========================
- * PROMO (AUTO)
+ * PROMO (AUTO) — ✅ en CENTIMES
  * =======================*/
 type PromoRule =
   | { kind: "PERCENT"; value: number }
@@ -176,22 +185,28 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function computePromoPriceFromRule(price: number, rule: PromoRule) {
-  const p = Number(price || 0);
-  if (!p || !rule) return p;
+function computePromoCentsFromRule(baseCents: number, rule: PromoRule) {
+  let p = Math.max(0, Math.round(baseCents || 0));
+  if (!p || !rule) return roundToMAD(p);
 
   if (rule.kind === "PERCENT") {
-    const pct = clamp(Number(rule.value || 0), 0, 100);
-    return Math.max(0, Number((p - (p * pct) / 100).toFixed(2)));
+    const pct = clamp(toNum(rule.value), 0, 100);
+    const off = Math.round((p * pct) / 100);
+    return roundToMAD(Math.max(0, p - off));
   }
 
   if (rule.kind === "AMOUNT") {
-    const amt = Math.max(0, Number(rule.value || 0));
-    return Math.max(0, Number((p - amt).toFixed(2)));
+    const amt = Math.max(0, toCents(rule.value)); // AMOUNT en MAD
+    return roundToMAD(Math.max(0, p - amt));
   }
 
-  const f = clamp(Number(rule.factor || 1), 0, 1);
-  return Math.max(0, Number((p * f).toFixed(2)));
+  const f = clamp(toNum(rule.factor), 0, 1);
+  return roundToMAD(Math.max(0, Math.round(p * f)));
+}
+
+function computePromoPriceFromRule(price: number, rule: PromoRule) {
+  const promoCents = computePromoCentsFromRule(toCents(price || 0), rule);
+  return fromCents(promoCents);
 }
 
 function formatPromoBadge(rule: PromoRule, base: number, promo: number) {
@@ -206,7 +221,7 @@ function formatPromoBadge(rule: PromoRule, base: number, promo: number) {
 }
 
 function getPromoMeta(anyP: any, basePrice: number) {
-  const base = Number(basePrice || 0);
+  const base = toNum(basePrice || 0);
   if (!base)
     return {
       isPromo: false,
@@ -222,7 +237,7 @@ function getPromoMeta(anyP: any, basePrice: number) {
     Number(anyP.promo_eligible ?? 0) === 1;
 
   const promoPriceDirect =
-    Number(
+    toNum(
       anyP.promo_price_client ??
         anyP.promo_price ??
         anyP.price_promo ??
@@ -230,15 +245,20 @@ function getPromoMeta(anyP: any, basePrice: number) {
         0
     ) || 0;
 
+  // ✅ si promo_price direct fourni, on le prend, mais on le stabilise en cents
   if (promoPriceDirect > 0 && promoPriceDirect < base) {
-    const factor = clamp(promoPriceDirect / base, 0, 1);
-    const rule: PromoRule = { kind: "RATIO", factor };
-    return {
-      isPromo: true,
-      rule,
-      oldPrice: base,
-      badgeText: formatPromoBadge(rule, base, promoPriceDirect),
-    };
+    const baseC = toCents(base);
+    const promoC = roundToMAD(toCents(promoPriceDirect));
+    if (promoC > 0 && promoC < baseC) {
+      const factor = clamp(promoC / baseC, 0, 1);
+      const rule: PromoRule = { kind: "RATIO", factor };
+      return {
+        isPromo: true,
+        rule,
+        oldPrice: fromCents(roundToMAD(baseC)),
+        badgeText: formatPromoBadge(rule, fromCents(roundToMAD(baseC)), fromCents(promoC)),
+      };
+    }
   }
 
   const typeRaw = String(
@@ -248,7 +268,7 @@ function getPromoMeta(anyP: any, basePrice: number) {
     .toUpperCase();
 
   const valueRaw =
-    Number(
+    toNum(
       anyP.promo_discount_value ??
         anyP.discount_value ??
         anyP.promo_value ??
@@ -268,7 +288,7 @@ function getPromoMeta(anyP: any, basePrice: number) {
       return {
         isPromo: true,
         rule,
-        oldPrice: base,
+        oldPrice: fromCents(roundToMAD(toCents(base))),
         badgeText: formatPromoBadge(rule, base, promo),
       };
     }
@@ -287,7 +307,7 @@ function getPromoMeta(anyP: any, basePrice: number) {
       return {
         isPromo: true,
         rule,
-        oldPrice: base,
+        oldPrice: fromCents(roundToMAD(toCents(base))),
         badgeText: formatPromoBadge(rule, base, promo),
       };
     }
@@ -347,7 +367,7 @@ function parseVariants(product: Product): UiVariant[] {
     const label = buildVariantLabel(v);
 
     const po = v?.price_override;
-    const price = po == null || po === "" ? null : Number(po);
+    const price = po == null || po === "" ? null : toNum(po);
 
     const stockRaw = v?.stock ?? v?.qty ?? null;
     const stock = stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
@@ -503,19 +523,30 @@ function ProductCardInner({
   );
 
   const rawPrice = useMemo(() => {
-    if (selectedVariant?.price != null) return Number(selectedVariant.price);
+    if (selectedVariant?.price != null) return toNum(selectedVariant.price);
     return baseDisplayPrice;
   }, [baseDisplayPrice, selectedVariant]);
 
-  const displayPrice = useMemo(
-    () => computePromoPriceFromRule(rawPrice, effectiveRule),
-    [rawPrice, effectiveRule]
-  );
+  // ✅ calc promo en cents + arrondi MAD entier
+  const displayPrice = useMemo(() => {
+    const rawCents = toCents(rawPrice);
+    const promoCents = computePromoCentsFromRule(rawCents, effectiveRule);
+    return fromCents(promoCents);
+  }, [rawPrice, effectiveRule]);
 
   const effectiveOldPrice = useMemo(() => {
-    if (oldPrice != null && Number(oldPrice) > Number(displayPrice))
-      return Number(oldPrice);
-    if (promoMeta.isPromo && rawPrice > displayPrice) return rawPrice;
+    const dispCents = toCents(displayPrice);
+
+    if (oldPrice != null) {
+      const oldC = roundToMAD(toCents(oldPrice));
+      if (oldC > dispCents) return fromCents(oldC);
+    }
+
+    if (promoMeta.isPromo) {
+      const rawC = roundToMAD(toCents(rawPrice));
+      if (rawC > dispCents) return fromCents(rawC);
+    }
+
     return null;
   }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice]);
 
@@ -586,18 +617,25 @@ function ProductCardInner({
       if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0) return;
 
       const raw =
-        !isDefault && variant?.price != null ? Number(variant.price) : baseDisplayPrice;
-      const finalPrice = computePromoPriceFromRule(raw, effectiveRule);
+        !isDefault && variant?.price != null ? toNum(variant.price) : baseDisplayPrice;
+
+      // ✅ prix final stable (cents) + arrondi MAD
+      const finalPrice = fromCents(
+        computePromoCentsFromRule(toCents(raw), effectiveRule)
+      );
 
       const productForCart: any = {
         ...anyP,
         price: finalPrice,
         _pricing: {
-          rawPrice: raw,
+          rawPrice: fromCents(roundToMAD(toCents(raw))),
           finalPrice,
-          isPromo: finalPrice < raw,
+          isPromo: finalPrice < fromCents(roundToMAD(toCents(raw))),
           badge: effectiveBadgeText ?? null,
-          oldPrice: finalPrice < raw ? raw : null,
+          oldPrice:
+            finalPrice < fromCents(roundToMAD(toCents(raw)))
+              ? fromCents(roundToMAD(toCents(raw)))
+              : null,
         },
       };
 
@@ -653,7 +691,7 @@ function ProductCardInner({
 
   const shareTitle = useMemo(() => {
     const name = String(anyP.name || "Produit");
-    if (effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice)) {
+    if (effectiveOldPrice != null && toNum(effectiveOldPrice) > toNum(displayPrice)) {
       return `${name} — Promo ${moneyMAD(displayPrice)} (au lieu de ${moneyMAD(
         effectiveOldPrice
       )})`;
@@ -967,11 +1005,13 @@ function ProductCardInner({
     if (selected?.stock != null) infoParts.push(`${stockLabel}:${selected.stock}`);
     else if (effectiveStock != null) infoParts.push(`${stockLabel}:${effectiveStock}`);
 
-    const raw = selected?.price != null ? selected.price : null;
+    const raw = selected?.price != null ? toNum(selected.price) : null;
     if (raw != null) {
-      const final = computePromoPriceFromRule(raw, effectiveRule);
+      const final = fromCents(
+        computePromoCentsFromRule(toCents(raw), effectiveRule)
+      );
       infoParts.push(`Prix:${moneyMAD(final)}`);
-      const old = final < raw ? raw : null;
+      const old = final < fromCents(roundToMAD(toCents(raw))) ? fromCents(roundToMAD(toCents(raw))) : null;
       if (old != null) infoParts.push(`Ancien:${moneyMAD(old)}`);
     }
 
@@ -1002,7 +1042,10 @@ function ProductCardInner({
         </select>
 
         {infoLine ? (
-          <div className="small mt-2" style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}>
+          <div
+            className="small mt-2"
+            style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}
+          >
             {infoLine}
           </div>
         ) : null}
@@ -1052,8 +1095,14 @@ function ProductCardInner({
     <div className="d-flex flex-wrap align-items-center gap-2 mt-1">
       <div className="fw-semibold">Prix:{moneyMAD(displayPrice)}</div>
 
-      {effectiveOldPrice != null && Number(effectiveOldPrice) > Number(displayPrice) && (
-        <div style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800 }}>
+      {effectiveOldPrice != null && toNum(effectiveOldPrice) > toNum(displayPrice) && (
+        <div
+          style={{
+            textDecoration: "line-through",
+            color: "rgba(0,0,0,.45)",
+            fontWeight: 800,
+          }}
+        >
           {moneyMAD(effectiveOldPrice)}
         </div>
       )}
@@ -1062,7 +1111,9 @@ function ProductCardInner({
         <span
           className={
             "badge " +
-            (effectiveStock != null && effectiveStock <= 0 ? "bg-danger" : "bg-light text-dark")
+            (effectiveStock != null && effectiveStock <= 0
+              ? "bg-danger"
+              : "bg-light text-dark")
           }
           style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
         >
@@ -1427,7 +1478,7 @@ function ProductCardInner({
                     <div className="d-flex align-items-baseline gap-2">
                       <div className="h5 m-0">Prix:{moneyMAD(displayPrice)}</div>
                       {effectiveOldPrice != null &&
-                        Number(effectiveOldPrice) > Number(displayPrice) && (
+                        toNum(effectiveOldPrice) > toNum(displayPrice) && (
                           <div
                             className="h6 m-0"
                             style={{
@@ -1460,7 +1511,10 @@ function ProductCardInner({
                               ? "bg-danger"
                               : "bg-light text-dark")
                           }
-                          style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
+                          style={{
+                            border: "1px solid rgba(0,0,0,.10)",
+                            fontWeight: 900,
+                          }}
                         >
                           {stockText}
                         </span>
