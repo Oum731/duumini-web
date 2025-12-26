@@ -67,16 +67,13 @@ function safeDecodeURIComponent(x: string) {
 function normalizeIdOrSlug(x: string) {
   const v = String(x || "").trim();
   if (!v) return "";
-  // si on te passe "product/51" par erreur, on garde seulement l'id/slug
   const m1 = v.match(/^product\/(.+)$/i);
   if (m1?.[1]) return m1[1].trim();
-  // si on te passe "/share/product/51" ou "/products/51"
   const m2 = v.match(/\/(share\/product|products)\/([^/?#]+)/i);
   if (m2?.[2]) return m2[2].trim();
   return v;
 }
 
-/** ✅ Récupère l'ID dans l'URL de partage si présent (ex: ?p=51, ?id=51, ?product=51, ... ou hash) */
 function extractSharedProductId(locationSearch: string, locationHash: string) {
   const qs = new URLSearchParams(locationSearch || "");
   const candidates = [
@@ -95,7 +92,6 @@ function extractSharedProductId(locationSearch: string, locationHash: string) {
     if (Number.isFinite(n) && n > 0) return String(n);
   }
 
-  // hash fallback: #/product/51 ou #product=51
   const h = String(locationHash || "");
   const m1 = h.match(/product\/(\d+)/i);
   if (m1?.[1]) return m1[1];
@@ -106,12 +102,41 @@ function extractSharedProductId(locationSearch: string, locationHash: string) {
 }
 
 /* =========================
+ * Promo helpers
+ * =======================*/
+type PromoDiscountType = "PERCENT" | "AMOUNT";
+
+function normPromoType(v: any): PromoDiscountType {
+  const s = String(v || "").trim().toUpperCase();
+  return s === "AMOUNT" ? "AMOUNT" : "PERCENT";
+}
+
+function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
+  const p = Number(price || 0);
+  const v = Number(value || 0);
+  if (!Number.isFinite(p) || p <= 0) return 0;
+  if (!Number.isFinite(v) || v <= 0) return p;
+
+  if (type === "PERCENT") {
+    const pct = Math.max(0, Math.min(100, v));
+    const res = p - (p * pct) / 100;
+    return Math.max(0, Number(res.toFixed(2)));
+  }
+
+  return Math.max(0, Number((p - v).toFixed(2)));
+}
+
+function hasRealPromo(p: any) {
+  return Number(p?.promo_eligible ?? 0) === 1 && Number(p?.promo_discount_value ?? 0) > 0;
+}
+
+/* =========================
  * Variantes (même logique que ProductCard)
- * ⚠️ IMPORTANT: prix variant = price_override en priorité
+ * prix variant = price_override en priorité
  * =======================*/
 type UiVariant = {
   id: number;
-  key: string; // id:xx
+  key: string;
   label: string;
   price: number | null; // price_override
   stock: number | null;
@@ -158,7 +183,6 @@ function parseVariants(product: Product | null): UiVariant[] {
 
     const label = buildVariantLabel(v);
 
-    // ✅ aligné sur ProductCard: price_override uniquement
     const po = v?.price_override;
     const price = po == null || po === "" ? null : Number(po);
 
@@ -258,23 +282,13 @@ export default function ProductView() {
   const productIsActive = useMemo(() => isActiveProduct(product), [product]);
   const sectionPath = useMemo(() => sectionPathFor(product), [product]);
 
-  /**
-   * ✅ IMPORTANT (Partage)
-   * - Ton lien partage = /share/product/:id (PHP) redirige vers /products/:id
-   * - Parfois sur iOS / apps, tu peux te retrouver sur /products/:id?p=51 etc.
-   * => On accepte:
-   *   - /products/:idOrSlug (normal)
-   *   - /products/:idOrSlug?p=51 (fallback)
-   *   - /products/:idOrSlug?id=51 etc.
-   */
   const resolvedIdOrSlug = useMemo(() => {
     const p = normalizeIdOrSlug(safeDecodeURIComponent(String(rawParam || "")));
     const fromShareQuery = extractSharedProductId(location.search, location.hash);
-    // Priorité: param URL /products/:id ; sinon query (?p=) si param manquant/incorrect
     return p || fromShareQuery || "";
   }, [rawParam, location.search, location.hash]);
 
-  // ===== CONTEXTE d’origine (la catégorie du lien par lequel l’utilisateur est arrivé) =====
+  // ===== CONTEXTE d’origine =====
   const origin = useMemo(() => {
     const st: any = (location.state as any) || {};
     const from = st.from || st.origin || st.ctx || st || {};
@@ -319,7 +333,7 @@ export default function ProductView() {
     nav(sectionPath);
   }, [nav, origin?.listPath, origin?.sectionPath, backPath, sectionPath]);
 
-  // ===== load product by id or slug (résout share links) =====
+  // ===== load product =====
   useEffect(() => {
     let stop = false;
 
@@ -331,7 +345,6 @@ export default function ProductView() {
       try {
         if (!resolvedIdOrSlug) throw new Error("Produit introuvable");
 
-        // 1) tente ID direct
         const asId = Number(resolvedIdOrSlug);
         if (Number.isFinite(asId) && asId > 0) {
           const res = await fetch(`${API_BASE}/api/products/${asId}?variants=1`, { credentials: "omit" });
@@ -342,18 +355,15 @@ export default function ProductView() {
           }
         }
 
-        // 2) tente slug
-        const resSlug = await fetch(
-          `${API_BASE}/api/products/slug/${encodeURIComponent(resolvedIdOrSlug)}?variants=1`,
-          { credentials: "omit" }
-        );
+        const resSlug = await fetch(`${API_BASE}/api/products/slug/${encodeURIComponent(resolvedIdOrSlug)}?variants=1`, {
+          credentials: "omit",
+        });
         if (resSlug.ok) {
           const p = (await resSlug.json()) as Product;
           if (!stop) setProduct(p || null);
           return;
         }
 
-        // 3) fallback: si le param ressemble à "product/51" ou "51?x" (parfois encodé)
         const cleaned = String(resolvedIdOrSlug).split("?")[0].split("#")[0].trim();
         const n2 = Number(cleaned);
         if (Number.isFinite(n2) && n2 > 0 && cleaned !== resolvedIdOrSlug) {
@@ -378,7 +388,7 @@ export default function ProductView() {
     };
   }, [resolvedIdOrSlug]);
 
-  // ===== related products : basé sur la catégorie du LIEN d’origine =====
+  // ===== related products =====
   useEffect(() => {
     let stop = false;
 
@@ -426,11 +436,7 @@ export default function ProductView() {
 
           const label =
             origin?.label ||
-            (subId
-              ? "Plus de produits de la même sous-catégorie"
-              : catId
-              ? "Plus de produits de la même catégorie"
-              : "Vous aimerez aussi");
+            (subId ? "Plus de produits de la même sous-catégorie" : catId ? "Plus de produits de la même catégorie" : "Vous aimerez aussi");
 
           setRelatedTitle(label);
         }
@@ -447,11 +453,12 @@ export default function ProductView() {
     };
   }, [product, origin]);
 
-  // ===== pricing / stock =====
-  const basePrice = useMemo(
-    () => Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0),
-    [anyP?.price_client, anyP?.client_price, anyP?.price]
-  );
+  // ===== base price / stock =====
+  const basePrice = useMemo(() => Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0), [
+    anyP?.price_client,
+    anyP?.client_price,
+    anyP?.price,
+  ]);
 
   const stock = useMemo(() => {
     const s = anyP?.stock;
@@ -460,7 +467,7 @@ export default function ProductView() {
 
   const isOutOfStock = stock === 0;
 
-  // ===== variants state =====
+  // ===== variants =====
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
 
@@ -480,10 +487,33 @@ export default function ProductView() {
 
   const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
 
-  const displayPrice = useMemo(() => {
+  // ✅ prix "normal" (avant promo)
+  const regularPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
     return basePrice;
   }, [basePrice, selectedVariant]);
+
+  // ===== promo computed =====
+  const promoActive = useMemo(() => hasRealPromo(anyP), [anyP]);
+
+  const promoType = useMemo(() => normPromoType(anyP?.promo_discount_type), [anyP?.promo_discount_type]);
+  const promoValue = useMemo(() => Number(anyP?.promo_discount_value ?? 0), [anyP?.promo_discount_value]);
+
+  const promoPrice = useMemo(() => {
+    if (!promoActive) return regularPrice;
+    return computePromoPrice(regularPrice, promoType, promoValue);
+  }, [promoActive, promoType, promoValue, regularPrice]);
+
+  // ✅ prix affiché = promo si dispo
+  const displayPrice = promoActive ? promoPrice : regularPrice;
+
+  const promoSavedLabel = useMemo(() => {
+    if (!promoActive) return "";
+    if (promoType === "PERCENT") return `-${Math.round(promoValue)}%`;
+    return `-${moneyMAD(promoValue)}`;
+  }, [promoActive, promoType, promoValue]);
+
+  const promoFreeDelivery = useMemo(() => Number(anyP?.promo_free_delivery ?? 0) === 1, [anyP?.promo_free_delivery]);
 
   const badge = useMemo(() => {
     const v = String(anyP?.vertical || "").trim().toUpperCase();
@@ -507,6 +537,9 @@ export default function ProductView() {
 
     const pAny = product as any;
 
+    // ✅ IMPORTANT : le prix dans le panier = prix affiché (promo si active)
+    const cartPrice = Number(displayPrice || 0);
+
     add(product, 1, {
       variant:
         hasVariants && selectedVariant
@@ -514,15 +547,15 @@ export default function ProductView() {
               variant_id: selectedVariant.id,
               variant_key: selectedVariant.key,
               label: selectedVariant.label,
-              price: selectedVariant.price ?? displayPrice,
+              price: cartPrice,
             }
-          : { variant_id: null, variant_key: "default", label: null, price: displayPrice },
+          : { variant_id: null, variant_key: "default", label: null, price: cartPrice },
     });
 
     trackAddToCart({
       productId: pAny.id,
       name: pAny.name,
-      price: displayPrice,
+      price: cartPrice,
       quantity: 1,
       currency: "MAD",
       category: String(pAny?.sub_category_slug || pAny?.sub_category_name || ""),
@@ -533,6 +566,8 @@ export default function ProductView() {
     if (!product) return;
     if (!qtySelected) return;
 
+    const cartPrice = Number(displayPrice || 0);
+
     add(product, -1, {
       variant:
         hasVariants && selectedVariant
@@ -540,9 +575,9 @@ export default function ProductView() {
               variant_id: selectedVariant.id,
               variant_key: selectedVariant.key,
               label: selectedVariant.label,
-              price: selectedVariant.price ?? displayPrice,
+              price: cartPrice,
             }
-          : { variant_id: null, variant_key: "default", label: null, price: displayPrice },
+          : { variant_id: null, variant_key: "default", label: null, price: cartPrice },
     });
   }, [add, displayPrice, hasVariants, product, qtySelected, selectedVariant]);
 
@@ -604,18 +639,77 @@ export default function ProductView() {
 
       <div className="row g-4">
         <div className="col-12 col-md-6">
-          {coverUrl ? (
-            <img src={coverUrl} alt={String(anyP?.name || "")} className="img-fluid rounded" />
-          ) : (
-            <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
-          )}
+          <div className="position-relative">
+            {coverUrl ? (
+              <img src={coverUrl} alt={String(anyP?.name || "")} className="img-fluid rounded" />
+            ) : (
+              <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
+            )}
+
+            {/* ✅ BADGE PROMO sur l'image */}
+            {promoActive && (
+              <span
+                className="badge"
+                style={{
+                  position: "absolute",
+                  top: 12,
+                  left: 12,
+                  background: "var(--duu-red,#E53935)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  padding: "8px 10px",
+                  borderRadius: 999,
+                  boxShadow: "0 10px 20px rgba(229,57,53,.22)",
+                }}
+              >
+                PROMO {promoSavedLabel}
+              </span>
+            )}
+
+            {promoActive && promoFreeDelivery && (
+              <span
+                className="badge"
+                style={{
+                  position: "absolute",
+                  bottom: 12,
+                  left: 12,
+                  background: "rgba(0,0,0,.85)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  padding: "7px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,.18)",
+                }}
+              >
+                🚚 Livraison gratuite
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="col-12 col-md-6">
           <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <div className="h5 m-0">{moneyMAD(displayPrice)}</div>
+            <div className="h5 m-0 d-flex align-items-baseline gap-2 flex-wrap">
+              {/* ✅ prix actuel */}
+              <span style={{ fontWeight: 950 }}>{moneyMAD(displayPrice)}</span>
+
+              {/* ✅ ancien prix barré */}
+              {promoActive && (
+                <span style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800, fontSize: ".95rem" }}>
+                  {moneyMAD(regularPrice)}
+                </span>
+              )}
+            </div>
+
             <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{badge}</span>
             {hasVariants && <span className="badge text-bg-light border">Variantes</span>}
+
+            {/* ✅ petit pill promo */}
+            {promoActive && (
+              <span className="badge" style={{ background: "rgba(229,57,53,.10)", color: "var(--duu-red,#E53935)", border: "1px solid rgba(229,57,53,.20)", fontWeight: 900 }}>
+                {promoSavedLabel}
+              </span>
+            )}
           </div>
 
           <div className="mb-3">
@@ -635,7 +729,7 @@ export default function ProductView() {
                 ))}
               </select>
 
-              {/* ✅ Infos sous la liste (prix/stock ici, PAS dans le select) */}
+              {/* ✅ Infos sous la liste */}
               {selectedVariant && (
                 <div className="small text-muted mt-2">
                   {selectedVariant.stock != null && (
@@ -643,9 +737,22 @@ export default function ProductView() {
                       Reste : <strong>{Math.max(0, Number(selectedVariant.stock))}</strong>
                     </span>
                   )}
-                  {selectedVariant.price != null && (
+
+                  {/* Prix variante AVANT promo (info) */}
+                  {selectedVariant.price != null && !promoActive && (
                     <span>
                       Prix : <strong>{moneyMAD(selectedVariant.price)}</strong>
+                    </span>
+                  )}
+
+                  {/* Si promo: on montre "avant -> après" proprement */}
+                  {promoActive && (
+                    <span>
+                      Prix :{" "}
+                      <strong>{moneyMAD(displayPrice)}</strong>{" "}
+                      <span style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800, marginLeft: 6 }}>
+                        {moneyMAD(regularPrice)}
+                      </span>
                     </span>
                   )}
                 </div>
@@ -680,7 +787,7 @@ export default function ProductView() {
             {isOutOfStock && <span className="badge text-bg-danger align-self-center">En rupture</span>}
           </div>
 
-          {/* ✅ Description : clic -> modal infos */}
+          {/* ✅ Description : clic -> modal */}
           {desc ? (
             <>
               <div className="small text-muted mb-1">Description</div>
@@ -711,7 +818,7 @@ export default function ProductView() {
         </div>
       </div>
 
-      {/* ✅ Related : produits de la catégorie du lien d’origine */}
+      {/* ✅ Related */}
       <div className="mt-4">
         <div className="d-flex align-items-center justify-content-between mb-2">
           <h2 className="h6 m-0">{relatedTitle}</h2>
