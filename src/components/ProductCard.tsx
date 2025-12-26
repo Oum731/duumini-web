@@ -263,7 +263,11 @@ function getPromoMeta(anyP: any, basePrice: number) {
         isPromo: true,
         rule,
         oldPrice: fromCents(roundToMAD(baseC)),
-        badgeText: formatPromoBadge(rule, fromCents(roundToMAD(baseC)), fromCents(promoC)),
+        badgeText: formatPromoBadge(
+          rule,
+          fromCents(roundToMAD(baseC)),
+          fromCents(promoC)
+        ),
       };
     }
   }
@@ -320,8 +324,7 @@ function getPromoMeta(anyP: any, basePrice: number) {
     }
   }
 
-  if (flag)
-    return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
+  if (flag) return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
   return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 }
 
@@ -475,16 +478,28 @@ function ProductCardInner({
   const images = useMemo(() => imagesRaw.map((u) => imgUrl(u)), [imagesRaw]);
   const coverUrl = images[0] || "";
 
-  const baseDisplayPrice = useMemo(
-    () => getDisplayPrice(anyP, priceOverride),
-    [anyP, priceOverride]
-  );
+  /**
+   * ✅ FIX: empêcher double promo
+   * - priceOverride (ex: 99) est un PRIX FINAL (déjà remisé) venant de PromotionsPage
+   * - donc on calcule la promo UNIQUEMENT quand priceOverride est null
+   */
+  const baseProductPrice = useMemo(() => getDisplayPrice(anyP, null), [anyP]);
+  const autoPromoEnabled = priceOverride == null;
 
-  const promoMeta = useMemo(
-    () => getPromoMeta(anyP, baseDisplayPrice),
-    [anyP, baseDisplayPrice]
-  );
-  const effectiveRule = promoMeta.isPromo ? promoMeta.rule : null;
+  const promoMeta = useMemo(() => {
+    if (!autoPromoEnabled) {
+      return {
+        isPromo: false,
+        rule: null as PromoRule,
+        oldPrice: null as number | null,
+        badgeText: null as string | null,
+      };
+    }
+    return getPromoMeta(anyP, baseProductPrice);
+  }, [anyP, baseProductPrice, autoPromoEnabled]);
+
+  const effectiveRule: PromoRule =
+    autoPromoEnabled && promoMeta.isPromo ? promoMeta.rule : null;
 
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
@@ -519,7 +534,8 @@ function ProductCardInner({
     }
     setSelectedKey((prev) => {
       if (prev && variants.some((v) => v.key === prev)) return prev;
-      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      const firstOk =
+        variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
       return firstOk?.key || "";
     });
   }, [hasVariants, variants]);
@@ -531,10 +547,15 @@ function ProductCardInner({
 
   const rawPrice = useMemo(() => {
     if (selectedVariant?.price != null) return toNum(selectedVariant.price);
-    return baseDisplayPrice;
-  }, [baseDisplayPrice, selectedVariant]);
 
-  // ✅ calc promo en cents + arrondi MAD entier
+    // ✅ si override fourni => prix FINAL (déjà promo)
+    if (priceOverride != null) return toNum(priceOverride);
+
+    // ✅ sinon prix public (base)
+    return baseProductPrice;
+  }, [selectedVariant, priceOverride, baseProductPrice]);
+
+  // ✅ calc promo en cents + arrondi MAD entier (seulement si effectiveRule non-null)
   const displayPrice = useMemo(() => {
     const rawCents = toCents(rawPrice);
     const promoCents = computePromoCentsFromRule(rawCents, effectiveRule);
@@ -549,19 +570,19 @@ function ProductCardInner({
       if (oldC > dispCents) return fromCents(oldC);
     }
 
-    if (promoMeta.isPromo) {
+    if (autoPromoEnabled && promoMeta.isPromo) {
       const rawC = roundToMAD(toCents(rawPrice));
       if (rawC > dispCents) return fromCents(rawC);
     }
 
     return null;
-  }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice]);
+  }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice, autoPromoEnabled]);
 
   const effectiveBadgeText = useMemo(() => {
     if (badgeText) return badgeText;
-    if (promoMeta.isPromo) return promoMeta.badgeText || "PROMO";
+    if (autoPromoEnabled && promoMeta.isPromo) return promoMeta.badgeText || "PROMO";
     return null;
-  }, [badgeText, promoMeta.badgeText, promoMeta.isPromo]);
+  }, [badgeText, promoMeta.badgeText, promoMeta.isPromo, autoPromoEnabled]);
 
   const effectiveStock = useMemo(() => {
     if (hasVariants && selectedVariant?.stock != null) return selectedVariant.stock;
@@ -624,7 +645,11 @@ function ProductCardInner({
       if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0) return;
 
       const raw =
-        !isDefault && variant?.price != null ? toNum(variant.price) : baseDisplayPrice;
+        !isDefault && variant?.price != null
+          ? toNum(variant.price)
+          : priceOverride != null
+            ? toNum(priceOverride) // ✅ prix final déjà calculé (promotions)
+            : baseProductPrice;     // ✅ prix public normal
 
       // ✅ prix final stable (cents) + arrondi MAD
       const finalPrice = fromCents(
@@ -672,12 +697,13 @@ function ProductCardInner({
     [
       add,
       anyP,
-      baseDisplayPrice,
+      baseProductPrice,
       baseStock,
       effectiveBadgeText,
       effectiveRule,
       hasVariants,
       onAdd,
+      priceOverride,
       subCatToken,
     ]
   );
@@ -1014,11 +1040,12 @@ function ProductCardInner({
 
     const raw = selected?.price != null ? toNum(selected.price) : null;
     if (raw != null) {
-      const final = fromCents(
-        computePromoCentsFromRule(toCents(raw), effectiveRule)
-      );
+      const final = fromCents(computePromoCentsFromRule(toCents(raw), effectiveRule));
       infoParts.push(`Prix:${moneyMAD(final)}`);
-      const old = final < fromCents(roundToMAD(toCents(raw))) ? fromCents(roundToMAD(toCents(raw))) : null;
+      const old =
+        final < fromCents(roundToMAD(toCents(raw)))
+          ? fromCents(roundToMAD(toCents(raw)))
+          : null;
       if (old != null) infoParts.push(`Ancien:${moneyMAD(old)}`);
     }
 
@@ -1049,10 +1076,7 @@ function ProductCardInner({
         </select>
 
         {infoLine ? (
-          <div
-            className="small mt-2"
-            style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}
-          >
+          <div className="small mt-2" style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}>
             {infoLine}
           </div>
         ) : null}
@@ -1642,7 +1666,11 @@ function ProductCardInner({
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" onClick={closeModal} type="button">
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={closeModal}
+                  type="button"
+                >
                   Fermer
                 </button>
               </div>
