@@ -29,32 +29,65 @@ function titleCase(s: string) {
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
     .join(" ");
 }
+
+/** ✅ filtre sécurité: pas de balises, pas de chars invisibles/cheat */
+function isSafeCityLabel(raw: string) {
+  const s = String(raw ?? "").trim();
+  if (!s) return false;
+
+  // refuse HTML / tags
+  if (/[<>]/.test(s)) return false;
+
+  // refuse caractères de contrôle / invisibles
+  if (/[\u0000-\u001F\u007F]/.test(s)) return false;
+
+  // ✅ whitelist “raisonnable” (lettres, espaces, -, ', .)
+  // adapte si tu veux autoriser plus
+  if (!/^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s'.-]{2,40}$/.test(s)) return false;
+
+  // évite les valeurs type "script", "onerror", etc.
+  const low = s.toLowerCase();
+  if (low.includes("script") || low.includes("onerror") || low.includes("onload")) return false;
+
+  return true;
+}
+
 function uniqSorted(list: string[]) {
   const seen = new Set<string>();
   const out: string[] = [];
+
   for (const x of list) {
-    const v = titleCase(x);
-    if (!v) continue;
-    const k = norm(v);
+    const cleaned = titleCase(x);
+    if (!cleaned) continue;
+
+    // ✅ sécurité
+    if (!isSafeCityLabel(cleaned)) continue;
+
+    const k = norm(cleaned);
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push(v);
+    out.push(cleaned);
   }
+
   out.sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
   return out;
 }
+
 function parseCities(payload: any): string[] {
   if (!payload) return [];
   if (Array.isArray(payload.items)) {
-    return payload.items.map((x: any) => {
-      if (typeof x === "string") return x;
-      return x?.name ?? x?.label ?? x?.city ?? String(x ?? "");
-    });
+    return payload.items
+      .map((x: any) => {
+        if (typeof x === "string") return x;
+        return x?.name ?? x?.label ?? x?.city ?? String(x ?? "");
+      })
+      .filter(Boolean);
   }
-  if (Array.isArray(payload.cities)) return payload.cities.map(String);
-  if (Array.isArray(payload)) return payload.map(String);
+  if (Array.isArray(payload.cities)) return payload.cities.map(String).filter(Boolean);
+  if (Array.isArray(payload)) return payload.map(String).filter(Boolean);
   return [];
 }
+
 function eqCity(a?: string | null, b?: string | null) {
   return norm(String(a || "")) === norm(String(b || ""));
 }
@@ -68,14 +101,13 @@ export default function LocationGate({ children }: { children: React.ReactNode }
   const [loadingCities, setLoadingCities] = useState(false);
   const [citiesErr, setCitiesErr] = useState<string | null>(null);
 
-  const [q, setQ] = useState(""); // recherche
-  const [selected, setSelected] = useState<string>(""); // ✅ valeur sélectionnée dans la dropdown
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<string>("");
   const [customCity, setCustomCity] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
 
   const currentLabel = useMemo(() => titleCase(city || ""), [city]);
-
   const defaultFallbackCities = useMemo(() => CITY_OPTIONS.map((c) => c.label), []);
 
   async function loadCities(search?: string) {
@@ -97,14 +129,15 @@ export default function LocationGate({ children }: { children: React.ReactNode }
 
       const list = uniqSorted(parseCities(res));
       const finalList = list.length ? list : uniqSorted(defaultFallbackCities);
+
       setCities(finalList);
 
-      // ✅ sync selected
       const current = titleCase(city || "");
       if (current && finalList.some((x) => eqCity(x, current))) setSelected(current);
       else if (!selected && finalList.length) setSelected(finalList[0]);
     } catch (e: any) {
       if (ac.signal.aborted) return;
+
       setCitiesErr(e?.message || "Impossible de charger la liste des villes.");
       const fallback = uniqSorted(defaultFallbackCities);
       setCities(fallback);
@@ -117,34 +150,29 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     }
   }
 
-  // 👉 au premier chargement : si pas de ville, on force l'ouverture
   useEffect(() => {
     if (!isReady) return;
     if (!city) setShowModal(true);
   }, [isReady, city]);
 
-  // 👉 event global "city:open"
   useEffect(() => {
     const handler = () => setShowModal(true);
     window.addEventListener("city:open", handler);
     return () => window.removeEventListener("city:open", handler);
   }, []);
 
-  // ✅ lock scroll
   useEffect(() => {
     if (!showModal) return;
     document.body.classList.add("modal-open");
     return () => document.body.classList.remove("modal-open");
   }, [showModal]);
 
-  // ✅ charger villes quand modal s'ouvre
   useEffect(() => {
     if (!showModal) return;
     loadCities("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showModal]);
 
-  // ✅ recherche (debounce + abort)
   useEffect(() => {
     if (!showModal) return;
 
@@ -162,7 +190,12 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     const label = titleCase(cityName);
     if (!label) return;
 
-    // ✅ best-effort: enrich backend
+    // ✅ sécurité front
+    if (!isSafeCityLabel(label)) {
+      setCitiesErr("Nom de ville invalide.");
+      return;
+    }
+
     try {
       await api.post("/api/locations/cities", { city: label }, { timeout: 8000 });
     } catch {
@@ -178,6 +211,12 @@ export default function LocationGate({ children }: { children: React.ReactNode }
   async function handleSelectCustom() {
     const label = titleCase(customCity);
     if (!label) return;
+
+    // ✅ sécurité front
+    if (!isSafeCityLabel(label)) {
+      setCitiesErr("Nom de ville invalide (caractères non autorisés).");
+      return;
+    }
 
     try {
       await api.post("/api/locations/cities", { city: label }, { timeout: 8000 });
@@ -197,7 +236,7 @@ export default function LocationGate({ children }: { children: React.ReactNode }
   const dropdownOptions = useMemo(() => {
     const needle = norm(q);
     const list = !needle ? cities : cities.filter((c) => norm(c).includes(needle));
-    return list.slice(0, 200); // sécurité UI
+    return list.slice(0, 200);
   }, [cities, q]);
 
   if (!isReady) {
@@ -212,7 +251,6 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     <>
       {children}
 
-      {/* 📍 Bouton flottant */}
       {!showModal && (
         <button
           type="button"
@@ -238,7 +276,6 @@ export default function LocationGate({ children }: { children: React.ReactNode }
         </button>
       )}
 
-      {/* 🟡 Modal */}
       {showModal && (
         <>
           <div className="modal-backdrop fade show" />
@@ -257,12 +294,7 @@ export default function LocationGate({ children }: { children: React.ReactNode }
                     <span>Choisissez votre ville</span>
                   </h5>
 
-                  <button
-                    type="button"
-                    className="btn-close"
-                    aria-label="Fermer"
-                    onClick={() => setShowModal(false)}
-                  />
+                  <button type="button" className="btn-close" aria-label="Fermer" onClick={() => setShowModal(false)} />
                 </div>
 
                 <div className="modal-body">
@@ -270,7 +302,6 @@ export default function LocationGate({ children }: { children: React.ReactNode }
                     Choisis une ville dans la liste déroulante (tu peux aussi rechercher).
                   </p>
 
-                  {/* Recherche */}
                   <div className="input-group mb-2">
                     <input
                       className="form-control"
@@ -295,7 +326,6 @@ export default function LocationGate({ children }: { children: React.ReactNode }
                     </div>
                   )}
 
-                  {/* ✅ Dropdown */}
                   <label className="form-label fw-semibold mb-1">Ville</label>
                   <select
                     className="form-select mb-2"
@@ -328,7 +358,6 @@ export default function LocationGate({ children }: { children: React.ReactNode }
                     </button>
                   </div>
 
-                  {/* Saisie libre */}
                   <div className="mt-3 p-3 rounded" style={{ background: "rgba(0,0,0,.03)" }}>
                     <div className="fw-semibold mb-2">Ma ville n’est pas dans la liste</div>
 
@@ -355,14 +384,10 @@ export default function LocationGate({ children }: { children: React.ReactNode }
                       </button>
                     </div>
 
-                    <div className="small text-muted mt-2">
-                      La ville est enregistrée pour vos prochaines visites.
-                    </div>
+                    <div className="small text-muted mt-2">La ville est enregistrée pour vos prochaines visites.</div>
                   </div>
 
-                  <p className="small text-muted mt-3 mb-0">
-                    La ville sélectionnée est conservée sur cet appareil.
-                  </p>
+                  <p className="small text-muted mt-3 mb-0">La ville sélectionnée est conservée sur cet appareil.</p>
                 </div>
               </div>
             </div>
