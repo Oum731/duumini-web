@@ -1,5 +1,5 @@
 // src/pages/Fashion.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
@@ -19,7 +19,6 @@ function GridSkeleton() {
             style={{ borderRadius: 16, overflow: "hidden" }}
           >
             <div className="d-flex">
-              {/* ✅ image plus large */}
               <div
                 className="placeholder"
                 style={{
@@ -100,13 +99,8 @@ function isPromoProduct(p: Product) {
 
   const price = Number(x.price_client ?? x.price ?? 0) || 0;
   const promoPrice =
-    Number(
-      x.promo_price_client ??
-        x.promo_price ??
-        x.price_promo ??
-        x.sale_price ??
-        0
-    ) || 0;
+    Number(x.promo_price_client ?? x.promo_price ?? x.price_promo ?? x.sale_price ?? 0) ||
+    0;
   if (promoPrice > 0 && price > 0 && promoPrice < price) return true;
 
   if (String(x.promo_type || x.discount_type || "").trim()) {
@@ -147,7 +141,10 @@ export default function Fashion() {
   const [items, setItems] = useState<Product[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [allSubCategories, setAllSubCategories] = useState<SubCategory[]>([]);
+
+  // ✅ on sépare loading meta / loading produits (comme pour AfricanFood)
   const [loading, setLoading] = useState(true);
+  const [loadingMeta, setLoadingMeta] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
@@ -162,32 +159,62 @@ export default function Fashion() {
     return () => window.clearTimeout(t);
   }, [q]);
 
-  const abortRef = useRef<AbortController | null>(null);
-
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
   useEffect(() => {
     if (page > pages) setPage(pages);
   }, [pages, page]);
 
-  async function refresh() {
-    abortRef.current?.abort();
+  const abortProductsRef = useRef<AbortController | null>(null);
+  const abortMetaRef = useRef<AbortController | null>(null);
+
+  /** ✅ charge meta (categories/subcategories) une seule fois */
+  const loadMeta = useCallback(async () => {
+    abortMetaRef.current?.abort();
     const ac = new AbortController();
-    abortRef.current = ac;
+    abortMetaRef.current = ac;
+
+    setLoadingMeta(true);
+    setError(null);
+
+    try {
+      const [resCats, resSubs] = await Promise.all([
+        listCategories({ page: 1, pageSize: 500 }),
+        listSubCategories({ page: 1, pageSize: 2000 }),
+      ]);
+
+      if (ac.signal.aborted) return;
+
+      setAllCategories(resCats.items || []);
+      setAllSubCategories(resSubs.items || []);
+    } catch (e: any) {
+      if (ac.signal.aborted) return;
+      setError(e?.message || String(e));
+    } finally {
+      if (!ac.signal.aborted) setLoadingMeta(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMeta();
+    return () => abortMetaRef.current?.abort();
+  }, [loadMeta]);
+
+  /** ✅ charge produits sur changement page/ville/route */
+  const loadProducts = useCallback(async () => {
+    abortProductsRef.current?.abort();
+    const ac = new AbortController();
+    abortProductsRef.current = ac;
 
     setLoading(true);
     setError(null);
 
     try {
-      const [resProducts, resCats, resSubs] = await Promise.all([
-        listProducts({
-          page,
-          pageSize,
-          onlyActive: true,
-          vertical: "FASHION",
-        } as any),
-        listCategories({ page: 1, pageSize: 500 }),
-        listSubCategories({ page: 1, pageSize: 2000 }),
-      ]);
+      const resProducts = await listProducts({
+        page,
+        pageSize,
+        onlyActive: true,
+        vertical: "FASHION",
+      } as any);
 
       if (ac.signal.aborted) return;
 
@@ -205,27 +232,31 @@ export default function Fashion() {
 
       setItems(seededShuffle(rawItems, seedStr));
       setTotal(resProducts.pageInfo?.total ?? 0);
-
-      setAllCategories(resCats.items || []);
-      setAllSubCategories(resSubs.items || []);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setError(e?.message || String(e));
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize, city, categorySlugParam, subSlugParam]);
 
+  useEffect(() => {
+    loadProducts();
+    return () => abortProductsRef.current?.abort();
+  }, [loadProducts]);
+
+  const refresh = useCallback(() => {
+    loadProducts();
+    if (!allCategories.length || !allSubCategories.length) loadMeta();
+  }, [loadProducts, loadMeta, allCategories.length, allSubCategories.length]);
+
+  /** ✅ ids présents dans les items fashion */
   const { fashionCategoryIds, fashionSubIds } = useMemo(() => {
     const { catIds, subIds } = collectIds(items);
     return { fashionCategoryIds: catIds, fashionSubIds: subIds };
   }, [items]);
 
+  /** ✅ categories/subcategories utiles uniquement (pour menu + pills) */
   const categories = useMemo(() => {
     const out = allCategories.filter((c) => fashionCategoryIds.has(Number(c.id)));
     out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
@@ -242,6 +273,7 @@ export default function Fashion() {
     return out;
   }, [allSubCategories, fashionSubIds, fashionCategoryIds]);
 
+  // maps
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
     for (const c of categories) map[c.id] = c;
@@ -279,6 +311,7 @@ export default function Fashion() {
     return list.find((s) => String(s.slug || "").toLowerCase() === subSlugParam) || null;
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
+  // URL invalide → redirect
   useEffect(() => {
     if (!categories.length) return;
 
@@ -293,25 +326,32 @@ export default function Fashion() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categories.length, categorySlugParam, subSlugParam, selectedCategory, selectedSubCategory]);
 
+  // search filter
   const filteredBySearch = useMemo(() => {
     if (!qDebounced) return items;
     return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
   }, [items, qDebounced]);
 
+  // category/subcategory filter
   const filtered = useMemo(() => {
     let out = filteredBySearch;
 
     if (selectedCategory) {
-      out = out.filter((p) => Number((p as any).category_id || 0) === Number(selectedCategory.id));
+      out = out.filter(
+        (p) => Number((p as any).category_id || 0) === Number(selectedCategory.id)
+      );
     }
 
     if (selectedSubCategory) {
-      out = out.filter((p) => Number((p as any).sub_category_id || 0) === Number(selectedSubCategory.id));
+      out = out.filter(
+        (p) => Number((p as any).sub_category_id || 0) === Number(selectedSubCategory.id)
+      );
     }
 
     return out;
   }, [filteredBySearch, selectedCategory, selectedSubCategory]);
 
+  /** ✅ promos + normal (sans doublons) */
   const promoItems = useMemo(() => uniqById(filtered.filter(isPromoProduct)), [filtered]);
 
   const promoIds = useMemo(() => {
@@ -334,6 +374,8 @@ export default function Fashion() {
   const activeCategoryId = selectedCategory?.id ?? null;
   const activeSubCategoryId = selectedSubCategory?.id ?? null;
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
+
+  const loadingAny = loading || loadingMeta;
 
   return (
     <section className="container-xxl py-4">
@@ -432,12 +474,6 @@ export default function Fashion() {
           border: 1px solid rgba(var(--duu-red-rgb), .20);
           font-weight: 900;
         }
-
-        /* ✅ Astuce CSS : si ton ProductCard met un wrapper pour le media, tu peux le cibler */
-        .fashion-wide-media{
-          width: 54% !important;
-          min-width: 54% !important;
-        }
       `}</style>
 
       <div className="fashion-hero mb-3">
@@ -447,7 +483,9 @@ export default function Fashion() {
             <h1 className="h4 mb-1 mt-2" style={{ color: "var(--duu-black)" }}>
               {title}
             </h1>
-            <div className="fashion-sub">Tailles • Couleurs • Nouveautés — Paiement à la livraison</div>
+            <div className="fashion-sub">
+              Tailles • Couleurs • Nouveautés — Paiement à la livraison
+            </div>
           </div>
 
           <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
@@ -580,7 +618,7 @@ export default function Fashion() {
         </div>
       )}
 
-      {loading ? (
+      {loadingAny ? (
         <GridSkeleton />
       ) : (
         <>
@@ -617,7 +655,7 @@ export default function Fashion() {
         </>
       )}
 
-      {!loading && pages > 1 && (
+      {!loadingAny && pages > 1 && (
         <div className="d-flex justify-content-end align-items-center mt-3">
           <div className="btn-group">
             <button

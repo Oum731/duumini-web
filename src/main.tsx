@@ -11,23 +11,37 @@ import { AuthProvider } from "./context/AuthContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
 import { LocationProvider } from "./context/LocationContext";
 
-// ❌ PWA retiré : plus de registerSW / actualisation auto ici
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000, // ✅ 2 min: si tu reviens sur une page => pas de refetch
+      gcTime: 20 * 60 * 1000,   // ✅ garde en cache 20 min
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+  },
+});
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter
-      future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
-      }}
-    >
-      <AuthProvider>
-        <RealtimeProvider>
-          <LocationProvider>
-            <App />
-          </LocationProvider>
-        </RealtimeProvider>
-      </AuthProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
+        <AuthProvider>
+          <RealtimeProvider>
+            <LocationProvider>
+              <App />
+            </LocationProvider>
+          </RealtimeProvider>
+        </AuthProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   </React.StrictMode>
 );

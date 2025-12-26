@@ -11,7 +11,11 @@ import {
   upsertProductVariants,
   removeProductVariant,
 } from "../../services/products";
-import { listCategories, type Category, createCategory } from "../../services/categories";
+import {
+  listCategories,
+  type Category,
+  createCategory,
+} from "../../services/categories";
 import { listSubCategories, createSubCategory } from "../../services/subCategories";
 import { API_BASE, api } from "../../services/http";
 
@@ -71,7 +75,11 @@ type Channel = "all" | "african-food" | "african-market" | "fashion";
 /* ================= Helpers ================= */
 
 function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(Number(n || 0));
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "MAD",
+    maximumFractionDigits: 0,
+  }).format(Number(n || 0));
 }
 
 function imgUrl(u?: string | null) {
@@ -96,10 +104,81 @@ function computePromoPrice(price: number, type: PromoDiscountType, value: number
   return Math.max(0, Number(res.toFixed(2)));
 }
 
+function isActive(p: any) {
+  return p?.active ?? p?.is_active ?? 1 ? 1 : 0;
+}
+
 function hasRealPromo(p: any) {
-  const active = p?.active ?? p?.is_active ?? 1 ? 1 : 0;
+  const active = isActive(p);
   if (!active) return false;
-  return !!p?.promo_eligible && Number(p?.promo_discount_value ?? 0) > 0;
+  return Number(p?.promo_eligible || 0) === 1 && Number(p?.promo_discount_value ?? 0) > 0;
+}
+
+function promoLabel(p: any) {
+  if (!hasRealPromo(p)) return "—";
+  const t = String(p?.promo_discount_type || "").toUpperCase();
+  const v = Number(p?.promo_discount_value || 0);
+  if (t === "AMOUNT") return `-${moneyMAD(v)}`;
+  return `-${Math.round(v)}%`;
+}
+
+/**
+ * ✅ Prix base admin:
+ * - si variants => min_price (sinon price)
+ * ✅ Retourne TOUJOURS un number (jamais null)
+ */
+function basePriceForAdmin(p: any): number {
+  const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
+
+  const minp: number | null =
+    p?.min_price == null || p?.min_price === ""
+      ? null
+      : Number(p.min_price);
+
+  const price: number =
+    p?.price == null || p?.price === ""
+      ? 0
+      : Number(p.price);
+
+  if (hasVariants && minp != null && Number.isFinite(minp) && minp >= 0) {
+    return minp;
+  }
+
+  return Number.isFinite(price) ? price : 0;
+}
+
+function computePromoPriceLocal(base: number, eligible: any, type: any, value: any) {
+  if (Number(eligible) !== 1) return null;
+  const b = Number(base);
+  const v = Number(value);
+  if (!Number.isFinite(b) || b <= 0) return null;
+  if (!Number.isFinite(v) || v <= 0) return null;
+
+  const t = String(type || "").toUpperCase();
+  let out = b;
+  if (t === "AMOUNT") out = b - v;
+  else out = b * (1 - v / 100);
+
+  if (!Number.isFinite(out)) return null;
+  if (out < 0) out = 0;
+  return +out.toFixed(2);
+}
+
+/**
+ * ✅ Prix promo admin:
+ * - si variants => min_promo_price (sinon promo_price)
+ * - fallback local si l’API ne renvoie pas encore promo_price
+ */
+function promoPriceForAdmin(p: any) {
+  if (!hasRealPromo(p)) return null;
+
+  const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
+  const apiPromo = hasVariants ? p?.min_promo_price : p?.promo_price;
+  const apiN = apiPromo == null || apiPromo === "" ? null : Number(apiPromo);
+  if (Number.isFinite(apiN as any)) return apiN as number;
+
+  const base = basePriceForAdmin(p);
+  return computePromoPriceLocal(base, p?.promo_eligible, p?.promo_discount_type, p?.promo_discount_value);
 }
 
 function splitNames(raw: string) {
@@ -127,10 +206,6 @@ function getPaginated(res: any): { items: Product[]; pageInfo?: any } {
   const pageInfo = body?.pageInfo ?? body?.data?.pageInfo ?? undefined;
 
   return { items, pageInfo };
-}
-
-function isActive(p: any) {
-  return p?.active ?? p?.is_active ?? 1 ? 1 : 0;
 }
 
 function inferStyleFromProduct(p: any): ProductStyle | "" {
@@ -257,8 +332,7 @@ function ProductForm({
       promo_eligible: anyInit?.promo_eligible != null ? (Number(anyInit.promo_eligible) as 0 | 1) : 0,
 
       category_id: anyInit?.category_id != null && anyInit?.category_id !== "" ? Number(anyInit.category_id) : null,
-      sub_category_id:
-        anyInit?.sub_category_id != null && anyInit?.sub_category_id !== "" ? Number(anyInit.sub_category_id) : null,
+      sub_category_id: anyInit?.sub_category_id != null && anyInit?.sub_category_id !== "" ? Number(anyInit.sub_category_id) : null,
 
       shop_id: anyInit?.shop_id != null ? Number(anyInit.shop_id) : null,
 
@@ -430,9 +504,7 @@ function ProductForm({
 
       if (!isEdit) {
         if (!variantsTouched && variants.length === 0) {
-          setVariants([
-            { size: null, color: null, sku: null, stock: 0, price_override: null, is_active: 1 },
-          ]);
+          setVariants([{ size: null, color: null, sku: null, stock: 0, price_override: null, is_active: 1 }]);
         }
         return;
       }
@@ -488,15 +560,7 @@ function ProductForm({
     setVariantsTouched(true);
     setVariants((prev) => [
       ...prev,
-      {
-        size: null,
-        color: null,
-        sku: null,
-        stock: 0,
-        price_override: null,
-        is_active: 1,
-        ...(prefill || {}),
-      },
+      { size: null, color: null, sku: null, stock: 0, price_override: null, is_active: 1, ...(prefill || {}) },
     ]);
   }
 
@@ -665,12 +729,7 @@ function ProductForm({
         }
       }
 
-      const finalDraft: Draft = {
-        ...draft,
-        category_id: categoryId ?? null,
-        sub_category_id: subCatId ?? null,
-      };
-
+      const finalDraft: Draft = { ...draft, category_id: categoryId ?? null, sub_category_id: subCatId ?? null };
       await onSubmit(finalDraft, files, replaceImages, variants);
     } catch (err: any) {
       setFormError(err?.message || String(err));
@@ -826,9 +885,7 @@ function ProductForm({
                 )}
               </div>
 
-              <small className="text-muted">
-                Admin : boutique obligatoire. Vendeur : sa boutique est déduite côté API.
-              </small>
+              <small className="text-muted">Admin : boutique obligatoire. Vendeur : sa boutique est déduite côté API.</small>
             </div>
           </div>
 
@@ -974,11 +1031,7 @@ function ProductForm({
             </div>
             <div className="col-4">
               <label className="form-label">Devise</label>
-              <input
-                className="form-control duu-focus"
-                value={draft.currency || "MAD"}
-                onChange={(ev) => setDraft((d) => ({ ...d, currency: ev.target.value }))}
-              />
+              <input className="form-control duu-focus" value={draft.currency || "MAD"} onChange={(ev) => setDraft((d) => ({ ...d, currency: ev.target.value }))} />
             </div>
             <div className="col-4">
               <label className="form-label">Stock</label>
@@ -1006,8 +1059,7 @@ function ProductForm({
                     </span>
                   </div>
                   <div className="small text-muted mt-1">
-                    Ajoute des tailles/couleurs. Stock et prix override par variante (optionnel). Le prix final affiché sera le prix produit si
-                    tu ne mets pas un prix variante.
+                    Ajoute des tailles/couleurs. Stock et prix override par variante (optionnel). Le prix final affiché sera le prix produit si tu ne mets pas un prix variante.
                   </div>
                 </div>
 
@@ -1015,17 +1067,13 @@ function ProductForm({
                   <button type="button" className="btn btn-sm btn-duu" onClick={() => addVariantRow()} disabled={variantsLoading}>
                     + Ajouter
                   </button>
+
                   <button
                     type="button"
                     className="btn btn-sm btn-outline-dark"
                     onClick={() => {
                       setVariantsTouched(true);
-                      setVariants((prev) =>
-                        prev.map((v) => ({
-                          ...v,
-                          sku: toUpperSku(v.sku ?? ""),
-                        }))
-                      );
+                      setVariants((prev) => prev.map((v) => ({ ...v, sku: toUpperSku(v.sku ?? "") })));
                       setVariantsOk("SKU normalisés (MAJ + tirets).");
                       window.setTimeout(() => setVariantsOk(null), 1800);
                     }}
@@ -1060,13 +1108,7 @@ function ProductForm({
                   </button>
 
                   {isEdit && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={cleanAllVariants}
-                      disabled={variantsLoading}
-                      title="Suppression réelle côté API (clean total)"
-                    >
+                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={cleanAllVariants} disabled={variantsLoading} title="Suppression réelle côté API (clean total)">
                       Supprimer tout
                     </button>
                   )}
@@ -1082,42 +1124,19 @@ function ProductForm({
                 <div className="row g-2 align-items-end">
                   <div className="col-12 col-md-4">
                     <label className="form-label small text-muted mb-1">Tailles (virgules)</label>
-                    <input
-                      className="form-control duu-focus"
-                      value={bulkSizesRaw}
-                      onChange={(e) => setBulkSizesRaw(e.target.value)}
-                      placeholder="S, M, L, XL"
-                    />
+                    <input className="form-control duu-focus" value={bulkSizesRaw} onChange={(e) => setBulkSizesRaw(e.target.value)} placeholder="S, M, L, XL" />
                   </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label small text-muted mb-1">Couleurs (virgules)</label>
-                    <input
-                      className="form-control duu-focus"
-                      value={bulkColorsRaw}
-                      onChange={(e) => setBulkColorsRaw(e.target.value)}
-                      placeholder="Noir, Blanc, Rouge"
-                    />
+                    <input className="form-control duu-focus" value={bulkColorsRaw} onChange={(e) => setBulkColorsRaw(e.target.value)} placeholder="Noir, Blanc, Rouge" />
                   </div>
                   <div className="col-6 col-md-2">
                     <label className="form-label small text-muted mb-1">Stock</label>
-                    <input
-                      type="number"
-                      className="form-control duu-focus"
-                      value={bulkStock}
-                      onChange={(e) => setBulkStock(Number(e.target.value || 0))}
-                      min={0}
-                    />
+                    <input type="number" className="form-control duu-focus" value={bulkStock} onChange={(e) => setBulkStock(Number(e.target.value || 0))} min={0} />
                   </div>
                   <div className="col-6 col-md-2">
                     <label className="form-label small text-muted mb-1">Prix var.</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-control duu-focus"
-                      value={bulkPriceOverride}
-                      onChange={(e) => setBulkPriceOverride(e.target.value)}
-                      placeholder="(opt)"
-                    />
+                    <input type="number" step="0.01" className="form-control duu-focus" value={bulkPriceOverride} onChange={(e) => setBulkPriceOverride(e.target.value)} placeholder="(opt)" />
                   </div>
 
                   <div className="col-12">
@@ -1137,9 +1156,7 @@ function ProductForm({
                       >
                         Exemple
                       </button>
-                      <span className="small duu-muted align-self-center">
-                        Astuce : tu peux mettre seulement tailles ou seulement couleurs (ça crée une liste simple).
-                      </span>
+                      <span className="small duu-muted align-self-center">Astuce : tu peux mettre seulement tailles ou seulement couleurs (ça crée une liste simple).</span>
                     </div>
                   </div>
                 </div>
@@ -1148,12 +1165,7 @@ function ProductForm({
               <div className="mt-3 d-flex flex-wrap gap-2">
                 <div className="small text-muted w-100">Raccourcis tailles</div>
                 {sizesPreset.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className="duu-mini-chip"
-                    onClick={() => addVariantRow({ size: s, stock: 0, is_active: 1 })}
-                  >
+                  <button key={s} type="button" className="duu-mini-chip" onClick={() => addVariantRow({ size: s, stock: 0, is_active: 1 })}>
                     + {s}
                   </button>
                 ))}
@@ -1162,12 +1174,7 @@ function ProductForm({
               <div className="mt-2 d-flex flex-wrap gap-2">
                 <div className="small text-muted w-100">Raccourcis couleurs</div>
                 {colorsPreset.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className="duu-mini-chip"
-                    onClick={() => addVariantRow({ color: c, stock: 0, is_active: 1 })}
-                  >
+                  <button key={c} type="button" className="duu-mini-chip" onClick={() => addVariantRow({ color: c, stock: 0, is_active: 1 })}>
                     + {c}
                   </button>
                 ))}
@@ -1175,9 +1182,7 @@ function ProductForm({
 
               <div className="row g-2 mt-3">
                 {variants.length === 0 ? (
-                  <div className="col-12 text-muted small">
-                    Aucune variante. Ajoute au moins une taille/couleur si c’est un produit Fashion.
-                  </div>
+                  <div className="col-12 text-muted small">Aucune variante. Ajoute au moins une taille/couleur si c’est un produit Fashion.</div>
                 ) : (
                   variants.map((v, idx) => {
                     const isOn = (v.is_active ?? 1) === 1;
@@ -1193,16 +1198,9 @@ function ProductForm({
                             <div className="duu-variant-title">
                               <span className="badge text-bg-dark">#{idx + 1}</span>
                               <span className="small">
-                                {String(v.size || "").trim() || "—"} <span className="text-muted">·</span>{" "}
-                                {String(v.color || "").trim() || "—"}
+                                {String(v.size || "").trim() || "—"} <span className="text-muted">·</span> {String(v.color || "").trim() || "—"}
                               </span>
-                              {!isOn ? (
-                                <span className="badge bg-secondary">Off</span>
-                              ) : stock <= 0 ? (
-                                <span className="badge bg-danger">Rupture</span>
-                              ) : (
-                                <span className="badge bg-success">OK</span>
-                              )}
+                              {!isOn ? <span className="badge bg-secondary">Off</span> : stock <= 0 ? <span className="badge bg-danger">Rupture</span> : <span className="badge bg-success">OK</span>}
                             </div>
 
                             <div className="d-flex align-items-center gap-2">
@@ -1215,12 +1213,7 @@ function ProductForm({
                                 {isOn ? "Désactiver" : "Activer"}
                               </button>
 
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-danger"
-                                onClick={() => removeVariantRowAt(idx)}
-                                title="Retirer cette ligne (UI)"
-                              >
+                              <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeVariantRowAt(idx)} title="Retirer cette ligne (UI)">
                                 ×
                               </button>
                             </div>
@@ -1263,12 +1256,7 @@ function ProductForm({
                               <div className="col-12 col-md-3">
                                 <label className="form-label small text-muted mb-1">SKU</label>
                                 <div className="input-group">
-                                  <input
-                                    className="form-control duu-focus"
-                                    value={v.sku ?? ""}
-                                    onChange={(e) => patchVariant(idx, { sku: e.target.value })}
-                                    placeholder="Optionnel"
-                                  />
+                                  <input className="form-control duu-focus" value={v.sku ?? ""} onChange={(e) => patchVariant(idx, { sku: e.target.value })} placeholder="Optionnel" />
                                   <button
                                     type="button"
                                     className="btn btn-outline-secondary"
@@ -1287,11 +1275,7 @@ function ProductForm({
                               <div className="col-12 col-md-3">
                                 <label className="form-label small text-muted mb-1">Stock</label>
                                 <div className="input-group">
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline-dark"
-                                    onClick={() => patchVariant(idx, { stock: Math.max(0, stock - 1) })}
-                                  >
+                                  <button type="button" className="btn btn-outline-dark" onClick={() => patchVariant(idx, { stock: Math.max(0, stock - 1) })}>
                                     −
                                   </button>
                                   <input
@@ -1301,11 +1285,7 @@ function ProductForm({
                                     onChange={(e) => patchVariant(idx, { stock: e.target.value === "" ? 0 : Number(e.target.value) })}
                                     min={0}
                                   />
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline-dark"
-                                    onClick={() => patchVariant(idx, { stock: stock + 1 })}
-                                  >
+                                  <button type="button" className="btn btn-outline-dark" onClick={() => patchVariant(idx, { stock: stock + 1 })}>
                                     +
                                   </button>
                                 </div>
@@ -1321,9 +1301,7 @@ function ProductForm({
                                     step="0.01"
                                     className="form-control duu-focus"
                                     value={v.price_override ?? ""}
-                                    onChange={(e) =>
-                                      patchVariant(idx, { price_override: e.target.value === "" ? null : Number(e.target.value) })
-                                    }
+                                    onChange={(e) => patchVariant(idx, { price_override: e.target.value === "" ? null : Number(e.target.value) })}
                                     placeholder="Laisser vide = prix produit"
                                   />
                                   <button type="button" className="btn btn-outline-secondary" onClick={() => patchVariant(idx, { price_override: null })}>
@@ -1350,9 +1328,7 @@ function ProductForm({
                                     <span className="badge bg-dark-subtle text-dark border">SKU: {toUpperSku(v.sku)}</span>
                                   ) : null}
                                 </div>
-                                <div className="small text-muted mt-1">
-                                  Si tu ne mets pas de prix variante → le prix produit s’applique automatiquement.
-                                </div>
+                                <div className="small text-muted mt-1">Si tu ne mets pas de prix variante → le prix produit s’applique automatiquement.</div>
                               </div>
                             </div>
                           </div>
@@ -1372,13 +1348,7 @@ function ProductForm({
           <div className="row g-2 mt-1">
             <div className="col-6">
               <div className="form-check mt-4">
-                <input
-                  id="feat"
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={!!draft.is_featured}
-                  onChange={(ev) => setDraft((d) => ({ ...d, is_featured: ev.target.checked ? 1 : 0 }))}
-                />
+                <input id="feat" className="form-check-input" type="checkbox" checked={!!draft.is_featured} onChange={(ev) => setDraft((d) => ({ ...d, is_featured: ev.target.checked ? 1 : 0 }))} />
                 <label htmlFor="feat" className="form-check-label">
                   Mis en avant
                 </label>
@@ -1419,12 +1389,7 @@ function ProductForm({
                     <select
                       className="form-select duu-focus"
                       value={promoType}
-                      onChange={(ev) =>
-                        setDraft((d) => ({
-                          ...d,
-                          promo_discount_type: (ev.target.value as PromoDiscountType) || "PERCENT",
-                        }))
-                      }
+                      onChange={(ev) => setDraft((d) => ({ ...d, promo_discount_type: (ev.target.value as PromoDiscountType) || "PERCENT" }))}
                     >
                       <option value="PERCENT">Pourcentage (%)</option>
                       <option value="AMOUNT">Montant (MAD)</option>
@@ -1438,12 +1403,7 @@ function ProductForm({
                       step="0.01"
                       className="form-control duu-focus"
                       value={draft.promo_discount_value ?? ""}
-                      onChange={(ev) =>
-                        setDraft((d) => ({
-                          ...d,
-                          promo_discount_value: ev.target.value === "" ? null : Number(ev.target.value),
-                        }))
-                      }
+                      onChange={(ev) => setDraft((d) => ({ ...d, promo_discount_value: ev.target.value === "" ? null : Number(ev.target.value) }))}
                       placeholder={promoType === "PERCENT" ? "Ex: 10" : "Ex: 20"}
                     />
                   </div>
@@ -1459,9 +1419,7 @@ function ProductForm({
                   </div>
                 </div>
 
-                <small className="text-muted d-block mt-2">
-                  Cette réduction sera utilisée pour afficher le prix promo côté client.
-                </small>
+                <small className="text-muted d-block mt-2">Cette réduction sera utilisée pour afficher le prix promo côté client.</small>
               </div>
             </div>
           )}
@@ -1470,12 +1428,7 @@ function ProductForm({
 
           <div className="mt-2">
             <label className="form-label">Description</label>
-            <textarea
-              className="form-control duu-focus"
-              rows={3}
-              value={draft.description || ""}
-              onChange={(ev) => setDraft((d) => ({ ...d, description: ev.target.value }))}
-            />
+            <textarea className="form-control duu-focus" rows={3} value={draft.description || ""} onChange={(ev) => setDraft((d) => ({ ...d, description: ev.target.value }))} />
           </div>
         </div>
 
@@ -1490,12 +1443,7 @@ function ProductForm({
               <div className="row g-2">
                 {(initial as any).images.map((img: ProductImage) => (
                   <div className="col-4" key={img.id}>
-                    <img
-                      src={imgUrl(img.url)}
-                      alt="existing"
-                      className="w-100 rounded border"
-                      style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
-                    />
+                    <img src={imgUrl(img.url)} alt="existing" className="w-100 rounded border" style={{ aspectRatio: "1 / 1", objectFit: "cover" }} />
                   </div>
                 ))}
               </div>
@@ -1518,13 +1466,7 @@ function ProductForm({
           <input ref={(el) => setCameraInput(el)} type="file" accept="image/*" capture="environment" hidden onChange={(ev) => addFiles(ev.target.files)} />
 
           <div className="form-check mb-2">
-            <input
-              id="replace_images"
-              className="form-check-input"
-              type="checkbox"
-              checked={replaceImages}
-              onChange={(ev) => setReplaceImages(ev.target.checked)}
-            />
+            <input id="replace_images" className="form-check-input" type="checkbox" checked={replaceImages} onChange={(ev) => setReplaceImages(ev.target.checked)} />
             <label htmlFor="replace_images" className="form-check-label">
               Remplacer la galerie existante
             </label>
@@ -1536,12 +1478,7 @@ function ProductForm({
                 <div className="col-4" key={i}>
                   <div className="position-relative border rounded overflow-hidden">
                     <img src={previewURL(f)} alt={`img-${i}`} className="w-100" style={{ aspectRatio: "1 / 1", objectFit: "cover" }} />
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger position-absolute"
-                      style={{ top: 6, right: 6 }}
-                      onClick={() => removeAt(i)}
-                    >
+                    <button type="button" className="btn btn-sm btn-danger position-absolute" style={{ top: 6, right: 6 }} onClick={() => removeAt(i)}>
                       ×
                     </button>
                   </div>
@@ -1777,11 +1714,10 @@ export default function ProductsAdminPage() {
       } else {
         await updateProduct(edit.id, payload, files, replaceImages);
 
+        // ✅ Fashion: on remplace TOUJOURS (même si liste vide) => permet de supprimer les variantes depuis l’UI
         if (style === "fashion") {
           const cleaned = cleanVariantsForApi(variants);
-          if (cleaned.length) {
-            await upsertProductVariants(edit.id, { variants: cleaned as any }, { replace: true });
-          }
+          await upsertProductVariants(edit.id, { variants: cleaned as any }, { replace: true });
         }
 
         setOk("Produit mis à jour.");
@@ -1921,18 +1857,10 @@ export default function ProductsAdminPage() {
                 <button className={`btn ${channel === "all" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("all")} disabled={busy}>
                   Tous
                 </button>
-                <button
-                  className={`btn ${channel === "african-food" ? "btn-dark" : "btn-outline-dark"}`}
-                  onClick={() => changeChannel("african-food")}
-                  disabled={busy}
-                >
+                <button className={`btn ${channel === "african-food" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("african-food")} disabled={busy}>
                   African Food
                 </button>
-                <button
-                  className={`btn ${channel === "african-market" ? "btn-dark" : "btn-outline-dark"}`}
-                  onClick={() => changeChannel("african-market")}
-                  disabled={busy}
-                >
+                <button className={`btn ${channel === "african-market" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("african-market")} disabled={busy}>
                   African Market
                 </button>
                 <button className={`btn ${channel === "fashion" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("fashion")} disabled={busy}>
@@ -1944,11 +1872,7 @@ export default function ProductsAdminPage() {
                 <button className={`btn ${mode === "default" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeMode("default")} disabled={busy}>
                   Normal
                 </button>
-                <button
-                  className={`btn ${mode === "top-ordered" ? "btn-dark" : "btn-outline-dark"}`}
-                  onClick={() => changeMode("top-ordered")}
-                  disabled={busy}
-                >
+                <button className={`btn ${mode === "top-ordered" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeMode("top-ordered")} disabled={busy}>
                   Top commandés
                 </button>
                 <button className={`btn ${mode === "top-rated" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeMode("top-rated")} disabled={busy}>
@@ -2042,7 +1966,7 @@ export default function ProductsAdminPage() {
                 <th style={{ width: 70 }}>ID</th>
                 <th>Produit</th>
                 <th style={{ width: 160 }}>Boutique</th>
-                <th style={{ width: 140 }}>Prix</th>
+                <th style={{ width: 160 }}>Prix</th>
                 <th style={{ width: 120 }}>Statut</th>
                 <th style={{ width: 220 }} className="text-end">
                   Actions
@@ -2063,54 +1987,73 @@ export default function ProductsAdminPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((p: any) => (
-                  <tr key={p.id}>
-                    <td className="text-muted">{p.id}</td>
-                    <td>
-                      <div className="d-flex align-items-center gap-2">
-                        {p.cover || p.image_url ? (
-                          <img
-                            src={imgUrl(p.cover || p.image_url)}
-                            alt={p.name}
-                            className="rounded border"
-                            style={{ width: 46, height: 46, objectFit: "cover" }}
-                          />
-                        ) : (
-                          <div className="rounded border bg-light" style={{ width: 46, height: 46 }} />
-                        )}
+                filtered.map((p: any) => {
+                  const base = basePriceForAdmin(p);
+                  const promoP = promoPriceForAdmin(p);
+                  const hasVar = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
 
-                        <div>
-                          <div className="fw-semibold">{p.name}</div>
-                          <div className="small text-muted">
-                            Cat: {p.category_id ?? "—"} • Sub: {p.sub_category_name ?? p.sub_category_id ?? "—"}
-                            {hasRealPromo(p) ? <span className="ms-2 badge bg-danger-subtle text-danger border">Promo</span> : null}
+                  return (
+                    <tr key={p.id}>
+                      <td className="text-muted">{p.id}</td>
+                      <td>
+                        <div className="d-flex align-items-center gap-2">
+                          {p.cover || p.image_url ? (
+                            <img
+                              src={imgUrl(p.cover || p.image_url)}
+                              alt={p.name}
+                              className="rounded border"
+                              style={{ width: 46, height: 46, objectFit: "cover" }}
+                            />
+                          ) : (
+                            <div className="rounded border bg-light" style={{ width: 46, height: 46 }} />
+                          )}
+
+                          <div>
+                            <div className="fw-semibold">{p.name}</div>
+                            <div className="small text-muted">
+                              Cat: {p.category_id ?? "—"} • Sub: {p.sub_category_name ?? p.sub_category_id ?? "—"}
+                              {hasRealPromo(p) ? <span className="ms-2 badge bg-danger-subtle text-danger border">Promo {promoLabel(p)}</span> : null}
+                              {hasVar ? <span className="ms-2 badge bg-light text-dark border">Variants</span> : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="text-muted">{p.shop_name || p.shop_id || "—"}</td>
-                    <td>{moneyMAD(p.price)}</td>
-                    <td>
-                      {isActive(p) ? <span className="badge bg-success">Actif</span> : <span className="badge bg-secondary">Off</span>}
-                    </td>
-                    <td className="text-end">
-                      <div className="d-inline-flex gap-2">
-                        <button className="btn btn-sm btn-outline-secondary" onClick={() => openPreview(p.id)} disabled={busy}>
-                          Aperçu
-                        </button>
-                        <button className="btn btn-sm btn-outline-dark" onClick={() => openEdit(p.id)} disabled={busy}>
-                          Modifier
-                        </button>
-                        <button className="btn btn-sm btn-outline-warning" onClick={() => onToggleActive(p)} disabled={busy}>
-                          {isActive(p) ? "Désactiver" : "Activer"}
-                        </button>
-                        <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(p.id)} disabled={busy}>
-                          Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+
+                      <td className="text-muted">{p.shop_name || p.shop_id || "—"}</td>
+
+                      <td>
+                        <div className="fw-semibold">
+                          {moneyMAD(base)}
+                          {hasVar ? <span className="ms-1 small text-muted">(min)</span> : null}
+                        </div>
+                        {promoP != null ? (
+                          <div className="small text-muted">
+                            Promo : <b>{moneyMAD(promoP)}</b>
+                          </div>
+                        ) : null}
+                      </td>
+
+                      <td>{isActive(p) ? <span className="badge bg-success">Actif</span> : <span className="badge bg-secondary">Off</span>}</td>
+
+                      <td className="text-end">
+                        <div className="d-inline-flex gap-2">
+                          <button className="btn btn-sm btn-outline-secondary" onClick={() => openPreview(p.id)} disabled={busy}>
+                            Aperçu
+                          </button>
+                          <button className="btn btn-sm btn-outline-dark" onClick={() => openEdit(p.id)} disabled={busy}>
+                            Modifier
+                          </button>
+                          <button className="btn btn-sm btn-outline-warning" onClick={() => onToggleActive(p)} disabled={busy}>
+                            {isActive(p) ? "Désactiver" : "Activer"}
+                          </button>
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(p.id)} disabled={busy}>
+                            Supprimer
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -2193,12 +2136,7 @@ export default function ProductsAdminPage() {
                       <div className="row g-2 mt-2">
                         {preview.images.slice(1, 7).map((im) => (
                           <div className="col-4" key={im.id}>
-                            <img
-                              src={imgUrl(im.url)}
-                              alt="mini"
-                              className="w-100 rounded border"
-                              style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
-                            />
+                            <img src={imgUrl(im.url)} alt="mini" className="w-100 rounded border" style={{ aspectRatio: "1 / 1", objectFit: "cover" }} />
                           </div>
                         ))}
                       </div>
@@ -2206,41 +2144,58 @@ export default function ProductsAdminPage() {
                   </div>
 
                   <div className="col-12 col-md-6">
-                    <ul className="list-unstyled mb-2">
-                      <li>
-                        <strong>ID :</strong> {preview.id}
-                      </li>
-                      <li>
-                        <strong>Boutique :</strong> {preview.shop_name || (preview as any).shop_id}
-                      </li>
-                      <li>
-                        <strong>Prix :</strong> {moneyMAD((preview as any).price)}
-                      </li>
+                    {(() => {
+                      const anyP: any = preview as any;
+                      const base = basePriceForAdmin(anyP);
+                      const promoP = promoPriceForAdmin(anyP);
+                      const hasVar = !!anyP?.has_variants || Number(anyP?.variants_count || 0) > 0;
 
-                      <li>
-                        <strong>Promo :</strong>{" "}
-                        {hasRealPromo(preview as any) ? (
-                          <span className="badge bg-danger-subtle text-danger border border-danger-subtle">Oui</span>
-                        ) : (
-                          "Non"
-                        )}
-                      </li>
+                      return (
+                        <>
+                          <ul className="list-unstyled mb-2">
+                            <li>
+                              <strong>ID :</strong> {preview.id}
+                            </li>
+                            <li>
+                              <strong>Boutique :</strong> {preview.shop_name || (preview as any).shop_id}
+                            </li>
 
-                      <li>
-                        <strong>Catégorie :</strong> {(preview as any).category_id ?? "—"}
-                      </li>
+                            <li>
+                              <strong>Prix :</strong> {moneyMAD(base)} {hasVar ? <span className="small text-muted">(min)</span> : null}
+                              {promoP != null ? (
+                                <div className="small text-muted">
+                                  Promo : <b>{moneyMAD(promoP)}</b> <span className="ms-2">({promoLabel(anyP)})</span>
+                                </div>
+                              ) : null}
+                            </li>
 
-                      <li>
-                        <strong>Sous-catégorie :</strong>{" "}
-                        {(preview as any).sub_category_name ? (preview as any).sub_category_name : (preview as any).sub_category_id ?? "—"}
-                      </li>
+                            <li>
+                              <strong>Promo :</strong>{" "}
+                              {hasRealPromo(anyP) ? (
+                                <span className="badge bg-danger-subtle text-danger border border-danger-subtle">Oui</span>
+                              ) : (
+                                "Non"
+                              )}
+                            </li>
 
-                      <li>
-                        <strong>Statut :</strong> {isActive(preview as any) ? "Actif" : "Désactivé"}
-                      </li>
-                    </ul>
+                            <li>
+                              <strong>Catégorie :</strong> {(preview as any).category_id ?? "—"}
+                            </li>
 
-                    <div className="small text-muted">{(preview as any).description || "—"}</div>
+                            <li>
+                              <strong>Sous-catégorie :</strong>{" "}
+                              {(preview as any).sub_category_name ? (preview as any).sub_category_name : (preview as any).sub_category_id ?? "—"}
+                            </li>
+
+                            <li>
+                              <strong>Statut :</strong> {isActive(anyP) ? "Actif" : "Désactivé"}
+                            </li>
+                          </ul>
+
+                          <div className="small text-muted">{(preview as any).description || "—"}</div>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

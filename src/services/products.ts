@@ -109,6 +109,11 @@ type Vertical = "FOOD" | "MARKET" | "FASHION";
  * Utils
  * ===================================================================== */
 
+function unwrap<T>(res: any): T {
+  if (res && typeof res === "object" && "data" in res) return res.data as T;
+  return res as T;
+}
+
 function normalizeCityLabel(city?: string | null): string | null {
   if (!city) return null;
   const raw = String(city).trim();
@@ -209,25 +214,33 @@ function filterActive<T extends any>(arr: T[]): T[] {
  * ===================================================================== */
 
 function asArray<T = any>(x: any): T[] {
-  if (Array.isArray(x)) return x;
+  const body = unwrap<any>(x);
+
+  if (Array.isArray(body)) return body;
 
   // formats fréquents: { items: [...] } ou { data: [...] }
-  if (x && Array.isArray(x.items)) return x.items;
-  if (x && Array.isArray(x.data)) return x.data;
-  if (x && Array.isArray(x.rows)) return x.rows;
-  if (x && Array.isArray(x.results)) return x.results;
+  if (body && Array.isArray(body.items)) return body.items;
+  if (body && Array.isArray(body.data)) return body.data;
+  if (body && Array.isArray(body.rows)) return body.rows;
+  if (body && Array.isArray(body.results)) return body.results;
+
+  // formats imbriqués: { data: { items: [...] } }
+  if (body?.data && Array.isArray(body.data.items)) return body.data.items;
 
   return [];
 }
 
 function asPaginated<T = any>(x: any): Paginated<T> {
-  if (x && Array.isArray(x.items) && x.pageInfo) return x as Paginated<T>;
+  const body = unwrap<any>(x);
 
-  const items = asArray<T>(x);
+  if (body && Array.isArray(body.items) && body.pageInfo) return body as Paginated<T>;
+  if (body?.data && Array.isArray(body.data.items) && body.data.pageInfo) return body.data as Paginated<T>;
+
+  const items = asArray<T>(body);
   const pageInfo = {
-    page: Number(x?.pageInfo?.page ?? 1),
-    pageSize: Number(x?.pageInfo?.pageSize ?? items.length),
-    total: Number(x?.pageInfo?.total ?? items.length),
+    page: Number(body?.pageInfo?.page ?? 1),
+    pageSize: Number(body?.pageInfo?.pageSize ?? items.length),
+    total: Number(body?.pageInfo?.total ?? items.length),
   };
 
   return { items, pageInfo };
@@ -353,11 +366,14 @@ export async function listPromotions(
 /**
  * ✅ backend: GET /api/products/:id
  * - option: ?variants=1 pour inclure variants
+ * ✅ IMPORTANT: renvoie toujours l'objet Product (pas {data})
  */
-export async function getProduct(id: number, opts?: { variants?: boolean }) {
+export async function getProduct(id: number, opts?: { variants?: boolean }): Promise<Product> {
   const query: Record<string, any> = {};
   if (opts?.variants) query.variants = 1;
-  return api.get<Product>(`/api/products/${id}`, { query });
+
+  const raw = await api.get<any>(`/api/products/${id}`, { query });
+  return unwrap<Product>(raw);
 }
 
 /* ======================================================================
@@ -369,7 +385,7 @@ export async function getProduct(id: number, opts?: { variants?: boolean }) {
  * - DELETE /api/products/variants/:variantId
  * ===================================================================== */
 
-export async function listProductVariants(productId: number) {
+export async function listProductVariants(productId: number): Promise<ProductVariant[]> {
   const raw = await api.get<any>(`/api/products/${productId}/variants`);
   return asArray<ProductVariant>(raw);
 }
@@ -384,15 +400,12 @@ export async function upsertProductVariants(
   productId: number,
   payload: { variants: Array<Partial<ProductVariant> & { stock?: number }> },
   opts?: { replace?: boolean }
-) {
+): Promise<{ ok: true; items: ProductVariant[] }> {
   const query: Record<string, any> = {};
   if (opts?.replace) query.replace = 1;
 
-  return api.post<{ ok: true; items: ProductVariant[] }>(
-    `/api/products/${productId}/variants`,
-    payload,
-    { query }
-  );
+  const raw = await api.post<any>(`/api/products/${productId}/variants`, payload, { query });
+  return unwrap<{ ok: true; items: ProductVariant[] }>(raw);
 }
 
 /** ✅ update 1 variante */
@@ -406,13 +419,15 @@ export async function updateProductVariant(
     price_override: number | null;
     is_active: 0 | 1 | null;
   }>
-) {
-  return api.put<{ ok: true }>(`/api/products/variants/${variantId}`, payload);
+): Promise<{ ok: true }> {
+  const raw = await api.put<any>(`/api/products/variants/${variantId}`, payload);
+  return unwrap<{ ok: true }>(raw);
 }
 
 /** ✅ delete 1 variante */
-export async function removeProductVariant(variantId: number) {
-  return api.delete<{ ok: true }>(`/api/products/variants/${variantId}`);
+export async function removeProductVariant(variantId: number): Promise<{ ok: true }> {
+  const raw = await api.delete<any>(`/api/products/variants/${variantId}`);
+  return unwrap<{ ok: true }>(raw);
 }
 
 /* ---------- Create ---------- */
@@ -425,6 +440,8 @@ export async function removeProductVariant(variantId: number) {
  * - shop_id (admin), cities
  * - vertical ✅
  * - variants ✅ (JSON) + replace_variants
+ *
+ * ✅ IMPORTANT: renvoie toujours l'objet (pas {data})
  */
 export async function createProduct(
   draft: Partial<Product> & {
@@ -439,7 +456,7 @@ export async function createProduct(
     replace_variants?: boolean;
   },
   files: File[]
-) {
+): Promise<{ id: number; channel?: Channel; vertical?: Vertical }> {
   const fd = new FormData();
 
   if (draft.name) fd.append("name", draft.name);
@@ -486,17 +503,15 @@ export async function createProduct(
   const cities = uniqCities(draft.cities);
   if (cities != null) fd.append("cities", JSON.stringify(cities));
 
-  if (Array.isArray(draft.variants) && draft.variants.length) {
-    fd.append("variants", JSON.stringify(draft.variants));
+  if (Array.isArray((draft as any).variants) && (draft as any).variants.length) {
+    fd.append("variants", JSON.stringify((draft as any).variants));
   }
-  if (draft.replace_variants) fd.append("replace_variants", "1");
+  if ((draft as any).replace_variants) fd.append("replace_variants", "1");
 
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
-  return api.post<{ id: number; channel: Channel; vertical?: Vertical }>(
-    "/api/products",
-    fd as any
-  );
+  const raw = await api.post<any>("/api/products", fd as any);
+  return unwrap<{ id: number; channel?: Channel; vertical?: Vertical }>(raw);
 }
 
 /* ---------- Update ---------- */
@@ -507,13 +522,15 @@ export async function createProduct(
  * - is_featured, promo_*, is_active, category_id, sub_category_id, shop_id, vertical
  * - replace_images, cities
  * (variants bulk via endpoint dédié /:id/variants)
+ *
+ * ✅ IMPORTANT: renvoie toujours {ok:true} (pas {data})
  */
 export async function updateProduct(
   id: number,
   draft: Partial<Product>,
   files: File[],
   replaceImages = false
-) {
+): Promise<{ ok: true }> {
   const fd = new FormData();
 
   if (draft.name) fd.append("name", draft.name);
@@ -564,20 +581,20 @@ export async function updateProduct(
 
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
-  return api.put<{ ok: true }>(`/api/products/${id}`, fd as any);
+  const raw = await api.put<any>(`/api/products/${id}`, fd as any);
+  return unwrap<{ ok: true }>(raw);
 }
 
 /* ---------- Delete ---------- */
-export async function removeProduct(id: number) {
-  return api.delete<{ ok: true }>(`/api/products/${id}`);
+export async function removeProduct(id: number): Promise<{ ok: true }> {
+  const raw = await api.delete<any>(`/api/products/${id}`);
+  return unwrap<{ ok: true }>(raw);
 }
 
 /* ---------- Top produits : les plus commandés ---------- */
 export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
 export async function listTopOrderedProducts(opts: { limit?: number; onlyActive?: boolean }): Promise<Product[]>;
-export async function listTopOrderedProducts(
-  limitOrOpts?: number | { limit?: number; onlyActive?: boolean }
-) {
+export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: number; onlyActive?: boolean }) {
   let limit = 8;
   let onlyActive = true;
 
@@ -597,14 +614,8 @@ export async function listTopOrderedProducts(
 }
 
 /* ---------- Top produits : les mieux notés ---------- */
-export async function listTopRatedProducts(opts?: {
-  limit?: number;
-  minCount?: number;
-  onlyActive?: boolean;
-}): Promise<Product[]>;
-export async function listTopRatedProducts(
-  opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}
-) {
+export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number; onlyActive?: boolean }): Promise<Product[]>;
+export async function listTopRatedProducts(opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
   const onlyActive = opts.onlyActive ?? true;
@@ -645,37 +656,38 @@ export type PendingRatingProduct =
     }
   | null;
 
-export async function getProductRatingSummary(productId: number) {
-  return api.get<ProductRatingSummary>(`/api/products/${productId}/ratings`);
+export async function getProductRatingSummary(productId: number): Promise<ProductRatingSummary> {
+  const raw = await api.get<any>(`/api/products/${productId}/ratings`);
+  return unwrap<ProductRatingSummary>(raw);
 }
 
-export async function listProductRatings(productId: number) {
+export async function listProductRatings(productId: number): Promise<ProductRatingRow[]> {
   const raw = await api.get<any>(`/api/products/${productId}/ratings/list`);
   return asArray<ProductRatingRow>(raw);
 }
 
-export async function getPendingRatingProduct() {
-  return api.get<PendingRatingProduct>(`/api/products/pending-rating`);
+export async function getPendingRatingProduct(): Promise<PendingRatingProduct> {
+  const raw = await api.get<any>(`/api/products/pending-rating`);
+  return unwrap<PendingRatingProduct>(raw);
 }
 
-export async function rateProduct(
-  productId: number,
-  payload: { rating: number; comment?: string | null }
-) {
-  return api.post<{
+export async function rateProduct(productId: number, payload: { rating: number; comment?: string | null }) {
+  const raw = await api.post<any>(`/api/products/${productId}/rate`, payload);
+  return unwrap<{
     ok: true;
     average: number;
     count: number;
     user_rating: number;
     comment: string | null;
-  }>(`/api/products/${productId}/rate`, payload);
+  }>(raw);
 }
 
 export async function unrateProduct(productId: number) {
-  return api.delete<{
+  const raw = await api.delete<any>(`/api/products/${productId}/rate`);
+  return unwrap<{
     ok: true;
     deleted: boolean;
     average: number;
     count: number;
-  }>(`/api/products/${productId}/rate`);
+  }>(raw);
 }

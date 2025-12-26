@@ -1,5 +1,5 @@
 // src/pages/AfricanMarket.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
@@ -78,8 +78,13 @@ function isPromoProduct(p: Product) {
 
   const price = Number(x.price_client ?? x.price ?? 0) || 0;
   const promoPrice =
-    Number(x.promo_price_client ?? x.promo_price ?? x.price_promo ?? x.sale_price ?? 0) ||
-    0;
+    Number(
+      x.promo_price_client ??
+        x.promo_price ??
+        x.price_promo ??
+        x.sale_price ??
+        0
+    ) || 0;
   if (promoPrice > 0 && price > 0 && promoPrice < price) return true;
 
   if (String(x.promo_type || x.discount_type || "").trim()) {
@@ -120,7 +125,10 @@ export default function AfricanMarket() {
   const [items, setItems] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+
+  // ✅ loading séparé: meta (cats/subs) + produits
   const [loading, setLoading] = useState(true);
+  const [loadingMeta, setLoadingMeta] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [page, setPage] = useState(1);
@@ -135,32 +143,66 @@ export default function AfricanMarket() {
     return () => window.clearTimeout(t);
   }, [q]);
 
-  const abortRef = useRef<AbortController | null>(null);
+  // ✅ abort séparés
+  const abortProductsRef = useRef<AbortController | null>(null);
+  const abortMetaRef = useRef<AbortController | null>(null);
 
-  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+  const pages = useMemo(
+    () => Math.max(1, Math.ceil(total / pageSize)),
+    [total, pageSize]
+  );
   useEffect(() => {
     if (page > pages) setPage(pages);
   }, [pages, page]);
 
-  async function refresh() {
-    abortRef.current?.abort();
+  /** ✅ charge Categories + SubCategories UNE seule fois */
+  const loadMeta = useCallback(async () => {
+    abortMetaRef.current?.abort();
     const ac = new AbortController();
-    abortRef.current = ac;
+    abortMetaRef.current = ac;
+
+    setLoadingMeta(true);
+    setError(null);
+
+    try {
+      const [resCats, resSubs] = await Promise.all([
+        listCategories({ page: 1, pageSize: 500 }),
+        listSubCategories({ page: 1, pageSize: 2000 }),
+      ]);
+
+      if (ac.signal.aborted) return;
+
+      setCategories(resCats.items || []);
+      setSubCategories(resSubs.items || []);
+    } catch (e: any) {
+      if (ac.signal.aborted) return;
+      setError(e?.message || String(e));
+    } finally {
+      if (!ac.signal.aborted) setLoadingMeta(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMeta();
+    return () => abortMetaRef.current?.abort();
+  }, [loadMeta]);
+
+  /** ✅ charge Produits seulement quand page/ville/route change */
+  const loadProducts = useCallback(async () => {
+    abortProductsRef.current?.abort();
+    const ac = new AbortController();
+    abortProductsRef.current = ac;
 
     setLoading(true);
     setError(null);
 
     try {
-      const [resProducts, resCats, resSubs] = await Promise.all([
-        listProducts({
-          page,
-          pageSize,
-          channel: "african-market" as Channel,
-          onlyActive: true,
-        }),
-        listCategories({ page: 1, pageSize: 500 }),
-        listSubCategories({ page: 1, pageSize: 2000 }),
-      ]);
+      const resProducts = await listProducts({
+        page,
+        pageSize,
+        channel: "african-market" as Channel,
+        onlyActive: true,
+      } as any);
 
       if (ac.signal.aborted) return;
 
@@ -178,20 +220,24 @@ export default function AfricanMarket() {
 
       setItems(seededShuffle(rawItems, seedStr));
       setTotal(resProducts.pageInfo?.total ?? 0);
-      setCategories(resCats.items || []);
-      setSubCategories(resSubs.items || []);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setError(e?.message || String(e));
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }
+  }, [page, pageSize, city, categorySlugParam, subSlugParam]);
 
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, city, categorySlugParam, subSlugParam]);
+    loadProducts();
+    return () => abortProductsRef.current?.abort();
+  }, [loadProducts]);
+
+  /** ✅ bouton retry: refetch produits (et meta si vide) */
+  const refresh = useCallback(() => {
+    loadProducts();
+    if (!categories.length || !subCategories.length) loadMeta();
+  }, [loadProducts, loadMeta, categories.length, subCategories.length]);
 
   // maps
   const categoriesById = useMemo(() => {
@@ -234,10 +280,13 @@ export default function AfricanMarket() {
   const selectedSubCategory = useMemo(() => {
     if (!subSlugParam || !selectedCategory) return null;
     const list = subsByCatId[selectedCategory.id] || [];
-    return list.find((s) => String(s.slug || "").toLowerCase() === subSlugParam) || null;
+    return (
+      list.find((s) => String(s.slug || "").toLowerCase() === subSlugParam) ||
+      null
+    );
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
-  // URL invalide → redirect
+  // URL invalide → redirect (dépend uniquement de categories)
   useEffect(() => {
     if (!categories.length) return;
     if (categorySlugParam && !selectedCategory) {
@@ -263,7 +312,8 @@ export default function AfricanMarket() {
         const c = categoriesById[cid];
         return (
           c &&
-          String(c.slug || "").toLowerCase() === String(selectedCategory.slug || "").toLowerCase()
+          String(c.slug || "").toLowerCase() ===
+            String(selectedCategory.slug || "").toLowerCase()
         );
       });
     }
@@ -275,7 +325,8 @@ export default function AfricanMarket() {
         const s = subById[sid];
         return (
           s &&
-          String(s.slug || "").toLowerCase() === String(selectedSubCategory.slug || "").toLowerCase()
+          String(s.slug || "").toLowerCase() ===
+            String(selectedSubCategory.slug || "").toLowerCase()
         );
       });
     }
@@ -308,6 +359,8 @@ export default function AfricanMarket() {
   const activeSubCategoryId = selectedSubCategory?.id ?? null;
 
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
+
+  const loadingAny = loading || loadingMeta;
 
   return (
     <section className="container-xxl py-4">
@@ -502,7 +555,9 @@ export default function AfricanMarket() {
           <div className="d-flex flex-wrap align-items-center gap-2">
             <button
               type="button"
-              className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
+              className={
+                "btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")
+              }
               onClick={() => {
                 setPage(1);
                 navigate(`/african-market/${selectedCategory.slug}`);
@@ -540,7 +595,7 @@ export default function AfricanMarket() {
         </div>
       )}
 
-      {loading ? (
+      {loadingAny ? (
         <GridSkeleton />
       ) : (
         <>
@@ -555,7 +610,10 @@ export default function AfricanMarket() {
               <div className="p-3">
                 <div className="row g-3">
                   {promoItems.slice(0, 12).map((p) => (
-                    <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
+                    <div
+                      className="col-6 col-sm-4 col-md-3 col-lg-2"
+                      key={(p as any).id}
+                    >
                       <ProductCard product={p} />
                     </div>
                   ))}
@@ -570,7 +628,10 @@ export default function AfricanMarket() {
           ) : (
             <div className="row g-3">
               {normalItems.map((p) => (
-                <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
+                <div
+                  className="col-6 col-sm-4 col-md-3 col-lg-2"
+                  key={(p as any).id}
+                >
                   <ProductCard product={p} />
                 </div>
               ))}
@@ -579,7 +640,7 @@ export default function AfricanMarket() {
         </>
       )}
 
-      {!loading && pages > 1 && (
+      {!loadingAny && pages > 1 && (
         <div className="d-flex justify-content-end align-items-center mt-3">
           <div className="btn-group">
             <button

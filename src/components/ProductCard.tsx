@@ -17,12 +17,27 @@ function imgUrl(u?: string | null) {
   return s;
 }
 
+/**
+ * ✅ MAD SANS afficher ",00"
+ * - garde au max 2 décimales si nécessaire
+ * - supprime automatiquement les zéros inutiles (",00", ",50" => ",5")
+ */
 function moneyMAD(n?: number | null) {
-  const v = Number(n || 0);
-  return `${v.toLocaleString("fr-FR", {
+  const v = Number(n ?? 0);
+  const safe = Number.isFinite(v) ? v : 0;
+
+  const s = new Intl.NumberFormat("fr-FR", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })} MAD`;
+    maximumFractionDigits: 2,
+  }).format(safe);
+
+  // fr-FR -> virgule décimale
+  // supprime ",00" ou ",0" en fin
+  const no00 = s.replace(/,00$/, "").replace(/,0$/, "");
+  // supprime zéros traînants: ",50" -> ",5" ; ",20" -> ",2"
+  const trimmed = no00.replace(/,(\d*[1-9])0$/, ",$1");
+
+  return `${trimmed} MAD`;
 }
 
 function shortText(s?: string | null, max = 200) {

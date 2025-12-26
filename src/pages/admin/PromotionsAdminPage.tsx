@@ -13,14 +13,15 @@ function mad(n?: number | null) {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "MAD",
+    maximumFractionDigits: 0,
   }).format(v);
 }
 
+/**
+ * ✅ On considère "en promo" si promo_eligible=1 et promo_discount_value>0
+ */
 function isPromo(p: any) {
-  return (
-    Number(p?.promo_eligible || 0) === 1 &&
-    Number(p?.promo_discount_value || 0) > 0
-  );
+  return Number(p?.promo_eligible || 0) === 1 && Number(p?.promo_discount_value || 0) > 0;
 }
 
 function promoLabel(p: any) {
@@ -30,6 +31,69 @@ function promoLabel(p: any) {
   if (t === "AMOUNT") return `-${mad(v)}`;
   return `-${Math.round(v)}%`;
 }
+
+/**
+ * ✅ Prix base à afficher (admin) :
+ * - si variants => on affiche min_price (sinon price)
+ *   (comme ça l'admin comprend d'où vient le "à partir de ...")
+ */
+function basePriceForAdmin(p: any): number {
+  const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
+
+  const minp: number | null =
+    p?.min_price == null || p?.min_price === "" ? null : Number(p.min_price);
+
+  const price: number =
+    p?.price == null || p?.price === "" ? 0 : Number(p.price);
+
+  if (hasVariants && minp != null && Number.isFinite(minp) && minp >= 0) return minp;
+  return Number.isFinite(price) ? price : 0;
+}
+
+/**
+ * ✅ Prix promo à afficher (admin) :
+ * - si variants => min_promo_price (sinon promo_price)
+ * - sinon => calc fallback local (au cas où l'API n'est pas encore à jour)
+ */
+function computePromoPriceLocal(base: number, eligible: number, type: any, value: any) {
+  if (Number(eligible) !== 1) return null;
+  const b = Number(base);
+  const v = Number(value);
+  if (!Number.isFinite(b) || b <= 0) return null;
+  if (!Number.isFinite(v) || v <= 0) return null;
+
+  const t = String(type || "").toUpperCase();
+  let out = b;
+
+  if (t === "AMOUNT") out = b - v;
+  else out = b * (1 - v / 100);
+
+  if (!Number.isFinite(out)) return null;
+  if (out < 0) out = 0;
+  return +out.toFixed(2);
+}
+
+function promoPriceForAdmin(p: any): number | null {
+  const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
+
+  const apiPromo = hasVariants ? p?.min_promo_price : p?.promo_price;
+
+  const apiPromoN: number | null =
+    apiPromo == null || apiPromo === "" ? null : Number(apiPromo);
+
+  if (apiPromoN != null && Number.isFinite(apiPromoN)) return apiPromoN;
+
+  // fallback local si l'API ne renvoie pas encore promo_price
+  const base = basePriceForAdmin(p); // ✅ number garanti
+  return computePromoPriceLocal(
+    base,
+    Number(p?.promo_eligible || 0),
+    p?.promo_discount_type,
+    p?.promo_discount_value
+  );
+}
+
+/* ========================= */
 
 export default function PromotionsAdminPage() {
   const [tab, setTab] = useState<"ADD" | "REMOVE">("ADD");
@@ -46,9 +110,7 @@ export default function PromotionsAdminPage() {
   const [qPromo, setQPromo] = useState("");
 
   const [selectedAdd, setSelectedAdd] = useState<Record<number, boolean>>({});
-  const [selectedRemove, setSelectedRemove] = useState<Record<number, boolean>>(
-    {}
-  );
+  const [selectedRemove, setSelectedRemove] = useState<Record<number, boolean>>({});
 
   const selectedAddIds = useMemo(
     () =>
@@ -109,13 +171,13 @@ export default function PromotionsAdminPage() {
 
   const toggleAllAdd = (on: boolean) => {
     const next: Record<number, boolean> = {};
-    for (const p of filteredAll) next[p.id] = on;
+    for (const p of filteredAll as any[]) next[Number(p.id)] = on;
     setSelectedAdd(next);
   };
 
   const toggleAllRemove = (on: boolean) => {
     const next: Record<number, boolean> = {};
-    for (const p of filteredPromo) next[p.id] = on;
+    for (const p of filteredPromo as any[]) next[Number(p.id)] = on;
     setSelectedRemove(next);
   };
 
@@ -166,7 +228,9 @@ export default function PromotionsAdminPage() {
       );
 
       const failed = results.filter((r) => r.status === "rejected").length;
-      if (failed) setError(`${failed} produit(s) n’ont pas pu être mis en promotion.`);
+      if (failed) {
+        setError(`${failed} produit(s) n’ont pas pu être mis en promotion.`);
+      }
 
       setSelectedAdd({});
       setModalOpen(false);
@@ -199,7 +263,9 @@ export default function PromotionsAdminPage() {
       );
 
       const failed = results.filter((r) => r.status === "rejected").length;
-      if (failed) setError(`${failed} produit(s) n’ont pas pu être retirés de la promo.`);
+      if (failed) {
+        setError(`${failed} produit(s) n’ont pas pu être retirés de la promo.`);
+      }
 
       setSelectedRemove({});
       await load();
@@ -215,17 +281,11 @@ export default function PromotionsAdminPage() {
           <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
             Promotions
           </div>
-          <div className="text-muted small">
-            Sélectionne des produits puis applique / retire une réduction.
-          </div>
+          <div className="text-muted small">Sélectionne des produits puis applique / retire une réduction.</div>
         </div>
 
         <div className="d-flex gap-2 flex-wrap">
-          <button
-            className="btn btn-sm btn-outline-dark"
-            onClick={load}
-            disabled={loading || busy}
-          >
+          <button className="btn btn-sm btn-outline-dark" onClick={load} disabled={loading || busy}>
             {loading ? "Chargement…" : "Actualiser"}
           </button>
         </div>
@@ -261,11 +321,7 @@ export default function PromotionsAdminPage() {
                   >
                     Tout cocher
                   </button>
-                  <button
-                    className="btn btn-sm btn-outline-dark"
-                    onClick={() => toggleAllAdd(false)}
-                    disabled={busy || loading}
-                  >
+                  <button className="btn btn-sm btn-outline-dark" onClick={() => toggleAllAdd(false)} disabled={busy || loading}>
                     Tout décocher
                   </button>
                   <button
@@ -285,11 +341,7 @@ export default function PromotionsAdminPage() {
                   >
                     Tout cocher
                   </button>
-                  <button
-                    className="btn btn-sm btn-outline-dark"
-                    onClick={() => toggleAllRemove(false)}
-                    disabled={busy || loading}
-                  >
+                  <button className="btn btn-sm btn-outline-dark" onClick={() => toggleAllRemove(false)} disabled={busy || loading}>
                     Tout décocher
                   </button>
                   <button
@@ -341,45 +393,60 @@ export default function PromotionsAdminPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredAll.map((p: any) => (
-                        <tr key={p.id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              className="form-check-input"
-                              checked={!!selectedAdd[p.id]}
-                              onChange={(e) =>
-                                setSelectedAdd((prev) => ({
-                                  ...prev,
-                                  [p.id]: e.target.checked,
-                                }))
-                              }
-                              disabled={busy}
-                            />
-                          </td>
+                      filteredAll.map((p: any) => {
+                        const base = basePriceForAdmin(p);
+                        const promoP = promoPriceForAdmin(p);
+                        const showPromoLine = promoP != null && isPromo(p);
 
-                          <td className="text-truncate" style={{ maxWidth: 360 }}>
-                            <div className="fw-semibold text-truncate">{p.name}</div>
-                            <div className="text-muted small">#{p.id}</div>
-                          </td>
+                        return (
+                          <tr key={p.id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                checked={!!selectedAdd[p.id]}
+                                onChange={(e) =>
+                                  setSelectedAdd((prev) => ({
+                                    ...prev,
+                                    [p.id]: e.target.checked,
+                                  }))
+                                }
+                                disabled={busy}
+                              />
+                            </td>
 
-                          <td className="d-none d-md-table-cell text-truncate" style={{ maxWidth: 240 }}>
-                            {p.shop_name || "—"}
-                          </td>
+                            <td className="text-truncate" style={{ maxWidth: 360 }}>
+                              <div className="fw-semibold text-truncate">{p.name}</div>
+                              <div className="text-muted small">#{p.id}</div>
+                            </td>
 
-                          <td className="text-end">{mad(Number(p.price || 0))}</td>
+                            <td className="d-none d-md-table-cell text-truncate" style={{ maxWidth: 240 }}>
+                              {p.shop_name || "—"}
+                            </td>
 
-                          <td className="text-end">
-                            <span
-                              className={`badge ${
-                                isPromo(p) ? "badge-duu text-white" : "bg-light text-dark"
-                              }`}
-                            >
-                              {promoLabel(p)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
+                            <td className="text-end">
+                              <div className="fw-semibold">
+                                {mad(base)}
+                                {p.has_variants || Number(p.variants_count || 0) > 0 ? (
+                                  <span className="text-muted small ms-1">(min)</span>
+                                ) : null}
+                              </div>
+
+                              {showPromoLine ? (
+                                <div className="text-muted small">
+                                  Nouveau : <b>{mad(promoP)}</b>
+                                </div>
+                              ) : null}
+                            </td>
+
+                            <td className="text-end">
+                              <span className={`badge ${isPromo(p) ? "badge-duu text-white" : "bg-light text-dark"}`}>
+                                {promoLabel(p)}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -426,39 +493,56 @@ export default function PromotionsAdminPage() {
                         </td>
                       </tr>
                     ) : (
-                      filteredPromo.map((p: any) => (
-                        <tr key={p.id}>
-                          <td>
-                            <input
-                              type="checkbox"
-                              className="form-check-input"
-                              checked={!!selectedRemove[p.id]}
-                              onChange={(e) =>
-                                setSelectedRemove((prev) => ({
-                                  ...prev,
-                                  [p.id]: e.target.checked,
-                                }))
-                              }
-                              disabled={busy}
-                            />
-                          </td>
+                      filteredPromo.map((p: any) => {
+                        const base = basePriceForAdmin(p);
+                        const promoP = promoPriceForAdmin(p);
 
-                          <td className="text-truncate" style={{ maxWidth: 360 }}>
-                            <div className="fw-semibold text-truncate">{p.name}</div>
-                            <div className="text-muted small">#{p.id}</div>
-                          </td>
+                        return (
+                          <tr key={p.id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                className="form-check-input"
+                                checked={!!selectedRemove[p.id]}
+                                onChange={(e) =>
+                                  setSelectedRemove((prev) => ({
+                                    ...prev,
+                                    [p.id]: e.target.checked,
+                                  }))
+                                }
+                                disabled={busy}
+                              />
+                            </td>
 
-                          <td className="d-none d-md-table-cell text-truncate" style={{ maxWidth: 240 }}>
-                            {p.shop_name || "—"}
-                          </td>
+                            <td className="text-truncate" style={{ maxWidth: 360 }}>
+                              <div className="fw-semibold text-truncate">{p.name}</div>
+                              <div className="text-muted small">#{p.id}</div>
+                            </td>
 
-                          <td className="text-end">{mad(Number(p.price || 0))}</td>
+                            <td className="d-none d-md-table-cell text-truncate" style={{ maxWidth: 240 }}>
+                              {p.shop_name || "—"}
+                            </td>
 
-                          <td className="text-end">
-                            <span className="badge badge-duu text-white">{promoLabel(p)}</span>
-                          </td>
-                        </tr>
-                      ))
+                            <td className="text-end">
+                              <div className="fw-semibold">
+                                {mad(base)}
+                                {p.has_variants || Number(p.variants_count || 0) > 0 ? (
+                                  <span className="text-muted small ms-1">(min)</span>
+                                ) : null}
+                              </div>
+                              {promoP != null ? (
+                                <div className="text-muted small">
+                                  Nouveau : <b>{mad(promoP)}</b>
+                                </div>
+                              ) : null}
+                            </td>
+
+                            <td className="text-end">
+                              <span className="badge badge-duu text-white">{promoLabel(p)}</span>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -483,11 +567,7 @@ export default function PromotionsAdminPage() {
             <div className="modal-content border-0 shadow">
               <div className="modal-header">
                 <h5 className="modal-title">Appliquer une promotion</h5>
-                <button
-                  type="button"
-                  className="btn-close"
-                  onClick={() => !busy && setModalOpen(false)}
-                />
+                <button type="button" className="btn-close" onClick={() => !busy && setModalOpen(false)} />
               </div>
 
               <div className="modal-body">
@@ -525,18 +605,29 @@ export default function PromotionsAdminPage() {
                 </div>
 
                 <div className="text-muted small mt-2">
-                  {promoType === "PERCENT"
-                    ? "Ex: 10 = -10% sur le prix."
-                    : "Ex: 20 = -20 MAD sur le prix."}
+                  {promoType === "PERCENT" ? "Ex: 10 = -10% sur le prix." : "Ex: 20 = -20 MAD sur le prix."}
+                </div>
+
+                {/* ✅ Aperçu */}
+                <div className="mt-3 p-2 rounded bg-light">
+                  <div className="small text-muted mb-1">Aperçu (exemple)</div>
+                  {(() => {
+                    const exampleBase = 120;
+                    const v = Number(promoValue);
+                    const preview =
+                      Number.isFinite(v) && v > 0 ? computePromoPriceLocal(exampleBase, 1, promoType, v) : null;
+
+                    return (
+                      <div className="small">
+                        Prix base: <b>{mad(exampleBase)}</b> → Nouveau: <b>{preview == null ? "—" : mad(preview)}</b>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
               <div className="modal-footer">
-                <button
-                  className="btn btn-outline-dark"
-                  onClick={() => setModalOpen(false)}
-                  disabled={busy}
-                >
+                <button className="btn btn-outline-dark" onClick={() => setModalOpen(false)} disabled={busy}>
                   Annuler
                 </button>
                 <button className="btn btn-duu" onClick={applyPromo} disabled={busy}>

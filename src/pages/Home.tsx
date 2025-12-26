@@ -2,12 +2,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronRight, SlidersHorizontal } from "lucide-react";
+import { useQueries } from "@tanstack/react-query";
+
 import InstallPWA from "../components/InstallPWA";
 import CategoriesMenu from "../components/CategoriesMenu";
 import PromotionsCarousel from "../components/PromotionsCarousel";
+
 import { listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
-import { listSubCategories, type SubCategory } from "../services/subCategories";
+import { listSubCategories } from "../services/subCategories";
 import { API_BASE } from "../services/http";
 
 /* ===== Opening config ===== */
@@ -27,7 +30,9 @@ function imgUrl(u?: string | null) {
 }
 
 function moneyMAD(n?: number | null) {
-  return `${Number(n || 0).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} MAD`;
+  return `${Number(n || 0).toLocaleString("fr-FR", {
+    maximumFractionDigits: 0,
+  })} MAD`;
 }
 
 /* ===== Countdown Hook (fermeture) ===== */
@@ -51,7 +56,9 @@ function useCountdown(targetIso: string) {
 
 /* ===== Offline banner ===== */
 function OfflineBanner() {
-  const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [online, setOnline] = useState(
+    typeof navigator !== "undefined" ? navigator.onLine : true
+  );
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -65,10 +72,14 @@ function OfflineBanner() {
   }, []);
 
   if (online) return null;
-  return <div className="alert alert-warning rounded-0 text-center small m-0">Vous êtes hors-ligne.</div>;
+  return (
+    <div className="alert alert-warning rounded-0 text-center small m-0">
+      Vous êtes hors-ligne.
+    </div>
+  );
 }
 
-/* ===== PAGE FERMETURE (TA VERSION) ===== */
+/* ===== PAGE FERMETURE ===== */
 function LaunchOnlyPage() {
   const cd = useCountdown(DUUMINI_OPEN_ISO);
 
@@ -138,7 +149,13 @@ function LaunchOnlyPage() {
           <div className="launch-hero d-flex justify-content-between align-items-center">
             <div className="d-flex align-items-center gap-2 fw-bold">
               <div
-                style={{ width: 34, height: 34, borderRadius: 10, background: "#111", color: "#fff" }}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: "#111",
+                  color: "#fff",
+                }}
                 className="d-flex align-items-center justify-content-center"
               >
                 D
@@ -151,15 +168,23 @@ function LaunchOnlyPage() {
           </div>
 
           <div className="announce-pulse-wrap">
-            <img src="/annonce.jpeg" alt="Annonce Duumini" className="announce-img" loading="eager" />
+            <img
+              src="/annonce.jpeg"
+              alt="Annonce Duumini"
+              className="announce-img"
+              loading="eager"
+            />
           </div>
 
           <div className="card-body d-flex flex-column gap-3 launch-body">
             <div className="d-flex flex-column gap-1">
               <h1 className="h5 fw-bold m-0">
-                Ouverture le 21 décembre 2025 à 20h <span className="blink-emoji">🎉</span>
+                Ouverture le 21 décembre 2025 à 20h{" "}
+                <span className="blink-emoji">🎉</span>
               </h1>
-              <p className="text-muted m-0 launch-note">Maroc • Paiement à la livraison</p>
+              <p className="text-muted m-0 launch-note">
+                Maroc • Paiement à la livraison
+              </p>
             </div>
 
             <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -171,7 +196,12 @@ function LaunchOnlyPage() {
               </span>
             </div>
 
-            <a href={waHref} target="_blank" rel="noreferrer" className="btn btn-success fw-bold">
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-success fw-bold"
+            >
               💬 WhatsApp – plus d’infos
             </a>
 
@@ -205,17 +235,25 @@ function MiniCard({
       style={{ width: 176 }}
       title={hint ? `${name} — Voir toute la catégorie` : name}
     >
-      <div className="card border-0 shadow-sm overflow-hidden" style={{ borderRadius: 16 }}>
+      <div
+        className="card border-0 shadow-sm overflow-hidden"
+        style={{ borderRadius: 16 }}
+      >
         <div style={{ height: 128 }} className="bg-light position-relative">
           {image ? (
-            <img src={imgUrl(image)} alt={name} className="w-100 h-100" style={{ objectFit: "cover" }} loading="lazy" />
+            <img
+              src={imgUrl(image)}
+              alt={name}
+              className="w-100 h-100"
+              style={{ objectFit: "cover" }}
+              loading="lazy"
+            />
           ) : (
             <div className="w-100 h-100 d-flex align-items-center justify-content-center text-muted small">
               Image indisponible
             </div>
           )}
 
-          {/* petit badge “Voir tout” discret */}
           <span
             className="position-absolute top-0 end-0 m-2 badge"
             style={{ background: "rgba(17,17,17,.72)", color: "#fff" }}
@@ -229,7 +267,9 @@ function MiniCard({
           <div className="small" style={{ color: "var(--duu-black)" }}>
             {moneyMAD(price)}
           </div>
-          {hint ? <div className="small text-muted text-truncate">{hint}</div> : null}
+          {hint ? (
+            <div className="small text-muted text-truncate">{hint}</div>
+          ) : null}
         </div>
       </div>
     </Link>
@@ -307,7 +347,11 @@ function AutoCarousel({
       >
         {items.map((p) => (
           <div key={(p as any).id} style={{ scrollSnapAlign: "start" }}>
-            <MiniCard product={p} href={itemHref(p)} hint={itemHint ? itemHint(p) : null} />
+            <MiniCard
+              product={p}
+              href={itemHref(p)}
+              hint={itemHint ? itemHint(p) : null}
+            />
           </div>
         ))}
       </div>
@@ -359,54 +403,96 @@ export default function Home() {
   const isOpen = now >= openAt;
   const isPromoLive = now >= openAt && now <= promoEndAt;
 
-  /* ===== Data ===== */
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  // ✅ AVANT OUVERTURE : page fermeture (et aucune query ne part)
+  if (!isOpen) return <LaunchOnlyPage />;
 
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [, setSubs] = useState<SubCategory[]>([]);
-  const [food, setFood] = useState<Product[]>([]);
-  const [market, setMarket] = useState<Product[]>([]);
-  const [fashion, setFashion] = useState<Product[]>([]);
+  /* ===== React Query (cache global) =====
+     - enabled: isOpen => évite tout appel avant ouverture
+     - staleTime: 5 min => revenir sur Home => pas de refetch
+  */
+  const results = useQueries({
+    queries: [
+      {
+        queryKey: ["categories", { page: 1, pageSize: 500 }],
+        queryFn: () => listCategories({ page: 1, pageSize: 500 }),
+        enabled: isOpen,
+        staleTime: 5 * 60 * 1000,
+      },
+      {
+        queryKey: ["subCategories", { page: 1, pageSize: 2000 }],
+        queryFn: () => listSubCategories({ page: 1, pageSize: 2000 }),
+        enabled: isOpen,
+        staleTime: 10 * 60 * 1000,
+      },
+      {
+        queryKey: ["homeProducts", "african-food"],
+        queryFn: () =>
+          listProducts({
+            page: 1,
+            pageSize: 240,
+            channel: "african-food",
+            onlyActive: true,
+          } as any),
+        enabled: isOpen,
+        staleTime: 3 * 60 * 1000,
+      },
+      {
+        queryKey: ["homeProducts", "african-market"],
+        queryFn: () =>
+          listProducts({
+            page: 1,
+            pageSize: 240,
+            channel: "african-market",
+            onlyActive: true,
+          } as any),
+        enabled: isOpen,
+        staleTime: 3 * 60 * 1000,
+      },
+      {
+        queryKey: ["homeProducts", "fashion"],
+        queryFn: () =>
+          listProducts({
+            page: 1,
+            pageSize: 240,
+            vertical: "FASHION",
+            onlyActive: true,
+          } as any),
+        enabled: isOpen,
+        staleTime: 3 * 60 * 1000,
+      },
+    ],
+  });
+
+  const catsQ = results[0];
+  const subsQ = results[1];
+  const foodQ = results[2];
+  const marketQ = results[3];
+  const fashionQ = results[4];
+
+  const loading =
+    catsQ.isLoading ||
+    subsQ.isLoading ||
+    foodQ.isLoading ||
+    marketQ.isLoading ||
+    fashionQ.isLoading;
+
+  const err =
+    (catsQ.error as any)?.message ||
+    (subsQ.error as any)?.message ||
+    (foodQ.error as any)?.message ||
+    (marketQ.error as any)?.message ||
+    (fashionQ.error as any)?.message ||
+    null;
+
+  const categories = (catsQ.data?.items || []) as Category[];
+  const food = (foodQ.data?.items || []) as Product[];
+  const market = (marketQ.data?.items || []) as Product[];
+  const fashion = (fashionQ.data?.items || []) as Product[];
 
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
-  const [activeSubCategoryId, setActiveSubCategoryId] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      setErr(null);
-
-      try {
-        const [catsRes, subsRes, foodRes, marketRes, fashionRes] = await Promise.all([
-          listCategories({ page: 1, pageSize: 500 }),
-          listSubCategories({ page: 1, pageSize: 2000 }),
-          listProducts({ page: 1, pageSize: 240, channel: "african-food", onlyActive: true } as any),
-          listProducts({ page: 1, pageSize: 240, channel: "african-market", onlyActive: true } as any),
-          listProducts({ page: 1, pageSize: 240, vertical: "FASHION", onlyActive: true } as any),
-        ]);
-
-        if (cancelled) return;
-
-        setCategories(catsRes.items || []);
-        setSubs(subsRes.items || []);
-        setFood(foodRes.items || []);
-        setMarket(marketRes.items || []);
-        setFashion(fashionRes.items || []);
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message || String(e));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [activeSubCategoryId, setActiveSubCategoryId] = useState<number | null>(
+    null
+  );
 
   const categoriesById = useMemo(() => {
     const m: Record<number, Category> = {};
@@ -420,26 +506,33 @@ export default function Home() {
 
   const categoryIdsWithProducts = useMemo(() => {
     const set = new Set<number>();
-    for (const k of Object.keys(foodByCat)) if ((foodByCat[Number(k)] || []).length) set.add(Number(k));
-    for (const k of Object.keys(marketByCat)) if ((marketByCat[Number(k)] || []).length) set.add(Number(k));
-    for (const k of Object.keys(fashionByCat)) if ((fashionByCat[Number(k)] || []).length) set.add(Number(k));
+    for (const k of Object.keys(foodByCat))
+      if ((foodByCat[Number(k)] || []).length) set.add(Number(k));
+    for (const k of Object.keys(marketByCat))
+      if ((marketByCat[Number(k)] || []).length) set.add(Number(k));
+    for (const k of Object.keys(fashionByCat))
+      if ((fashionByCat[Number(k)] || []).length) set.add(Number(k));
 
     const arr = Array.from(set);
     arr.sort((a, b) => {
-      const ca = (foodByCat[a]?.length || 0) + (marketByCat[a]?.length || 0) + (fashionByCat[a]?.length || 0);
-      const cb = (foodByCat[b]?.length || 0) + (marketByCat[b]?.length || 0) + (fashionByCat[b]?.length || 0);
+      const ca =
+        (foodByCat[a]?.length || 0) +
+        (marketByCat[a]?.length || 0) +
+        (fashionByCat[a]?.length || 0);
+      const cb =
+        (foodByCat[b]?.length || 0) +
+        (marketByCat[b]?.length || 0) +
+        (fashionByCat[b]?.length || 0);
       return cb - ca;
     });
     return arr;
   }, [foodByCat, marketByCat, fashionByCat]);
 
-  // ✅ quel vertical “domine” pour une catégorie ?
   function primaryVerticalForCategory(categoryId: number): Vertical | null {
     const f = (foodByCat[categoryId] || []).length;
     const m = (marketByCat[categoryId] || []).length;
     const fa = (fashionByCat[categoryId] || []).length;
 
-    // priorité : celui qui a le + de produits
     const pairs: Array<[Vertical, number]> = [
       ["FASHION", fa],
       ["FOOD", f],
@@ -450,15 +543,12 @@ export default function Home() {
     return top[1] > 0 ? top[0] : null;
   }
 
-  // ✅ route listing par catégorie
   function routeForCategorySlug(catSlug: string, categoryId: number) {
     const v = primaryVerticalForCategory(categoryId);
 
     if (v === "FASHION") return `/fashion/${catSlug}`;
     if (v === "FOOD") return `/african-food/${catSlug}`;
     if (v === "MARKET") return `/african-market/${catSlug}`;
-
-    // fallback
     return "/african-market";
   }
 
@@ -468,18 +558,16 @@ export default function Home() {
     if (v === "FASHION") return `/fashion/${catSlug}/${subSlug}`;
     if (v === "FOOD") return `/african-food/${catSlug}/${subSlug}`;
     if (v === "MARKET") return `/african-market/${catSlug}/${subSlug}`;
-
     return `/african-market`;
   }
 
-  // ✅ IMPORTANT: clic MiniCard => vers listing catégorie (pas fiche produit)
   function toCategoryListingFromProduct(p: Product) {
     const anyP = p as any;
     const cid = Number(anyP.category_id || 0);
     const cat = cid ? categoriesById[cid] : null;
     const catSlug = String(cat?.slug || "").trim();
     if (cid && catSlug) return routeForCategorySlug(catSlug, cid);
-    // fallback: si pas de catégorie sur produit
+
     const vert = String(anyP.vertical || "").toUpperCase();
     if (vert === "FASHION") return "/fashion";
     if (vert === "FOOD") return "/african-food";
@@ -493,9 +581,6 @@ export default function Home() {
     const name = String(cat?.name || "").trim();
     return name ? `Catégorie: ${name}` : null;
   }
-
-  // ✅ AVANT OUVERTURE : page fermeture
-  if (!isOpen) return <LaunchOnlyPage />;
 
   return (
     <div className="pb-4" style={{ background: "#f8f9fa" }}>
@@ -630,7 +715,13 @@ export default function Home() {
                   const catSlug = String(cat?.slug || "");
                   if (!catSlug) return;
 
-                  navigate(routeForSubSlug(s.category_id, catSlug, String(s.slug || "")));
+                  navigate(
+                    routeForSubSlug(
+                      s.category_id,
+                      catSlug,
+                      String(s.slug || "")
+                    )
+                  );
                 }}
               />
             </div>
@@ -641,17 +732,28 @@ export default function Home() {
               <span>{err}</span>
               <button
                 className="btn btn-sm"
-                style={{ background: "var(--duu-yellow)", border: "none", fontWeight: 900 }}
-                onClick={() => window.location.reload()}
+                style={{
+                  background: "var(--duu-yellow)",
+                  border: "none",
+                  fontWeight: 900,
+                }}
+                onClick={() => {
+                  catsQ.refetch();
+                  subsQ.refetch();
+                  foodQ.refetch();
+                  marketQ.refetch();
+                  fashionQ.refetch();
+                }}
               >
-                Recharger
+                Réessayer
               </button>
             </div>
           )}
 
-          {loading ? <div className="text-muted small mt-3">Chargement…</div> : null}
+          {loading ? (
+            <div className="text-muted small mt-3">Chargement…</div>
+          ) : null}
 
-          {/* Sections catégories */}
           {!loading && !err && (
             <div className="d-flex flex-column gap-3 mt-3">
               {categoryIdsWithProducts.map((cid, idx) => {
@@ -664,11 +766,15 @@ export default function Home() {
                 const total = f.length + m.length + fa.length;
                 if (total === 0) return null;
 
-                // ✅ mélange “vitrine” (tu peux ajuster les quotas)
                 const mixed = [...fa.slice(0, 10), ...f.slice(0, 10), ...m.slice(0, 10)].slice(0, 18);
 
                 const v = pickSectionVariant(idx);
-                const headClass = v === "yellow" ? "head-yellow" : v === "red" ? "head-red" : "head-dark";
+                const headClass =
+                  v === "yellow"
+                    ? "head-yellow"
+                    : v === "red"
+                    ? "head-red"
+                    : "head-dark";
 
                 const mainLink = routeForCategorySlug(String(cat.slug || ""), cid);
 
@@ -679,14 +785,12 @@ export default function Home() {
                         <div className="fw-bold text-truncate">{cat.name}</div>
                       </div>
 
-                      {/* Explorer reste utile, mais plus obligatoire */}
                       <Link to={mainLink} className="soft-action">
                         Explorer <ChevronRight size={14} />
                       </Link>
                     </div>
 
                     <div className="p-3">
-                      {/* ✅ CLIC PRODUIT => PAGE LISTING CATÉGORIE */}
                       <AutoCarousel
                         items={mixed}
                         itemHref={toCategoryListingFromProduct}
@@ -699,7 +803,9 @@ export default function Home() {
               })}
 
               {!categoryIdsWithProducts.length && (
-                <div className="text-center text-muted py-5">Aucune catégorie avec produits pour le moment.</div>
+                <div className="text-center text-muted py-5">
+                  Aucune catégorie avec produits pour le moment.
+                </div>
               )}
             </div>
           )}
