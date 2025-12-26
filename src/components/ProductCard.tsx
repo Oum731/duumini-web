@@ -99,7 +99,6 @@ function getWebOriginForShare() {
   const v = cleanBase(fromEnv);
   if (v) return v;
 
-  // ✅ fallback demandé
   return "https://www.duumini.com";
 }
 
@@ -138,7 +137,6 @@ async function fetchAsFile(url: string, filename: string): Promise<File | null> 
     const blob = await res.blob();
     if (!blob || !blob.size) return null;
 
-    // limite prudente
     const MAX = 10 * 1024 * 1024;
     if (blob.size > MAX) return null;
 
@@ -168,11 +166,9 @@ function canShareFiles(file: File) {
 function getDisplayPrice(anyP: any, priceOverride: number | null) {
   if (priceOverride != null) return toNum(priceOverride || 0);
 
-  // ✅ IMPORTANT: on utilise le "price" comme prix public (client)
   const p = anyP.price;
   if (p != null && p !== "") return toNum(p || 0);
 
-  // fallback si jamais ton API renvoie un autre champ
   const pc = anyP.price_client ?? anyP.client_price ?? null;
   if (pc != null && pc !== "") return toNum(pc || 0);
 
@@ -203,7 +199,7 @@ function computePromoCentsFromRule(baseCents: number, rule: PromoRule) {
   }
 
   if (rule.kind === "AMOUNT") {
-    const amt = Math.max(0, toCents(rule.value)); // AMOUNT en MAD
+    const amt = Math.max(0, toCents(rule.value));
     return roundToMAD(Math.max(0, p - amt));
   }
 
@@ -252,7 +248,6 @@ function getPromoMeta(anyP: any, basePrice: number) {
         0
     ) || 0;
 
-  // ✅ si promo_price direct fourni, on le prend, mais on le stabilise en cents
   if (promoPriceDirect > 0 && promoPriceDirect < base) {
     const baseC = toCents(base);
     const promoC = roundToMAD(toCents(promoPriceDirect));
@@ -290,10 +285,7 @@ function getPromoMeta(anyP: any, basePrice: number) {
     valueRaw > 0 &&
     (typeRaw === "PERCENT" || typeRaw === "PCT" || typeRaw === "%")
   ) {
-    const rule: PromoRule = {
-      kind: "PERCENT",
-      value: clamp(valueRaw, 0, 100),
-    };
+    const rule: PromoRule = { kind: "PERCENT", value: clamp(valueRaw, 0, 100) };
     const promo = computePromoPriceFromRule(base, rule);
     if (promo < base) {
       return {
@@ -324,7 +316,8 @@ function getPromoMeta(anyP: any, basePrice: number) {
     }
   }
 
-  if (flag) return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
+  if (flag)
+    return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
   return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 }
 
@@ -414,8 +407,11 @@ function isVariantOutOfStock(v: UiVariant) {
 type Props = {
   product: Product;
   onAdd?: (p: Product) => void;
+  /** ⚠️ peut être utilisé comme “prix final déjà promo” sur des pages promos */
   priceOverride?: number | null;
+  /** si priceOverride est “final promo”, oldPrice doit être le prix avant promo */
   oldPrice?: number | null;
+  /** idem: badge promo */
   badgeText?: string | null;
   hideSubCategories?: string[];
   layout?: "default" | "fashion";
@@ -478,28 +474,32 @@ function ProductCardInner({
   const images = useMemo(() => imagesRaw.map((u) => imgUrl(u)), [imagesRaw]);
   const coverUrl = images[0] || "";
 
+  const baseDisplayPrice = useMemo(
+    () => getDisplayPrice(anyP, priceOverride),
+    [anyP, priceOverride]
+  );
+
   /**
-   * ✅ FIX: empêcher double promo
-   * - priceOverride (ex: 99) est un PRIX FINAL (déjà remisé) venant de PromotionsPage
-   * - donc on calcule la promo UNIQUEMENT quand priceOverride est null
+   * ✅ FIX DOUBLE PROMO (120-21 => 78)
+   * Si on reçoit un priceOverride + oldPrice/badgeText,
+   * alors priceOverride est déjà un PRIX FINAL (promo déjà appliquée).
+   * => on désactive la promo auto.
    */
-  const baseProductPrice = useMemo(() => getDisplayPrice(anyP, null), [anyP]);
-  const autoPromoEnabled = priceOverride == null;
+  const treatOverrideAsFinal = useMemo(() => {
+    return priceOverride != null && (oldPrice != null || !!badgeText);
+  }, [badgeText, oldPrice, priceOverride]);
 
   const promoMeta = useMemo(() => {
-    if (!autoPromoEnabled) {
-      return {
-        isPromo: false,
-        rule: null as PromoRule,
-        oldPrice: null as number | null,
-        badgeText: null as string | null,
-      };
+    if (treatOverrideAsFinal) {
+      return { isPromo: false, rule: null as PromoRule, oldPrice: null, badgeText: null };
     }
-    return getPromoMeta(anyP, baseProductPrice);
-  }, [anyP, baseProductPrice, autoPromoEnabled]);
+    return getPromoMeta(anyP, baseDisplayPrice);
+  }, [anyP, baseDisplayPrice, treatOverrideAsFinal]);
 
-  const effectiveRule: PromoRule =
-    autoPromoEnabled && promoMeta.isPromo ? promoMeta.rule : null;
+  const effectiveRule = useMemo(() => {
+    if (treatOverrideAsFinal) return null;
+    return promoMeta.isPromo ? promoMeta.rule : null;
+  }, [promoMeta.isPromo, promoMeta.rule, treatOverrideAsFinal]);
 
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
@@ -534,8 +534,7 @@ function ProductCardInner({
     }
     setSelectedKey((prev) => {
       if (prev && variants.some((v) => v.key === prev)) return prev;
-      const firstOk =
-        variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
       return firstOk?.key || "";
     });
   }, [hasVariants, variants]);
@@ -547,20 +546,18 @@ function ProductCardInner({
 
   const rawPrice = useMemo(() => {
     if (selectedVariant?.price != null) return toNum(selectedVariant.price);
+    return baseDisplayPrice;
+  }, [baseDisplayPrice, selectedVariant]);
 
-    // ✅ si override fourni => prix FINAL (déjà promo)
-    if (priceOverride != null) return toNum(priceOverride);
-
-    // ✅ sinon prix public (base)
-    return baseProductPrice;
-  }, [selectedVariant, priceOverride, baseProductPrice]);
-
-  // ✅ calc promo en cents + arrondi MAD entier (seulement si effectiveRule non-null)
   const displayPrice = useMemo(() => {
+    if (treatOverrideAsFinal) {
+      // priceOverride est déjà final => ne PAS recalculer promo
+      return toNum(rawPrice);
+    }
     const rawCents = toCents(rawPrice);
     const promoCents = computePromoCentsFromRule(rawCents, effectiveRule);
     return fromCents(promoCents);
-  }, [rawPrice, effectiveRule]);
+  }, [rawPrice, effectiveRule, treatOverrideAsFinal]);
 
   const effectiveOldPrice = useMemo(() => {
     const dispCents = toCents(displayPrice);
@@ -570,19 +567,19 @@ function ProductCardInner({
       if (oldC > dispCents) return fromCents(oldC);
     }
 
-    if (autoPromoEnabled && promoMeta.isPromo) {
+    if (!treatOverrideAsFinal && promoMeta.isPromo) {
       const rawC = roundToMAD(toCents(rawPrice));
       if (rawC > dispCents) return fromCents(rawC);
     }
 
     return null;
-  }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice, autoPromoEnabled]);
+  }, [displayPrice, oldPrice, promoMeta.isPromo, rawPrice, treatOverrideAsFinal]);
 
   const effectiveBadgeText = useMemo(() => {
     if (badgeText) return badgeText;
-    if (autoPromoEnabled && promoMeta.isPromo) return promoMeta.badgeText || "PROMO";
+    if (!treatOverrideAsFinal && promoMeta.isPromo) return promoMeta.badgeText || "PROMO";
     return null;
-  }, [badgeText, promoMeta.badgeText, promoMeta.isPromo, autoPromoEnabled]);
+  }, [badgeText, promoMeta.badgeText, promoMeta.isPromo, treatOverrideAsFinal]);
 
   const effectiveStock = useMemo(() => {
     if (hasVariants && selectedVariant?.stock != null) return selectedVariant.stock;
@@ -645,13 +642,10 @@ function ProductCardInner({
       if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0) return;
 
       const raw =
-        !isDefault && variant?.price != null
-          ? toNum(variant.price)
-          : priceOverride != null
-            ? toNum(priceOverride) // ✅ prix final déjà calculé (promotions)
-            : baseProductPrice;     // ✅ prix public normal
+        !isDefault && variant?.price != null ? toNum(variant.price) : baseDisplayPrice;
 
       // ✅ prix final stable (cents) + arrondi MAD
+      // ⚠️ si treatOverrideAsFinal => effectiveRule=null déjà (aucune promo)
       const finalPrice = fromCents(
         computePromoCentsFromRule(toCents(raw), effectiveRule)
       );
@@ -697,13 +691,12 @@ function ProductCardInner({
     [
       add,
       anyP,
-      baseProductPrice,
+      baseDisplayPrice,
       baseStock,
       effectiveBadgeText,
       effectiveRule,
       hasVariants,
       onAdd,
-      priceOverride,
       subCatToken,
     ]
   );
@@ -749,9 +742,7 @@ function ProductCardInner({
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // silencieux
-    }
+    } catch {}
   }, [shareUrl]);
 
   const openShareLink = useCallback((u: string) => {
@@ -766,7 +757,6 @@ function ProductCardInner({
       return;
     }
 
-    // 🖼️ best-effort: image + lien (si supporté)
     const img = coverUrl || currentImg || "";
     if (navAny?.share && img) {
       const file = await fetchAsFile(
@@ -782,13 +772,10 @@ function ProductCardInner({
             files: [file],
           });
           return;
-        } catch {
-          // fallback ci-dessous
-        }
+        } catch {}
       }
     }
 
-    // 🔗 fallback: share texte + lien
     if (navAny?.share) {
       try {
         await navAny.share({
@@ -797,12 +784,9 @@ function ProductCardInner({
           url: shareUrl,
         });
         return;
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
-    // menu fallback
     setShareMenuOpen(true);
   }, [anyP.id, anyP.name, coverUrl, currentImg, shareText, shareUrl]);
 
@@ -1040,10 +1024,14 @@ function ProductCardInner({
 
     const raw = selected?.price != null ? toNum(selected.price) : null;
     if (raw != null) {
-      const final = fromCents(computePromoCentsFromRule(toCents(raw), effectiveRule));
+      const final = treatOverrideAsFinal
+        ? raw
+        : fromCents(computePromoCentsFromRule(toCents(raw), effectiveRule));
+
       infoParts.push(`Prix:${moneyMAD(final)}`);
+
       const old =
-        final < fromCents(roundToMAD(toCents(raw)))
+        !treatOverrideAsFinal && final < fromCents(roundToMAD(toCents(raw)))
           ? fromCents(roundToMAD(toCents(raw)))
           : null;
       if (old != null) infoParts.push(`Ancien:${moneyMAD(old)}`);
@@ -1310,8 +1298,7 @@ function ProductCardInner({
                   </button>
                 )}
 
-                {/* ✅ Supprimé: bouton "↗" (flèche partager) */}
-                {/* Le partage reste dispo uniquement dans le MODAL via le bouton "Partager". */}
+                {/* ✅ Supprimé: bouton partager (flèche) */}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
@@ -1418,14 +1405,12 @@ function ProductCardInner({
                   </button>
                 )}
 
-                {/* ✅ Supprimé: bouton "↗" (flèche partager) */}
-                {/* Le partage reste dispo uniquement dans le MODAL via le bouton "Partager". */}
+                {/* ✅ Supprimé: bouton partager (flèche) */}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
                 <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
-                  Total dans le panier (toutes variantes) :{" "}
-                  <strong>{qtyTotal}</strong>
+                  Total dans le panier (toutes variantes) : <strong>{qtyTotal}</strong>
                 </div>
               )}
             </div>
@@ -1666,11 +1651,7 @@ function ProductCardInner({
               </div>
 
               <div className="modal-footer">
-                <button
-                  className="btn btn-outline-dark"
-                  onClick={closeModal}
-                  type="button"
-                >
+                <button className="btn btn-outline-dark" onClick={closeModal} type="button">
                   Fermer
                 </button>
               </div>
@@ -1701,7 +1682,6 @@ function areEqual(prev: Props, next: Props) {
   if ((prev.hideSubCategories?.join("|") || "") !== (next.hideSubCategories?.join("|") || ""))
     return false;
 
-  // onAdd peut changer à chaque render -> on l'ignore pour ne pas déclencher de rerender
   return true;
 }
 

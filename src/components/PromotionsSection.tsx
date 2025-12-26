@@ -12,24 +12,53 @@ function imgUrl(u?: string | null) {
   return u;
 }
 
+/* ✅ stable: MAD entier (0 décimale) */
+function toNum(x: any): number {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+function toCents(x: any) {
+  return Math.round(toNum(x) * 100);
+}
+function roundToMAD(cents: number) {
+  return Math.round((cents || 0) / 100) * 100;
+}
+function fromCents(c: any) {
+  const n = Number(c);
+  return Number.isFinite(n) ? Math.round(n) / 100 : 0;
+}
 function moneyMAD(n?: number | null) {
-  const v = Number(n || 0);
-  return `${v.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} MAD`;
+  const cents = roundToMAD(toCents(n ?? 0));
+  const v = fromCents(cents);
+  return `${new Intl.NumberFormat("fr-FR", {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(v)} MAD`;
 }
 
 type PromoDiscountType = "PERCENT" | "AMOUNT";
 
-function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
-  const p = Number(price || 0);
-  const v = Number(value || 0);
-  if (!p || !v) return p;
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/**
+ * ✅ promo stable en CENTIMES
+ * - PERCENT: p - p*pct/100
+ * - AMOUNT: p - value(MAD)
+ */
+function computePromoPriceStable(price: number, type: PromoDiscountType, value: number) {
+  const baseC = roundToMAD(toCents(price || 0));
+  if (!baseC) return 0;
 
   if (type === "PERCENT") {
-    const pct = Math.max(0, Math.min(100, v));
-    const res = p - (p * pct) / 100;
-    return Math.max(0, Number(res.toFixed(2)));
+    const pct = clamp(toNum(value), 0, 100);
+    const off = Math.round((baseC * pct) / 100);
+    return fromCents(roundToMAD(Math.max(0, baseC - off)));
   }
-  return Math.max(0, Number((p - v).toFixed(2)));
+
+  const off = toCents(Math.max(0, toNum(value)));
+  return fromCents(roundToMAD(Math.max(0, baseC - off)));
 }
 
 function hasRealPromo(p: any) {
@@ -67,7 +96,7 @@ export default function PromotionsSection({
   limit?: number;
   channel?: "all" | "african-food" | "african-market";
   onlyActive?: boolean;
-  ville?: string; // optionnel: filtrer par ville côté API si supporté
+  ville?: string;
   toAllLink?: string;
 }) {
   const [items, setItems] = useState<Product[]>([]);
@@ -79,8 +108,7 @@ export default function PromotionsSection({
     setErr(null);
 
     try {
-      // ✅ 1) On tente un endpoint dédié si tu l’ajoutes plus tard
-      // GET /api/products/promotions?limit=...&onlyActive=1&channel=...
+      // ✅ Endpoint dédié
       try {
         const query: any = { limit };
         if (onlyActive) query.onlyActive = 1;
@@ -96,8 +124,8 @@ export default function PromotionsSection({
         // fallback
       }
 
-      // ✅ 2) Fallback: on récupère une page puis on filtre
-      const pageSize = Math.max(limit * 3, 40); // pour avoir assez d’items à filtrer
+      // ✅ Fallback: list + filter
+      const pageSize = Math.max(limit * 3, 40);
       const query: any = { page: 1, pageSize };
       if (onlyActive) query.onlyActive = 1;
       if (ville) query.ville = ville;
@@ -107,7 +135,10 @@ export default function PromotionsSection({
       if (channel === "all") {
         list = await api.get<{ items: Product[] }>("/api/products", { query });
       } else {
-        const path = channel === "african-food" ? "/api/products/african-food" : "/api/products/african-market";
+        const path =
+          channel === "african-food"
+            ? "/api/products/african-food"
+            : "/api/products/african-market";
         list = await api.get<{ items: Product[] }>(path, { query });
       }
 
@@ -128,16 +159,20 @@ export default function PromotionsSection({
   const computed = useMemo(() => {
     return items.map((p: any) => {
       const type: PromoDiscountType = p?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
-      const value = Number(p?.promo_discount_value ?? 0);
-      const promoPrice = computePromoPrice(Number(p?.price ?? 0), type, value);
+      const value = toNum(p?.promo_discount_value ?? 0);
+      const basePrice = toNum(p?.price ?? 0);
+      const promoPrice = computePromoPriceStable(basePrice, type, value);
       const cover = p?.cover || (p?.images?.[0]?.url ?? null);
-      return { p, promoPrice, cover, type, value };
+
+      const saved =
+        type === "PERCENT" ? `${Math.round(value)}%` : `${moneyMAD(value)}`;
+
+      return { p, promoPrice, basePrice, cover, saved };
     });
   }, [items]);
 
   return (
     <section className="promo-section my-4">
-      {/* Styles scoped */}
       <style>{`
         .promo-section{
           border-radius: 18px;
@@ -178,15 +213,9 @@ export default function PromotionsSection({
           grid-template-columns: repeat(12, 1fr);
           gap: 12px;
         }
-        .promo-col{
-          grid-column: span 12;
-        }
-        @media(min-width: 576px){
-          .promo-col{ grid-column: span 6; }
-        }
-        @media(min-width: 992px){
-          .promo-col{ grid-column: span 3; }
-        }
+        .promo-col{ grid-column: span 12; }
+        @media(min-width: 576px){ .promo-col{ grid-column: span 6; } }
+        @media(min-width: 992px){ .promo-col{ grid-column: span 3; } }
         .promo-card{
           border-radius: 16px;
           overflow: hidden;
@@ -217,13 +246,8 @@ export default function PromotionsSection({
           color: rgba(0,0,0,.6);
           font-size: .85rem;
         }
-        .price-line{
-          display:flex; align-items:baseline; gap:10px; flex-wrap: wrap;
-        }
-        .price-now{
-          font-weight: 900;
-          color: var(--duu-black);
-        }
+        .price-line{ display:flex; align-items:baseline; gap:10px; flex-wrap: wrap; }
+        .price-now{ font-weight: 900; color: var(--duu-black); }
         .price-old{
           color: rgba(0,0,0,.45);
           text-decoration: line-through;
@@ -271,58 +295,48 @@ export default function PromotionsSection({
         <div className="text-muted">Aucune promotion disponible pour le moment.</div>
       ) : (
         <div className="promo-grid">
-          {computed.map(({ p, promoPrice, cover, type, value }: any) => {
-            const basePrice = Number(p?.price ?? 0);
-            const saved =
-              type === "PERCENT"
-                ? `${Math.round(value)}%`
-                : `${moneyMAD(Number(value))}`;
+          {computed.map(({ p, promoPrice, basePrice, cover, saved }: any) => (
+            <div className="promo-col" key={p.id}>
+              <div className="card promo-card h-100 border-0 shadow-sm">
+                <div className="position-relative">
+                  {cover ? (
+                    <img src={imgUrl(cover)} alt={p.name} className="promo-media w-100" />
+                  ) : (
+                    <div className="promo-media w-100 d-flex align-items-center justify-content-center text-muted">
+                      Pas d’image
+                    </div>
+                  )}
 
-            return (
-              <div className="promo-col" key={p.id}>
-                <div className="card promo-card h-100 border-0 shadow-sm">
-                  <div className="position-relative">
-                    {cover ? (
-                      <img src={imgUrl(cover)} alt={p.name} className="promo-media w-100" />
-                    ) : (
-                      <div className="promo-media w-100 d-flex align-items-center justify-content-center text-muted">
-                        Pas d’image
-                      </div>
-                    )}
+                  <div className="promo-badge">PROMO</div>
+                </div>
 
-                    <div className="promo-badge">PROMO</div>
+                <div className="card-body">
+                  <div className="d-flex justify-content-between align-items-start gap-2">
+                    <div className="fw-semibold text-truncate" title={p.name} style={{ maxWidth: "100%" }}>
+                      {p.name}
+                    </div>
+                    <span className="save-pill">- {saved}</span>
                   </div>
 
-                  <div className="card-body">
-                    <div className="d-flex justify-content-between align-items-start gap-2">
-                      <div className="fw-semibold text-truncate" title={p.name} style={{ maxWidth: "100%" }}>
-                        {p.name}
-                      </div>
-                      <span className="save-pill">- {saved}</span>
-                    </div>
+                  <div className="promo-shop mt-1 text-truncate">
+                    {p.shop_name ? p.shop_name : "—"}
+                  </div>
 
-                    <div className="promo-shop mt-1 text-truncate">
-                      {p.shop_name ? p.shop_name : "—"}
-                    </div>
+                  <div className="price-line mt-2">
+                    <span className="price-now">{moneyMAD(promoPrice)}</span>
+                    <span className="price-old">{moneyMAD(basePrice)}</span>
+                  </div>
 
-                    <div className="price-line mt-2">
-                      <span className="price-now">{moneyMAD(promoPrice)}</span>
-                      <span className="price-old">{moneyMAD(basePrice)}</span>
-                    </div>
-
-                    <div className="d-flex justify-content-between align-items-center mt-3">
-                      <small className="text-muted">
-                        Stock: {Number((p as any).stock ?? 0)}
-                      </small>
-                      <Link className="btn btn-sm btn-duu" to={`/products/${p.id}`}>
-                        Voir
-                      </Link>
-                    </div>
+                  <div className="d-flex justify-content-between align-items-center mt-3">
+                    <small className="text-muted">Stock: {Number((p as any).stock ?? 0)}</small>
+                    <Link className="btn btn-sm btn-duu" to={`/products/${p.id}`}>
+                      Voir
+                    </Link>
                   </div>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
     </section>

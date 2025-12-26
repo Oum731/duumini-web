@@ -19,22 +19,97 @@ function imgUrl(u?: string | null) {
   return u;
 }
 
+/* =========================
+ * ✅ Prix robustes: centimes + arrondi MAD (entier)
+ * =======================*/
+function toNum(x: any): number {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : 0;
+}
+function toCents(x: any): number {
+  return Math.round(toNum(x) * 100);
+}
+function fromCents(c: any): number {
+  const n = Number(c);
+  return Number.isFinite(n) ? Math.round(n) / 100 : 0;
+}
+/** ✅ arrondi à 1 MAD (100 cents) */
+function roundToMAD(cents: number) {
+  return Math.round((cents || 0) / 100) * 100;
+}
 function moneyMAD(n?: number | null) {
-  return `${Number(n || 0).toLocaleString("fr-FR", {
+  const cents = roundToMAD(toCents(n ?? 0));
+  const v = fromCents(cents);
+  return `${new Intl.NumberFormat("fr-FR", {
     maximumFractionDigits: 0,
-  })} MAD`;
+    minimumFractionDigits: 0,
+  }).format(v)} MAD`;
 }
 
-function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
-  const p = Number(price || 0);
-  const v = Number(value || 0);
-  if (!p || !v) return p;
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/**
+ * ✅ Calcule promo EN CENTIMES (stable)
+ * ⚠️ NE PAS appliquer 2 fois
+ */
+function computePromoFromDiscount(basePrice: number, type: PromoDiscountType, value: number) {
+  const baseC = roundToMAD(toCents(basePrice || 0));
+  const v = toNum(value || 0);
+  if (!baseC || !v) return fromCents(baseC);
 
   if (type === "PERCENT") {
-    const pct = Math.max(0, Math.min(100, v));
-    return Math.max(0, Number((p - (p * pct) / 100).toFixed(2)));
+    const pct = clamp(v, 0, 100);
+    const off = Math.round((baseC * pct) / 100);
+    return fromCents(roundToMAD(Math.max(0, baseC - off)));
   }
-  return Math.max(0, Number((p - v).toFixed(2)));
+
+  // AMOUNT en MAD
+  const off = toCents(Math.max(0, v));
+  return fromCents(roundToMAD(Math.max(0, baseC - off)));
+}
+
+/**
+ * ✅ Détecte un prix promo DIRECT (déjà promo côté API)
+ * Ex: promo_price, sale_price, promo_price_client, min_price (si endpoint list renvoie déjà)
+ */
+function getDirectPromoPrice(p: any): number | null {
+  const candidates = [
+    p?.promo_price_client,
+    p?.promo_price,
+    p?.sale_price,
+    p?.price_promo,
+    p?.min_price, // parfois le backend renvoie min_price déjà promo
+  ];
+
+  for (const c of candidates) {
+    const n = toNum(c);
+    if (n > 0) return n;
+  }
+  return null;
+}
+
+/**
+ * ✅ Prix final promo unique:
+ * - si l’API renvoie déjà un prix promo < price => on prend DIRECT (pas de recalcul)
+ * - sinon on applique promo_discount_* 1 seule fois
+ */
+function computeFinalPromoPrice(p: any) {
+  const base = toNum(p?.price ?? 0);
+  if (!base) return { base, promo: 0, usedDirect: false };
+
+  const direct = getDirectPromoPrice(p);
+  if (direct != null && direct > 0 && direct < base) {
+    // ✅ prix déjà promo => pas de double remise
+    return { base, promo: fromCents(roundToMAD(toCents(direct))), usedDirect: true };
+  }
+
+  const type: PromoDiscountType = p?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
+  const value = toNum(p?.promo_discount_value ?? 0);
+  const promo = computePromoFromDiscount(base, type, value);
+
+  return { base, promo, usedDirect: false };
 }
 
 /* ✅ Sans Product.sub_category : slug/name/id puis fallback category */
@@ -162,13 +237,16 @@ export default function PromotionsCarousel({
 
   const computed = useMemo(() => {
     return items.map((p: any) => {
+      const { base, promo } = computeFinalPromoPrice(p);
+
       const type: PromoDiscountType =
         p?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
-      const value = Number(p?.promo_discount_value ?? 0);
-      const promoPrice = computePromoPrice(Number(p?.price ?? 0), type, value);
+      const value = toNum(p?.promo_discount_value ?? 0);
+
       const cover = p?.cover || p?.images?.[0]?.url || null;
       const isCan = Number(p?.promo_can ?? 0) === 1;
-      return { p, type, value, promoPrice, cover, isCan };
+
+      return { p, type, value, promoPrice: promo, basePrice: base, cover, isCan };
     });
   }, [items]);
 
@@ -209,8 +287,6 @@ export default function PromotionsCarousel({
 
   if (loading) return null;
 
-  const headline = "Spécial CAN • Duumini";
-  const hasPromos = computed.length > 0;
 
   return (
     <section className="container-xxl mt-4">
@@ -227,7 +303,6 @@ export default function PromotionsCarousel({
           box-shadow: 0 .9rem 2.2rem rgba(0,0,0,.10);
         }
 
-        /* ✅ IMPORTANT: left side can shrink (min-width:0) */
         .can-banner{
           display:flex;
           align-items:flex-start;
@@ -263,7 +338,6 @@ export default function PromotionsCarousel({
           min-width:0;
         }
 
-        /* ✅ Pill keeps the main numbers, stays clean */
         .delivery-pill{
           display:inline-flex;
           align-items:center;
@@ -290,7 +364,6 @@ export default function PromotionsCarousel({
         }
         .delivery-pill b{ color: var(--duu-red, #E53935); font-weight: 950; }
 
-        /* ✅ Always-visible note (fix: "(selon la ville)" never gets cut) */
         .delivery-note{
           font-size: .74rem;
           font-weight: 900;
@@ -304,7 +377,6 @@ export default function PromotionsCarousel({
           .delivery-note{ white-space: normal; }
         }
 
-        /* ✅ badge CAN never shrink */
         .can-banner-badge{
           flex: 0 0 auto;
           display:inline-flex;
@@ -504,9 +576,8 @@ export default function PromotionsCarousel({
       >
         <div className="can-banner">
           <div className="can-banner-left">
-            <div className="can-banner-title">{headline}</div>
+            <div className="can-banner-title">Spécial CAN • Duumini</div>
 
-            {/* ✅ FIX: "(selon la ville)" toujours visible */}
             <div className="can-banner-sub">
               <span className="delivery-pill" title={DELIVERY_INFO}>
                 🚚 Livraison Casablanca <b>25 DH</b> • Hors Casablanca dès <b>60 DH</b>
@@ -539,7 +610,7 @@ export default function PromotionsCarousel({
           </div>
         </div>
 
-        {hasPromos ? (
+        {computed.length > 0 ? (
           <div
             ref={scrollerRef}
             className="duu-scroller"
@@ -549,7 +620,7 @@ export default function PromotionsCarousel({
             onKeyDown={(e) => e.key === "Enter" && navigate(toAllLink)}
             title="Voir les promos CAN"
           >
-            {computed.map(({ p, promoPrice, cover, type, value, isCan }: any) => {
+            {computed.map(({ p, promoPrice, basePrice, cover, type, value, isCan }: any) => {
               const saved =
                 type === "PERCENT" ? `-${Math.round(value)}%` : `-${moneyMAD(value)}`;
 
@@ -590,10 +661,9 @@ export default function PromotionsCarousel({
 
                     <div className="d-flex align-items-baseline gap-2">
                       <div className="fw-bold">{moneyMAD(promoPrice)}</div>
-                      <div className="duu-old">{moneyMAD(p.price)}</div>
+                      <div className="duu-old">{moneyMAD(basePrice)}</div>
                     </div>
 
-                    {/* ✅ Info livraison au lieu du texte promo */}
                     <div className="small text-muted mt-1">
                       {cd.isOver ? (
                         "Offre terminée"
