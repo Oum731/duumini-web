@@ -167,9 +167,16 @@ function canShareFiles(file: File) {
 /* ✅ helper: prix base */
 function getDisplayPrice(anyP: any, priceOverride: number | null) {
   if (priceOverride != null) return toNum(priceOverride || 0);
+
+  // ✅ IMPORTANT: on utilise le "price" comme prix public (client)
+  const p = anyP.price;
+  if (p != null && p !== "") return toNum(p || 0);
+
+  // fallback si jamais ton API renvoie un autre champ
   const pc = anyP.price_client ?? anyP.client_price ?? null;
   if (pc != null && pc !== "") return toNum(pc || 0);
-  return toNum(anyP.price ?? 0);
+
+  return 0;
 }
 
 /* =========================
