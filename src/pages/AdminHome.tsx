@@ -18,11 +18,14 @@ import {
 } from "recharts";
 import { subscribeSSE, type ServerEvent } from "../services/events";
 import { getAccessToken } from "../services/auth";
+
+/* 🚫 SNAPSHOTS — désactivé
 import {
   listSnapshots,
   createMonthlySnapshot,
   type SalesSnapshot,
 } from "../services/snapshots";
+*/
 
 export type SalesPoint = { date: string; revenue: number; orders: number };
 
@@ -40,16 +43,6 @@ function shortDate(iso?: string | null) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
-}
-function shortMonth(iso?: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
-}
-function num(x: any) {
-  const v = typeof x === "number" ? x : Number(String(x ?? "0").replace(",", "."));
-  return Number.isFinite(v) ? v : 0;
 }
 function safeTotal(o: any): number {
   const candidates = [o?.total, o?.total_amount, o?.amount];
@@ -182,16 +175,16 @@ function doneKey(o: any, tz = "Africa/Casablanca"): string | null {
   return d ? dateKeyTZ(d, tz) : null;
 }
 
-/* ======= Snapshot UI helpers ======= */
+/* 🚫 SNAPSHOTS — désactivé
 function monthKeyOfNowTZ(tz = "Africa/Casablanca") {
   const now = new Date();
-  // on derive YYYY-MM via dateKeyTZ pour respecter TZ
   const k = dateKeyTZ(now, tz);
   return k.slice(0, 7);
 }
 function isSameKey(a?: string | null, b?: string | null) {
   return String(a || "") === String(b || "");
 }
+*/
 
 type Summary = {
   revenue_today: number;
@@ -361,96 +354,10 @@ function statusClass(s: string) {
   return "bg-secondary";
 }
 
-/* ======= Snapshot card UI (bien design) ======= */
-function SnapshotCard({
-  snapshot,
-  active,
-}: {
-  snapshot: SalesSnapshot;
-  active?: boolean;
-}) {
-  const items = num(snapshot.items_amount);
-  const delivery = num(snapshot.delivery_amount);
-  const total = num(snapshot.total_amount);
-  const commission = num(snapshot.duumini_commission);
+/* 🚫 SNAPSHOTS UI — désactivé
+function SnapshotCard({ snapshot, active }: { snapshot: SalesSnapshot; active?: boolean; }) { ... }
+*/
 
-  return (
-    <div
-      className="card h-100 shadow-sm"
-      style={{
-        borderRadius: 16,
-        border: active ? "2px solid var(--duu-yellow)" : "1px solid rgba(0,0,0,.06)",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        className="card-body"
-        style={{
-          background: active ? "rgba(253,220,0,.18)" : "transparent",
-        }}
-      >
-        <div className="d-flex align-items-start justify-content-between gap-2">
-          <div className="d-flex flex-column">
-            <div className="text-muted small">Période</div>
-            <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-              {snapshot.period_key} • {shortMonth(snapshot.start_date)}
-            </div>
-          </div>
-          {active ? (
-            <span
-              className="badge text-dark"
-              style={{
-                background: "var(--duu-yellow)",
-                borderRadius: 999,
-              }}
-            >
-              Mois en cours
-            </span>
-          ) : (
-            <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
-              Snapshot
-            </span>
-          )}
-        </div>
-
-        <div className="row g-2 mt-2">
-          <div className="col-6">
-            <div className="p-2 rounded-3" style={{ background: "rgba(0,0,0,.03)" }}>
-              <div className="text-muted small">Commandes DONE</div>
-              <div className="fw-semibold">{snapshot.orders_done ?? 0}</div>
-            </div>
-          </div>
-          <div className="col-6">
-            <div className="p-2 rounded-3" style={{ background: "rgba(0,0,0,.03)" }}>
-              <div className="text-muted small">Commission</div>
-              <div className="fw-semibold">{mad(commission)}</div>
-            </div>
-          </div>
-          <div className="col-12">
-            <div className="p-2 rounded-3" style={{ background: "rgba(0,0,0,.03)" }}>
-              <div className="text-muted small">CA (hors livraison)</div>
-              <div className="fw-semibold">{mad(items)}</div>
-              <div className="d-flex flex-wrap gap-2 mt-1">
-                <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
-                  Livraison: {mad(delivery)}
-                </span>
-                <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
-                  Total: {mad(total)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-muted small mt-2">
-          {snapshot.start_date} → {snapshot.end_date}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ======= Composant ======= */
 export default function AdminHome() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [shops, setShops] = useState<Shop[] | null>(null);
@@ -473,7 +380,7 @@ export default function AdminHome() {
   const visibleRef = useRef<boolean>(true);
   const sseRef = useRef<{ close(): void } | null>(null);
 
-  // ✅ snapshots state
+  /* 🚫 SNAPSHOTS state — désactivé
   const [snapshots, setSnapshots] = useState<SalesSnapshot[] | null>(null);
   const [snapLoading, setSnapLoading] = useState(false);
   const [snapError, setSnapError] = useState<string | null>(null);
@@ -513,6 +420,7 @@ export default function AdminHome() {
       setCreatingSnap(false);
     }
   }, [creatingSnap, monthKey, refreshSnapshots]);
+  */
 
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -524,7 +432,8 @@ export default function AdminHome() {
         (async () => ({ kind: "orders" as const, val: await listOrders({ page: 1, pageSize: 6 }) }))(),
         (async () => ({ kind: "shops" as const, val: await listShops({ page: 1, pageSize: 6 }) }))(),
         (async () => ({ kind: "users" as const, val: await listUsers({ page: 1, pageSize: 6 }) }))(),
-        (async () => ({ kind: "snap" as const, val: await listSnapshots(12) }))(),
+        // 🚫 snapshot call — désactivé
+        // (async () => ({ kind: "snap" as const, val: await listSnapshots(12) }))(),
       ]);
 
       let sum: Summary = {
@@ -546,7 +455,9 @@ export default function AdminHome() {
       let oItems: Order[] | null = null;
       let sItems: Shop[] | null = null;
       let uItems: User[] | null = null;
-      let snItems: SalesSnapshot[] | null = null;
+
+      // 🚫 snapshots — désactivé
+      // let snItems: SalesSnapshot[] | null = null;
 
       let firstErr: string | null = null;
 
@@ -557,7 +468,8 @@ export default function AdminHome() {
           if (kind === "orders") oItems = Array.isArray(val?.items) ? val.items : [];
           if (kind === "shops") sItems = Array.isArray(val?.items) ? val.items : [];
           if (kind === "users") uItems = Array.isArray(val?.items) ? val.items : [];
-          if (kind === "snap") snItems = Array.isArray(val?.items) ? val.items : [];
+          // 🚫 snapshots — désactivé
+          // if (kind === "snap") snItems = Array.isArray(val?.items) ? val.items : [];
         } else {
           firstErr ||= (r as any).reason?.message || String((r as any).reason) || null;
         }
@@ -567,7 +479,10 @@ export default function AdminHome() {
       setOrders(oItems);
       setShops(sItems);
       setUsers(uItems);
-      setSnapshots(snItems);
+
+      // 🚫 snapshots — désactivé
+      // setSnapshots(snItems);
+
       setError(firstErr);
       setLastUpdate(new Date());
     } finally {
@@ -652,120 +567,14 @@ export default function AdminHome() {
     }
   }, [commissionFilter]);
 
-  const currentMonthSnap = useMemo(() => {
-    if (!snapshots) return null;
-    return snapshots.find((s) => s.period_type === "MONTH" && isSameKey(s.period_key, monthKey)) || null;
-  }, [snapshots, monthKey]);
+  // 🚫 currentMonthSnap — désactivé
+  // const TZ = "Africa/Casablanca";
+  // const monthKey = useMemo(() => monthKeyOfNowTZ(TZ), [TZ]);
+  // const currentMonthSnap = useMemo(() => { ... }, [snapshots, monthKey]);
 
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
-      {/* ===== Snapshots strip (bien design) ===== */}
-      <div className="card shadow-sm mb-3" style={{ borderRadius: 16, overflow: "hidden" }}>
-        <div
-          className="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(253,220,0,.22) 0%, rgba(229,57,53,.10) 60%, rgba(17,17,17,.02) 100%)",
-          }}
-        >
-          <div className="d-flex flex-column">
-            <div className="d-flex align-items-center gap-2">
-              <span
-                className="badge text-dark"
-                style={{ background: "var(--duu-yellow)", borderRadius: 999 }}
-              >
-                Snapshots ventes
-              </span>
-              <span className="text-muted small">
-                Mois courant: <b>{monthKey}</b>
-              </span>
-            </div>
-            <div className="text-muted small mt-1">
-              Le snapshot fige les totaux du mois (DONE): CA hors livraison + livraison + total + commission.
-            </div>
-          </div>
-
-          <div className="d-flex flex-column flex-sm-row gap-2">
-            <button
-              className="btn btn-sm btn-outline-dark"
-              onClick={refreshSnapshots}
-              disabled={snapLoading || loading}
-            >
-              {snapLoading ? "Actualisation…" : "Rafraîchir"}
-            </button>
-
-            <button
-              className="btn btn-sm btn-duu"
-              onClick={createThisMonthSnapshot}
-              disabled={creatingSnap || hasCurrentMonthSnapshot || loading}
-              title={hasCurrentMonthSnapshot ? "Snapshot déjà créé pour ce mois" : "Créer snapshot"}
-            >
-              {creatingSnap
-                ? "Création…"
-                : hasCurrentMonthSnapshot
-                ? "Snapshot déjà créé"
-                : `Créer snapshot (${monthKey})`}
-            </button>
-          </div>
-        </div>
-
-        <div className="card-body">
-          {snapError ? (
-            <div className="alert alert-danger mb-2">{snapError}</div>
-          ) : null}
-
-          {/* Highlight current month */}
-          {currentMonthSnap ? (
-            <div className="mb-3">
-              <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
-                <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-                  Snapshot du mois en cours
-                </div>
-                <span className="text-muted small">
-                  Créé le {shortDate(currentMonthSnap.created_at)}
-                </span>
-              </div>
-              <SnapshotCard snapshot={currentMonthSnap} active />
-            </div>
-          ) : (
-            <div className="alert alert-warning mb-3">
-              Aucun snapshot pour <b>{monthKey}</b>. Clique sur <b>Créer snapshot</b>.
-            </div>
-          )}
-
-          <div className="d-flex align-items-center justify-content-between mb-2">
-            <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-              Historique
-            </div>
-            <span className="text-muted small">
-              {snapshots ? snapshots.length : 0} snapshot(s)
-            </span>
-          </div>
-
-          {!snapshots ? (
-            <div className="text-muted small">Chargement…</div>
-          ) : snapshots.length === 0 ? (
-            <div className="text-muted small">Aucun snapshot.</div>
-          ) : (
-            <div className="row g-2">
-              {snapshots
-                .filter((s) => !(s.period_type === "MONTH" && isSameKey(s.period_key, monthKey)))
-                .slice(0, 6)
-                .map((s) => (
-                  <div className="col-12 col-md-6 col-xl-4" key={s.id}>
-                    <SnapshotCard snapshot={s} />
-                  </div>
-                ))}
-            </div>
-          )}
-
-          <div className="d-flex justify-content-end mt-3">
-            <Link to="/admin/snapshots" className="btn btn-sm btn-outline-dark">
-              Voir tout
-            </Link>
-          </div>
-        </div>
-      </div>
+      {/* 🚫 Snapshots strip — désactivé (UI + boutons + cards) */}
 
       {/* KPI Cards */}
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
