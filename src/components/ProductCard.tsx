@@ -81,15 +81,19 @@ function getSubCategoryToken(p: Product) {
 }
 
 /* =========================
- * URL Share (OG) — PUBLIC (www.duumini.com)
- * -> on partage www.duumini.com/share/product/:id
+ * ✅ Partage: lien HUMAIN = /products/:id
+ * ✅ OG + preview: /share/product/:id (si tu veux)
+ *
+ * IMPORTANT (ce qui évite ton message de redirection):
+ * - On PARTAGE /products/:id
+ * - /share/ sert juste pour les bots OG (php)
  * =======================*/
 function cleanBase(x: string) {
   return String(x || "").trim().replace(/\/+$/, "");
 }
 
 /** ✅ Domaine PUBLIC du site (pas l'API). */
-function getWebOriginForShare() {
+function getWebOrigin() {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
       ((import.meta as any).env?.VITE_WEB_ORIGIN ||
@@ -102,9 +106,17 @@ function getWebOriginForShare() {
   return "https://www.duumini.com";
 }
 
-/** ✅ URL OG (PUBLIC) => /share/product/:id */
-function buildSharePageUrl(p: Product) {
-  const web = getWebOriginForShare();
+/** ✅ URL pour humains => /products/:id (pas de page de redirection) */
+function buildPublicProductUrl(p: Product) {
+  const web = getWebOrigin();
+  const id = Number((p as any).id);
+  if (!web || !id) return "";
+  return `${web}/products/${id}`;
+}
+
+/** ✅ URL OG (optionnelle) => /share/product/:id */
+function buildShareOgUrl(p: Product) {
+  const web = getWebOrigin();
   const id = Number((p as any).id);
   if (!web || !id) return "";
   return `${web}/share/product/${id}`;
@@ -491,7 +503,12 @@ function ProductCardInner({
 
   const promoMeta = useMemo(() => {
     if (treatOverrideAsFinal) {
-      return { isPromo: false, rule: null as PromoRule, oldPrice: null, badgeText: null };
+      return {
+        isPromo: false,
+        rule: null as PromoRule,
+        oldPrice: null,
+        badgeText: null,
+      };
     }
     return getPromoMeta(anyP, baseDisplayPrice);
   }, [anyP, baseDisplayPrice, treatOverrideAsFinal]);
@@ -550,10 +567,7 @@ function ProductCardInner({
   }, [baseDisplayPrice, selectedVariant]);
 
   const displayPrice = useMemo(() => {
-    if (treatOverrideAsFinal) {
-      // priceOverride est déjà final => ne PAS recalculer promo
-      return toNum(rawPrice);
-    }
+    if (treatOverrideAsFinal) return toNum(rawPrice);
     const rawCents = toCents(rawPrice);
     const promoCents = computePromoCentsFromRule(rawCents, effectiveRule);
     return fromCents(promoCents);
@@ -577,7 +591,8 @@ function ProductCardInner({
 
   const effectiveBadgeText = useMemo(() => {
     if (badgeText) return badgeText;
-    if (!treatOverrideAsFinal && promoMeta.isPromo) return promoMeta.badgeText || "PROMO";
+    if (!treatOverrideAsFinal && promoMeta.isPromo)
+      return promoMeta.badgeText || "PROMO";
     return null;
   }, [badgeText, promoMeta.badgeText, promoMeta.isPromo, treatOverrideAsFinal]);
 
@@ -644,24 +659,21 @@ function ProductCardInner({
       const raw =
         !isDefault && variant?.price != null ? toNum(variant.price) : baseDisplayPrice;
 
-      // ✅ prix final stable (cents) + arrondi MAD
-      // ⚠️ si treatOverrideAsFinal => effectiveRule=null déjà (aucune promo)
-      const finalPrice = fromCents(
-        computePromoCentsFromRule(toCents(raw), effectiveRule)
-      );
+      const finalPrice = treatOverrideAsFinal
+        ? fromCents(roundToMAD(toCents(raw)))
+        : fromCents(computePromoCentsFromRule(toCents(raw), effectiveRule));
+
+      const rawRounded = fromCents(roundToMAD(toCents(raw)));
 
       const productForCart: any = {
         ...anyP,
         price: finalPrice,
         _pricing: {
-          rawPrice: fromCents(roundToMAD(toCents(raw))),
+          rawPrice: rawRounded,
           finalPrice,
-          isPromo: finalPrice < fromCents(roundToMAD(toCents(raw))),
+          isPromo: finalPrice < rawRounded,
           badge: effectiveBadgeText ?? null,
-          oldPrice:
-            finalPrice < fromCents(roundToMAD(toCents(raw)))
-              ? fromCents(roundToMAD(toCents(raw)))
-              : null,
+          oldPrice: finalPrice < rawRounded ? rawRounded : null,
         },
       };
 
@@ -698,6 +710,7 @@ function ProductCardInner({
       hasVariants,
       onAdd,
       subCatToken,
+      treatOverrideAsFinal,
     ]
   );
 
@@ -711,9 +724,12 @@ function ProductCardInner({
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
   /* =========================
-   * Partage (PUBLIC www + image + lien)
+   * ✅ Partage
+   * - URL partagée: /products/:id (direct, sans message)
+   * - URL OG: /share/product/:id (si tu veux l'afficher dans le texte)
    * =======================*/
-  const shareUrl = useMemo(() => buildSharePageUrl(product), [product]);
+  const shareUrl = useMemo(() => buildPublicProductUrl(product), [product]);
+  const ogUrl = useMemo(() => buildShareOgUrl(product), [product]); // optionnel
 
   const shareTitle = useMemo(() => {
     const name = String(anyP.name || "Produit");
@@ -728,6 +744,7 @@ function ProductCardInner({
   const shareText = useMemo(() => {
     const desc = String(anyP.description || "").trim();
     const short = desc ? shortText(desc, 90) : "Disponible sur Duumini.";
+    // ✅ texte propre: lien humain direct (et ogUrl si tu veux le garder ailleurs)
     return `${shareTitle}\n${short}`;
   }, [anyP.description, shareTitle]);
 
@@ -757,6 +774,7 @@ function ProductCardInner({
       return;
     }
 
+    // ✅ iOS/Safari: partager AVEC image si possible, sinon sans
     const img = coverUrl || currentImg || "";
     if (navAny?.share && img) {
       const file = await fetchAsFile(
@@ -1025,15 +1043,14 @@ function ProductCardInner({
     const raw = selected?.price != null ? toNum(selected.price) : null;
     if (raw != null) {
       const final = treatOverrideAsFinal
-        ? raw
+        ? fromCents(roundToMAD(toCents(raw)))
         : fromCents(computePromoCentsFromRule(toCents(raw), effectiveRule));
 
       infoParts.push(`Prix:${moneyMAD(final)}`);
 
+      const rawRounded = fromCents(roundToMAD(toCents(raw)));
       const old =
-        !treatOverrideAsFinal && final < fromCents(roundToMAD(toCents(raw)))
-          ? fromCents(roundToMAD(toCents(raw)))
-          : null;
+        !treatOverrideAsFinal && final < rawRounded ? rawRounded : null;
       if (old != null) infoParts.push(`Ancien:${moneyMAD(old)}`);
     }
 
@@ -1064,7 +1081,10 @@ function ProductCardInner({
         </select>
 
         {infoLine ? (
-          <div className="small mt-2" style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}>
+          <div
+            className="small mt-2"
+            style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}
+          >
             {infoLine}
           </div>
         ) : null}
@@ -1419,7 +1439,7 @@ function ProductCardInner({
       </div>
 
       {/* =========================
-       * MODAL (Partage via lien /share/product/:id)
+       * MODAL
        * =======================*/}
       {open && (
         <div
@@ -1640,6 +1660,16 @@ function ProductCardInner({
                         </div>
                       )}
                     </div>
+
+                    {/* (optionnel) pour debug: OG URL */}
+                    {ogUrl ? (
+                      <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
+                        Aperçu (OG) :{" "}
+                        <a href={ogUrl} target="_blank" rel="noreferrer">
+                          {ogUrl}
+                        </a>
+                      </div>
+                    ) : null}
 
                     {effectiveStock != null && effectiveStock <= 0 && (
                       <div className="alert alert-warning mt-3 py-2 small mb-0">
