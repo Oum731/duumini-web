@@ -131,8 +131,7 @@ function hasRealPromo(p: any) {
 }
 
 /* =========================
- * Variantes (même logique que ProductCard)
- * prix variant = price_override en priorité
+ * Variantes
  * =======================*/
 type UiVariant = {
   id: number;
@@ -253,6 +252,20 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
   );
 }
 
+/* ===== fetch helper (timeout + abort) ===== */
+async function fetchJSON(url: string, ms = 12000, init?: RequestInit) {
+  const controller = new AbortController();
+  const t = window.setTimeout(() => controller.abort(), ms);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    const ok = res.ok;
+    const data = ok ? await res.json() : null;
+    return { res, ok, data };
+  } finally {
+    window.clearTimeout(t);
+  }
+}
+
 export default function ProductView() {
   const { idOrSlug: rawParam } = useParams<{ idOrSlug: string }>();
   const nav = useNavigate();
@@ -347,37 +360,44 @@ export default function ProductView() {
 
         const asId = Number(resolvedIdOrSlug);
         if (Number.isFinite(asId) && asId > 0) {
-          const res = await fetch(`${API_BASE}/api/products/${asId}?variants=1`, { credentials: "omit" });
-          if (res.ok) {
-            const p = (await res.json()) as Product;
-            if (!stop) setProduct(p || null);
+          const r1 = await fetchJSON(`${API_BASE}/api/products/${asId}?variants=1`, 12000, {
+            credentials: "omit",
+          });
+          if (!stop && r1.ok) {
+            setProduct((r1.data as Product) || null);
             return;
           }
         }
 
-        const resSlug = await fetch(`${API_BASE}/api/products/slug/${encodeURIComponent(resolvedIdOrSlug)}?variants=1`, {
-          credentials: "omit",
-        });
-        if (resSlug.ok) {
-          const p = (await resSlug.json()) as Product;
-          if (!stop) setProduct(p || null);
+        const r2 = await fetchJSON(
+          `${API_BASE}/api/products/slug/${encodeURIComponent(resolvedIdOrSlug)}?variants=1`,
+          12000,
+          { credentials: "omit" }
+        );
+        if (!stop && r2.ok) {
+          setProduct((r2.data as Product) || null);
           return;
         }
 
         const cleaned = String(resolvedIdOrSlug).split("?")[0].split("#")[0].trim();
         const n2 = Number(cleaned);
         if (Number.isFinite(n2) && n2 > 0 && cleaned !== resolvedIdOrSlug) {
-          const res2 = await fetch(`${API_BASE}/api/products/${n2}?variants=1`, { credentials: "omit" });
-          if (res2.ok) {
-            const p = (await res2.json()) as Product;
-            if (!stop) setProduct(p || null);
+          const r3 = await fetchJSON(`${API_BASE}/api/products/${n2}?variants=1`, 12000, {
+            credentials: "omit",
+          });
+          if (!stop && r3.ok) {
+            setProduct((r3.data as Product) || null);
             return;
           }
         }
 
         throw new Error("Produit introuvable");
       } catch (e: any) {
-        if (!stop) setError(e?.message || "Erreur de chargement");
+        const msg =
+          e?.name === "AbortError"
+            ? "Chargement trop lent. Réessaie."
+            : e?.message || "Erreur de chargement";
+        if (!stop) setError(msg);
       } finally {
         if (!stop) setLoading(false);
       }
@@ -421,10 +441,14 @@ export default function ProductView() {
         if (vertical === "FASHION") qs.set("includeVariants", "1");
 
         const url = `${API_BASE}/api/products?${qs.toString()}`;
-        const res = await fetch(url, { credentials: "omit" });
-        const data = res.ok ? await res.json() : null;
+        const r = await fetchJSON(url, 12000, { credentials: "omit" });
 
-        const items: Product[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        const data: any = r.ok ? r.data : null;
+        const items: Product[] = Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data)
+          ? data
+          : [];
 
         const rel = items
           .filter((x) => isActiveProduct(x))
@@ -436,7 +460,11 @@ export default function ProductView() {
 
           const label =
             origin?.label ||
-            (subId ? "Plus de produits de la même sous-catégorie" : catId ? "Plus de produits de la même catégorie" : "Vous aimerez aussi");
+            (subId
+              ? "Plus de produits de la même sous-catégorie"
+              : catId
+              ? "Plus de produits de la même catégorie"
+              : "Vous aimerez aussi");
 
           setRelatedTitle(label);
         }
@@ -485,9 +513,12 @@ export default function ProductView() {
     });
   }, [hasVariants, variants]);
 
-  const selectedVariant = useMemo(() => variants.find((v) => v.key === selectedKey) || null, [variants, selectedKey]);
+  const selectedVariant = useMemo(
+    () => variants.find((v) => v.key === selectedKey) || null,
+    [variants, selectedKey]
+  );
 
-  // ✅ prix "normal" (avant promo)
+  // ✅ prix "normal"
   const regularPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
     return basePrice;
@@ -495,7 +526,6 @@ export default function ProductView() {
 
   // ===== promo computed =====
   const promoActive = useMemo(() => hasRealPromo(anyP), [anyP]);
-
   const promoType = useMemo(() => normPromoType(anyP?.promo_discount_type), [anyP?.promo_discount_type]);
   const promoValue = useMemo(() => Number(anyP?.promo_discount_value ?? 0), [anyP?.promo_discount_value]);
 
@@ -504,7 +534,6 @@ export default function ProductView() {
     return computePromoPrice(regularPrice, promoType, promoValue);
   }, [promoActive, promoType, promoValue, regularPrice]);
 
-  // ✅ prix affiché = promo si dispo
   const displayPrice = promoActive ? promoPrice : regularPrice;
 
   const promoSavedLabel = useMemo(() => {
@@ -529,15 +558,14 @@ export default function ProductView() {
     return qtyForProductVariant(pid, key);
   }, [product, hasVariants, qtyForProduct, qtyForProductVariant, selectedVariant]);
 
-  const canAddNow = !isOutOfStock && (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
+  const canAddNow =
+    !isOutOfStock && (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
   const handleAdd = useCallback(() => {
     if (!product) return;
     if (!canAddNow) return;
 
     const pAny = product as any;
-
-    // ✅ IMPORTANT : le prix dans le panier = prix affiché (promo si active)
     const cartPrice = Number(displayPrice || 0);
 
     add(product, 1, {
@@ -616,7 +644,9 @@ export default function ProductView() {
 
         <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
-          <span>{product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}</span>
+          <span>
+            {product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}
+          </span>
         </div>
       </div>
     );
@@ -646,7 +676,6 @@ export default function ProductView() {
               <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
             )}
 
-            {/* ✅ BADGE PROMO sur l'image */}
             {promoActive && (
               <span
                 className="badge"
@@ -690,12 +719,17 @@ export default function ProductView() {
         <div className="col-12 col-md-6">
           <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
             <div className="h5 m-0 d-flex align-items-baseline gap-2 flex-wrap">
-              {/* ✅ prix actuel */}
               <span style={{ fontWeight: 950 }}>{moneyMAD(displayPrice)}</span>
 
-              {/* ✅ ancien prix barré */}
               {promoActive && (
-                <span style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800, fontSize: ".95rem" }}>
+                <span
+                  style={{
+                    textDecoration: "line-through",
+                    color: "rgba(0,0,0,.45)",
+                    fontWeight: 800,
+                    fontSize: ".95rem",
+                  }}
+                >
                   {moneyMAD(regularPrice)}
                 </span>
               )}
@@ -704,9 +738,16 @@ export default function ProductView() {
             <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{badge}</span>
             {hasVariants && <span className="badge text-bg-light border">Variantes</span>}
 
-            {/* ✅ petit pill promo */}
             {promoActive && (
-              <span className="badge" style={{ background: "rgba(229,57,53,.10)", color: "var(--duu-red,#E53935)", border: "1px solid rgba(229,57,53,.20)", fontWeight: 900 }}>
+              <span
+                className="badge"
+                style={{
+                  background: "rgba(229,57,53,.10)",
+                  color: "var(--duu-red,#E53935)",
+                  border: "1px solid rgba(229,57,53,.20)",
+                  fontWeight: 900,
+                }}
+              >
                 {promoSavedLabel}
               </span>
             )}
@@ -716,7 +757,6 @@ export default function ProductView() {
             <ProductRating productId={Number(anyP?.id)} />
           </div>
 
-          {/* ✅ Variantes : liste SANS prix/stock */}
           {hasVariants && (
             <div className="mb-3">
               <div className="small text-muted mb-1">Choisir une variante</div>
@@ -729,7 +769,6 @@ export default function ProductView() {
                 ))}
               </select>
 
-              {/* ✅ Infos sous la liste */}
               {selectedVariant && (
                 <div className="small text-muted mt-2">
                   {selectedVariant.stock != null && (
@@ -738,19 +777,23 @@ export default function ProductView() {
                     </span>
                   )}
 
-                  {/* Prix variante AVANT promo (info) */}
                   {selectedVariant.price != null && !promoActive && (
                     <span>
                       Prix : <strong>{moneyMAD(selectedVariant.price)}</strong>
                     </span>
                   )}
 
-                  {/* Si promo: on montre "avant -> après" proprement */}
                   {promoActive && (
                     <span>
-                      Prix :{" "}
-                      <strong>{moneyMAD(displayPrice)}</strong>{" "}
-                      <span style={{ textDecoration: "line-through", color: "rgba(0,0,0,.45)", fontWeight: 800, marginLeft: 6 }}>
+                      Prix : <strong>{moneyMAD(displayPrice)}</strong>
+                      <span
+                        style={{
+                          textDecoration: "line-through",
+                          color: "rgba(0,0,0,.45)",
+                          fontWeight: 800,
+                          marginLeft: 6,
+                        }}
+                      >
                         {moneyMAD(regularPrice)}
                       </span>
                     </span>
@@ -764,7 +807,6 @@ export default function ProductView() {
             </div>
           )}
 
-          {/* ✅ Actions panier */}
           <div className="d-flex gap-2 mb-3">
             {qtySelected > 0 ? (
               <div className="btn-group" role="group" aria-label="Quantité panier">
@@ -787,7 +829,6 @@ export default function ProductView() {
             {isOutOfStock && <span className="badge text-bg-danger align-self-center">En rupture</span>}
           </div>
 
-          {/* ✅ Description : clic -> modal */}
           {desc ? (
             <>
               <div className="small text-muted mb-1">Description</div>
@@ -818,7 +859,6 @@ export default function ProductView() {
         </div>
       </div>
 
-      {/* ✅ Related */}
       <div className="mt-4">
         <div className="d-flex align-items-center justify-content-between mb-2">
           <h2 className="h6 m-0">{relatedTitle}</h2>
@@ -841,7 +881,11 @@ export default function ProductView() {
       </div>
 
       {infoOpen && (
-        <InfoModal title={String(anyP?.name || "Infos produit")} body={desc || "Aucune description."} onClose={() => setInfoOpen(false)} />
+        <InfoModal
+          title={String(anyP?.name || "Infos produit")}
+          body={desc || "Aucune description."}
+          onClose={() => setInfoOpen(false)}
+        />
       )}
     </div>
   );
