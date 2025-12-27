@@ -78,18 +78,20 @@ export default function CartPage() {
     [removingLineId, removeLine]
   );
 
+  // ✅ 0 => supprime la ligne (UX plus clean)
   const onChangeQty = useCallback(
     (lineId: string, next: number) => {
       if (changingLineId !== null) return;
       const safeNext = Math.max(0, Math.min(999, Math.floor(next || 0)));
       setChangingLineId(lineId);
       try {
-        setQtyLine(lineId, safeNext);
+        if (safeNext <= 0) removeLine(lineId);
+        else setQtyLine(lineId, safeNext);
       } finally {
         setChangingLineId(null);
       }
     },
-    [changingLineId, setQtyLine]
+    [changingLineId, setQtyLine, removeLine]
   );
 
   const goCheckout = useCallback(() => {
@@ -174,9 +176,12 @@ export default function CartPage() {
 
               <tbody>
                 {safeLines.map((l: any) => {
-                  const lineId = String(l.line_id); // ✅ strict (line_id existe dans cart v2)
-                  const rowBusy = removingLineId === lineId || changingLineId === lineId;
+                  // ✅ robuste même si line_id absent
+                  const lineId = String(
+                    l?.line_id || `${Number(l.id || 0)}:${String(l?.variant?.variant_key || "default")}`
+                  );
 
+                  const rowBusy = removingLineId === lineId || changingLineId === lineId;
                   const variantLabel = String(l?.variant?.label || "").trim();
 
                   return (

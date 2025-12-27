@@ -35,7 +35,6 @@ const FocusAndLoadingStyle = () => (
       border: 0 !important;
     }
 
-    /* petites améliorations UI */
     .addr-pill{
       display:inline-flex;
       align-items:center;
@@ -118,8 +117,6 @@ async function trackLocationSuggestion(
 
 /* =========================
    ✅ Livraison
-   - Casablanca: 25 DH
-   - Hors Casablanca: dès 60 DH
    ========================= */
 
 function normToken(x: any) {
@@ -167,7 +164,6 @@ function computeDeliveryFeeByCity(cityLabel: string) {
    ========================= */
 
 function getLineVariantKey(l: any) {
-  // ✅ store v2 : l.variant.variant_key
   return String(l?.variant?.variant_key || "default").trim() || "default";
 }
 function getLineVariantLabel(l: any) {
@@ -180,7 +176,6 @@ function getLineVariantId(l: any) {
   return n > 0 ? n : null;
 }
 function lineKey(l: any) {
-  // ✅ line_id = unique produit + variante
   const lid = String(l?.line_id || "").trim();
   if (lid) return lid;
   const pid = Number(l?.id ?? 0) || 0;
@@ -248,7 +243,9 @@ export default function CheckoutPage() {
   }, [lines]);
 
   const deliveryFee = useMemo(() => computeDeliveryFeeByCity(cityLabel), [cityLabel]);
-  const grandTotal = totalAmount + deliveryFee;
+
+  // ✅ affichage UI uniquement (le backend recalcule et fige les prix)
+  const grandTotalUi = totalAmount + deliveryFee;
 
   const handlePhoneChange = useCallback((e: any) => {
     const v = normalizePhoneInput(e.target.value as string);
@@ -290,9 +287,7 @@ export default function CheckoutPage() {
         setLoadingGps(false);
       },
       (err) => {
-        setGpsErr(
-          err?.message || "Impossible d’obtenir la position (permission refusée ou indisponible)."
-        );
+        setGpsErr(err?.message || "Impossible d’obtenir la position (permission refusée ou indisponible).");
         setLoadingGps(false);
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
@@ -384,7 +379,6 @@ export default function CheckoutPage() {
     const v = String(cityLabel || "").trim();
     if (!v) return;
 
-    // si changement de ville : reset adresse locale (évite incohérence)
     setQuartier("");
     setQuartierSuggestions([]);
     setUseGps(false);
@@ -439,6 +433,7 @@ export default function CheckoutPage() {
       const normalizedPhone = normalizePhoneInput(phone.trim());
       const finalCity = cityLabel || "";
 
+      // ✅ Align backend: buildAddressObj lit { ville/city, commune, quartier/district, gps:{lat,lng} }
       const address: CreateOrderPayload["address"] = hasToken
         ? {
             ville: finalCity || undefined,
@@ -457,6 +452,7 @@ export default function CheckoutPage() {
         ? (`${firstName.trim()} ${lastName.trim()}`.trim() || firstName.trim() || lastName.trim()).trim()
         : guestName.trim();
 
+      // ✅ Align backend: buildContactFromPayload lit {first_name,last_name,name,phone}
       const contact = {
         first_name: hasToken ? firstName.trim() || undefined : undefined,
         last_name: hasToken ? lastName.trim() || undefined : undefined,
@@ -464,49 +460,43 @@ export default function CheckoutPage() {
         phone: normalizedPhone,
       };
 
-      const finalDeliveryFee = deliveryFee;
-      const finalGrandTotal = totalAmount + finalDeliveryFee;
-
       const payload: CreateOrderPayload = {
         contact,
         address,
         delivery: {
           mode: isCasablanca(finalCity) ? ("CASABLANCA" as any) : ("CITY" as any),
-          fee: finalDeliveryFee,
+          fee: Number(deliveryFee || 0), // ✅ backend prend delivery.fee comme source
           currency: "MAD",
         },
 
-        // ✅ Variantes incluses (panier v2)
+        // ✅ IMPORTANT (align promo backend):
+        // On n’envoie PAS le prix depuis le front.
+        // Le backend lock product/variant, applique promo si eligible, puis fige dans order_items.unit_price.
         items: lines.map((l: any) => {
-          const variant_key = getLineVariantKey(l);
-          const variant_label = getLineVariantLabel(l) || null;
           const variant_id = getLineVariantId(l);
-
           return {
             product_id: Number(l.id),
-            name: String(l.name || ""),
-            price: Number(l.price || 0),
             qty: Number(l.qty || 0),
-
-            variant_key,
-            variant_label,
-            variant_id,
-          };
+            variant_id, // null si pas de variante
+          } as any;
         }),
 
+        // ✅ Totals côté front = indicatif seulement (backend recalcule),
+        // mais on garde pour compat/UX.
         totals: {
           items_count: totalItems,
-          items_amount: totalAmount,
-          delivery_fee: finalDeliveryFee,
-          amount: finalGrandTotal,
+          items_amount: Number(totalAmount || 0),
+          delivery_fee: Number(deliveryFee || 0),
+          amount: Number(totalAmount || 0) + Number(deliveryFee || 0),
           currency: "MAD",
         },
+
         payment: {
           method: "COD",
           note: "Paiement à la livraison. Aucun acompte requis.",
         },
 
-        // compat legacy
+        // compat legacy (ton backend ignore si non utilisé, mais on garde)
         address_city: address.ville,
         address_commune: (address as any).commune ?? null,
         address_district: address.quartier,
@@ -515,25 +505,34 @@ export default function CheckoutPage() {
       };
 
       const result = hasToken ? await createOrder(payload) : await createGuestOrder(payload);
-      const orderId = (result as any).id;
 
-      const createdAtStr = (result as any).created_at || (result as any).created || new Date().toISOString();
+      const orderId = (result as any).id;
+      const serverTotal = Number((result as any).total ?? 0);
+      const serverCurrency = String((result as any).currency || "MAD").toUpperCase();
+
+      const createdAtStr =
+        (result as any).created_at || (result as any).created || new Date().toISOString();
       const createdAt = new Date(createdAtStr);
 
       const numericId = typeof orderId === "number" ? orderId : Number(orderId) || 0;
-      const displayCode = numericId ? numericId.toString(36).toUpperCase() : String(orderId ?? "").toUpperCase();
+      const displayCode = numericId
+        ? numericId.toString(36).toUpperCase()
+        : String(orderId ?? "").toUpperCase();
 
+      // ✅ Analytics : utiliser le total renvoyé par le serveur (prix figé + promo variant + etc.)
       try {
         trackPurchase({
           orderId: orderId ?? displayCode,
-          value: finalGrandTotal,
-          currency: "MAD",
+          value: serverTotal || Number(totalAmount + deliveryFee),
+          currency: serverCurrency,
           items: lines.map((l: any) => {
             const category =
               l.category_name ||
               l.sub_category_name ||
               l.sub_category_slug ||
-              (l.sub_category_id != null && String(l.sub_category_id).trim() !== "" ? String(l.sub_category_id) : "") ||
+              (l.sub_category_id != null && String(l.sub_category_id).trim() !== ""
+                ? String(l.sub_category_id)
+                : "") ||
               "";
 
             const vLabel = getLineVariantLabel(l);
@@ -542,7 +541,7 @@ export default function CheckoutPage() {
             return {
               id: Number(l.id),
               name: String(name || ""),
-              price: Number(l.price || 0),
+              price: Number(l.price || 0), // indicatif (on n’a pas le unit_price figé ici)
               quantity: Number(l.qty || 0),
               category,
             };
@@ -570,6 +569,8 @@ export default function CheckoutPage() {
             etaTarget: etaEnd.toISOString(),
             guest: !hasToken,
             city: finalCity || null,
+            total: serverTotal || null,
+            currency: serverCurrency,
           })
         );
         if (!hasToken) {
@@ -635,11 +636,11 @@ export default function CheckoutPage() {
     () => (
       <div className="text-end">
         <div className="small text-muted">Total à payer</div>
-        <div className="h5 m-0">{mad(grandTotal)}</div>
+        <div className="h5 m-0">{mad(grandTotalUi)}</div>
         <div className="small text-muted">Dont livraison: {mad(deliveryFee)}</div>
       </div>
     ),
-    [grandTotal, deliveryFee]
+    [grandTotalUi, deliveryFee]
   );
 
   if (!isReady || loading) {
@@ -761,7 +762,11 @@ export default function CheckoutPage() {
               Changer de ville
             </button>
 
-            {hasPromoInCart && <span className="badge text-bg-warning">Promo active (sans livraison gratuite)</span>}
+            {hasPromoInCart && (
+              <span className="badge text-bg-warning">
+                Promo active — prix final confirmé à la commande
+              </span>
+            )}
           </div>
         </div>
 
@@ -789,7 +794,9 @@ export default function CheckoutPage() {
           </div>
 
           {guestConfirmed && (
-            <p className="mt-2 small mb-0">✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.</p>
+            <p className="mt-2 small mb-0">
+              ✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.
+            </p>
           )}
         </div>
       )}
@@ -826,11 +833,21 @@ export default function CheckoutPage() {
                 <div className="row g-3">
                   <div className="col-12 col-md-6">
                     <label className="form-label">Prénom</label>
-                    <input className="form-control" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Prénom" />
+                    <input
+                      className="form-control"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Prénom"
+                    />
                   </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label">Nom</label>
-                    <input className="form-control" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Nom" />
+                    <input
+                      className="form-control"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Nom"
+                    />
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -847,7 +864,9 @@ export default function CheckoutPage() {
                         Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
-                    <div className="form-text">🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.</div>
+                    <div className="form-text">
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                    </div>
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -879,7 +898,11 @@ export default function CheckoutPage() {
                           </div>
                         </div>
                         <div className="d-flex gap-2">
-                          <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => setEditingAddress(true)}>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={() => setEditingAddress(true)}
+                          >
                             Changer d’adresse
                           </button>
                         </div>
@@ -926,7 +949,9 @@ export default function CheckoutPage() {
                             />
                           )}
 
-                          <div className="form-text">{loadingSuggest ? "Chargement suggestions…" : "Choisissez une commune ou saisissez-la."}</div>
+                          <div className="form-text">
+                            {loadingSuggest ? "Chargement suggestions…" : "Choisissez une commune ou saisissez-la."}
+                          </div>
                         </div>
 
                         <div className="col-12 col-md-6">
@@ -949,7 +974,9 @@ export default function CheckoutPage() {
                             </>
                           ) : (
                             <div className="alert alert-info d-flex justify-content-between align-items-center">
-                              <span>Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.</span>
+                              <span>
+                                Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
+                              </span>
                               <button
                                 className="btn btn-sm btn-outline-dark"
                                 type="button"
@@ -1030,7 +1057,9 @@ export default function CheckoutPage() {
                         Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
-                    <div className="form-text">🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.</div>
+                    <div className="form-text">
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                    </div>
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -1053,7 +1082,9 @@ export default function CheckoutPage() {
                       <span>Adresse complète / Localisation</span>
                       <span className="small">
                         {useGps && coords ? (
-                          <span className="text-success">GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</span>
+                          <span className="text-success">
+                            GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                          </span>
                         ) : (
                           <button
                             type="button"
@@ -1083,7 +1114,9 @@ export default function CheckoutPage() {
                     ) : (
                       <>
                         <div className="alert alert-info d-flex justify-content-between align-items-center">
-                          <span>Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.</span>
+                          <span>
+                            Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
+                          </span>
                           <button
                             className="btn btn-sm btn-outline-dark"
                             type="button"
@@ -1118,9 +1151,12 @@ export default function CheckoutPage() {
 
               <div className="alert alert-light border mb-0">
                 <div className="fw-semibold">🚚 {deliveryTitle}</div>
-                <div className="small text-muted">La livraison est calculée automatiquement selon votre ville.</div>
+                <div className="small text-muted">
+                  La livraison est calculée automatiquement selon votre ville.
+                </div>
                 <div className="small mt-2">
-                  Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais : <strong>{mad(deliveryFee)}</strong>
+                  Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais :{" "}
+                  <strong>{mad(deliveryFee)}</strong>
                 </div>
               </div>
             </div>
@@ -1156,17 +1192,29 @@ export default function CheckoutPage() {
             <div className="card-body">
               <h2 className="h6 mb-3">Récapitulatif</h2>
 
+              {hasPromoInCart && (
+                <div className="alert alert-warning small">
+                  ⚠️ Certaines lignes sont en promo : le <strong>backend calcule</strong> et{" "}
+                  <strong>fige</strong> le prix final (incluant variante + promo éligible) au moment
+                  de créer la commande.
+                </div>
+              )}
+
               <ul className="list-group list-group-flush">
                 {lines.map((l: any) => {
                   const vLabel = getLineVariantLabel(l);
                   return (
-                    <li key={lineKey(l)} className="list-group-item d-flex justify-content-between align-items-start">
+                    <li
+                      key={lineKey(l)}
+                      className="list-group-item d-flex justify-content-between align-items-start"
+                    >
                       <div className="me-3 text-truncate" style={{ maxWidth: 280 }}>
                         <div className="text-truncate">
                           {l.name} <span className="text-muted">×{l.qty}</span>
                         </div>
                         {vLabel && <div className="small text-muted text-truncate">Variante : {vLabel}</div>}
                       </div>
+                      {/* UI only */}
                       <span className="fw-semibold">{mad((l.qty || 0) * (l.price || 0))}</span>
                     </li>
                   );
@@ -1185,13 +1233,14 @@ export default function CheckoutPage() {
 
               <div className="d-flex justify-content-between align-items-center">
                 <div className="text-muted">Total à payer</div>
-                <div className="h5 m-0">{mad(grandTotal)}</div>
+                <div className="h5 m-0">{mad(grandTotalUi)}</div>
               </div>
 
               <div className="alert alert-secondary mt-3 mb-0">
                 <div className="fw-semibold mb-1">Paiement à la livraison</div>
                 <small className="d-block text-muted">
-                  Vous réglez <strong>à la réception</strong> — en <strong>espèces</strong>. Aucun acompte requis.
+                  Vous réglez <strong>à la réception</strong> — en <strong>espèces</strong>. Aucun
+                  acompte requis.
                 </small>
               </div>
             </div>

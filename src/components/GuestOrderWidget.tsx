@@ -1,21 +1,27 @@
 // src/components/GuestOrderWidget.tsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
+import { mad } from "../store/cart";
 
 const STORAGE_KEY = "duumini:lastOrderInfo";
 const MINIMIZED_KEY = "duumini:guestWidgetMinimized";
 
 type GuestOrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCELLED";
 
+type DeliveryMode = "CASABLANCA" | "CITY";
+
 type GuestOrderInfo = {
-  id: number;
+  id: number | string;
   code: string;
-  etaStart: string;
-  etaEnd: string;
-  etaTarget: string;
-  createdAt: string;
-  deliveryMode: "EXPRESS" | "SIMPLE";
+  etaStart?: string | null;
+  etaEnd?: string | null;
+  etaTarget?: string | null;
+  createdAt?: string | null;
+  deliveryMode?: DeliveryMode;
   guest: boolean;
+  city?: string | null;
+  currency?: string | null;
+  total?: number | null;
   status?: GuestOrderStatus;
   done?: boolean;
   isDone?: boolean;
@@ -26,17 +32,52 @@ function formatTimeLabel(d: Date): string {
   return s.replace(":", "h");
 }
 
+function clampToDeliveryHours(d: Date): { inHours: boolean; nextSlot?: Date } {
+  // Horaires : 09h00 - 20h00
+  const startH = 9;
+  const endH = 20;
+
+  const x = new Date(d);
+  const h = x.getHours();
+  const m = x.getMinutes();
+
+  const afterStart = h > startH || (h === startH && m >= 0);
+  const beforeEnd = h < endH || (h === endH && m <= 0);
+  const inHours = afterStart && beforeEnd;
+
+  if (inHours) return { inHours: true };
+
+  // Prochain créneau de livraison
+  const next = new Date(x);
+  if (h < startH) {
+    next.setHours(startH, 0, 0, 0);
+    return { inHours: false, nextSlot: next };
+  }
+  // après 20h → lendemain 09h
+  next.setDate(next.getDate() + 1);
+  next.setHours(startH, 0, 0, 0);
+  return { inHours: false, nextSlot: next };
+}
+
 function formatCountdown(target: Date): string | null {
   const now = Date.now();
   const diff = target.getTime() - now;
   if (diff <= 0) return null;
 
   const sec = Math.floor(diff / 1000);
-  const m = Math.floor(sec / 60);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
 
-  if (m >= 1) return `${m}min ${s}s`;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}min`;
+  if (m >= 1) return `${m}min ${String(s).padStart(2, "0")}s`;
   return `${s}s`;
+}
+
+function deliveryLabel(mode?: DeliveryMode) {
+  if (mode === "CASABLANCA") return "Casablanca (25 DH)";
+  if (mode === "CITY") return "Hors Casablanca (dès 60 DH)";
+  return "Livraison";
 }
 
 export default function GuestOrderWidget({ children }: { children?: React.ReactNode }) {
@@ -76,10 +117,6 @@ export default function GuestOrderWidget({ children }: { children?: React.ReactN
 
       setHasCityButton(!!cityBtn);
 
-      // ⚠️ IMPORTANT: on ne doit pas détecter "n'importe quel .modal"
-      // sinon dès qu'une autre modal apparaît → ton widget peut disparaître (ok)
-      // mais surtout, si un style modal-open reste collé, ça perturbe le scroll.
-      // Ici on check seulement la modal de LocationGate (elle a une backdrop + modal show)
       const hasBackdrop = !!document.querySelector(".modal-backdrop.fade.show");
       const hasModal = !!document.querySelector(".modal.fade.show");
       setIsCityModalOpen(hasBackdrop && hasModal);
@@ -107,7 +144,6 @@ export default function GuestOrderWidget({ children }: { children?: React.ReactN
         }
 
         const parsed = JSON.parse(raw);
-
         if (!parsed?.guest) {
           setInfo(null);
           return;
@@ -136,18 +172,25 @@ export default function GuestOrderWidget({ children }: { children?: React.ReactN
           parsed.code ||
           (numericId ? numericId.toString(36).toUpperCase() : String(parsed.id ?? ""));
 
+        const modeRaw = String(parsed.deliveryMode || "").toUpperCase();
+        const deliveryMode: DeliveryMode =
+          modeRaw.includes("CASA") ? "CASABLANCA" : "CITY";
+
         setInfo({
-          id: numericId,
+          id: parsed.id ?? numericId,
           code,
-          createdAt: parsed.createdAt,
-          etaStart: parsed.etaStart,
-          etaEnd: parsed.etaEnd,
-          etaTarget: parsed.etaTarget,
-          deliveryMode: parsed.deliveryMode === "EXPRESS" ? "EXPRESS" : "SIMPLE",
+          createdAt: parsed.createdAt || null,
+          etaStart: parsed.etaStart || null,
+          etaEnd: parsed.etaEnd || null,
+          etaTarget: parsed.etaTarget || null,
+          deliveryMode,
           guest: true,
           status,
           done: parsed.done === true,
           isDone: parsed.isDone === true,
+          city: parsed.city ?? null,
+          total: parsed.total != null ? Number(parsed.total) || null : null,
+          currency: parsed.currency ? String(parsed.currency).toUpperCase() : "MAD",
         });
 
         setMinimized(isMinimized);
@@ -169,146 +212,215 @@ export default function GuestOrderWidget({ children }: { children?: React.ReactN
     setMinimized(true);
     try {
       window.localStorage.setItem(MINIMIZED_KEY, "1");
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }, []);
 
   const handleOpenPanel = useCallback(() => {
     setMinimized(false);
     try {
       window.localStorage.setItem(MINIMIZED_KEY, "0");
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }, []);
 
-  // ✅ empilement bas-gauche si bouton ville présent
   const minimizedBottom = hasCityButton ? "4.5rem" : "1rem";
+
+  // ✅ Prépare le message livraison précis (09h → 20h)
+  const deliveryMessage = useMemo(() => {
+    if (!info) return null;
+
+    const start = info.etaStart ? new Date(info.etaStart) : null;
+    const end = info.etaEnd ? new Date(info.etaEnd) : null;
+    const target = info.etaTarget ? new Date(info.etaTarget) : null;
+
+    const hoursText = "Nous livrons uniquement entre 09h et 20h.";
+
+    // Fallback si pas d'ETA
+    if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return {
+        title: "Livraison en cours de traitement",
+        subtitle: hoursText,
+        intervalLabel: null as string | null,
+        countdown: target && !isNaN(target.getTime()) ? formatCountdown(target) : null,
+        note: "Votre commande est confirmée. Nous vous appelons si besoin.",
+      };
+    }
+
+    // Ajustement horaires 09h-20h
+    const c1 = clampToDeliveryHours(start);
+    const c2 = clampToDeliveryHours(end);
+
+    const baseInterval = `${formatTimeLabel(start)} - ${formatTimeLabel(end)}`;
+
+    // Si la plage est hors horaires → message “prochain créneau”
+    if (!c1.inHours || !c2.inHours) {
+      const nextSlot = c1.nextSlot || c2.nextSlot || null;
+      const nextLabel = nextSlot ? formatTimeLabel(nextSlot) : "09h00";
+
+      return {
+        title: "Livraison programmée",
+        subtitle: hoursText,
+        intervalLabel: baseInterval,
+        countdown: target && !isNaN(target.getTime()) ? formatCountdown(target) : null,
+        note: `La plage estimée dépasse nos horaires. Livraison au prochain créneau (à partir de ${nextLabel}).`,
+      };
+    }
+
+    return {
+      title: "Livraison estimée",
+      subtitle: hoursText,
+      intervalLabel: baseInterval,
+      countdown: target && !isNaN(target.getTime()) ? formatCountdown(target) : null,
+      note: null as string | null,
+    };
+  }, [info, nowTs]);
 
   // ✅ overlay rendu (peut être null)
   let overlay: React.ReactNode = null;
 
-  // ✅ si user connecté → overlay jamais affiché
   if (!user && info) {
-    const etaStart = new Date(info.etaStart);
-    const etaEnd = new Date(info.etaEnd);
-    const etaTarget = new Date(info.etaTarget);
+    const target = info.etaTarget ? new Date(info.etaTarget) : null;
 
-    const toleranceMs = 2 * 60 * 60 * 1000;
-    if (nowTs - etaTarget.getTime() > toleranceMs) {
-      clearStorage();
-    } else {
-      const intervalLabel = `${formatTimeLabel(etaStart)} - ${formatTimeLabel(etaEnd)}`;
-      const countdown = formatCountdown(etaTarget);
+    // ✅ auto-clean si widget trop vieux
+    if (target && !isNaN(target.getTime())) {
+      const toleranceMs = 2 * 60 * 60 * 1000;
+      if (nowTs - target.getTime() > toleranceMs) {
+        clearStorage();
+      }
+    }
 
-      if (minimized) {
-        if (!isCityModalOpen) {
-          overlay = (
-            <div
-              className="position-fixed"
-              style={{
-                bottom: minimizedBottom,
-                left: "1rem",
-                zIndex: 2100,
-              }}
-            >
-              <button
-                type="button"
-                className="btn btn-duu shadow-sm"
-                style={{
-                  borderRadius: 999,
-                  fontSize: "0.85rem",
-                  padding: "0.45rem 0.9rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                }}
-                onClick={handleOpenPanel}
-              >
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: "var(--duu-red)",
-                  }}
-                />
-                <span>Suivre ma commande</span>
-              </button>
-            </div>
-          );
-        }
-      } else {
+    const dlvLabel = deliveryLabel(info.deliveryMode);
+
+    if (minimized) {
+      if (!isCityModalOpen) {
         overlay = (
           <div
             className="position-fixed"
             style={{
-              bottom: "5.5rem",
-              right: "1rem",
-              zIndex: 1999,
-              maxWidth: 360,
-              width: "calc(100% - 2rem)",
+              bottom: minimizedBottom,
+              left: "1rem",
+              zIndex: 2100,
             }}
           >
-            <div
-              className="shadow-lg rounded-3 p-3"
+            <button
+              type="button"
+              className="btn btn-duu shadow-sm"
               style={{
-                background: "#ffffff",
-                borderRadius: "14px",
-                border: "1px solid rgba(0,0,0,.06)",
-                boxShadow: "0 4px 16px rgba(0,0,0,.12)",
+                borderRadius: 999,
+                fontSize: "0.85rem",
+                padding: "0.45rem 0.9rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
               }}
+              onClick={handleOpenPanel}
             >
-              <div className="d-flex justify-content-between align-items-start mb-2">
-                <div>
-                  <div
-                    className="small fw-semibold text-uppercase"
-                    style={{ color: "var(--duu-black)", fontSize: "0.7rem" }}
-                  >
-                    Suivi commande
-                  </div>
-                  <div className="small" style={{ color: "var(--duu-black)", opacity: 0.8 }}>
-                    Commande #{info.code}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleClosePanel}
-                  className="btn btn-sm btn-outline-secondary"
-                  style={{ lineHeight: 1, padding: "0.15rem 0.4rem", fontSize: "0.8rem" }}
-                  aria-label="Réduire le suivi de commande"
-                >
-                  ⎯
-                </button>
-              </div>
-
-              <div className="small mb-1" style={{ color: "var(--duu-black)" }}>
-                Livraison estimée{" "}
-                <strong style={{ color: "var(--duu-red)" }}>{intervalLabel}</strong>{" "}
-                {info.deliveryMode === "EXPRESS" ? "(Express)" : ""}.
-              </div>
-
-              {countdown && (
-                <div className="small">
-                  Arrivée estimée dans{" "}
-                  <strong style={{ color: "var(--duu-red)" }}>{countdown}</strong>.
-                </div>
-              )}
-
-              <div className="small text-muted mt-2">
-                Vous pouvez continuer à naviguer, nous gardons cet aperçu pour vous.
-              </div>
-            </div>
+              <span
+                style={{
+                  display: "inline-block",
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "var(--duu-red)",
+                }}
+              />
+              <span>Suivre ma commande</span>
+            </button>
           </div>
         );
       }
+    } else {
+      overlay = (
+        <div
+          className="position-fixed"
+          style={{
+            bottom: "5.5rem",
+            right: "1rem",
+            zIndex: 1999,
+            maxWidth: 380,
+            width: "calc(100% - 2rem)",
+          }}
+        >
+          <div
+            className="shadow-lg rounded-3 p-3"
+            style={{
+              background: "#ffffff",
+              borderRadius: "14px",
+              border: "1px solid rgba(0,0,0,.06)",
+              boxShadow: "0 4px 16px rgba(0,0,0,.12)",
+            }}
+          >
+            <div className="d-flex justify-content-between align-items-start mb-2">
+              <div style={{ minWidth: 0 }}>
+                <div
+                  className="small fw-semibold text-uppercase"
+                  style={{ color: "var(--duu-black)", fontSize: "0.7rem" }}
+                >
+                  Suivi commande
+                </div>
+                <div className="small" style={{ color: "var(--duu-black)", opacity: 0.85 }}>
+                  Commande <strong>#{info.code}</strong>
+                  <span className="text-muted"> • {dlvLabel}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClosePanel}
+                className="btn btn-sm btn-outline-secondary"
+                style={{ lineHeight: 1, padding: "0.15rem 0.4rem", fontSize: "0.8rem" }}
+                aria-label="Réduire le suivi de commande"
+              >
+                ⎯
+              </button>
+            </div>
+
+            {/* ✅ Message livraison précis (09h-20h) */}
+            {deliveryMessage && (
+              <div className="small mb-2" style={{ color: "var(--duu-black)" }}>
+                <div className="fw-semibold">{deliveryMessage.title}</div>
+                {deliveryMessage.intervalLabel && (
+                  <div className="mt-1">
+                    Plage estimée :{" "}
+                    <strong style={{ color: "var(--duu-red)" }}>{deliveryMessage.intervalLabel}</strong>
+                  </div>
+                )}
+                <div className="text-muted mt-1">{deliveryMessage.subtitle}</div>
+                {deliveryMessage.note && (
+                  <div className="alert alert-warning py-2 px-2 mt-2 mb-0 small">
+                    {deliveryMessage.note}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {deliveryMessage?.countdown && (
+              <div className="small">
+                Arrivée estimée dans{" "}
+                <strong style={{ color: "var(--duu-red)" }}>{deliveryMessage.countdown}</strong>.
+              </div>
+            )}
+
+            {/* ✅ Infos normales : total + ville */}
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+              <div className="small text-muted">
+                {info.city ? `Ville: ${info.city}` : "Ville: —"}
+              </div>
+              {info.total != null && (
+                <div className="small">
+                  Total: <strong>{mad(info.total)}</strong> <span className="text-muted">{info.currency || "MAD"}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="small text-muted mt-2">
+              Vous pouvez continuer à naviguer, nous gardons cet aperçu pour vous.
+            </div>
+          </div>
+        </div>
+      );
     }
   }
 
-  // ✅ IMPORTANT: on rend TOUJOURS le site + l’overlay par dessus
   return (
     <>
       {children ?? null}

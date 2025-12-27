@@ -18,6 +18,11 @@ import {
 } from "recharts";
 import { subscribeSSE, type ServerEvent } from "../services/events";
 import { getAccessToken } from "../services/auth";
+import {
+  listSnapshots,
+  createMonthlySnapshot,
+  type SalesSnapshot,
+} from "../services/snapshots";
 
 export type SalesPoint = { date: string; revenue: number; orders: number };
 
@@ -27,6 +32,7 @@ function mad(n?: number | null) {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "MAD",
+    maximumFractionDigits: 0,
   }).format(v);
 }
 function shortDate(iso?: string | null) {
@@ -34,6 +40,16 @@ function shortDate(iso?: string | null) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+}
+function shortMonth(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
+}
+function num(x: any) {
+  const v = typeof x === "number" ? x : Number(String(x ?? "0").replace(",", "."));
+  return Number.isFinite(v) ? v : 0;
 }
 function safeTotal(o: any): number {
   const candidates = [o?.total, o?.total_amount, o?.amount];
@@ -46,12 +62,7 @@ function normStatus(s: any): string {
   return String(s || "").trim().toUpperCase();
 }
 function readTotalFromPaged(res: any): number {
-  return (
-    res?.pageInfo?.total ??
-    res?.total ??
-    (Array.isArray(res?.items) ? res.items.length : 0) ??
-    0
-  );
+  return res?.pageInfo?.total ?? res?.total ?? (Array.isArray(res?.items) ? res.items.length : 0) ?? 0;
 }
 
 /**
@@ -65,16 +76,10 @@ function itemsAmount(o: any): number {
   const anyO = o as any;
   const totals = anyO.totals;
 
-  // 1) Backend fournit directement le sous-total
-  if (
-    totals &&
-    typeof totals.items_amount === "number" &&
-    !isNaN(totals.items_amount)
-  ) {
+  if (totals && typeof totals.items_amount === "number" && !isNaN(totals.items_amount)) {
     return Number(totals.items_amount);
   }
 
-  // 2) Recalcul via les lignes d'articles
   if (Array.isArray(anyO.items) && anyO.items.length > 0) {
     return anyO.items.reduce((sum: number, it: any) => {
       const unit = Number(it.unit_price ?? it.price ?? 0);
@@ -83,13 +88,8 @@ function itemsAmount(o: any): number {
     }, 0);
   }
 
-  // 3) Fallback : total - frais de livraison éventuels
   const total = safeTotal(anyO);
-  const feeCandidates = [
-    totals?.delivery_fee,
-    anyO.delivery_fee,
-    anyO.delivery?.fee,
-  ];
+  const feeCandidates = [totals?.delivery_fee, anyO.delivery_fee, anyO.delivery?.fee];
   const feeRaw =
     feeCandidates.find((x: any) => typeof x === "number") ??
     Number(feeCandidates.find((x: any) => x != null));
@@ -120,10 +120,9 @@ function useChartHeight() {
   return h;
 }
 
-/* ======= Flag mobile (pour micro-ajustements d'affichage) ======= */
+/* ======= Flag mobile ======= */
 function useIsMobile(breakpoint = 576) {
-  const pick = () =>
-    typeof window !== "undefined" ? window.innerWidth < breakpoint : false;
+  const pick = () => (typeof window !== "undefined" ? window.innerWidth < breakpoint : false);
   const [m, setM] = useState<boolean>(pick);
   useEffect(() => {
     const onR = () => setM(pick());
@@ -149,31 +148,24 @@ function dateKeyTZ(d: Date, timeZone = "Africa/Casablanca") {
   return `${y}-${m}-${day}`;
 }
 function weekdayNameTZ(d: Date, timeZone = "Africa/Casablanca") {
-  return new Intl.DateTimeFormat("fr-MA", { timeZone, weekday: "long" })
-    .format(d)
-    .toLowerCase();
+  return new Intl.DateTimeFormat("fr-MA", { timeZone, weekday: "long" }).format(d).toLowerCase();
 }
 function getStartOfWeekTZ(today: Date, timeZone = "Africa/Casablanca") {
-  // Semaine: lundi -> dimanche (FR)
   const t = new Date(today);
   for (let i = 0; i < 7; i++) {
     const d = new Date(t);
     d.setDate(t.getDate() - i);
-    if (weekdayNameTZ(d, timeZone) === "lundi") {
-      return d;
-    }
+    if (weekdayNameTZ(d, timeZone) === "lundi") return d;
   }
-  return new Date(today); // fallback
+  return new Date(today);
 }
-function getStartOfMonthTZ(today: Date, _timeZone = "Africa/Casablanca") {
-  // 1er jour du mois courant
+function getStartOfMonthTZ(today: Date) {
   const d = new Date(today);
   d.setDate(1);
   return d;
 }
 
 /* ======= 🔁 Helpers DONE date ======= */
-// Retourne la date effective de comptabilisation (date de DONE).
 function doneDate(o: any): Date | null {
   if (normStatus(o?.status) !== "DONE") return null;
   const iso =
@@ -190,15 +182,23 @@ function doneKey(o: any, tz = "Africa/Casablanca"): string | null {
   return d ? dateKeyTZ(d, tz) : null;
 }
 
-/* ======= Résumé (KPIs + séries) ======= */
+/* ======= Snapshot UI helpers ======= */
+function monthKeyOfNowTZ(tz = "Africa/Casablanca") {
+  const now = new Date();
+  // on derive YYYY-MM via dateKeyTZ pour respecter TZ
+  const k = dateKeyTZ(now, tz);
+  return k.slice(0, 7);
+}
+function isSameKey(a?: string | null, b?: string | null) {
+  return String(a || "") === String(b || "");
+}
+
 type Summary = {
-  // ⚠️ Ces CA sont HORS frais de livraison (sous-total produits)
   revenue_today: number;
   revenue_week: number;
   revenue_month: number;
   revenue_year: number;
 
-  // Commissions Duumini (MAD) pour commandes DONE
   duumini_commission_today: number;
   duumini_commission_week: number;
   duumini_commission_month: number;
@@ -208,17 +208,15 @@ type Summary = {
   products_active: number;
   shops_total: number;
   users_total: number;
+
   sales_series: SalesPoint[];
 };
 
-/** Pagination front pour charger suffisamment de commandes afin d’agréger jour/semaine/mois. */
 async function fetchOrdersPaginatedForAggregation() {
   const maxPages = 20;
   const pageSize = 200;
   const all: Order[] = [];
-
   for (let page = 1; page <= maxPages; page++) {
-    // 🔥 On demande explicitement les commandes DONE
     const res = await listOrders({ page, pageSize, status: "DONE" } as any);
     const items: Order[] = Array.isArray(res?.items) ? res.items : [];
     if (!items.length) break;
@@ -229,21 +227,18 @@ async function fetchOrdersPaginatedForAggregation() {
 }
 
 async function buildSummary(): Promise<Summary> {
-  // 1) Pages courtes pour totaux entités
   const [productsRes, shopsRes, usersRes] = await Promise.all([
     listProducts({ page: 1, pageSize: 1 }),
     listShops({ page: 1, pageSize: 1 }),
     listUsers({ page: 1, pageSize: 1 }),
   ]);
 
-  // 2) Chargement paginé pour l’agrégation (uniquement DONE côté backend)
   const ordersAll: Order[] = await fetchOrdersPaginatedForAggregation();
 
   const TZ = "Africa/Casablanca";
   const today = new Date();
   const todayKey = dateKeyTZ(today, TZ);
 
-  // Semaine (lundi → aujourd’hui)
   const startWeek = getStartOfWeekTZ(today, TZ);
   const weekKeys = new Set<string>();
   for (let i = 0; i < 7; i++) {
@@ -254,14 +249,12 @@ async function buildSummary(): Promise<Summary> {
     if (key === todayKey) break;
   }
 
-  // Mois (1er → aujourd’hui)
-  const startMonth = getStartOfMonthTZ(today, TZ);
+  const startMonth = getStartOfMonthTZ(today);
   const monthKeys = new Set<string>();
   for (let d = new Date(startMonth); d <= today; d.setDate(d.getDate() + 1)) {
     monthKeys.add(dateKeyTZ(d, TZ));
   }
 
-  // Année (01/01 → aujourd’hui)
   const startYear = new Date(today.getFullYear(), 0, 1);
   const yearKeys = new Set<string>();
   for (let d = new Date(startYear); d <= today; d.setDate(d.getDate() + 1)) {
@@ -273,61 +266,51 @@ async function buildSummary(): Promise<Summary> {
   let revenue_month = 0;
   let revenue_year = 0;
 
-  let duumini_today = 0;
-  let duumini_week = 0;
-  let duumini_month = 0;
-  let duumini_year = 0;
+  let duu_today = 0;
+  let duu_week = 0;
+  let duu_month = 0;
+  let duu_year = 0;
 
-  // Comptabiliser par date de DONE
   for (const o of ordersAll) {
-    // ⚠️ Sécurité : on ne garde que les DONE
     if (normStatus((o as any)?.status) !== "DONE") continue;
 
     const key = doneKey(o, TZ);
     if (!key) continue;
 
-    // 💰 Sous-total produits (CA hors livraison)
     const amount = itemsAmount(o as any);
 
-    // 💸 Commission Duumini (MAD) stockée sur la commande (plusieurs noms possibles)
     const commissionRaw =
-      (o as any).commission_duumini ??
-      (o as any).duumini_commission ??
-      (o as any).commission ??
-      0;
+      (o as any).commission_duumini ?? (o as any).duumini_commission ?? (o as any).commission ?? 0;
     const commission = Number(commissionRaw) || 0;
 
     if (key === todayKey) {
       revenue_today += amount;
-      duumini_today += commission;
+      duu_today += commission;
     }
     if (weekKeys.has(key)) {
       revenue_week += amount;
-      duumini_week += commission;
+      duu_week += commission;
     }
     if (monthKeys.has(key)) {
       revenue_month += amount;
-      duumini_month += commission;
+      duu_month += commission;
     }
     if (yearKeys.has(key)) {
       revenue_year += amount;
-      duumini_year += commission;
+      duu_year += commission;
     }
   }
 
-  // 🔹 Nombre de commandes encore en attente (OPEN + PREPARATION)
   const [openRes, prepRes] = await Promise.all([
     listOrders({ page: 1, pageSize: 1, status: "OPEN" } as any),
     listOrders({ page: 1, pageSize: 1, status: "PREPARATION" } as any),
   ]);
-  const orders_pending =
-    readTotalFromPaged(openRes) + readTotalFromPaged(prepRes);
+  const orders_pending = readTotalFromPaged(openRes) + readTotalFromPaged(prepRes);
 
   const products_active = readTotalFromPaged(productsRes);
   const shops_total = readTotalFromPaged(shopsRes);
   const users_total = readTotalFromPaged(usersRes);
 
-  // Séries 30 jours (CA hors livraison + nb cmd / jour), toujours sur DONE
   const days = 30;
   const map = new Map<string, { revenue: number; orders: number }>();
   for (let i = days - 1; i >= 0; i--) {
@@ -342,25 +325,24 @@ async function buildSummary(): Promise<Summary> {
     const bucket = map.get(key);
     if (!bucket) continue;
     bucket.orders += 1;
-    bucket.revenue += itemsAmount(o as any); // 🔥 CA sans livraison
+    bucket.revenue += itemsAmount(o as any);
   }
-  const sales_series: SalesPoint[] = Array.from(map.entries()).map(
-    ([k, v]) => ({
-      date: k.slice(5), // "MM-DD"
-      revenue: v.revenue,
-      orders: v.orders,
-    })
-  );
+
+  const sales_series: SalesPoint[] = Array.from(map.entries()).map(([k, v]) => ({
+    date: k.slice(5),
+    revenue: v.revenue,
+    orders: v.orders,
+  }));
 
   return {
     revenue_today,
     revenue_week,
     revenue_month,
     revenue_year,
-    duumini_commission_today: duumini_today,
-    duumini_commission_week: duumini_week,
-    duumini_commission_month: duumini_month,
-    duumini_commission_year: duumini_year,
+    duumini_commission_today: duu_today,
+    duumini_commission_week: duu_week,
+    duumini_commission_month: duu_month,
+    duumini_commission_year: duu_year,
     orders_pending,
     products_active,
     shops_total,
@@ -369,19 +351,120 @@ async function buildSummary(): Promise<Summary> {
   };
 }
 
+/* ======= Badge color ======= */
+function statusClass(s: string) {
+  const st = String(s || "").toUpperCase();
+  if (st === "DONE") return "bg-success";
+  if (st === "CANCELLED") return "bg-danger";
+  if (st === "DELIVERY") return "bg-primary";
+  if (st === "PREPARATION") return "bg-warning text-dark";
+  return "bg-secondary";
+}
+
+/* ======= Snapshot card UI (bien design) ======= */
+function SnapshotCard({
+  snapshot,
+  active,
+}: {
+  snapshot: SalesSnapshot;
+  active?: boolean;
+}) {
+  const items = num(snapshot.items_amount);
+  const delivery = num(snapshot.delivery_amount);
+  const total = num(snapshot.total_amount);
+  const commission = num(snapshot.duumini_commission);
+
+  return (
+    <div
+      className="card h-100 shadow-sm"
+      style={{
+        borderRadius: 16,
+        border: active ? "2px solid var(--duu-yellow)" : "1px solid rgba(0,0,0,.06)",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        className="card-body"
+        style={{
+          background: active ? "rgba(253,220,0,.18)" : "transparent",
+        }}
+      >
+        <div className="d-flex align-items-start justify-content-between gap-2">
+          <div className="d-flex flex-column">
+            <div className="text-muted small">Période</div>
+            <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
+              {snapshot.period_key} • {shortMonth(snapshot.start_date)}
+            </div>
+          </div>
+          {active ? (
+            <span
+              className="badge text-dark"
+              style={{
+                background: "var(--duu-yellow)",
+                borderRadius: 999,
+              }}
+            >
+              Mois en cours
+            </span>
+          ) : (
+            <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
+              Snapshot
+            </span>
+          )}
+        </div>
+
+        <div className="row g-2 mt-2">
+          <div className="col-6">
+            <div className="p-2 rounded-3" style={{ background: "rgba(0,0,0,.03)" }}>
+              <div className="text-muted small">Commandes DONE</div>
+              <div className="fw-semibold">{snapshot.orders_done ?? 0}</div>
+            </div>
+          </div>
+          <div className="col-6">
+            <div className="p-2 rounded-3" style={{ background: "rgba(0,0,0,.03)" }}>
+              <div className="text-muted small">Commission</div>
+              <div className="fw-semibold">{mad(commission)}</div>
+            </div>
+          </div>
+          <div className="col-12">
+            <div className="p-2 rounded-3" style={{ background: "rgba(0,0,0,.03)" }}>
+              <div className="text-muted small">CA (hors livraison)</div>
+              <div className="fw-semibold">{mad(items)}</div>
+              <div className="d-flex flex-wrap gap-2 mt-1">
+                <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
+                  Livraison: {mad(delivery)}
+                </span>
+                <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
+                  Total: {mad(total)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-muted small mt-2">
+          {snapshot.start_date} → {snapshot.end_date}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ======= Composant ======= */
 export default function AdminHome() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [shops, setShops] = useState<Shop[] | null>(null);
   const [users, setUsers] = useState<User[] | null>(null);
+
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
   const [kpi, setKpi] = useState<Summary | null>(null);
   const [, setLastUpdate] = useState<Date | null>(null);
 
-  const [commissionFilter, setCommissionFilter] = useState<
-    "today" | "week" | "month" | "year"
-  >("today");
+  const [commissionFilter, setCommissionFilter] = useState<"today" | "week" | "month" | "year">(
+    "today"
+  );
 
   const chartHeight = useChartHeight();
   const isMobile = useIsMobile(576);
@@ -390,28 +473,58 @@ export default function AdminHome() {
   const visibleRef = useRef<boolean>(true);
   const sseRef = useRef<{ close(): void } | null>(null);
 
+  // ✅ snapshots state
+  const [snapshots, setSnapshots] = useState<SalesSnapshot[] | null>(null);
+  const [snapLoading, setSnapLoading] = useState(false);
+  const [snapError, setSnapError] = useState<string | null>(null);
+  const [creatingSnap, setCreatingSnap] = useState(false);
+
+  const TZ = "Africa/Casablanca";
+  const monthKey = useMemo(() => monthKeyOfNowTZ(TZ), [TZ]);
+  const hasCurrentMonthSnapshot = useMemo(() => {
+    if (!snapshots) return false;
+    return snapshots.some((s) => isSameKey(s.period_key, monthKey) && s.period_type === "MONTH");
+  }, [snapshots, monthKey]);
+
+  const refreshSnapshots = useCallback(async () => {
+    setSnapLoading(true);
+    setSnapError(null);
+    try {
+      const res = await listSnapshots(12);
+      setSnapshots(Array.isArray(res?.items) ? res.items : []);
+    } catch (e: any) {
+      setSnapError(e?.message || "Erreur snapshots");
+      setSnapshots([]);
+    } finally {
+      setSnapLoading(false);
+    }
+  }, []);
+
+  const createThisMonthSnapshot = useCallback(async () => {
+    if (creatingSnap) return;
+    setCreatingSnap(true);
+    setSnapError(null);
+    try {
+      await createMonthlySnapshot(monthKey);
+      await refreshSnapshots();
+    } catch (e: any) {
+      setSnapError(e?.message || "Impossible de créer le snapshot");
+    } finally {
+      setCreatingSnap(false);
+    }
+  }, [creatingSnap, monthKey, refreshSnapshots]);
+
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setLoading(true);
     try {
       const results = await Promise.allSettled([
-        (async () => ({
-          kind: "sum" as const,
-          val: await buildSummary(),
-        }))(),
-        (async () => ({
-          kind: "orders" as const,
-          val: await listOrders({ page: 1, pageSize: 6 }),
-        }))(),
-        (async () => ({
-          kind: "shops" as const,
-          val: await listShops({ page: 1, pageSize: 6 }),
-        }))(),
-        (async () => ({
-          kind: "users" as const,
-          val: await listUsers({ page: 1, pageSize: 6 }),
-        }))(),
+        (async () => ({ kind: "sum" as const, val: await buildSummary() }))(),
+        (async () => ({ kind: "orders" as const, val: await listOrders({ page: 1, pageSize: 6 }) }))(),
+        (async () => ({ kind: "shops" as const, val: await listShops({ page: 1, pageSize: 6 }) }))(),
+        (async () => ({ kind: "users" as const, val: await listUsers({ page: 1, pageSize: 6 }) }))(),
+        (async () => ({ kind: "snap" as const, val: await listSnapshots(12) }))(),
       ]);
 
       let sum: Summary = {
@@ -429,26 +542,24 @@ export default function AdminHome() {
         users_total: 0,
         sales_series: [],
       };
+
       let oItems: Order[] | null = null;
       let sItems: Shop[] | null = null;
       let uItems: User[] | null = null;
+      let snItems: SalesSnapshot[] | null = null;
+
       let firstErr: string | null = null;
 
       for (const r of results) {
         if (r.status === "fulfilled") {
           const { kind, val } = (r as any).value as any;
           if (kind === "sum") sum = val as Summary;
-          if (kind === "orders")
-            oItems = Array.isArray(val?.items) ? val.items : [];
-          if (kind === "shops")
-            sItems = Array.isArray(val?.items) ? val.items : [];
-          if (kind === "users")
-            uItems = Array.isArray(val?.items) ? val.items : [];
+          if (kind === "orders") oItems = Array.isArray(val?.items) ? val.items : [];
+          if (kind === "shops") sItems = Array.isArray(val?.items) ? val.items : [];
+          if (kind === "users") uItems = Array.isArray(val?.items) ? val.items : [];
+          if (kind === "snap") snItems = Array.isArray(val?.items) ? val.items : [];
         } else {
-          firstErr ||=
-            (r as any).reason?.message ||
-            String((r as any).reason) ||
-            null;
+          firstErr ||= (r as any).reason?.message || String((r as any).reason) || null;
         }
       }
 
@@ -456,6 +567,7 @@ export default function AdminHome() {
       setOrders(oItems);
       setShops(sItems);
       setUsers(uItems);
+      setSnapshots(snItems);
       setError(firstErr);
       setLastUpdate(new Date());
     } finally {
@@ -489,11 +601,8 @@ export default function AdminHome() {
     const token = getAccessToken();
     if (!token) return;
 
-    const API_BASE = import.meta.env.VITE_API_BASE as string;
-    const base = API_BASE.replace(/\/$/, "");
-    const url = `${base}/api/events/stream?access_token=${encodeURIComponent(
-      token
-    )}`;
+    const base = String(import.meta.env.VITE_API_BASE || "").replace(/\/$/, "");
+    const url = `${base}/api/events/stream?access_token=${encodeURIComponent(token)}`;
 
     const sse = subscribeSSE(url, (evt: ServerEvent) => {
       if (evt?.type === "ORDER_CREATED" || evt?.type === "ORDER_STATUS") {
@@ -543,41 +652,140 @@ export default function AdminHome() {
     }
   }, [commissionFilter]);
 
+  const currentMonthSnap = useMemo(() => {
+    if (!snapshots) return null;
+    return snapshots.find((s) => s.period_type === "MONTH" && isSameKey(s.period_key, monthKey)) || null;
+  }, [snapshots, monthKey]);
+
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
+      {/* ===== Snapshots strip (bien design) ===== */}
+      <div className="card shadow-sm mb-3" style={{ borderRadius: 16, overflow: "hidden" }}>
+        <div
+          className="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2"
+          style={{
+            background:
+              "linear-gradient(90deg, rgba(253,220,0,.22) 0%, rgba(229,57,53,.10) 60%, rgba(17,17,17,.02) 100%)",
+          }}
+        >
+          <div className="d-flex flex-column">
+            <div className="d-flex align-items-center gap-2">
+              <span
+                className="badge text-dark"
+                style={{ background: "var(--duu-yellow)", borderRadius: 999 }}
+              >
+                Snapshots ventes
+              </span>
+              <span className="text-muted small">
+                Mois courant: <b>{monthKey}</b>
+              </span>
+            </div>
+            <div className="text-muted small mt-1">
+              Le snapshot fige les totaux du mois (DONE): CA hors livraison + livraison + total + commission.
+            </div>
+          </div>
+
+          <div className="d-flex flex-column flex-sm-row gap-2">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              onClick={refreshSnapshots}
+              disabled={snapLoading || loading}
+            >
+              {snapLoading ? "Actualisation…" : "Rafraîchir"}
+            </button>
+
+            <button
+              className="btn btn-sm btn-duu"
+              onClick={createThisMonthSnapshot}
+              disabled={creatingSnap || hasCurrentMonthSnapshot || loading}
+              title={hasCurrentMonthSnapshot ? "Snapshot déjà créé pour ce mois" : "Créer snapshot"}
+            >
+              {creatingSnap
+                ? "Création…"
+                : hasCurrentMonthSnapshot
+                ? "Snapshot déjà créé"
+                : `Créer snapshot (${monthKey})`}
+            </button>
+          </div>
+        </div>
+
+        <div className="card-body">
+          {snapError ? (
+            <div className="alert alert-danger mb-2">{snapError}</div>
+          ) : null}
+
+          {/* Highlight current month */}
+          {currentMonthSnap ? (
+            <div className="mb-3">
+              <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+                <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
+                  Snapshot du mois en cours
+                </div>
+                <span className="text-muted small">
+                  Créé le {shortDate(currentMonthSnap.created_at)}
+                </span>
+              </div>
+              <SnapshotCard snapshot={currentMonthSnap} active />
+            </div>
+          ) : (
+            <div className="alert alert-warning mb-3">
+              Aucun snapshot pour <b>{monthKey}</b>. Clique sur <b>Créer snapshot</b>.
+            </div>
+          )}
+
+          <div className="d-flex align-items-center justify-content-between mb-2">
+            <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
+              Historique
+            </div>
+            <span className="text-muted small">
+              {snapshots ? snapshots.length : 0} snapshot(s)
+            </span>
+          </div>
+
+          {!snapshots ? (
+            <div className="text-muted small">Chargement…</div>
+          ) : snapshots.length === 0 ? (
+            <div className="text-muted small">Aucun snapshot.</div>
+          ) : (
+            <div className="row g-2">
+              {snapshots
+                .filter((s) => !(s.period_type === "MONTH" && isSameKey(s.period_key, monthKey)))
+                .slice(0, 6)
+                .map((s) => (
+                  <div className="col-12 col-md-6 col-xl-4" key={s.id}>
+                    <SnapshotCard snapshot={s} />
+                  </div>
+                ))}
+            </div>
+          )}
+
+          <div className="d-flex justify-content-end mt-3">
+            <Link to="/admin/snapshots" className="btn btn-sm btn-outline-dark">
+              Voir tout
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
-        {/* CA aujourd'hui (hors livraison) */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">
-                CA (aujourd&apos;hui, hors livraison)
-              </div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="text-muted small">CA (aujourd&apos;hui, hors livraison)</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {mad(kpi?.revenue_today)}
               </div>
-              <div className="text-muted small">
-                Sous-total produits des commandes DONE
-              </div>
+              <div className="text-muted small">Sous-total produits des commandes DONE</div>
             </div>
           </div>
         </div>
 
-        {/* CA semaine (hors livraison) */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">
-                CA (semaine, hors livraison)
-              </div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="text-muted small">CA (semaine, hors livraison)</div>
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {mad(kpi?.revenue_week)}
               </div>
               <div className="text-muted small">Lun → aujourd’hui</div>
@@ -585,15 +793,11 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* CA mois (hors livraison) */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">CA (mois, hors livraison)</div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {mad(kpi?.revenue_month)}
               </div>
               <div className="text-muted small">1 → aujourd’hui</div>
@@ -601,15 +805,11 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* CA année (hors livraison) */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">CA (année, hors livraison)</div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {mad(kpi?.revenue_year)}
               </div>
               <div className="text-muted small">01/01 → aujourd’hui</div>
@@ -617,7 +817,7 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* Commission Duumini avec filtre actif */}
+        {/* Commission */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
@@ -625,21 +825,14 @@ export default function AdminHome() {
               <select
                 className="form-select form-select-sm mb-1"
                 value={commissionFilter}
-                onChange={(e) =>
-                  setCommissionFilter(
-                    e.target.value as "today" | "week" | "month" | "year"
-                  )
-                }
+                onChange={(e) => setCommissionFilter(e.target.value as any)}
               >
                 <option value="today">Aujourd’hui</option>
                 <option value="week">Semaine</option>
                 <option value="month">Mois</option>
                 <option value="year">Année</option>
               </select>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {mad(commissionValue)}
               </div>
               <div className="text-muted small">{commissionLabel}</div>
@@ -647,15 +840,12 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* Cmd en attente */}
+        {/* Pending */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Cmd en attente</div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {kpi?.orders_pending ?? 0}
               </div>
               <div className="text-muted small">OPEN + PREPARATION</div>
@@ -668,10 +858,7 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Produits actifs</div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {kpi?.products_active ?? 0}
               </div>
               <div className="text-muted small">Total catalogue</div>
@@ -684,10 +871,7 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Boutiques</div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {kpi?.shops_total ?? 0}
               </div>
               <div className="text-muted small">Enregistrées</div>
@@ -700,10 +884,7 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
               <div className="text-muted small">Utilisateurs</div>
-              <div
-                className="fs-5 fs-sm-4 fw-semibold text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
                 {kpi?.users_total ?? 0}
               </div>
               <div className="text-muted small">Inscrits</div>
@@ -719,18 +900,13 @@ export default function AdminHome() {
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
                 <div className="d-flex flex-column">
-                  <h2
-                    className="h6 mb-0 text-truncate"
-                    style={{ color: "var(--duu-black)" }}
-                  >
+                  <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
                     Évolution du CA (30 jours, hors livraison)
                   </h2>
                   <span className="text-muted small text-truncate">
                     Sous-total produits des commandes DONE (sans frais de livraison)
                   </span>
                 </div>
-
-              
               </div>
 
               <div style={{ width: "100%", height: chartHeight, minHeight: 200 }}>
@@ -750,14 +926,10 @@ export default function AdminHome() {
                       {!isMobile && <CartesianGrid strokeDasharray="3 3" />}
                       <XAxis dataKey="date" tick={{ fontSize: isMobile ? 10 : 12 }} />
                       <YAxis
-                        tickFormatter={(v) =>
-                          `${Math.round((Number(v) || 0) / 1000)}k`
-                        }
+                        tickFormatter={(v) => `${Math.round((Number(v) || 0) / 1000)}k`}
                         tick={{ fontSize: isMobile ? 10 : 12 }}
                       />
-                      <Tooltip
-                        formatter={(v: any) => [mad(Number(v)), "CA hors livraison"]}
-                      />
+                      <Tooltip formatter={(v: any) => [mad(Number(v)), "CA hors livraison"]} />
                       <Line type="monotone" dataKey="revenue" dot={false} strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
@@ -770,10 +942,7 @@ export default function AdminHome() {
         <div className="col-12 col-lg-4">
           <div className="card h-100 shadow-sm">
             <div className="card-body">
-              <h2
-                className="h6 mb-2 text-truncate"
-                style={{ color: "var(--duu-black)" }}
-              >
+              <h2 className="h6 mb-2 text-truncate" style={{ color: "var(--duu-black)" }}>
                 Commandes / jour
               </h2>
 
@@ -812,16 +981,10 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2
-                  className="h6 mb-0 text-truncate"
-                  style={{ color: "var(--duu-black)" }}
-                >
+                <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
                   Dernières commandes
                 </h2>
-                <Link
-                  to="/admin/orders"
-                  className="btn btn-sm btn-duu w-100 w-sm-auto"
-                >
+                <Link to="/admin/orders" className="btn btn-sm btn-duu w-100 w-sm-auto">
                   Tout voir
                 </Link>
               </div>
@@ -831,10 +994,7 @@ export default function AdminHome() {
               ) : orders.length === 0 ? (
                 <div className="text-muted small">Aucune commande.</div>
               ) : (
-                <div
-                  className="table-responsive"
-                  style={{ WebkitOverflowScrolling: "touch" }}
-                >
+                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
                   <table className="table table-sm align-middle mb-0">
                     <thead className="sticky-top bg-white">
                       <tr>
@@ -848,18 +1008,13 @@ export default function AdminHome() {
                       {orders.map((o) => (
                         <tr key={(o as any).id}>
                           <td className="text-truncate" style={{ maxWidth: 120 }}>
-                            <Link
-                              to={`/admin/orders/${(o as any).id}`}
-                              className="link-dark"
-                            >
+                            <Link to={`/admin/orders/${(o as any).id}`} className="link-dark">
                               {(o as any).id}
                             </Link>
                           </td>
-                          <td className="d-none d-sm-table-cell">
-                            {shortDate((o as any).created_at)}
-                          </td>
+                          <td className="d-none d-sm-table-cell">{shortDate((o as any).created_at)}</td>
                           <td>
-                            <span className="badge badge-duu text-white">
+                            <span className={`badge text-white ${statusClass(normStatus((o as any).status))}`}>
                               {normStatus((o as any).status)}
                             </span>
                           </td>
@@ -870,6 +1025,15 @@ export default function AdminHome() {
                   </table>
                 </div>
               )}
+
+              <div className="d-flex align-items-center justify-content-between mt-2">
+                <div className="text-muted small">
+                  {loading ? "Mise à jour…" : "Actualisé automatiquement (polling + SSE)"}
+                </div>
+                <button className="btn btn-sm btn-outline-dark" onClick={refresh} disabled={loading}>
+                  Rafraîchir
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -879,16 +1043,10 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2
-                  className="h6 mb-0 text-truncate"
-                  style={{ color: "var(--duu-black)" }}
-                >
+                <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
                   Boutiques récentes
                 </h2>
-                <Link
-                  to="/admin/shops"
-                  className="btn btn-sm btn-duu w-100 w-sm-auto"
-                >
+                <Link to="/admin/shops" className="btn btn-sm btn-duu w-100 w-sm-auto">
                   Gérer
                 </Link>
               </div>
@@ -898,10 +1056,7 @@ export default function AdminHome() {
               ) : shops.length === 0 ? (
                 <div className="text-muted small">Aucune boutique.</div>
               ) : (
-                <div
-                  className="table-responsive"
-                  style={{ WebkitOverflowScrolling: "touch" }}
-                >
+                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
                   <table className="table table-sm align-middle mb-0">
                     <thead className="sticky-top bg-white">
                       <tr>
@@ -913,16 +1068,11 @@ export default function AdminHome() {
                       {shops.map((s) => (
                         <tr key={(s as any).id}>
                           <td className="text-truncate" style={{ maxWidth: 240 }}>
-                            <Link
-                              to={`/admin/shops/${(s as any).id}`}
-                              className="link-dark"
-                            >
+                            <Link to={`/admin/shops/${(s as any).id}`} className="link-dark">
                               {(s as any).name}
                             </Link>
                           </td>
-                          <td className="d-none d-sm-table-cell">
-                            {shortDate((s as any).created_at)}
-                          </td>
+                          <td className="d-none d-sm-table-cell">{shortDate((s as any).created_at)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -938,16 +1088,10 @@ export default function AdminHome() {
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2
-                  className="h6 mb-0 text-truncate"
-                  style={{ color: "var(--duu-black)" }}
-                >
+                <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
                   Derniers utilisateurs inscrits
                 </h2>
-                <Link
-                  to="/admin/users"
-                  className="btn btn-sm btn-duu w-100 w-sm-auto"
-                >
+                <Link to="/admin/users" className="btn btn-sm btn-duu w-100 w-sm-auto">
                   Gérer
                 </Link>
               </div>
@@ -957,10 +1101,7 @@ export default function AdminHome() {
               ) : users.length === 0 ? (
                 <div className="text-muted small">Aucun utilisateur.</div>
               ) : (
-                <div
-                  className="table-responsive"
-                  style={{ WebkitOverflowScrolling: "touch" }}
-                >
+                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
                   <table className="table table-sm align-middle mb-0">
                     <thead className="sticky-top bg-white">
                       <tr>
@@ -974,30 +1115,19 @@ export default function AdminHome() {
                       {users.map((u) => (
                         <tr key={(u as any).id}>
                           <td className="text-truncate" style={{ maxWidth: 280 }}>
-                            <Link
-                              to={`/admin/users/${(u as any).id}`}
-                              className="link-dark"
-                            >
-                              {(
-                                (u as any).first_name || (u as any).last_name
-                                  ? `${(u as any).first_name ?? ""} ${
-                                      (u as any).last_name ?? ""
-                                    }`.trim()
-                                  : (u as any).phone || `#${(u as any).id}`
-                              )}
+                            <Link to={`/admin/users/${(u as any).id}`} className="link-dark">
+                              {(u as any).first_name || (u as any).last_name
+                                ? `${(u as any).first_name ?? ""} ${(u as any).last_name ?? ""}`.trim()
+                                : (u as any).phone || `#${(u as any).id}`}
                             </Link>
                           </td>
-                          <td className="d-none d-md-table-cell">
-                            {(u as any).phone}
-                          </td>
+                          <td className="d-none d-md-table-cell">{(u as any).phone}</td>
                           <td className="d-none d-lg-table-cell">
-                            <span className="badge badge-duu text-white">
+                            <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
                               {(u as any).role}
                             </span>
                           </td>
-                          <td className="d-none d-sm-table-cell">
-                            {shortDate((u as any).created_at)}
-                          </td>
+                          <td className="d-none d-sm-table-cell">{shortDate((u as any).created_at)}</td>
                         </tr>
                       ))}
                     </tbody>

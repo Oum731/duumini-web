@@ -25,9 +25,9 @@ function imgUrl(u?: string | null) {
 function getItemImage(it: OrderItem): string {
   const anyIt = it as any;
   const raw =
-    it.product_cover || // ✅ rempli par l’API /api/orders/:id
-    it.image_url ||
-    it.cover ||
+    (it as any).product_cover || // ✅ rempli par l’API /api/orders/:id
+    (it as any).image_url ||
+    (it as any).cover ||
     anyIt.product_image ||
     anyIt.image ||
     anyIt.thumb ||
@@ -72,7 +72,11 @@ function getStatusLabel(s?: OrderStatus) {
 
 /** Nom de produit robuste */
 function getItemName(it: OrderItem): string {
-  return it?.product_name || it?.name || `Produit #${it?.product_id ?? ""}`;
+  return (
+    (it as any)?.product_name ||
+    (it as any)?.name ||
+    `Produit #${(it as any)?.product_id ?? ""}`
+  );
 }
 
 /** Variante label robuste */
@@ -94,43 +98,109 @@ type ListOrDetail = Order & Partial<OrderDetail>;
 /* ===== Helper: code alphanumérique pour affichage ===== */
 function getOrderDisplayCode(orderOrId: { id: number | string } | number | string): string {
   const rawId =
-    typeof orderOrId === "number" || typeof orderOrId === "string" ? orderOrId : orderOrId.id;
+    typeof orderOrId === "number" || typeof orderOrId === "string"
+      ? orderOrId
+      : orderOrId.id;
 
   const num = typeof rawId === "number" ? rawId : Number(rawId);
-  if (Number.isFinite(num) && num > 0) {
-    return num.toString(36).toUpperCase();
-  }
+  if (Number.isFinite(num) && num > 0) return num.toString(36).toUpperCase();
   return String(rawId ?? "").toUpperCase();
 }
 
-/* ===== Livraison (nouveau modèle) ===== */
+/* =========================
+   ✅ PROMO (inspiré checkout)
+   - OrderItem contient le prix figé (unit_price)
+   - On tente aussi de trouver "prix avant promo" si dispo
+   ========================= */
+
+function toNum(x: any): number | null {
+  if (x === undefined || x === null) return null;
+  const n = typeof x === "number" ? x : Number(String(x).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+type ItemPricing = {
+  qty: number;
+  unitFinal: number; // prix unitaire figé (après promo si promo)
+  unitBase: number | null; // prix avant promo si dispo
+  hasPromo: boolean;
+  discountLabel: string;
+  lineTotal: number;
+};
+
+function getOrderItemPricing(it: any): ItemPricing {
+  const qty = Math.max(1, Number(it?.qty ?? 1) || 1);
+
+  // ✅ prix final (figé serveur) : le plus important
+  const unitFinal =
+    toNum(it?.unit_price) ??
+    toNum(it?.price) ??
+    toNum(it?.unitPrice) ??
+    toNum(it?.final_unit_price) ??
+    0;
+
+  // ✅ prix avant promo : champs possibles selon backend
+  const unitBase =
+    toNum(it?.base_unit_price) ??
+    toNum(it?.original_unit_price) ??
+    toNum(it?.unit_price_before_discount) ??
+    toNum(it?.price_before_discount) ??
+    toNum(it?.old_unit_price) ??
+    toNum(it?.was_unit_price) ??
+    null;
+
+  // ✅ promo meta éventuelle
+  const rawType = String(it?.promo_discount_type ?? it?.promo_type ?? "").toUpperCase();
+  const dv = Number(it?.promo_discount_value ?? it?.discount_value ?? 0) || 0;
+
+  const hasPromo =
+    (unitBase != null && unitBase > 0 && unitFinal > 0 && unitFinal < unitBase) ||
+    Number(it?.promo_applied ?? it?.is_promo ?? 0) === 1;
+
+  let discountLabel = "";
+  if (hasPromo) {
+    if (dv > 0) {
+      const isPercent = rawType.includes("PERC") || dv <= 100;
+      discountLabel = isPercent ? `-${Math.round(dv)}%` : `-${mad(dv)}`;
+    } else if (unitBase != null && unitBase > 0) {
+      const pct = Math.round(((unitBase - unitFinal) / unitBase) * 100);
+      if (pct > 0 && pct <= 95) discountLabel = `-${pct}%`;
+    }
+  }
+
+  const lineTotal = unitFinal * qty;
+
+  return { qty, unitFinal, unitBase: hasPromo ? unitBase : null, hasPromo, discountLabel, lineTotal };
+}
+
+/* =========================
+   ✅ Livraison (nouveau modèle)
+   + Message “nous livrons entre 09h et 20h”
+   ========================= */
+
 type DeliveryMode = "CASABLANCA" | "CITY";
+
+const DELIVERY_WINDOW = { startHour: 9, endHour: 20 }; // ✅ 09h → 20h (message)
 
 function inferDeliveryMode(order: ListOrDetail): DeliveryMode {
   const anyOrder = order as any;
 
-  const raw =
-    anyOrder?.delivery?.mode ??
-    anyOrder?.delivery_mode ??
-    anyOrder?.deliveryMode ??
-    "";
-
+  const raw = anyOrder?.delivery?.mode ?? anyOrder?.delivery_mode ?? anyOrder?.deliveryMode ?? "";
   const s = String(raw || "").toUpperCase();
 
   if (s.includes("CASA")) return "CASABLANCA";
   if (s === "CITY") return "CITY";
 
-  // fallback : si la ville contient casa, on considère CASABLANCA
-  const city =
-    String(anyOrder?.address?.city || anyOrder?.address?.ville || anyOrder?.address_city || "").toLowerCase();
+  const city = String(
+    anyOrder?.address?.city || anyOrder?.address?.ville || anyOrder?.address_city || ""
+  ).toLowerCase();
   if (city.includes("casa")) return "CASABLANCA";
 
   return "CITY";
 }
 
-/** Fenêtre ETA approximative */
+/** Fenêtre ETA approximative (min/max) */
 function computeEtaWindow(createdAt: Date, mode: DeliveryMode): { start: Date; end: Date } {
-  // ✅ cohérent Checkout
   const minStart = mode === "CASABLANCA" ? 25 : 60;
   const minEnd = mode === "CASABLANCA" ? 90 : 180;
 
@@ -139,18 +209,13 @@ function computeEtaWindow(createdAt: Date, mode: DeliveryMode): { start: Date; e
   return { start, end };
 }
 
-/** Format "13h" ou "13h15" */
 function formatTimeLabel(d: Date): string {
   const s = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   return s.replace(":", "h");
 }
-
-/** Format de la plage horaire "13h - 14h" */
 function formatTimeRange(start: Date, end: Date): string {
   return `${formatTimeLabel(start)} et ${formatTimeLabel(end)}`;
 }
-
-/** X min, X min Y s, etc. */
 function formatCountdownMs(ms: number): string | null {
   if (ms <= 0) return null;
   const totalSec = Math.round(ms / 1000);
@@ -163,7 +228,61 @@ function formatCountdownMs(ms: number): string | null {
   return `${s}s`;
 }
 
-/* ===== Helper: construction du message WhatsApp (sans image) ===== */
+/** ✅ Clamp ETA dans la fenêtre de livraison 09h–20h (pour affichage) */
+function clampToDeliveryHours(d: Date, startHour = 9, endHour = 20): Date {
+  const x = new Date(d);
+  const h = x.getHours();
+
+  // si avant 09h → 09h00
+  if (h < startHour) {
+    x.setHours(startHour, 0, 0, 0);
+    return x;
+  }
+  // si après 20h → jour suivant 09h00
+  if (h >= endHour) {
+    x.setDate(x.getDate() + 1);
+    x.setHours(startHour, 0, 0, 0);
+    return x;
+  }
+  return x;
+}
+
+/** ✅ Label clair “Nous livrons entre 09h et 20h” + précision si l’ETA sort de la plage */
+function buildDeliveryWindowMessage(opts: {
+  status: OrderStatus;
+  createdAtDate: Date | null;
+  etaStart: Date | null;
+  etaEnd: Date | null;
+}) {
+  const { status, createdAtDate, etaStart, etaEnd } = opts;
+
+  const base = `⏰ Nous livrons entre ${String(DELIVERY_WINDOW.startHour).padStart(2, "0")}h et ${String(
+    DELIVERY_WINDOW.endHour
+  ).padStart(2, "0")}h.`;
+
+  // si pas d'ETA dispo → juste le message base
+  if (!createdAtDate || !etaStart || !etaEnd) return base;
+
+  // clamp pour affichage (évite “23h”)
+  const cStart = clampToDeliveryHours(etaStart, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
+  const cEnd = clampToDeliveryHours(etaEnd, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
+
+  // si l'estimation sortait de la plage, on l’indique proprement
+  const hadClamp = cStart.getTime() !== etaStart.getTime() || cEnd.getTime() !== etaEnd.getTime();
+
+  if (!hadClamp) return base;
+
+  // message plus précis selon statut
+  if (status === "OPEN" || status === "PREPARATION") {
+    return `${base} Si l’estimation dépasse 20h, la livraison sera reportée au prochain créneau (à partir de 09h).`;
+  }
+  if (status === "DELIVERY") {
+    return `${base} Si l’estimation dépasse 20h, l’équipe vous contacte et la livraison se fait au prochain créneau (dès 09h).`;
+  }
+  return base;
+}
+
+/* ===== Helper: construction du message WhatsApp (promo inclus si visible) ===== */
 function buildWhatsappText(opts: {
   order: ListOrDetail;
   items: OrderItem[];
@@ -191,14 +310,18 @@ function buildWhatsappText(opts: {
     items.length === 0
       ? "- (détails indisponibles)"
       : items
-          .map((it) => {
+          .map((it: any) => {
             const name = getItemName(it);
             const vLabel = getItemVariantLabel(it);
-            const qty = Number((it as any)?.qty ?? 1);
-            const unit = Number((it as any)?.unit_price ?? (it as any)?.price ?? 0);
-            const lineTotal = unit * qty;
+            const p = getOrderItemPricing(it);
             const label = vLabel ? `${name} — ${vLabel}` : name;
-            return `* ${label} x${qty} = ${mad(lineTotal)}`;
+
+            const basePart =
+              p.hasPromo && p.unitBase != null && p.unitBase > p.unitFinal
+                ? ` (avant: ${mad(p.unitBase)})`
+                : "";
+
+            return `* ${label} x${p.qty} = ${mad(p.lineTotal)}${basePart}`;
           })
           .join("\n");
 
@@ -276,7 +399,6 @@ export default function OrdersHistoryPage() {
     return Number.isFinite(n) && n > 0 ? n : null;
   }, [params]);
 
-  // Tick global pour les comptes à rebours des commandes en livraison
   const [nowTs, setNowTs] = useState<number>(() => Date.now());
   useEffect(() => {
     const t = window.setInterval(() => setNowTs(Date.now()), 1000);
@@ -291,7 +413,6 @@ export default function OrdersHistoryPage() {
       const res = await listOrders({ page: 1, pageSize: 20, mineOnly: true });
       const baseList: Order[] = res?.items ?? [];
 
-      // ✅ plus rapide + robuste
       const details = await Promise.allSettled(baseList.map((o) => getOrder(o.id)));
 
       const merged: ListOrDetail[] = baseList.map((o, i) => {
@@ -317,8 +438,8 @@ export default function OrdersHistoryPage() {
   const sorted = useMemo(
     () =>
       [...orders].sort((a, b) => {
-        const da = new Date(a?.created_at || (a as any)?.date || 0).getTime();
-        const db = new Date(b?.created_at || (b as any)?.date || 0).getTime();
+        const da = new Date((a as any)?.created_at || (a as any)?.date || 0).getTime();
+        const db = new Date((b as any)?.created_at || (b as any)?.date || 0).getTime();
         return db - da;
       }),
     [orders]
@@ -349,6 +470,11 @@ export default function OrdersHistoryPage() {
   if (loading) {
     return (
       <div className="container-xxl py-4">
+        <style>{`
+          .orders-history .price-old{ text-decoration: line-through; opacity:.7; margin-right:.35rem; white-space:nowrap; }
+          .orders-history .price-new{ font-weight:800; color: var(--duu-red); white-space:nowrap; }
+          .orders-history .badge-duu{ background: var(--duu-yellow); color:#111; border:1px solid rgba(0,0,0,.08); }
+        `}</style>
         <h1 className="h4 mb-3">Mes commandes</h1>
         <div className="text-muted">Chargement…</div>
       </div>
@@ -356,7 +482,13 @@ export default function OrdersHistoryPage() {
   }
 
   return (
-    <section className="container-xxl py-4">
+    <section className="container-xxl py-4 orders-history">
+      <style>{`
+        .orders-history .price-old{ text-decoration: line-through; opacity:.7; margin-right:.35rem; white-space:nowrap; }
+        .orders-history .price-new{ font-weight:800; color: var(--duu-red); white-space:nowrap; }
+        .orders-history .badge-duu{ background: var(--duu-yellow); color:#111; border:1px solid rgba(0,0,0,.08); }
+      `}</style>
+
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h4 m-0">Mes commandes</h1>
         <Link to="/" className="btn btn-outline-dark">
@@ -364,11 +496,29 @@ export default function OrdersHistoryPage() {
         </Link>
       </div>
 
-      <div className="alert alert-warning" role="status" style={{ borderLeft: `4px solid var(--duu-red)` }}>
+      <div
+        className="alert alert-warning"
+        role="status"
+        style={{ borderLeft: `4px solid var(--duu-red)` }}
+      >
         <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en statut <em>En livraison</em>.
+          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en statut{" "}
+          <em>En livraison</em>.
         </div>
-        <small className="text-muted">Une fois la commande passée en livraison, l’annulation n’est plus possible.</small>
+        <small className="text-muted">
+          Une fois la commande passée en livraison, l’annulation n’est plus possible.
+        </small>
+      </div>
+
+      {/* ✅ Message global précis sur la plage de livraison */}
+      <div className="alert alert-info" role="status" style={{ borderLeft: `4px solid var(--duu-yellow)` }}>
+        <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
+          ⏰ Période de livraison : nous livrons chaque jour entre <strong>09h</strong> et <strong>20h</strong>.
+        </div>
+        <small className="text-muted">
+          Si une estimation dépasse <strong>20h</strong>, la livraison est reportée au prochain créneau (à partir de{" "}
+          <strong>09h</strong>).
+        </small>
       </div>
 
       {err && <div className="alert alert-danger">{err}</div>}
@@ -385,34 +535,41 @@ export default function OrdersHistoryPage() {
           {sorted.map((o) => {
             const displayCode = getOrderDisplayCode(o);
 
-            const created = o?.created_at ? new Date(o.created_at).toLocaleString("fr-FR") : "";
-            const createdAtDate = o?.created_at
-              ? new Date(o.created_at)
-              : (o as any)?.date
-              ? new Date((o as any).date)
-              : null;
+            const created = (o as any)?.created_at
+              ? new Date((o as any).created_at).toLocaleString("fr-FR")
+              : "";
+
+            const createdAtDate =
+              (o as any)?.created_at
+                ? new Date((o as any).created_at)
+                : (o as any)?.date
+                ? new Date((o as any).date)
+                : null;
 
             const items: OrderItem[] = Array.isArray((o as any)?.items) ? (o as any).items : [];
-
             const totals = (o as any)?.totals as OrderDetail["totals"] | undefined;
 
+            // ✅ Sous-total articles : totals.items_amount sinon somme des lignes (unit_price figé)
             const itemsAmount: number =
-              totals?.items_amount ??
-              items.reduce((sum, it) => {
-                const unit = Number((it as any)?.unit_price ?? (it as any)?.price ?? 0);
-                const qty = Number((it as any)?.qty ?? 1);
-                return sum + unit * qty;
-              }, 0);
+              (typeof totals?.items_amount === "number" ? totals.items_amount : null) ??
+              items.reduce((sum, it: any) => sum + getOrderItemPricing(it).lineTotal, 0);
 
-            const totalAmount =
-              typeof (o as any)?.total === "number" ? (o as any).total : totals?.amount ?? itemsAmount;
+            // ✅ Total : o.total puis totals.amount sinon fallback
+            const totalAmount: number =
+              (typeof (o as any)?.total === "number" ? (o as any).total : null) ??
+              (typeof totals?.amount === "number" ? totals.amount : null) ??
+              itemsAmount;
 
-            const deliveryFee = totals?.delivery_fee ?? Math.max(0, totalAmount - itemsAmount);
+            // ✅ Livraison : totals.delivery_fee sinon fallback total-items
+            const deliveryFee: number =
+              (typeof totals?.delivery_fee === "number" ? totals.delivery_fee : null) ??
+              Math.max(0, totalAmount - itemsAmount);
+
             const currency = String(totals?.currency || (o as any)?.currency || "MAD").toUpperCase();
 
-            const isHighlighted = selectedId === o.id;
+            const isHighlighted = selectedId === (o as any).id;
 
-            const status = (o as any)?.status as OrderStatus;
+            const status = String((o as any)?.status || "OPEN").toUpperCase() as OrderStatus;
             const canCancel = status === "OPEN" || status === "PREPARATION";
 
             const waUrl = whatsappHref({
@@ -425,17 +582,21 @@ export default function OrdersHistoryPage() {
               status,
             });
 
-            // ✅ Mode livraison (CASABLANCA / CITY)
             const deliveryMode: DeliveryMode = inferDeliveryMode(o);
 
-            // 🕒 ETA approximatif basé sur la date de création (avant livraison)
+            // 🕒 ETA approximatif (OPEN/PREPARATION) + clamp 09h-20h pour affichage
             let etaRangeLabel: string | null = null;
+            let etaStart: Date | null = null;
+            let etaEnd: Date | null = null;
+
             if (createdAtDate && (status === "OPEN" || status === "PREPARATION")) {
-              const { start, end } = computeEtaWindow(createdAtDate, deliveryMode);
-              etaRangeLabel = formatTimeRange(start, end);
+              const w = computeEtaWindow(createdAtDate, deliveryMode);
+              etaStart = clampToDeliveryHours(w.start, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
+              etaEnd = clampToDeliveryHours(w.end, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
+              etaRangeLabel = formatTimeRange(etaStart, etaEnd);
             }
 
-            // ⏱️ Compte à rebours si EN LIVRAISON
+            // ⏱️ Compte à rebours si DELIVERY
             let countdownText: string | null = null;
             if (status === "DELIVERY" && createdAtDate) {
               const anyOrder = o as any;
@@ -457,7 +618,6 @@ export default function OrdersHistoryPage() {
                 const etaTarget = new Date(deliveryStart.getTime() + driverEtaSeconds * 1000);
                 remainingMs = etaTarget.getTime() - nowTs;
               } else {
-                // ✅ cohérent checkout : fin fenêtre (90 / 180 min) à partir de deliveryStart
                 const defaultTarget =
                   deliveryMode === "CASABLANCA"
                     ? new Date(deliveryStart.getTime() + 90 * 60_000)
@@ -468,19 +628,36 @@ export default function OrdersHistoryPage() {
               if (remainingMs && remainingMs > 0) countdownText = formatCountdownMs(remainingMs);
             }
 
+            // ✅ info “promo” au niveau commande si au moins une ligne promo
+            const hasPromoOrder = items.some((it: any) => getOrderItemPricing(it).hasPromo);
+
+            // ✅ message précis sur la période 09h-20h (par commande, contextuel)
+            const deliveryWindowMsg = buildDeliveryWindowMessage({
+              status,
+              createdAtDate,
+              etaStart,
+              etaEnd,
+            });
+
             return (
               <div
-                key={o.id}
+                key={(o as any).id}
                 className={`card border-0 shadow-sm ${isHighlighted ? "border border-dark" : ""}`}
               >
                 <div className="card-body">
                   {/* En-tête commande */}
                   <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <div className="d-flex align-items-center gap-2">
+                    <div className="d-flex align-items-center gap-2 flex-wrap">
                       <div className="h6 m-0">Commande #{displayCode}</div>
                       {statusBadge(status)}
+                      {hasPromoOrder && <span className="badge badge-duu">Promo appliquée</span>}
                     </div>
                     <div className="text-muted small">{created}</div>
+                  </div>
+
+                  {/* ✅ Message précis plage de livraison */}
+                  <div className="alert alert-light border py-2 px-3 mt-2 mb-0 small">
+                    <span className="fw-semibold">{deliveryWindowMsg}</span>
                   </div>
 
                   {/* ETA / livraison */}
@@ -511,13 +688,12 @@ export default function OrdersHistoryPage() {
                   {/* Articles */}
                   <h3 className="h6 mt-3 mb-2">Articles de la commande</h3>
                   <ul className="list-group list-group-flush">
-                    {items.map((it, idx) => {
+                    {items.map((it: any, idx) => {
                       const name = getItemName(it);
                       const vLabel = getItemVariantLabel(it);
-                      const qty = Number((it as any)?.qty ?? 1);
-                      const unit = Number((it as any)?.unit_price ?? (it as any)?.price ?? 0);
                       const img = getItemImage(it);
-                      const lineTotal = unit * qty;
+
+                      const p = getOrderItemPricing(it);
 
                       return (
                         <li
@@ -556,14 +732,28 @@ export default function OrdersHistoryPage() {
                                 </div>
                               )}
 
-                              <div className="small text-muted">
-                                {mad(unit)} <span className="text-muted">×{qty}</span>
+                              {/* ✅ prix unitaire promo/pas promo */}
+                              <div className="small text-muted d-flex flex-wrap align-items-center gap-1">
+                                {p.hasPromo && p.unitBase != null && p.unitBase > p.unitFinal ? (
+                                  <>
+                                    <span className="price-old">{mad(p.unitBase)}</span>
+                                    <span className="price-new">{mad(p.unitFinal)}</span>
+                                    {p.discountLabel ? (
+                                      <span className="badge text-bg-warning ms-1">{p.discountLabel}</span>
+                                    ) : (
+                                      <span className="badge text-bg-warning ms-1">Promo</span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="fw-semibold">{mad(p.unitFinal)}</span>
+                                )}
+                                <span className="text-muted">×{p.qty}</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className="fw-semibold text-end" style={{ minWidth: 90, fontSize: "0.9rem" }}>
-                            {mad(lineTotal)}
+                          <div className="fw-semibold text-end" style={{ minWidth: 110, fontSize: "0.9rem" }}>
+                            {mad(p.lineTotal)}
                           </div>
                         </li>
                       );
@@ -572,7 +762,7 @@ export default function OrdersHistoryPage() {
                     {deliveryFee > 0 && (
                       <li className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <span className="text-muted">Livraison</span>
-                        <div className="text-end" style={{ minWidth: 90, fontSize: "0.9rem" }}>
+                        <div className="text-end" style={{ minWidth: 110, fontSize: "0.9rem" }}>
                           <span className="fw-semibold">{mad(deliveryFee)}</span>
                         </div>
                       </li>
@@ -582,14 +772,14 @@ export default function OrdersHistoryPage() {
                   {/* Totaux */}
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
                     <div className="text-muted">Sous-total articles</div>
-                    <div className="fw-semibold" style={{ minWidth: 90, textAlign: "right" }}>
+                    <div className="fw-semibold" style={{ minWidth: 110, textAlign: "right" }}>
                       {mad(itemsAmount)}
                     </div>
                   </div>
 
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div className="text-muted">Total</div>
-                    <div className="h6 m-0" style={{ minWidth: 90, textAlign: "right", fontSize: "1rem" }}>
+                    <div className="h6 m-0" style={{ minWidth: 110, textAlign: "right", fontSize: "1rem" }}>
                       {mad(totalAmount)} <span className="text-muted small">{currency}</span>
                     </div>
                   </div>
@@ -606,18 +796,18 @@ export default function OrdersHistoryPage() {
                       WhatsApp Support
                     </a>
 
-                    <Link to={`/orders?order=${o.id}`} className="btn btn-outline-dark">
+                    <Link to={`/orders?order=${(o as any).id}`} className="btn btn-outline-dark">
                       Actualiser l’état
                     </Link>
 
                     {canCancel && (
                       <button
                         className="btn btn-outline-danger"
-                        disabled={cancelingId === o.id}
-                        onClick={() => onCancelOrder(o.id, status)}
+                        disabled={cancelingId === (o as any).id}
+                        onClick={() => onCancelOrder((o as any).id, status)}
                         title="Annuler la commande"
                       >
-                        {cancelingId === o.id ? "Annulation…" : "Annuler la commande"}
+                        {cancelingId === (o as any).id ? "Annulation…" : "Annuler la commande"}
                       </button>
                     )}
                   </div>
