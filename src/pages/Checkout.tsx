@@ -1,5 +1,5 @@
 // src/pages/CheckoutPage.tsx
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
 import { me, getAccessToken } from "../services/auth";
@@ -63,7 +63,6 @@ const FocusAndLoadingStyle = () => (
 
 /* =========================
    ✅ Location Suggestions API
-   (table: location_suggestions)
    ========================= */
 
 type LocationSuggestion = {
@@ -87,21 +86,28 @@ function normalizeSuggestionItems(input: any): LocationSuggestion[] {
     .filter((x: LocationSuggestion) => !!x.value);
 }
 
-async function listCommunesByCity(ville?: string) {
+/** API calls (support AbortController via fetch options if your api wrapper allows).
+ * If your api wrapper doesn't support signal, it's still ok (we fallback: ignore outdated results).
+ */
+async function listCommunesByCity(ville?: string, signal?: AbortSignal) {
   const v = String(ville || "").trim();
   if (!v) return [] as LocationSuggestion[];
   const res = await api.get<ItemsEnvelope<any>>("/api/locations/communes", {
     query: { ville: v, limit: 30 },
+    // @ts-ignore (si ton wrapper accepte signal)
+    signal,
   });
   return normalizeSuggestionItems(res);
 }
 
-async function listQuartiersByCityCommune(ville?: string, commune?: string) {
+async function listQuartiersByCityCommune(ville?: string, commune?: string, signal?: AbortSignal) {
   const v = String(ville || "").trim();
   const c = String(commune || "").trim();
   if (!v || !c) return [] as LocationSuggestion[];
   const res = await api.get<ItemsEnvelope<any>>("/api/locations/quartiers", {
     query: { ville: v, commune: c, limit: 30 },
+    // @ts-ignore
+    signal,
   });
   return normalizeSuggestionItems(res);
 }
@@ -142,7 +148,7 @@ function isFoodLike(p: any) {
 
 const DELIVERY_RULES = {
   CASABLANCA_FEE: 25,
-  DEFAULT_MIN_OUTSIDE_CASA: 60,
+  DEFAULT_FEE_OUTSIDE_CASA: 60,
 };
 
 function cityLabelFromCode(city?: string | null) {
@@ -154,9 +160,9 @@ function isCasablanca(label: string) {
   return s.includes("casa");
 }
 function computeDeliveryFeeByCity(cityLabel: string) {
-  if (!cityLabel) return DELIVERY_RULES.DEFAULT_MIN_OUTSIDE_CASA;
+  if (!cityLabel) return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
   if (isCasablanca(cityLabel)) return DELIVERY_RULES.CASABLANCA_FEE;
-  return DELIVERY_RULES.DEFAULT_MIN_OUTSIDE_CASA;
+  return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
 }
 
 /* =========================
@@ -180,6 +186,18 @@ function lineKey(l: any) {
   if (lid) return lid;
   const pid = Number(l?.id ?? 0) || 0;
   return `${pid}:${getLineVariantKey(l)}`;
+}
+
+/* =========================
+   ✅ Utils: debounce
+   ========================= */
+function useDebouncedValue<T>(value: T, delayMs: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
 }
 
 /* =========================
@@ -244,7 +262,7 @@ export default function CheckoutPage() {
 
   const deliveryFee = useMemo(() => computeDeliveryFeeByCity(cityLabel), [cityLabel]);
 
-  // ✅ affichage UI uniquement (le backend recalcule et fige les prix)
+  // UI total
   const grandTotalUi = totalAmount + deliveryFee;
 
   const handlePhoneChange = useCallback((e: any) => {
@@ -260,6 +278,9 @@ export default function CheckoutPage() {
     if (base === "__other__") return communeOther.trim();
     return base;
   }, [commune, communeOther]);
+
+  const debouncedCityLabel = useDebouncedValue(String(cityLabel || "").trim(), 250);
+  const debouncedCommuneVal = useDebouncedValue(String(communeVal || "").trim(), 250);
 
   const hasName = hasToken
     ? firstName.trim().length > 0 || lastName.trim().length > 0
@@ -287,7 +308,9 @@ export default function CheckoutPage() {
         setLoadingGps(false);
       },
       (err) => {
-        setGpsErr(err?.message || "Impossible d’obtenir la position (permission refusée ou indisponible).");
+        setGpsErr(
+          err?.message || "Impossible d’obtenir la position (permission refusée ou indisponible)."
+        );
         setLoadingGps(false);
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
@@ -296,6 +319,8 @@ export default function CheckoutPage() {
 
   /* ---------- Pré-remplissage depuis /me ---------- */
   useEffect(() => {
+    let alive = true;
+
     if (!isReady) return;
 
     if (!hasToken) {
@@ -308,6 +333,8 @@ export default function CheckoutPage() {
     (async () => {
       try {
         const u = await me();
+        if (!alive) return;
+
         if (u) {
           setFirstName((u as any).first_name || "");
           setLastName((u as any).last_name || "");
@@ -337,9 +364,13 @@ export default function CheckoutPage() {
         }
       } catch {
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
+
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasToken, location.pathname, isReady]);
 
@@ -373,10 +404,20 @@ export default function CheckoutPage() {
     }
   }, []);
 
-  /* ✅ Suggestions */
+  /* =========================
+     ✅ Suggestions: cache + abort + anti-spam
+     ========================= */
+  const communeCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
+  const quartierCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
+
+  const communesAbortRef = useRef<AbortController | null>(null);
+  const quartiersAbortRef = useRef<AbortController | null>(null);
+
+  // City change => communes
   useEffect(() => {
     if (!isReady) return;
-    const v = String(cityLabel || "").trim();
+
+    const v = debouncedCityLabel;
     if (!v) return;
 
     setQuartier("");
@@ -385,43 +426,86 @@ export default function CheckoutPage() {
     setCoords(null);
     setGpsErr(null);
 
+    const cached = communeCacheRef.current.get(v);
+    if (cached) {
+      setCommuneSuggestions(cached);
+      trackLocationSuggestion("VILLE", { ville: v });
+      return;
+    }
+
+    try {
+      communesAbortRef.current?.abort();
+    } catch {}
+    const ac = new AbortController();
+    communesAbortRef.current = ac;
+
     setLoadingSuggest(true);
     (async () => {
       try {
-        const communes = await listCommunesByCity(v);
+        const communes = await listCommunesByCity(v, ac.signal);
+        communeCacheRef.current.set(v, communes || []);
         setCommuneSuggestions(communes || []);
       } catch {
-        setCommuneSuggestions([]);
+        if (!ac.signal.aborted) setCommuneSuggestions([]);
       } finally {
-        setLoadingSuggest(false);
+        if (!ac.signal.aborted) setLoadingSuggest(false);
       }
     })();
 
     trackLocationSuggestion("VILLE", { ville: v });
-  }, [cityLabel, isReady]);
 
+    return () => {
+      try {
+        ac.abort();
+      } catch {}
+    };
+  }, [debouncedCityLabel, isReady]);
+
+  // Commune change => quartiers
   useEffect(() => {
-    const v = String(cityLabel || "").trim();
-    const c = String(communeVal || "").trim();
+    const v = debouncedCityLabel;
+    const c = debouncedCommuneVal;
+
     if (!v || !c) {
       setQuartierSuggestions([]);
       return;
     }
 
+    const cacheKey = `${v}__${c}`;
+    const cached = quartierCacheRef.current.get(cacheKey);
+    if (cached) {
+      setQuartierSuggestions(cached);
+      trackLocationSuggestion("COMMUNE", { ville: v, commune: c });
+      return;
+    }
+
+    try {
+      quartiersAbortRef.current?.abort();
+    } catch {}
+    const ac = new AbortController();
+    quartiersAbortRef.current = ac;
+
     setLoadingSuggest(true);
     (async () => {
       try {
-        const qs = await listQuartiersByCityCommune(v, c);
+        const qs = await listQuartiersByCityCommune(v, c, ac.signal);
+        quartierCacheRef.current.set(cacheKey, qs || []);
         setQuartierSuggestions(qs || []);
       } catch {
-        setQuartierSuggestions([]);
+        if (!ac.signal.aborted) setQuartierSuggestions([]);
       } finally {
-        setLoadingSuggest(false);
+        if (!ac.signal.aborted) setLoadingSuggest(false);
       }
     })();
 
     trackLocationSuggestion("COMMUNE", { ville: v, commune: c });
-  }, [cityLabel, communeVal]);
+
+    return () => {
+      try {
+        ac.abort();
+      } catch {}
+    };
+  }, [debouncedCityLabel, debouncedCommuneVal]);
 
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
@@ -433,7 +517,6 @@ export default function CheckoutPage() {
       const normalizedPhone = normalizePhoneInput(phone.trim());
       const finalCity = cityLabel || "";
 
-      // ✅ Align backend: buildAddressObj lit { ville/city, commune, quartier/district, gps:{lat,lng} }
       const address: CreateOrderPayload["address"] = hasToken
         ? {
             ville: finalCity || undefined,
@@ -452,7 +535,6 @@ export default function CheckoutPage() {
         ? (`${firstName.trim()} ${lastName.trim()}`.trim() || firstName.trim() || lastName.trim()).trim()
         : guestName.trim();
 
-      // ✅ Align backend: buildContactFromPayload lit {first_name,last_name,name,phone}
       const contact = {
         first_name: hasToken ? firstName.trim() || undefined : undefined,
         last_name: hasToken ? lastName.trim() || undefined : undefined,
@@ -465,24 +547,17 @@ export default function CheckoutPage() {
         address,
         delivery: {
           mode: isCasablanca(finalCity) ? ("CASABLANCA" as any) : ("CITY" as any),
-          fee: Number(deliveryFee || 0), // ✅ backend prend delivery.fee comme source
+          fee: Number(deliveryFee || 0),
           currency: "MAD",
         },
-
-        // ✅ IMPORTANT (align promo backend):
-        // On n’envoie PAS le prix depuis le front.
-        // Le backend lock product/variant, applique promo si eligible, puis fige dans order_items.unit_price.
         items: lines.map((l: any) => {
           const variant_id = getLineVariantId(l);
           return {
             product_id: Number(l.id),
             qty: Number(l.qty || 0),
-            variant_id, // null si pas de variante
+            variant_id,
           } as any;
         }),
-
-        // ✅ Totals côté front = indicatif seulement (backend recalcule),
-        // mais on garde pour compat/UX.
         totals: {
           items_count: totalItems,
           items_amount: Number(totalAmount || 0),
@@ -490,13 +565,11 @@ export default function CheckoutPage() {
           amount: Number(totalAmount || 0) + Number(deliveryFee || 0),
           currency: "MAD",
         },
-
         payment: {
           method: "COD",
           note: "Paiement à la livraison. Aucun acompte requis.",
         },
 
-        // compat legacy (ton backend ignore si non utilisé, mais on garde)
         address_city: address.ville,
         address_commune: (address as any).commune ?? null,
         address_district: address.quartier,
@@ -519,7 +592,6 @@ export default function CheckoutPage() {
         ? numericId.toString(36).toUpperCase()
         : String(orderId ?? "").toUpperCase();
 
-      // ✅ Analytics : utiliser le total renvoyé par le serveur (prix figé + promo variant + etc.)
       try {
         trackPurchase({
           orderId: orderId ?? displayCode,
@@ -541,7 +613,7 @@ export default function CheckoutPage() {
             return {
               id: Number(l.id),
               name: String(name || ""),
-              price: Number(l.price || 0), // indicatif (on n’a pas le unit_price figé ici)
+              price: Number(l.price || 0),
               quantity: Number(l.qty || 0),
               category,
             };
@@ -699,8 +771,8 @@ export default function CheckoutPage() {
                   </p>
                   <p className="mb-0 small text-muted">
                     Pour <strong>voir l’historique</strong> et{" "}
-                    <strong>suivre vos commandes</strong>, vous pouvez vous connecter
-                    ou créer un compte.
+                    <strong>suivre vos commandes</strong>, vous pouvez vous connecter ou créer un
+                    compte.
                   </p>
                 </div>
                 <div className="modal-footer d-flex flex-wrap gap-2">
@@ -762,11 +834,8 @@ export default function CheckoutPage() {
               Changer de ville
             </button>
 
-            {hasPromoInCart && (
-              <span className="badge text-bg-warning">
-                Promo active — prix final confirmé à la commande
-              </span>
-            )}
+            {/* ✅ On garde la logique interne promo si tu veux, mais sans message "backend fige..." */}
+            {hasPromoInCart && <span className="badge text-bg-warning">Promo active</span>}
           </div>
         </div>
 
@@ -782,21 +851,26 @@ export default function CheckoutPage() {
             Vous pouvez finaliser votre commande <strong>en tant qu’invité</strong>.
           </p>
           <div className="d-flex flex-wrap gap-2">
-            <button type="button" className="btn btn-sm btn-dark" onClick={() => setGuestConfirmed(true)}>
+            <button
+              type="button"
+              className="btn btn-sm btn-dark"
+              onClick={() => setGuestConfirmed(true)}
+            >
               Continuer en tant qu’invité
             </button>
             <Link to="/profile?tab=login&next=/checkout" className="btn btn-sm btn-outline-dark">
               Se connecter
             </Link>
-            <Link to="/profile?tab=register&next=/checkout" className="btn btn-sm btn-outline-secondary">
+            <Link
+              to="/profile?tab=register&next=/checkout"
+              className="btn btn-sm btn-outline-secondary"
+            >
               Créer un compte
             </Link>
           </div>
 
           {guestConfirmed && (
-            <p className="mt-2 small mb-0">
-              ✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.
-            </p>
+            <p className="mt-2 small mb-0">✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.</p>
           )}
         </div>
       )}
@@ -819,7 +893,11 @@ export default function CheckoutPage() {
                   >
                     {loadingRefill ? (
                       <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                        <span
+                          className="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"
+                        />
                         Rechargement…<span className="visually-hidden">en cours</span>
                       </>
                     ) : (
@@ -882,7 +960,7 @@ export default function CheckoutPage() {
                         Changer
                       </button>
                     </div>
-                    <div className="form-text">La ville vient de votre sélection (LocationGate).</div>
+                    <div className="form-text">La ville vient de votre sélection.</div>
                   </div>
 
                   <div className="col-12">
@@ -894,7 +972,9 @@ export default function CheckoutPage() {
                             {cityLabel || "—"}
                             {communeVal ? `, ${communeVal}` : ""}
                             {quartier ? ` — ${quartier}` : ""}
-                            {useGps && coords ? ` (GPS ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}
+                            {useGps && coords
+                              ? ` (GPS ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
+                              : ""}
                           </div>
                         </div>
                         <div className="d-flex gap-2">
@@ -975,7 +1055,8 @@ export default function CheckoutPage() {
                           ) : (
                             <div className="alert alert-info d-flex justify-content-between align-items-center">
                               <span>
-                                Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
+                                Localisation GPS activée{" "}
+                                {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
                               </span>
                               <button
                                 className="btn btn-sm btn-outline-dark"
@@ -1115,7 +1196,8 @@ export default function CheckoutPage() {
                       <>
                         <div className="alert alert-info d-flex justify-content-between align-items-center">
                           <span>
-                            Localisation GPS activée {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
+                            Localisation GPS activée{" "}
+                            {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
                           </span>
                           <button
                             className="btn btn-sm btn-outline-dark"
@@ -1151,9 +1233,7 @@ export default function CheckoutPage() {
 
               <div className="alert alert-light border mb-0">
                 <div className="fw-semibold">🚚 {deliveryTitle}</div>
-                <div className="small text-muted">
-                  La livraison est calculée automatiquement selon votre ville.
-                </div>
+                <div className="small text-muted">La livraison est calculée automatiquement selon votre ville.</div>
                 <div className="small mt-2">
                   Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais :{" "}
                   <strong>{mad(deliveryFee)}</strong>
@@ -1192,13 +1272,9 @@ export default function CheckoutPage() {
             <div className="card-body">
               <h2 className="h6 mb-3">Récapitulatif</h2>
 
-              {hasPromoInCart && (
-                <div className="alert alert-warning small">
-                  ⚠️ Certaines lignes sont en promo : le <strong>backend calcule</strong> et{" "}
-                  <strong>fige</strong> le prix final (incluant variante + promo éligible) au moment
-                  de créer la commande.
-                </div>
-              )}
+              {/* ✅ supprimé: gros texte d'avertissement */}
+              {/* Optionnel: badge léger si promo */}
+              {hasPromoInCart && <div className="badge text-bg-warning mb-3">Promo active</div>}
 
               <ul className="list-group list-group-flush">
                 {lines.map((l: any) => {
@@ -1212,9 +1288,10 @@ export default function CheckoutPage() {
                         <div className="text-truncate">
                           {l.name} <span className="text-muted">×{l.qty}</span>
                         </div>
-                        {vLabel && <div className="small text-muted text-truncate">Variante : {vLabel}</div>}
+                        {vLabel && (
+                          <div className="small text-muted text-truncate">Variante : {vLabel}</div>
+                        )}
                       </div>
-                      {/* UI only */}
                       <span className="fw-semibold">{mad((l.qty || 0) * (l.price || 0))}</span>
                     </li>
                   );

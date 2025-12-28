@@ -1,32 +1,26 @@
 // src/services/orders.ts
 import { api } from "./http";
 
-/** ✅ Aligné avec ton backend (comme products/categories): { items, pageInfo } */
+/** ✅ Aligné avec ton backend: { items, pageInfo } */
 export type Paginated<T> = {
   items: T[];
   pageInfo: { page: number; pageSize: number; total: number };
 };
 
 /* ===== Types ===== */
-export type OrderStatus =
-  | "OPEN"
-  | "PREPARATION"
-  | "DELIVERY"
-  | "DONE"
-  | "CANCELLED";
+export type OrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCELLED";
 
-/** ✅ Nouveau: item peut référencer une variante */
+/** ✅ Input envoyé au backend */
 export type OrderItemInput = {
   product_id: number;
-
-  // ✅ NEW (variante)
+  qty: number;
   variant_id?: number | null;
+
+  // (optionnels, UI only, pas utilisés par backend)
+  name?: string;
+  price?: number;
   variant_key?: string | null;
   variant_label?: string | null;
-
-  name: string;
-  price: number;
-  qty: number;
 };
 
 export type CreateOrderPayload = {
@@ -36,27 +30,32 @@ export type CreateOrderPayload = {
     name?: string;
     phone: string;
   };
+
   address: {
     ville?: string;
     commune?: string;
     quartier?: string | null;
     gps?: { lat: number; lng: number } | null;
   };
+
   delivery: {
     mode: "EXPRESS" | "SIMPLE" | "PROMO_FREE" | "CASABLANCA" | "CITY";
     fee: number;
-    currency: "MAD";
+    currency: "MAD" | string;
   };
+
   items: OrderItemInput[];
-  totals: {
-    items_count: number;
-    items_amount: number;
-    delivery_fee: number;
-    amount: number;
-    currency: string;
+
+  totals?: {
+    items_count?: number;
+    items_amount?: number;
+    delivery_fee?: number;
+    amount?: number;
+    currency?: string;
   };
+
   payment?: {
-    method: "COD" | string;
+    method?: "COD" | string;
     note?: string | null;
   };
 
@@ -81,12 +80,14 @@ export type Order = {
   id: number;
   display_code?: string | null;
 
-  user_id?: number;
+  user_id?: number | null;
+
   contact?: {
     first_name?: string | null;
     last_name?: string | null;
     phone?: string | null;
   } | null;
+
   user?: {
     first_name?: string | null;
     last_name?: string | null;
@@ -103,7 +104,10 @@ export type Order = {
   created_at: string;
   updated_at?: string | null;
 
+  // champs admin (peuvent être masqués côté backend selon rôle)
   commission_duumini?: number | null;
+
+  // champs calculés / list endpoint
   items_amount?: number | null;
 
   totals?: {
@@ -120,7 +124,7 @@ export type OrderItem = {
 
   product_id: number;
 
-  /** ✅ NEW: variante choisie (si applicable) */
+  /** ✅ variante choisie (si applicable) */
   variant_id?: number | null;
   variant_key?: string | null;
   variant_label?: string | null;
@@ -131,8 +135,6 @@ export type OrderItem = {
   // infos produit
   product_name?: string | null;
   product_cover?: string | null;
-  image_url?: string | null;
-  cover?: string | null;
 
   // compat anciens payloads
   name?: string | null;
@@ -147,6 +149,7 @@ export type OrderItem = {
     price_override?: number | null;
   } | null;
 
+  // optionnel: si tu renvoies un objet produit
   product?: {
     id?: number;
     name?: string | null;
@@ -154,21 +157,30 @@ export type OrderItem = {
     product_cover?: string | null;
     image_url?: string | null;
   } | null;
+
+  // ✅ promo figée (si colonnes existent et si ton backend les renvoie)
+  promo_applied?: 0 | 1 | number | null;
+  promo_type?: "PERCENT" | "AMOUNT" | string | null;
+  promo_value?: number | null;
+  base_unit_price?: number | null;
 };
 
 export type OrderDetail = Order & {
   items: OrderItem[];
+
   delivery?: {
     mode?: "EXPRESS" | "SIMPLE" | "PROMO_FREE" | "CASABLANCA" | "CITY";
     fee?: number | null;
     currency?: string | null;
   } | null;
+
   totals?: {
     items_amount: number;
     delivery_fee: number;
     amount: number;
     currency: string;
   };
+
   payment?: {
     method: string;
     note?: string | null;
@@ -196,46 +208,40 @@ function cleanString(v: any) {
   return s ? s : "";
 }
 
+/** ✅ Normalise un item, sans exiger name/price (UI only) */
 function normalizeItemInput(x: any): OrderItemInput | null {
   if (!x || typeof x !== "object") return null;
 
   const product_id = toPositiveInt(x.product_id, 0);
-  if (!product_id) return null;
+  const qty = toPositiveInt(x.qty ?? x.quantity ?? x.count, 0);
+  if (!product_id || !qty) return null;
 
   const variant_id =
     x.variant_id == null || x.variant_id === ""
       ? null
       : toPositiveInt(x.variant_id, 0) || null;
 
-  const variant_key = cleanString(x.variant_key || x.variantKey) || "default";
-  const variant_label = cleanString(x.variant_label || x.variantLabel) || "";
+  const out: OrderItemInput = { product_id, qty, variant_id };
 
-  const name = cleanString(x.name);
-  const qty = toPositiveInt(x.qty, 0);
-  const priceN = Number(x.price);
+  // UI-only (optionnels)
+  if (x.name != null) out.name = cleanString(x.name) || undefined;
+  if (x.price != null && Number.isFinite(Number(x.price))) out.price = Number(x.price);
 
-  if (!name || !qty || !Number.isFinite(priceN) || priceN < 0) return null;
+  if (x.variant_key != null) out.variant_key = cleanString(x.variant_key) || null;
+  if (x.variant_label != null) out.variant_label = cleanString(x.variant_label) || null;
 
-  return {
-    product_id,
-    variant_id,
-    variant_key,
-    variant_label: variant_label || null,
-    name,
-    qty,
-    price: priceN,
-  };
+  return out;
 }
 
 function normalizeCreatePayload(payload: CreateOrderPayload): CreateOrderPayload {
-  const items = Array.isArray(payload?.items) ? payload.items : [];
-  const cleanItems = items.map(normalizeItemInput).filter(Boolean) as OrderItemInput[];
+  const itemsRaw = Array.isArray(payload?.items) ? payload.items : [];
+  const cleanItems = itemsRaw.map(normalizeItemInput).filter(Boolean) as OrderItemInput[];
 
   return {
     ...payload,
     contact: {
       ...payload.contact,
-      phone: String(payload?.contact?.phone || "").trim(),
+      phone: cleanString(payload?.contact?.phone),
     },
     items: cleanItems,
   };
@@ -250,7 +256,7 @@ export async function listOrders(opts: ListOrdersOptions = {}) {
 
   if (opts.status && opts.status !== "ALL") query.status = opts.status;
   if (opts.mineOnly) query.mine = 1;
-  if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
+  if (opts.q && cleanString(opts.q)) query.q = cleanString(opts.q);
 
   return api.get<Paginated<Order>>("/api/orders", { query });
 }

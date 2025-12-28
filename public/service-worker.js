@@ -11,7 +11,7 @@ try {
 }
 
 /* 2) App Shell + Offline Cache (robuste) */
-const SW_VERSION = "duumini-sw-v2.4";
+const SW_VERSION = "duumini-sw-v2.5";
 
 /**
  * ✅ IMPORTANT

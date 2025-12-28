@@ -19,8 +19,8 @@ function imgUrl(u?: string | null) {
 
 /* =========================
  * ✅ Prix robustes (évite float + arrondis bizarres)
- * - on calcule en CENTIMES (int)
- * - on affiche en MAD entiers (0 décimale)
+ * - calcul en CENTIMES (int)
+ * - affichage en MAD entiers (0 décimale)
  * =======================*/
 function toNum(x: any): number {
   const n = Number(x);
@@ -33,21 +33,18 @@ function fromCents(c: any): number {
   const n = Number(c);
   return Number.isFinite(n) ? Math.round(n) / 100 : 0;
 }
-/** ✅ Arrondit toujours au MAD entier (multiple de 100 cents) */
+/** ✅ Arrondit au MAD entier (multiple de 100 cents) */
 function roundToMAD(cents: number) {
   return Math.round((cents || 0) / 100) * 100;
 }
-
 /** ✅ Affichage MAD: entier, jamais ",86" */
 function moneyMAD(n?: number | null) {
   const cents = roundToMAD(toCents(n ?? 0));
   const v = fromCents(cents);
-
   const s = new Intl.NumberFormat("fr-FR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(v);
-
   return `${s} MAD`;
 }
 
@@ -81,18 +78,16 @@ function getSubCategoryToken(p: Product) {
 }
 
 /* =========================
- * ✅ Partage: lien HUMAIN = /products/:id
- * ✅ OG + preview: /share/product/:id (si tu veux)
- *
- * IMPORTANT (ce qui évite ton message de redirection):
- * - On PARTAGE /products/:id
- * - /share/ sert juste pour les bots OG (php)
+ * ✅ Partage (WEB + Mobile)
+ * - Pour que WhatsApp Desktop / Facebook aient un aperçu OG:
+ *   => on PARTAGE /share/product/:id
+ * - Pour ouvrir (humain): /products/:id
  * =======================*/
 function cleanBase(x: string) {
   return String(x || "").trim().replace(/\/+$/, "");
 }
 
-/** ✅ Domaine PUBLIC du site (pas l'API). */
+/** ✅ Domaine public du site (pas l'API). */
 function getWebOrigin() {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
@@ -106,18 +101,23 @@ function getWebOrigin() {
   return "https://www.duumini.com";
 }
 
-/** ✅ URL pour humains => /products/:id (pas de page de redirection) */
+function getProductId(p: Product) {
+  const id = Number((p as any).id);
+  return Number.isFinite(id) && id > 0 ? id : 0;
+}
+
+/** URL humaine (navigation) */
 function buildPublicProductUrl(p: Product) {
   const web = getWebOrigin();
-  const id = Number((p as any).id);
+  const id = getProductId(p);
   if (!web || !id) return "";
   return `${web}/products/${id}`;
 }
 
-/** ✅ URL OG (optionnelle) => /share/product/:id */
+/** URL OG (pour partage web) */
 function buildShareOgUrl(p: Product) {
   const web = getWebOrigin();
-  const id = Number((p as any).id);
+  const id = getProductId(p);
   if (!web || !id) return "";
   return `${web}/share/product/${id}`;
 }
@@ -492,10 +492,8 @@ function ProductCardInner({
   );
 
   /**
-   * ✅ FIX DOUBLE PROMO (120-21 => 78)
-   * Si on reçoit un priceOverride + oldPrice/badgeText,
-   * alors priceOverride est déjà un PRIX FINAL (promo déjà appliquée).
-   * => on désactive la promo auto.
+   * ✅ FIX DOUBLE PROMO
+   * Si priceOverride + (oldPrice/badgeText) => priceOverride déjà FINAL => pas de promo auto.
    */
   const treatOverrideAsFinal = useMemo(() => {
     return priceOverride != null && (oldPrice != null || !!badgeText);
@@ -524,6 +522,7 @@ function ProductCardInner({
   const [open, setOpen] = useState(false);
   const [imgIdx, setImgIdx] = useState(0);
   const [selectedKey, setSelectedKey] = useState<string>("");
+
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -533,6 +532,7 @@ function ProductCardInner({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setShareMenuOpen(false);
     };
+
     const onClick = () => setShareMenuOpen(false);
 
     window.addEventListener("keydown", onKey);
@@ -551,7 +551,8 @@ function ProductCardInner({
     }
     setSelectedKey((prev) => {
       if (prev && variants.some((v) => v.key === prev)) return prev;
-      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      const firstOk =
+        variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
       return firstOk?.key || "";
     });
   }, [hasVariants, variants]);
@@ -620,7 +621,10 @@ function ProductCardInner({
 
   const openModal = useCallback(
     (startIdx = 0) => {
-      const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
+      const safe = Math.max(
+        0,
+        Math.min(startIdx, Math.max(0, images.length - 1))
+      );
       setImgIdx(safe);
       setOpen(true);
     },
@@ -657,7 +661,9 @@ function ProductCardInner({
       if (!isDefault && variant && isVariantOutOfStock(variant) && delta > 0) return;
 
       const raw =
-        !isDefault && variant?.price != null ? toNum(variant.price) : baseDisplayPrice;
+        !isDefault && variant?.price != null
+          ? toNum(variant.price)
+          : baseDisplayPrice;
 
       const finalPrice = treatOverrideAsFinal
         ? fromCents(roundToMAD(toCents(raw)))
@@ -724,12 +730,15 @@ function ProductCardInner({
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
   /* =========================
-   * ✅ Partage
-   * - URL partagée: /products/:id (direct, sans message)
-   * - URL OG: /share/product/:id (si tu veux l'afficher dans le texte)
+   * ✅ Partage (web-friendly OG)
+   * - shareUrl: /share/product/:id  (preview OG + WhatsApp/Facebook desktop)
+   * - humanUrl: /products/:id       (ouvrir pour humain)
    * =======================*/
-  const shareUrl = useMemo(() => buildPublicProductUrl(product), [product]);
-  const ogUrl = useMemo(() => buildShareOgUrl(product), [product]); // optionnel
+  const humanUrl = useMemo(() => buildPublicProductUrl(product), [product]);
+  const shareUrl = useMemo(
+    () => buildShareOgUrl(product) || humanUrl,
+    [product, humanUrl]
+  );
 
   const shareTitle = useMemo(() => {
     const name = String(anyP.name || "Produit");
@@ -744,7 +753,6 @@ function ProductCardInner({
   const shareText = useMemo(() => {
     const desc = String(anyP.description || "").trim();
     const short = desc ? shortText(desc, 90) : "Disponible sur Duumini.";
-    // ✅ texte propre: lien humain direct (et ogUrl si tu veux le garder ailleurs)
     return `${shareTitle}\n${short}`;
   }, [anyP.description, shareTitle]);
 
@@ -774,12 +782,13 @@ function ProductCardInner({
       return;
     }
 
-    // ✅ iOS/Safari: partager AVEC image si possible, sinon sans
     const img = coverUrl || currentImg || "";
+
+    // ✅ Mobile: essayer avec image (si supporté)
     if (navAny?.share && img) {
       const file = await fetchAsFile(
         img,
-        `duumini-${Number(anyP.id || 0) || "product"}.jpg`
+        `duumini-${getProductId(product) || "product"}.jpg`
       );
       if (file && canShareFiles(file)) {
         try {
@@ -794,6 +803,7 @@ function ProductCardInner({
       }
     }
 
+    // ✅ Mobile: share standard
     if (navAny?.share) {
       try {
         await navAny.share({
@@ -805,8 +815,9 @@ function ProductCardInner({
       } catch {}
     }
 
+    // ✅ Web/desktop: menu avec liens
     setShareMenuOpen(true);
-  }, [anyP.id, anyP.name, coverUrl, currentImg, shareText, shareUrl]);
+  }, [anyP.name, coverUrl, currentImg, product, shareText, shareUrl]);
 
   /* ===== Image swiper (CARD VIEW) ===== */
   const CardImageSwiper = ({
@@ -892,11 +903,7 @@ function ProductCardInner({
             src={coverUrl}
             alt={String(anyP.name || "")}
             className="w-100"
-            style={{
-              aspectRatio: "1/1",
-              objectFit: "cover",
-              cursor: "pointer",
-            }}
+            style={{ aspectRatio: "1/1", objectFit: "cover", cursor: "pointer" }}
             onClick={() => openModal(0)}
           />
         );
@@ -1049,8 +1056,7 @@ function ProductCardInner({
       infoParts.push(`Prix:${moneyMAD(final)}`);
 
       const rawRounded = fromCents(roundToMAD(toCents(raw)));
-      const old =
-        !treatOverrideAsFinal && final < rawRounded ? rawRounded : null;
+      const old = !treatOverrideAsFinal && final < rawRounded ? rawRounded : null;
       if (old != null) infoParts.push(`Ancien:${moneyMAD(old)}`);
     }
 
@@ -1081,10 +1087,7 @@ function ProductCardInner({
         </select>
 
         {infoLine ? (
-          <div
-            className="small mt-2"
-            style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}
-          >
+          <div className="small mt-2" style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}>
             {infoLine}
           </div>
         ) : null}
@@ -1194,10 +1197,10 @@ function ProductCardInner({
 
           .duu-share-pop{
             position: absolute;
+            left: 0;
             right: 0;
             top: calc(100% + 8px);
-            z-index: 30;
-            width: 260px;
+            z-index: 60;
             background: #fff;
             border: 1px solid rgba(0,0,0,.08);
             border-radius: 14px;
@@ -1210,7 +1213,7 @@ function ProductCardInner({
             width: 100%;
             padding: 10px 12px;
             cursor: pointer;
-            font-weight: 700;
+            font-weight: 800;
             color: rgba(0,0,0,.82);
           }
           .duu-share-item:hover{ background: rgba(0,0,0,.04); }
@@ -1317,8 +1320,6 @@ function ProductCardInner({
                     + Panier
                   </button>
                 )}
-
-                {/* ✅ Supprimé: bouton partager (flèche) */}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
@@ -1424,8 +1425,6 @@ function ProductCardInner({
                     + Panier
                   </button>
                 )}
-
-                {/* ✅ Supprimé: bouton partager (flèche) */}
               </div>
 
               {hasVariants && qtyTotal > 0 && (
@@ -1579,6 +1578,7 @@ function ProductCardInner({
                         + Ajouter au panier
                       </button>
 
+                      {/* ✅ Partage : mobile (navigator.share) + web (menu) */}
                       <button
                         className="btn btn-outline-secondary"
                         onClick={(e) => {
@@ -1638,6 +1638,7 @@ function ProductCardInner({
                           >
                             Email
                           </button>
+
                           <div className="duu-share-sep" />
                           <button
                             className="duu-share-item"
@@ -1649,6 +1650,18 @@ function ProductCardInner({
                           >
                             {copied ? "Lien copié ✅" : "Copier le lien"}
                           </button>
+
+                          <div className="duu-share-sep" />
+                          {humanUrl ? (
+                            <button
+                              className="duu-share-item"
+                              onClick={() => openShareLink(humanUrl)}
+                              type="button"
+                            >
+                              Ouvrir la page produit
+                            </button>
+                          ) : null}
+
                           <div className="duu-share-sep" />
                           <button
                             className="duu-share-item"
@@ -1661,16 +1674,7 @@ function ProductCardInner({
                       )}
                     </div>
 
-                    {/* (optionnel) pour debug: OG URL */}
-                    {ogUrl ? (
-                      <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
-                        Aperçu (OG) :{" "}
-                        <a href={ogUrl} target="_blank" rel="noreferrer">
-                          {ogUrl}
-                        </a>
-                      </div>
-                    ) : null}
-
+                    {/* ✅ IMPORTANT: on n'affiche PLUS "Aperçu (OG)" */}
                     {effectiveStock != null && effectiveStock <= 0 && (
                       <div className="alert alert-warning mt-3 py-2 small mb-0">
                         Produit en rupture de stock.
@@ -1681,7 +1685,11 @@ function ProductCardInner({
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" onClick={closeModal} type="button">
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={closeModal}
+                  type="button"
+                >
                   Fermer
                 </button>
               </div>
