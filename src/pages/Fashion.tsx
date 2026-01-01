@@ -19,13 +19,7 @@ function GridSkeleton() {
             style={{ borderRadius: 16, overflow: "hidden" }}
           >
             <div className="d-flex">
-              <div
-                className="placeholder"
-                style={{
-                  width: "52%",
-                  minHeight: 190,
-                }}
-              />
+              <div className="placeholder" style={{ width: "52%", minHeight: 190 }} />
               <div className="card-body" style={{ flex: 1 }}>
                 <div className="placeholder col-8 mb-2" />
                 <div className="placeholder col-5 mb-2" />
@@ -71,36 +65,19 @@ function getWindowKey(now = Date.now()) {
   return Math.floor(now / win);
 }
 
-/** === helpers ids présents dans les produits fashion === */
-function collectIds(items: Product[]) {
-  const catIds = new Set<number>();
-  const subIds = new Set<number>();
-
-  for (const p of items) {
-    const cid = Number((p as any).category_id || 0);
-    const sid = Number((p as any).sub_category_id || 0);
-    if (cid) catIds.add(cid);
-    if (sid) subIds.add(sid);
-  }
-  return { catIds, subIds };
-}
-
 /** ✅ Détection robuste "promo" (même logique que Market/Food) */
 function isPromoProduct(p: Product) {
   const x = p as any;
 
   if (x.is_promo === true || x.promo === true || x.on_promo === true) return true;
 
-  const promoPercent =
-    Number(x.promo_percent ?? x.discount_percent ?? x.percent_off ?? 0) || 0;
-  const promoAmount =
-    Number(x.promo_amount ?? x.discount_amount ?? x.amount_off ?? 0) || 0;
+  const promoPercent = Number(x.promo_percent ?? x.discount_percent ?? x.percent_off ?? 0) || 0;
+  const promoAmount = Number(x.promo_amount ?? x.discount_amount ?? x.amount_off ?? 0) || 0;
   if (promoPercent > 0 || promoAmount > 0) return true;
 
   const price = Number(x.price_client ?? x.price ?? 0) || 0;
   const promoPrice =
-    Number(x.promo_price_client ?? x.promo_price ?? x.price_promo ?? x.sale_price ?? 0) ||
-    0;
+    Number(x.promo_price_client ?? x.promo_price ?? x.price_promo ?? x.sale_price ?? 0) || 0;
   if (promoPrice > 0 && price > 0 && promoPrice < price) return true;
 
   if (String(x.promo_type || x.discount_type || "").trim()) {
@@ -142,7 +119,6 @@ export default function Fashion() {
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [allSubCategories, setAllSubCategories] = useState<SubCategory[]>([]);
 
-  // ✅ on sépare loading meta / loading produits (comme pour AfricanFood)
   const [loading, setLoading] = useState(true);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +143,7 @@ export default function Fashion() {
   const abortProductsRef = useRef<AbortController | null>(null);
   const abortMetaRef = useRef<AbortController | null>(null);
 
-  /** ✅ charge meta (categories/subcategories) une seule fois */
+  /** ✅ meta (cats/subs) */
   const loadMeta = useCallback(async () => {
     abortMetaRef.current?.abort();
     const ac = new AbortController();
@@ -181,9 +157,7 @@ export default function Fashion() {
         listCategories({ page: 1, pageSize: 500 }),
         listSubCategories({ page: 1, pageSize: 2000 }),
       ]);
-
       if (ac.signal.aborted) return;
-
       setAllCategories(resCats.items || []);
       setAllSubCategories(resSubs.items || []);
     } catch (e: any) {
@@ -199,7 +173,7 @@ export default function Fashion() {
     return () => abortMetaRef.current?.abort();
   }, [loadMeta]);
 
-  /** ✅ charge produits sur changement page/ville/route */
+  /** ✅ produits */
   const loadProducts = useCallback(async () => {
     abortProductsRef.current?.abort();
     const ac = new AbortController();
@@ -250,46 +224,38 @@ export default function Fashion() {
     if (!allCategories.length || !allSubCategories.length) loadMeta();
   }, [loadProducts, loadMeta, allCategories.length, allSubCategories.length]);
 
-  /** ✅ ids présents dans les items fashion */
-  const { fashionCategoryIds, fashionSubIds } = useMemo(() => {
-    const { catIds, subIds } = collectIds(items);
-    return { fashionCategoryIds: catIds, fashionSubIds: subIds };
-  }, [items]);
-
-  /** ✅ categories/subcategories utiles uniquement (pour menu + pills) */
-  const categories = useMemo(() => {
-    const out = allCategories.filter((c) => fashionCategoryIds.has(Number(c.id)));
+  /** ✅ IMPORTANT: on ne filtre plus les catégories par "ids présents dans les produits"
+   *  => c’est CategoriesMenu qui filtre selon la page (scope="fashion")
+   */
+  const categoriesAll = useMemo(() => {
+    const out = [...allCategories];
     out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
     return out;
-  }, [allCategories, fashionCategoryIds]);
+  }, [allCategories]);
 
-  const subCategories = useMemo(() => {
-    const out = allSubCategories.filter((s) => {
-      const sid = Number(s.id);
-      const cid = Number(s.category_id);
-      return fashionSubIds.has(sid) && fashionCategoryIds.has(cid);
-    });
+  const subCategoriesAll = useMemo(() => {
+    const out = [...allSubCategories];
     out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
     return out;
-  }, [allSubCategories, fashionSubIds, fashionCategoryIds]);
+  }, [allSubCategories]);
 
-  // maps
+  // maps (sur tout le catalogue)
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
-    for (const c of categories) map[c.id] = c;
+    for (const c of categoriesAll) map[c.id] = c;
     return map;
-  }, [categories]);
+  }, [categoriesAll]);
 
   const categoriesBySlug = useMemo(() => {
     const map: Record<string, Category> = {};
-    for (const c of categories) map[String(c.slug || "").toLowerCase()] = c;
+    for (const c of categoriesAll) map[String((c as any).slug || "").toLowerCase()] = c;
     return map;
-  }, [categories]);
+  }, [categoriesAll]);
 
   const subsByCatId = useMemo(() => {
     const m: Record<number, SubCategory[]> = {};
-    for (const s of subCategories) {
-      const cid = Number(s.category_id || 0);
+    for (const s of subCategoriesAll) {
+      const cid = Number((s as any).category_id || 0);
       if (!cid) continue;
       if (!m[cid]) m[cid] = [];
       m[cid].push(s);
@@ -298,7 +264,7 @@ export default function Fashion() {
       m[Number(k)].sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
     });
     return m;
-  }, [subCategories]);
+  }, [subCategoriesAll]);
 
   const selectedCategory = useMemo(() => {
     if (!categorySlugParam) return null;
@@ -308,12 +274,12 @@ export default function Fashion() {
   const selectedSubCategory = useMemo(() => {
     if (!subSlugParam || !selectedCategory) return null;
     const list = subsByCatId[selectedCategory.id] || [];
-    return list.find((s) => String(s.slug || "").toLowerCase() === subSlugParam) || null;
+    return list.find((s) => String((s as any).slug || "").toLowerCase() === subSlugParam) || null;
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
   // URL invalide → redirect
   useEffect(() => {
-    if (!categories.length) return;
+    if (!categoriesAll.length) return;
 
     if (categorySlugParam && !selectedCategory) {
       navigate("/fashion", { replace: true });
@@ -321,10 +287,10 @@ export default function Fashion() {
     }
 
     if (categorySlugParam && selectedCategory && subSlugParam && !selectedSubCategory) {
-      navigate(`/fashion/${selectedCategory.slug}`, { replace: true });
+      navigate(`/fashion/${(selectedCategory as any).slug}`, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories.length, categorySlugParam, subSlugParam, selectedCategory, selectedSubCategory]);
+  }, [categoriesAll.length, categorySlugParam, subSlugParam, selectedCategory, selectedSubCategory]);
 
   // search filter
   const filteredBySearch = useMemo(() => {
@@ -337,15 +303,11 @@ export default function Fashion() {
     let out = filteredBySearch;
 
     if (selectedCategory) {
-      out = out.filter(
-        (p) => Number((p as any).category_id || 0) === Number(selectedCategory.id)
-      );
+      out = out.filter((p) => Number((p as any).category_id || 0) === Number((selectedCategory as any).id));
     }
 
     if (selectedSubCategory) {
-      out = out.filter(
-        (p) => Number((p as any).sub_category_id || 0) === Number(selectedSubCategory.id)
-      );
+      out = out.filter((p) => Number((p as any).sub_category_id || 0) === Number((selectedSubCategory as any).id));
     }
 
     return out;
@@ -366,13 +328,13 @@ export default function Fashion() {
   }, [filtered, promoItems.length, promoIds]);
 
   const title = useMemo(() => {
-    if (selectedSubCategory) return selectedSubCategory.name || "Fashion";
-    if (selectedCategory) return selectedCategory.name || "Fashion";
+    if (selectedSubCategory) return (selectedSubCategory as any).name || "Fashion";
+    if (selectedCategory) return (selectedCategory as any).name || "Fashion";
     return "Fashion";
   }, [selectedCategory, selectedSubCategory]);
 
-  const activeCategoryId = selectedCategory?.id ?? null;
-  const activeSubCategoryId = selectedSubCategory?.id ?? null;
+  const activeCategoryId = (selectedCategory as any)?.id ?? null;
+  const activeSubCategoryId = (selectedSubCategory as any)?.id ?? null;
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
 
   const loadingAny = loading || loadingMeta;
@@ -483,9 +445,7 @@ export default function Fashion() {
             <h1 className="h4 mb-1 mt-2" style={{ color: "var(--duu-black)" }}>
               {title}
             </h1>
-            <div className="fashion-sub">
-              Tailles • Couleurs • Nouveautés — Paiement à la livraison
-            </div>
+            <div className="fashion-sub">Tailles • Couleurs • Nouveautés — Paiement à la livraison</div>
           </div>
 
           <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
@@ -504,21 +464,23 @@ export default function Fashion() {
                 <SlidersHorizontal size={18} />
               </span>
 
+              {/* ✅ le menu se filtre tout seul pour Fashion */}
               <CategoriesMenu
+                scope="fashion"
                 title="Filtrer"
                 variant="auto"
                 activeCategoryId={activeCategoryId}
                 activeSubCategoryId={activeSubCategoryId}
                 onSelectCategory={(c) => {
                   setPage(1);
-                  navigate(`/fashion/${c.slug}`);
+                  navigate(`/fashion/${(c as any).slug}`);
                 }}
                 onSelectSubCategory={(s) => {
                   setPage(1);
-                  const cat = categoriesById[s.category_id];
-                  const catSlug = cat?.slug || selectedCategory?.slug || "";
+                  const cat = categoriesById[Number((s as any).category_id || 0)];
+                  const catSlug = (cat as any)?.slug || (selectedCategory as any)?.slug || "";
                   if (!catSlug) return;
-                  navigate(`/fashion/${catSlug}/${s.slug}`);
+                  navigate(`/fashion/${catSlug}/${(s as any).slug}`);
                 }}
               />
             </div>
@@ -553,13 +515,13 @@ export default function Fashion() {
             {selectedCategory && (
               <span className="filter-chip">
                 <span style={{ opacity: 0.7 }}>🧷</span>
-                {selectedCategory.name}
+                {(selectedCategory as any).name}
               </span>
             )}
             {selectedSubCategory && (
               <span className="filter-chip">
                 <span style={{ opacity: 0.7 }}>🏷️</span>
-                {selectedSubCategory.name}
+                {(selectedSubCategory as any).name}
               </span>
             )}
 
@@ -583,25 +545,25 @@ export default function Fashion() {
               className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
               onClick={() => {
                 setPage(1);
-                navigate(`/fashion/${selectedCategory.slug}`);
+                navigate(`/fashion/${(selectedCategory as any).slug}`);
               }}
             >
               Tout
             </button>
 
-            {(subsByCatId[selectedCategory.id] || []).map((s) => {
-              const active = selectedSubCategory?.id === s.id;
+            {(subsByCatId[(selectedCategory as any).id] || []).map((s) => {
+              const active = (selectedSubCategory as any)?.id === (s as any).id;
               return (
                 <button
-                  key={s.id}
+                  key={(s as any).id}
                   type="button"
                   className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
                   onClick={() => {
                     setPage(1);
-                    navigate(`/fashion/${selectedCategory.slug}/${s.slug}`);
+                    navigate(`/fashion/${(selectedCategory as any).slug}/${(s as any).slug}`);
                   }}
                 >
-                  {s.name}
+                  {(s as any).name}
                 </button>
               );
             })}

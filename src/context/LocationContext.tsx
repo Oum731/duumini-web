@@ -43,24 +43,35 @@ const LocationContext = createContext<LocationContextType>({
 
 /* ===== Helpers ===== */
 function normSpaces(s: string) {
-  return s.trim().replace(/\s+/g, " ");
+  return String(s ?? "").trim().replace(/\s+/g, " ");
+}
+
+function titleCase(s: string) {
+  const t = normSpaces(s);
+  if (!t) return "";
+  return t
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ""))
+    .join(" ");
 }
 
 function normalizeCityLabel(v?: string | null): string | null {
-  const s = normSpaces(String(v ?? ""));
+  const s = normSpaces(v ?? "");
   if (!s) return null;
 
   // Normalisation légère (sans être agressif)
   const lower = s.toLowerCase();
-  if (lower === "casablanca") return "Casablanca";
-  if (lower === "marrakech") return "Marrakech";
+
+  if (lower === "casablanca" || lower === "casa") return "Casablanca";
+  if (lower === "marrakech" || lower === "marrakesh" || lower === "marr")
+    return "Marrakech";
   if (lower === "rabat") return "Rabat";
-  if (lower === "tanger") return "Tanger";
-  if (lower === "fes" || lower === "fès") return "Fès";
+  if (lower === "tanger" || lower === "tangier") return "Tanger";
+  if (lower === "fes" || lower === "fès" || lower === "fez") return "Fès";
   if (lower === "agadir") return "Agadir";
 
-  // sinon on conserve tel quel
-  return s;
+  // sinon on conserve mais avec une casse propre (permet saisie libre)
+  return titleCase(s);
 }
 
 /**
@@ -76,7 +87,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
 
   const userVille = useMemo(() => {
-    return normalizeCityLabel((user as any)?.ville ?? null);
+    const u: any = user || null;
+    // support "ville" ou "city"
+    return normalizeCityLabel(u?.ville ?? u?.city ?? null);
   }, [user]);
 
   useEffect(() => {
@@ -103,7 +116,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     // 3) rien
     setCityState(null);
     setIsReady(true);
-  }, [user?.id, userVille]);
+  }, [user?.id, userVille, user]);
 
   function setCity(next: CityCode | null) {
     const normalized = normalizeCityLabel(next);

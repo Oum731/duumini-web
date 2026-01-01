@@ -48,7 +48,7 @@ import {
 import TopProductsPage from "./pages/TopProductsPage";
 import GuestOrderWidget from "./components/GuestOrderWidget";
 
-// ✅ Localisation (Casablanca / Marrakech)
+// ✅ LocationGate silencieux (listener modal ville)
 import LocationGate from "./components/LocationGate";
 
 // 🔔 Bulle de notification temps réel (socket/SSE)
@@ -332,16 +332,12 @@ export default function App() {
           <main className="flex-fill">
             <React.Suspense
               fallback={
-                <div className="container-xxl py-5 text-muted">
-                  Chargement…
-                </div>
+                <div className="container-xxl py-5 text-muted">Chargement…</div>
               }
             >
               <Routes>
-                {/* ✅ Pas de redirection : Home direct */}
                 <Route path="/" element={<Home />} />
 
-                {/* Public */}
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/verify" element={<VerifyAndResetPage />} />
                 <Route path="/checkout" element={<CheckoutPage />} />
@@ -350,7 +346,6 @@ export default function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/cart" element={<CartPage />} />
 
-                {/* ✅ Vitrine (routes dynamiques) */}
                 <Route path="/african-food" element={<AfricanFood />} />
                 <Route
                   path="/african-food/:categorySlug"
@@ -378,20 +373,16 @@ export default function App() {
                   element={<Fashion />}
                 />
 
-                {/* ✅ Partage produit (PAS de redirection) */}
                 <Route
                   path="/share/product/:idOrSlug"
                   element={<ProductView />}
                 />
-
-                {/* ✅ Produit normal */}
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
 
                 <Route path="/top-products" element={<TopProductsPage />} />
                 <Route path="/promos" element={<PromotionsPage />} />
                 <Route path="/test-can" element={<CanKickLottie />} />
 
-                {/* ✅ Pages légales */}
                 <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                 <Route path="/legal/terms" element={<Terms />} />
                 <Route path="/legal/returns" element={<ReturnsPolicy />} />
@@ -413,12 +404,10 @@ export default function App() {
                   </Route>
                 </Route>
 
-                {/* ✅ Vendeur protégé : ma boutique */}
                 <Route path="/ma-boutique" element={<ProtectedVendor />}>
                   <Route index element={<ShopsAdminPage />} />
                 </Route>
 
-                {/* Divers */}
                 <Route path="*" element={<Page title="Page introuvable" />} />
               </Routes>
             </React.Suspense>

@@ -1,6 +1,11 @@
 // src/components/LocationGate.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocationCity, CITY_OPTIONS, type CityCode } from "../context/LocationContext";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import {
+  useLocationCity,
+  CITY_OPTIONS,
+  type CityCode,
+} from "../context/LocationContext";
 import { api } from "../services/http";
 
 /**
@@ -42,12 +47,12 @@ function isSafeCityLabel(raw: string) {
   if (/[\u0000-\u001F\u007F]/.test(s)) return false;
 
   // ✅ whitelist “raisonnable” (lettres, espaces, -, ', .)
-  // adapte si tu veux autoriser plus
   if (!/^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s'.-]{2,40}$/.test(s)) return false;
 
   // évite les valeurs type "script", "onerror", etc.
   const low = s.toLowerCase();
-  if (low.includes("script") || low.includes("onerror") || low.includes("onload")) return false;
+  if (low.includes("script") || low.includes("onerror") || low.includes("onload"))
+    return false;
 
   return true;
 }
@@ -60,7 +65,6 @@ function uniqSorted(list: string[]) {
     const cleaned = titleCase(x);
     if (!cleaned) continue;
 
-    // ✅ sécurité
     if (!isSafeCityLabel(cleaned)) continue;
 
     const k = norm(cleaned);
@@ -92,8 +96,13 @@ function eqCity(a?: string | null, b?: string | null) {
   return norm(String(a || "")) === norm(String(b || ""));
 }
 
-export default function LocationGate({ children }: { children: React.ReactNode }) {
+export default function LocationGate({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { city, setCity, isReady } = useLocationCity();
+  const { pathname, search } = useLocation();
 
   const [showModal, setShowModal] = useState(false);
 
@@ -121,6 +130,7 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     try {
       const res = await api.get<any>(CITY_ENDPOINT, {
         query: { q: (search || "").trim() || undefined },
+        // @ts-ignore
         signal: ac.signal,
         timeout: 12000,
       });
@@ -150,16 +160,27 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     }
   }
 
-  useEffect(() => {
-    if (!isReady) return;
-    if (!city) setShowModal(true);
-  }, [isReady, city]);
-
+  // ✅ OUVERTURE UNIQUEMENT SUR DEMANDE (pas de gate)
   useEffect(() => {
     const handler = () => setShowModal(true);
     window.addEventListener("city:open", handler);
     return () => window.removeEventListener("city:open", handler);
   }, []);
+
+  // ✅ Ouvre sur création compte (si aucune ville)
+  const openedForRegisterRef = useRef(false);
+  useEffect(() => {
+    if (!isReady) return;
+    if (openedForRegisterRef.current) return;
+
+    const isRegister =
+      pathname === "/profile" && new URLSearchParams(search).get("tab") === "register";
+
+    if (isRegister && !city) {
+      openedForRegisterRef.current = true;
+      setShowModal(true);
+    }
+  }, [isReady, pathname, search, city]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -190,7 +211,6 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     const label = titleCase(cityName);
     if (!label) return;
 
-    // ✅ sécurité front
     if (!isSafeCityLabel(label)) {
       setCitiesErr("Nom de ville invalide.");
       return;
@@ -198,9 +218,7 @@ export default function LocationGate({ children }: { children: React.ReactNode }
 
     try {
       await api.post("/api/locations/cities", { city: label }, { timeout: 8000 });
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     setCity(label as CityCode);
     setShowModal(false);
@@ -212,7 +230,6 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     const label = titleCase(customCity);
     if (!label) return;
 
-    // ✅ sécurité front
     if (!isSafeCityLabel(label)) {
       setCitiesErr("Nom de ville invalide (caractères non autorisés).");
       return;
@@ -220,9 +237,7 @@ export default function LocationGate({ children }: { children: React.ReactNode }
 
     try {
       await api.post("/api/locations/cities", { city: label }, { timeout: 8000 });
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     setCities((prev) => uniqSorted([...prev, label]));
     setSelected(label);
@@ -239,42 +254,10 @@ export default function LocationGate({ children }: { children: React.ReactNode }
     return list.slice(0, 200);
   }, [cities, q]);
 
-  if (!isReady) {
-    return (
-      <div className="min-vh-100 d-flex align-items-center justify-content-center">
-        <div className="text-center text-muted small">Chargement de votre zone de livraison…</div>
-      </div>
-    );
-  }
-
+  // ⚠️ On ne bloque plus l’app si isReady=false : on laisse passer l’UI
   return (
     <>
       {children}
-
-      {!showModal && (
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="d-inline-flex align-items-center gap-2 shadow-sm"
-          style={{
-            position: "fixed",
-            left: 16,
-            bottom: 16,
-            zIndex: 2000,
-            borderRadius: 999,
-            border: "1px solid rgba(0,0,0,.06)",
-            background: "#FFD54F",
-            padding: "8px 14px",
-            fontSize: ".85rem",
-            color: "var(--duu-black, #111)",
-          }}
-          aria-label="Changer ma ville de livraison"
-          title={currentLabel ? `Ville actuelle : ${currentLabel}` : undefined}
-        >
-          <span style={{ fontSize: "1rem" }}>📍</span>
-          <span className="fw-semibold">{currentLabel ? `Ville : ${currentLabel}` : "Choisir ma ville"}</span>
-        </button>
-      )}
 
       {showModal && (
         <>
@@ -294,12 +277,17 @@ export default function LocationGate({ children }: { children: React.ReactNode }
                     <span>Choisissez votre ville</span>
                   </h5>
 
-                  <button type="button" className="btn-close" aria-label="Fermer" onClick={() => setShowModal(false)} />
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Fermer"
+                    onClick={() => setShowModal(false)}
+                  />
                 </div>
 
                 <div className="modal-body">
                   <p className="small text-muted mb-2">
-                    Choisis une ville dans la liste déroulante (tu peux aussi rechercher).
+                    Ville actuelle : <strong>{currentLabel || "—"}</strong>
                   </p>
 
                   <div className="input-group mb-2">
@@ -384,10 +372,14 @@ export default function LocationGate({ children }: { children: React.ReactNode }
                       </button>
                     </div>
 
-                    <div className="small text-muted mt-2">La ville est enregistrée pour vos prochaines visites.</div>
+                    <div className="small text-muted mt-2">
+                      La ville est enregistrée pour vos prochaines visites.
+                    </div>
                   </div>
 
-                  <p className="small text-muted mt-3 mb-0">La ville sélectionnée est conservée sur cet appareil.</p>
+                  <p className="small text-muted mt-3 mb-0">
+                    La ville sélectionnée est conservée sur cet appareil.
+                  </p>
                 </div>
               </div>
             </div>

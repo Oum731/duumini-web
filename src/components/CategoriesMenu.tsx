@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
 
+type PageScope = "all" | "african-food" | "african-market" | "fashion";
+
 type Props = {
   activeCategoryId?: number | null;
   activeSubCategoryId?: number | null;
@@ -10,7 +12,31 @@ type Props = {
   onSelectSubCategory?: (sub: SubCategory) => void;
   title?: string;
   variant?: "auto" | "drawer" | "dropdown";
+
+  /** Filtrer selon la page */
+  scope?: PageScope;
 };
+
+function norm(s: any) {
+  return String(s ?? "").trim().toLowerCase();
+}
+
+function scopeToVertical(scope: PageScope): "" | "FOOD" | "MARKET" | "FASHION" {
+  if (scope === "african-food") return "FOOD";
+  if (scope === "african-market") return "MARKET";
+  if (scope === "fashion") return "FASHION";
+  return "";
+}
+
+function scopeToCategorySlugFallback(scope: PageScope): "" | "african-food" | "african-market" | "fashion" | "food" | "market" {
+  // ⚠️ adapte si tes slugs categories sont exactement "food/market/fashion"
+  // ou "african-food/african-market/fashion".
+  // Ici on accepte les 2.
+  if (scope === "african-food") return "food";
+  if (scope === "african-market") return "market";
+  if (scope === "fashion") return "fashion";
+  return "";
+}
 
 export default function CategoriesMenu({
   activeCategoryId = null,
@@ -19,6 +45,7 @@ export default function CategoriesMenu({
   onSelectSubCategory,
   title = "Filtrer",
   variant = "auto",
+  scope = "all",
 }: Props) {
   const [cats, setCats] = useState<Category[]>([]);
   const [subs, setSubs] = useState<SubCategory[]>([]);
@@ -50,6 +77,12 @@ export default function CategoriesMenu({
     loadAll();
   }, []);
 
+  // reset quand scope change
+  useEffect(() => {
+    setOpenCatId(activeCategoryId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope]);
+
   // auto => dropdown desktop, drawer mobile
   const ui: "drawer" | "dropdown" = useMemo(() => {
     if (variant === "drawer" || variant === "dropdown") return variant;
@@ -57,10 +90,61 @@ export default function CategoriesMenu({
     return window.matchMedia("(min-width: 992px)").matches ? "dropdown" : "drawer";
   }, [variant]);
 
+  const catsById = useMemo(() => {
+    const m: Record<number, Category> = {};
+    for (const c of cats || []) m[Number(c.id)] = c;
+    return m;
+  }, [cats]);
+
+  /**
+   * ✅ Filtrage par scope (robuste):
+   * 1) Si sub.vertical existe -> on filtre dessus (FOOD/MARKET/FASHION)
+   * 2) Sinon fallback: on filtre par slug de catégorie (category_slug join si présent, sinon depuis catsById)
+   */
+  const filteredSubs = useMemo(() => {
+    const wantedVertical = scopeToVertical(scope);
+    if (!wantedVertical) return subs || [];
+
+    const wantedSlugFallback = scopeToCategorySlugFallback(scope);
+
+    return (subs || []).filter((s) => {
+      const v = norm((s as any).vertical);
+      if (v) return v === norm(wantedVertical);
+
+      const catSlugJoin = norm((s as any).category_slug);
+      if (catSlugJoin) return catSlugJoin === norm(wantedSlugFallback) || catSlugJoin === norm(scope);
+
+      const cat = catsById[Number((s as any).category_id || 0)];
+      const catSlug = norm((cat as any)?.slug);
+      if (catSlug) return catSlug === norm(wantedSlugFallback) || catSlug === norm(scope);
+
+      return false;
+    });
+  }, [subs, scope, catsById]);
+
+  const catsFiltered = useMemo(() => {
+    const wantedVertical = scopeToVertical(scope);
+    if (!wantedVertical) {
+      const sorted = [...(cats || [])];
+      sorted.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
+      return sorted;
+    }
+
+    const allowedCatIds = new Set<number>();
+    for (const s of filteredSubs || []) {
+      const cid = Number((s as any).category_id || 0);
+      if (cid) allowedCatIds.add(cid);
+    }
+
+    const filtered = (cats || []).filter((c) => allowedCatIds.has(Number(c.id)));
+    filtered.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
+    return filtered;
+  }, [cats, filteredSubs, scope]);
+
   const subsByCat = useMemo(() => {
     const map = new Map<number, SubCategory[]>();
-    for (const s of subs) {
-      const cid = Number(s.category_id || 0);
+    for (const s of filteredSubs) {
+      const cid = Number((s as any).category_id || 0);
       if (!cid) continue;
       if (!map.has(cid)) map.set(cid, []);
       map.get(cid)!.push(s);
@@ -70,7 +154,16 @@ export default function CategoriesMenu({
       map.set(k, arr);
     }
     return map;
-  }, [subs]);
+  }, [filteredSubs]);
+
+  useEffect(() => {
+    if (!activeCategoryId) return;
+    const exists = catsFiltered.some((c) => c.id === Number(activeCategoryId));
+    if (!exists) {
+      setOpenCatId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catsFiltered]);
 
   function toggleCategory(catId: number) {
     setOpenCatId((prev) => (prev === catId ? null : catId));
@@ -89,11 +182,11 @@ export default function CategoriesMenu({
   function CategoryList() {
     if (loading) return <div className="text-muted small">Chargement…</div>;
     if (err) return <div className="alert alert-danger py-2 mb-0">{err}</div>;
-    if (!cats.length) return <div className="text-muted small">Aucune catégorie.</div>;
+    if (!catsFiltered.length) return <div className="text-muted small">Aucune catégorie.</div>;
 
     return (
       <div className="d-flex flex-column gap-2">
-        {cats.map((c) => {
+        {catsFiltered.map((c) => {
           const isOpen = openCatId === c.id;
           const isActive = Number(activeCategoryId || 0) === c.id;
           const children = subsByCat.get(c.id) || [];
@@ -128,10 +221,10 @@ export default function CategoriesMenu({
                   {children.length ? (
                     <div className="d-flex flex-column gap-1">
                       {children.map((s) => {
-                        const isSubActive = Number(activeSubCategoryId || 0) === s.id;
+                        const isSubActive = Number(activeSubCategoryId || 0) === Number((s as any).id);
                         return (
                           <button
-                            key={s.id}
+                            key={Number((s as any).id)}
                             type="button"
                             className="btn btn-sm text-start"
                             onClick={() => handlePickSub(s)}
@@ -187,7 +280,7 @@ export default function CategoriesMenu({
     );
   }
 
-  // ======= Drawer (mobile) — ✅ OUVERTURE GAUCHE -> DROITE =======
+  // ======= Drawer (mobile) — gauche -> droite =======
   return (
     <>
       <button
@@ -199,17 +292,12 @@ export default function CategoriesMenu({
         {title}
       </button>
 
-      {/* Overlay normal: NE FERME PAS "LA PAGE" */}
       <div
         className={"position-fixed top-0 start-0 w-100 h-100 " + (open ? "d-block" : "d-none")}
-        style={{
-          background: "rgba(0,0,0,.45)",
-          zIndex: 1040,
-        }}
+        style={{ background: "rgba(0,0,0,.45)", zIndex: 1040 }}
         onClick={() => setOpen(false)}
       />
 
-      {/* Drawer */}
       <div
         className="position-fixed top-0 start-0 h-100 bg-white shadow"
         style={{

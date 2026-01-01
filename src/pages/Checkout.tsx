@@ -3,10 +3,18 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
 import { me, getAccessToken } from "../services/auth";
-import { createOrder, createGuestOrder, type CreateOrderPayload } from "../services/orders";
+import {
+  createOrder,
+  createGuestOrder,
+  type CreateOrderPayload,
+} from "../services/orders";
 import { normalizePhoneInput, isValidPhoneIntl } from "../utils/phone";
 import { trackPurchase } from "../lib/analytics";
-import { useLocationCity, CITY_OPTIONS, type CityCode } from "../context/LocationContext";
+import {
+  useLocationCity,
+  CITY_OPTIONS,
+  type CityCode,
+} from "../context/LocationContext";
 import { api } from "../services/http";
 
 /* ——— Style local : focus rouge + état loading ——— */
@@ -86,21 +94,22 @@ function normalizeSuggestionItems(input: any): LocationSuggestion[] {
     .filter((x: LocationSuggestion) => !!x.value);
 }
 
-/** API calls (support AbortController via fetch options if your api wrapper allows).
- * If your api wrapper doesn't support signal, it's still ok (we fallback: ignore outdated results).
- */
 async function listCommunesByCity(ville?: string, signal?: AbortSignal) {
   const v = String(ville || "").trim();
   if (!v) return [] as LocationSuggestion[];
   const res = await api.get<ItemsEnvelope<any>>("/api/locations/communes", {
     query: { ville: v, limit: 30 },
-    // @ts-ignore (si ton wrapper accepte signal)
+    // @ts-ignore
     signal,
   });
   return normalizeSuggestionItems(res);
 }
 
-async function listQuartiersByCityCommune(ville?: string, commune?: string, signal?: AbortSignal) {
+async function listQuartiersByCityCommune(
+  ville?: string,
+  commune?: string,
+  signal?: AbortSignal
+) {
   const v = String(ville || "").trim();
   const c = String(commune || "").trim();
   if (!v || !c) return [] as LocationSuggestion[];
@@ -227,12 +236,18 @@ export default function CheckoutPage() {
   const [communeOther, setCommuneOther] = useState("");
   const [quartier, setQuartier] = useState("");
 
-  const [communeSuggestions, setCommuneSuggestions] = useState<LocationSuggestion[]>([]);
-  const [quartierSuggestions, setQuartierSuggestions] = useState<LocationSuggestion[]>([]);
+  const [communeSuggestions, setCommuneSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
+  const [quartierSuggestions, setQuartierSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
 
   const [useGps, setUseGps] = useState(false);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null
+  );
   const [gpsErr, setGpsErr] = useState<string | null>(null);
 
   const [loadingGps, setLoadingGps] = useState(false);
@@ -243,11 +258,6 @@ export default function CheckoutPage() {
   const [saveAddressToProfile, setSaveAddressToProfile] = useState(false);
 
   const hasToken = !!getAccessToken?.();
-  const [guestConfirmed, setGuestConfirmed] = useState(false);
-  useEffect(() => {
-    if (!hasToken) setGuestConfirmed(true);
-  }, [hasToken]);
-
   const [showGuestSuccess, setShowGuestSuccess] = useState(false);
 
   const hasPromoInCart = useMemo(() => {
@@ -260,9 +270,11 @@ export default function CheckoutPage() {
     });
   }, [lines]);
 
-  const deliveryFee = useMemo(() => computeDeliveryFeeByCity(cityLabel), [cityLabel]);
+  const deliveryFee = useMemo(
+    () => computeDeliveryFeeByCity(cityLabel),
+    [cityLabel]
+  );
 
-  // UI total
   const grandTotalUi = totalAmount + deliveryFee;
 
   const handlePhoneChange = useCallback((e: any) => {
@@ -287,11 +299,12 @@ export default function CheckoutPage() {
     : guestName.trim().length > 0;
 
   const addressOk = hasToken
-    ? !!cityLabel && (useGps ? !!coords : communeVal.length > 0 && quartier.trim().length > 0)
+    ? !!cityLabel &&
+      (useGps ? !!coords : communeVal.length > 0 && quartier.trim().length > 0)
     : !!cityLabel && (useGps ? !!coords : guestAddress.trim().length > 0);
 
-  const canSubmit =
-    lines.length > 0 && hasName && validPhone && addressOk && (hasToken || guestConfirmed);
+  // ✅ plus de "guestConfirmed" : on autorise directement le checkout invité
+  const canSubmit = lines.length > 0 && hasName && validPhone && addressOk;
 
   const askGps = useCallback(() => {
     setGpsErr(null);
@@ -309,7 +322,8 @@ export default function CheckoutPage() {
       },
       (err) => {
         setGpsErr(
-          err?.message || "Impossible d’obtenir la position (permission refusée ou indisponible)."
+          err?.message ||
+            "Impossible d’obtenir la position (permission refusée ou indisponible)."
         );
         setLoadingGps(false);
       },
@@ -340,10 +354,12 @@ export default function CheckoutPage() {
           setLastName((u as any).last_name || "");
           setPhone(normalizePhoneInput((u as any).phone || ""));
 
+          // ✅ Ville : pré-remplir si possible, MAIS l’utilisateur peut toujours changer via le bouton "Changer"
           const profileCityRaw = String((u as any).city || (u as any).ville || "")
             .trim()
             .toLowerCase();
 
+          // Si pas de ville déjà sélectionnée côté app, on essaie d'en mettre une depuis profil
           if (!city) {
             if (profileCityRaw.includes("casa")) setCity("CASABLANCA" as CityCode);
             else if (profileCityRaw.includes("marr")) setCity("MARRAKECH" as CityCode);
@@ -532,7 +548,10 @@ export default function CheckoutPage() {
           };
 
       const fullName = hasToken
-        ? (`${firstName.trim()} ${lastName.trim()}`.trim() || firstName.trim() || lastName.trim()).trim()
+        ? (
+            `${firstName.trim()} ${lastName.trim()}`
+              .trim() || firstName.trim() || lastName.trim()
+          ).trim()
         : guestName.trim();
 
       const contact = {
@@ -584,7 +603,9 @@ export default function CheckoutPage() {
       const serverCurrency = String((result as any).currency || "MAD").toUpperCase();
 
       const createdAtStr =
-        (result as any).created_at || (result as any).created || new Date().toISOString();
+        (result as any).created_at ||
+        (result as any).created ||
+        new Date().toISOString();
       const createdAt = new Date(createdAtStr);
 
       const numericId = typeof orderId === "number" ? orderId : Number(orderId) || 0;
@@ -602,7 +623,8 @@ export default function CheckoutPage() {
               l.category_name ||
               l.sub_category_name ||
               l.sub_category_slug ||
-              (l.sub_category_id != null && String(l.sub_category_id).trim() !== ""
+              (l.sub_category_id != null &&
+              String(l.sub_category_id).trim() !== ""
                 ? String(l.sub_category_id)
                 : "") ||
               "";
@@ -746,7 +768,12 @@ export default function CheckoutPage() {
 
       {showGuestSuccess && (
         <>
-          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+          <div
+            className="modal fade show d-block"
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content">
                 <div className="modal-header">
@@ -770,9 +797,8 @@ export default function CheckoutPage() {
                     <strong>contacter très bientôt par téléphone</strong>.
                   </p>
                   <p className="mb-0 small text-muted">
-                    Pour <strong>voir l’historique</strong> et{" "}
-                    <strong>suivre vos commandes</strong>, vous pouvez vous connecter ou créer un
-                    compte.
+                    Pour <strong>suivre vos commandes</strong>, vous pouvez{" "}
+                    <strong>créer un compte</strong> (optionnel).
                   </p>
                 </div>
                 <div className="modal-footer d-flex flex-wrap gap-2">
@@ -788,19 +814,19 @@ export default function CheckoutPage() {
                   </button>
 
                   <Link
-                    to="/profile?tab=login&next=/orders"
-                    className="btn btn-outline-dark"
-                    onClick={() => setShowGuestSuccess(false)}
-                  >
-                    Se connecter
-                  </Link>
-
-                  <Link
                     to="/profile?tab=register&next=/orders"
                     className="btn btn-duu"
                     onClick={() => setShowGuestSuccess(false)}
                   >
-                    Créer un compte
+                    Créer un compte pour suivre
+                  </Link>
+
+                  <Link
+                    to="/profile?tab=login&next=/orders"
+                    className="btn btn-outline-dark"
+                    onClick={() => setShowGuestSuccess(false)}
+                  >
+                    J’ai déjà un compte
                   </Link>
                 </div>
               </div>
@@ -825,6 +851,7 @@ export default function CheckoutPage() {
               </span>
             </span>
 
+            {/* ✅ Toujours possible de changer la ville, même si elle vient du profil */}
             <button
               type="button"
               className="btn btn-sm btn-outline-dark"
@@ -834,8 +861,9 @@ export default function CheckoutPage() {
               Changer de ville
             </button>
 
-            {/* ✅ On garde la logique interne promo si tu veux, mais sans message "backend fige..." */}
-            {hasPromoInCart && <span className="badge text-bg-warning">Promo active</span>}
+            {hasPromoInCart && (
+              <span className="badge text-bg-warning">Promo active</span>
+            )}
           </div>
         </div>
 
@@ -843,37 +871,6 @@ export default function CheckoutPage() {
       </div>
 
       {err && <div className="alert alert-danger">{err}</div>}
-
-      {!hasToken && (
-        <div className="alert alert-info mb-3">
-          <div className="fw-semibold mb-1">Commander sans créer de compte</div>
-          <p className="mb-2 small">
-            Vous pouvez finaliser votre commande <strong>en tant qu’invité</strong>.
-          </p>
-          <div className="d-flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-sm btn-dark"
-              onClick={() => setGuestConfirmed(true)}
-            >
-              Continuer en tant qu’invité
-            </button>
-            <Link to="/profile?tab=login&next=/checkout" className="btn btn-sm btn-outline-dark">
-              Se connecter
-            </Link>
-            <Link
-              to="/profile?tab=register&next=/checkout"
-              className="btn btn-sm btn-outline-secondary"
-            >
-              Créer un compte
-            </Link>
-          </div>
-
-          {guestConfirmed && (
-            <p className="mt-2 small mb-0">✅ Mode invité activé. Remplissez le formulaire puis confirmez la commande.</p>
-          )}
-        </div>
-      )}
 
       <div className="row g-4">
         {/* Formulaire */}
@@ -932,14 +929,17 @@ export default function CheckoutPage() {
                     <label className="form-label">Téléphone</label>
                     <input
                       type="tel"
-                      className={`form-control ${phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""}`}
+                      className={`form-control ${
+                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
+                      }`}
                       placeholder="+212..."
                       value={phone}
                       onChange={handlePhoneChange}
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…,
+                        +1…
                       </div>
                     )}
                     <div className="form-text">
@@ -960,7 +960,7 @@ export default function CheckoutPage() {
                         Changer
                       </button>
                     </div>
-                    <div className="form-text">La ville vient de votre sélection.</div>
+                    <div className="form-text">La ville peut être modifiée à tout moment.</div>
                   </div>
 
                   <div className="col-12">
@@ -1030,7 +1030,9 @@ export default function CheckoutPage() {
                           )}
 
                           <div className="form-text">
-                            {loadingSuggest ? "Chargement suggestions…" : "Choisissez une commune ou saisissez-la."}
+                            {loadingSuggest
+                              ? "Chargement suggestions…"
+                              : "Choisissez une commune ou saisissez-la."}
                           </div>
                         </div>
 
@@ -1050,13 +1052,18 @@ export default function CheckoutPage() {
                                   <option key={s.value} value={s.value} />
                                 ))}
                               </datalist>
-                              <div className="form-text">Astuce : commence à taper pour voir des suggestions.</div>
+                              <div className="form-text">
+                                Astuce : commence à taper pour voir des suggestions.
+                              </div>
                             </>
                           ) : (
                             <div className="alert alert-info d-flex justify-content-between align-items-center">
                               <span>
                                 Localisation GPS activée{" "}
-                                {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
+                                {coords
+                                  ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
+                                  : ""}
+                                .
                               </span>
                               <button
                                 className="btn btn-sm btn-outline-dark"
@@ -1094,7 +1101,9 @@ export default function CheckoutPage() {
                               checked={saveAddressToProfile}
                               onChange={(e) => setSaveAddressToProfile(e.target.checked)}
                             />
-                            <span className="form-check-label ms-2">Enregistrer cette adresse dans mon profil</span>
+                            <span className="form-check-label ms-2">
+                              Enregistrer cette adresse dans mon profil
+                            </span>
                           </label>
 
                           <button
@@ -1128,14 +1137,17 @@ export default function CheckoutPage() {
                     <label className="form-label">Téléphone</label>
                     <input
                       type="tel"
-                      className={`form-control ${phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""}`}
+                      className={`form-control ${
+                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
+                      }`}
                       placeholder="+212..., +225..., +223..., +1..."
                       value={phone}
                       onChange={handlePhoneChange}
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…,
+                        +1…
                       </div>
                     )}
                     <div className="form-text">
@@ -1156,6 +1168,7 @@ export default function CheckoutPage() {
                         Changer
                       </button>
                     </div>
+                    <div className="form-text">La ville peut être modifiée à tout moment.</div>
                   </div>
 
                   <div className="col-12">
@@ -1197,7 +1210,10 @@ export default function CheckoutPage() {
                         <div className="alert alert-info d-flex justify-content-between align-items-center">
                           <span>
                             Localisation GPS activée{" "}
-                            {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
+                            {coords
+                              ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
+                              : ""}
+                            .
                           </span>
                           <button
                             className="btn btn-sm btn-outline-dark"
@@ -1233,7 +1249,9 @@ export default function CheckoutPage() {
 
               <div className="alert alert-light border mb-0">
                 <div className="fw-semibold">🚚 {deliveryTitle}</div>
-                <div className="small text-muted">La livraison est calculée automatiquement selon votre ville.</div>
+                <div className="small text-muted">
+                  La livraison est calculée automatiquement selon votre ville.
+                </div>
                 <div className="small mt-2">
                   Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais :{" "}
                   <strong>{mad(deliveryFee)}</strong>
@@ -1256,7 +1274,11 @@ export default function CheckoutPage() {
             >
               {submitting ? (
                 <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  <span
+                    className="spinner-border spinner-border-sm me-2"
+                    role="status"
+                    aria-hidden="true"
+                  />
                   Confirmation…<span className="visually-hidden">de la commande</span>
                 </>
               ) : (
@@ -1272,9 +1294,9 @@ export default function CheckoutPage() {
             <div className="card-body">
               <h2 className="h6 mb-3">Récapitulatif</h2>
 
-              {/* ✅ supprimé: gros texte d'avertissement */}
-              {/* Optionnel: badge léger si promo */}
-              {hasPromoInCart && <div className="badge text-bg-warning mb-3">Promo active</div>}
+              {hasPromoInCart && (
+                <div className="badge text-bg-warning mb-3">Promo active</div>
+              )}
 
               <ul className="list-group list-group-flush">
                 {lines.map((l: any) => {
@@ -1289,10 +1311,14 @@ export default function CheckoutPage() {
                           {l.name} <span className="text-muted">×{l.qty}</span>
                         </div>
                         {vLabel && (
-                          <div className="small text-muted text-truncate">Variante : {vLabel}</div>
+                          <div className="small text-muted text-truncate">
+                            Variante : {vLabel}
+                          </div>
                         )}
                       </div>
-                      <span className="fw-semibold">{mad((l.qty || 0) * (l.price || 0))}</span>
+                      <span className="fw-semibold">
+                        {mad((l.qty || 0) * (l.price || 0))}
+                      </span>
                     </li>
                   );
                 })}
@@ -1316,8 +1342,8 @@ export default function CheckoutPage() {
               <div className="alert alert-secondary mt-3 mb-0">
                 <div className="fw-semibold mb-1">Paiement à la livraison</div>
                 <small className="d-block text-muted">
-                  Vous réglez <strong>à la réception</strong> — en <strong>espèces</strong>. Aucun
-                  acompte requis.
+                  Vous réglez <strong>à la réception</strong> — en{" "}
+                  <strong>espèces</strong>. Aucun acompte requis.
                 </small>
               </div>
             </div>

@@ -204,7 +204,12 @@ function promoPriceForAdmin(p: any) {
   if (Number.isFinite(apiN as any)) return apiN as number;
 
   const base = basePriceForAdmin(p);
-  return computePromoPriceLocal(base, p?.promo_eligible, p?.promo_discount_type, p?.promo_discount_value);
+  return computePromoPriceLocal(
+    base,
+    p?.promo_eligible,
+    p?.promo_discount_type,
+    p?.promo_discount_value
+  );
 }
 
 function splitNames(raw: string) {
@@ -226,8 +231,8 @@ function getPaginated(res: any): { items: Product[]; pageInfo?: any } {
   const items = Array.isArray(body?.items)
     ? (body.items as Product[])
     : Array.isArray(body?.data?.items)
-    ? (body.data.items as Product[])
-    : [];
+      ? (body.data.items as Product[])
+      : [];
 
   const pageInfo = body?.pageInfo ?? body?.data?.pageInfo ?? undefined;
 
@@ -242,7 +247,7 @@ function inferStyleFromProduct(p: any): ProductStyle | "" {
   return "";
 }
 
-/* ========= Variants helpers (UI) ========= */
+/* ========= Variants helpers (API + UI) ========= */
 type VariantDraft = {
   id?: number;
   size?: string | null;
@@ -275,7 +280,9 @@ function cleanVariantsForApi(list: VariantDraft[]): Array<Partial<ProductVariant
     const size = normStr(v.size, 20);
     const color = normStr(v.color, 40);
     const sku = normStr(v.sku, 80);
-    if (!size && !color) continue;
+
+    // on exige taille + couleur en prod (évite variantes “vides”)
+    if (!size || !color) continue;
 
     out.push({
       size,
@@ -320,6 +327,27 @@ function buildSkuAuto(name: string, size?: string | null, color?: string | null)
 
   const parts = [n || "DUU", s || "X", c || "X"].filter(Boolean);
   return parts.join("-").slice(0, 80);
+}
+
+// UI keys
+function normKeyPart(x: any) {
+  return String(x ?? "").trim().toLowerCase();
+}
+function vKey(size?: string | null, color?: string | null) {
+  return `${normKeyPart(size)}|${normKeyPart(color)}`;
+}
+function uniq(list: string[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const x of list) {
+    const t = String(x ?? "").trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
 }
 
 /* ========= Formulaire Produit ========= */
@@ -371,8 +399,8 @@ function ProductForm({
         anyInit?.is_active != null
           ? (Number(anyInit.is_active) as 0 | 1)
           : anyInit?.active != null
-          ? (Number(anyInit.active) as 0 | 1)
-          : null,
+            ? (Number(anyInit.active) as 0 | 1)
+            : null,
     };
   });
 
@@ -410,10 +438,14 @@ function ProductForm({
   const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [variantsTouched, setVariantsTouched] = useState(false);
 
-  const [bulkSizesRaw, setBulkSizesRaw] = useState("");
-  const [bulkColorsRaw, setBulkColorsRaw] = useState("");
-  const [bulkStock, setBulkStock] = useState<number>(0);
-  const [bulkPriceOverride, setBulkPriceOverride] = useState<string>("");
+  // UI selection (no generator)
+  const sizesPreset = ["XS", "S", "M", "L", "XL", "XXL", "36", "38", "40", "42", "44"];
+  const colorsPreset = ["Noir", "Blanc", "Rouge", "Bleu", "Vert", "Jaune", "Beige", "Gris", "Marron", "Rose"];
+
+  const [activeSize, setActiveSize] = useState<string>(sizesPreset[0]);
+  const [customSize, setCustomSize] = useState("");
+  const [customColor, setCustomColor] = useState("");
+  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
 
   const productId = Number((initial as any)?.id || 0);
   const isFashion = String(draft.style || "").toLowerCase() === "fashion";
@@ -435,9 +467,16 @@ function ProductForm({
     setFiles(arr);
   }
 
-  function previewURL(f: File) {
-    return URL.createObjectURL(f);
-  }
+  // ✅ preview URLs (revoke)
+  const previews = useMemo(() => {
+    return files.map((f) => ({ f, url: URL.createObjectURL(f) }));
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      for (const p of previews) URL.revokeObjectURL(p.url);
+    };
+  }, [previews]);
 
   const hasExistingImages = (initial as any)?.images?.length > 0;
   const selectedShop = shops.find((s) => s.id === (draft.shop_id ?? undefined));
@@ -495,10 +534,9 @@ function ProductForm({
     setVariantsOk(null);
     setVariantsTouched(false);
     setVariants([]);
-    setBulkSizesRaw("");
-    setBulkColorsRaw("");
-    setBulkStock(0);
-    setBulkPriceOverride("");
+    setActiveSize(sizesPreset[0]);
+    setCustomSize("");
+    setCustomColor("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.style]);
 
@@ -521,6 +559,7 @@ function ProductForm({
     setCreatedSubCatsPreview(names);
   }, [newSubCatsRaw, isCustomCategory]);
 
+  // load variants when editing fashion
   useEffect(() => {
     const run = async () => {
       setVariantsErr(null);
@@ -528,13 +567,7 @@ function ProductForm({
 
       if (!isFashion) return;
 
-      if (!isEdit) {
-        if (!variantsTouched && variants.length === 0) {
-          setVariants([{ size: null, color: null, sku: null, stock: 0, price_override: null, is_active: 1 }]);
-        }
-        return;
-      }
-
+      if (!isEdit) return;
       if (variantsTouched) return;
 
       setVariantsLoading(true);
@@ -582,79 +615,84 @@ function ProductForm({
     return null;
   }
 
-  function addVariantRow(prefill?: Partial<VariantDraft>) {
-    setVariantsTouched(true);
-    setVariants((prev) => [
-      ...prev,
-      { size: null, color: null, sku: null, stock: 0, price_override: null, is_active: 1, ...(prefill || {}) },
-    ]);
+  // ===== Variants UI logic (radio size + checkbox colors) =====
+  function hasVariant(size: string, color: string) {
+    const k = vKey(size, color);
+    return (variants || []).some((v) => vKey(v.size, v.color) === k);
   }
 
-  function removeVariantRowAt(i: number) {
+  function upsertVariant(size: string, color: string, patch?: Partial<VariantDraft>) {
+    const k = vKey(size, color);
     setVariantsTouched(true);
     setVariants((prev) => {
-      const arr = [...prev];
-      arr.splice(i, 1);
-      return arr;
-    });
-  }
-
-  function patchVariant(idx: number, patch: Partial<VariantDraft>) {
-    setVariantsTouched(true);
-    setVariants((prev) => prev.map((x, i) => (i === idx ? { ...x, ...patch } : x)));
-  }
-
-  function dedupeVariants(list: VariantDraft[]) {
-    const seen = new Set<string>();
-    const out: VariantDraft[] = [];
-    for (const v of list) {
-      const key = `${String(v.size ?? "").trim().toLowerCase()}|${String(v.color ?? "").trim().toLowerCase()}`;
-      if (key === "|") continue;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(v);
-    }
-    return out;
-  }
-
-  function bulkAddVariants() {
-    const sizes = splitNames(bulkSizesRaw);
-    const colors = splitNames(bulkColorsRaw);
-
-    if (!sizes.length && !colors.length) {
-      setVariantsErr("Renseigne au moins des tailles ou des couleurs pour le générateur.");
-      return;
-    }
-    setVariantsErr(null);
-    setVariantsOk(null);
-
-    const base: VariantDraft[] = [];
-    const stock = normStock(bulkStock);
-    const po = normPriceOverride(bulkPriceOverride);
-
-    const sz = sizes.length ? sizes : [""];
-    const cl = colors.length ? colors : [""];
-
-    for (const s of sz) {
-      for (const c of cl) {
-        base.push({
-          size: s ? s : null,
-          color: c ? c : null,
-          sku: null,
-          stock,
-          price_override: po,
-          is_active: 1,
-        });
+      const arr = [...(prev || [])];
+      const idx = arr.findIndex((v) => vKey(v.size, v.color) === k);
+      if (idx >= 0) {
+        arr[idx] = { ...arr[idx], ...patch, size, color };
+        return arr;
       }
-    }
-
-    setVariantsTouched(true);
-    setVariants((prev) => dedupeVariants([...prev, ...base]));
+      const created: VariantDraft = {
+        size,
+        color,
+        sku: null,
+        stock: 0,
+        price_override: null,
+        is_active: 1,
+        ...(patch || {}),
+      };
+      return [...arr, created];
+    });
+    setLastAddedKey(k);
+    window.setTimeout(() => setLastAddedKey(null), 900);
   }
+
+  function removeVariant(size: string, color: string) {
+    const k = vKey(size, color);
+    setVariantsTouched(true);
+    setVariants((prev) => (prev || []).filter((v) => vKey(v.size, v.color) !== k));
+  }
+
+  function patchVariantByKey(size: string, color: string, patch: Partial<VariantDraft>) {
+    const k = vKey(size, color);
+    setVariantsTouched(true);
+    setVariants((prev) =>
+      (prev || []).map((v) => (vKey(v.size, v.color) === k ? { ...v, ...patch } : v))
+    );
+  }
+
+  const variantsBySize = useMemo(() => {
+    const map = new Map<string, VariantDraft[]>();
+    for (const v of variants || []) {
+      const s = String(v.size ?? "").trim();
+      const c = String(v.color ?? "").trim();
+      if (!s || !c) continue;
+      if (!map.has(s)) map.set(s, []);
+      map.get(s)!.push(v);
+    }
+    for (const [, arr] of map.entries()) {
+      arr.sort((a, b) =>
+        String(a.color || "").localeCompare(String(b.color || ""), "fr", { sensitivity: "base" })
+      );
+    }
+    return Array.from(map.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0], "fr", { sensitivity: "base" })
+    );
+  }, [variants]);
+
+  const allSizesUI = useMemo(() => {
+    const fromVariants = variantsBySize.map(([s]) => s);
+    return uniq([...sizesPreset, ...fromVariants]);
+  }, [variantsBySize]);
+
+  const allColorsUI = useMemo(() => {
+    const fromVariants: string[] = [];
+    for (const [, arr] of variantsBySize) for (const v of arr) fromVariants.push(String(v.color || ""));
+    return uniq([...colorsPreset, ...fromVariants]);
+  }, [variantsBySize]);
 
   async function cleanAllVariants() {
     if (!isEdit || !isFashion) return;
-    if (!confirm("Supprimer TOUTES les variantes de ce produit ? (clean total)")) return;
+    if (!confirm("Supprimer TOUTES les variantes de ce produit ?")) return;
 
     setVariantsErr(null);
     setVariantsOk(null);
@@ -665,6 +703,7 @@ function ProductForm({
       setVariants([]);
       setVariantsTouched(true);
       setVariantsOk("Toutes les variantes ont été supprimées.");
+      window.setTimeout(() => setVariantsOk(null), 1600);
     } catch (e: any) {
       setVariantsErr(e?.message || String(e));
     } finally {
@@ -711,6 +750,15 @@ function ProductForm({
         }
       } else if (!draft.sub_category_id) {
         setFormError("Sélectionne une sous-catégorie (liée à la catégorie).");
+        return;
+      }
+    }
+
+    // ✅ validation variantes fashion (prod)
+    if (style === "fashion") {
+      const cleaned = cleanVariantsForApi(variants);
+      if (cleaned.length === 0) {
+        setFormError("Ajoute au moins une variante (taille + couleur) pour un produit Fashion.");
         return;
       }
     }
@@ -767,9 +815,6 @@ function ProductForm({
   const basePrice = Number(draft.price ?? 0);
   const safeBasePrice = basePrice > 0 ? basePrice : 0;
 
-  const sizesPreset = ["XS", "S", "M", "L", "XL", "XXL", "36", "38", "40", "42", "44"];
-  const colorsPreset = ["Noir", "Blanc", "Rouge", "Bleu", "Vert", "Jaune", "Beige", "Gris", "Marron", "Rose"];
-
   return (
     <form onSubmit={submit}>
       <style>{`
@@ -790,42 +835,28 @@ function ProductForm({
         }
         .btn-duu{ background: var(--duu-yellow, #fddc00); color:#1f1f1f; border: none; font-weight: 900; }
         .btn-duu:hover{ filter: brightness(.96); }
-        .duu-variant-card{
-          background:#fff;
-          border: 1px solid rgba(0,0,0,.08);
-          border-radius: 14px;
-          box-shadow: 0 10px 28px rgba(0,0,0,.08);
-          overflow:hidden;
-        }
-        .duu-variant-head{
-          display:flex; align-items:center; justify-content:space-between; gap:8px;
-          padding: 10px 12px;
-          background: linear-gradient(180deg, rgba(253,220,0,.28), rgba(255,255,255,1));
-          border-bottom: 1px solid rgba(0,0,0,.06);
-        }
-        .duu-variant-title{
-          font-weight: 950;
-          color: rgba(0,0,0,.84);
-          display:flex; align-items:center; gap:10px;
-        }
-        .duu-variant-body{ padding: 12px; }
-        .duu-mini-chip{
-          all:unset;
-          display:inline-flex;
-          padding: 6px 10px;
-          border-radius: 999px;
+
+        .duu-chip{
+          display:inline-flex; align-items:center; gap:8px;
+          padding: 6px 10px; border-radius: 999px;
           border: 1px solid rgba(0,0,0,.10);
-          background: #fff;
-          cursor:pointer;
+          background:#fff;
           font-weight: 800;
-          color: rgba(0,0,0,.75);
+          cursor:pointer;
+          user-select:none;
         }
-        .duu-mini-chip:hover{ background: rgba(0,0,0,.03); }
-        .duu-mini-chip.active{
+        .duu-chip.flash{
+          box-shadow: 0 0 0 .22rem rgba(253,220,0,.35);
           border-color: rgba(229,57,53,.35);
-          box-shadow: 0 0 0 .18rem rgba(253,220,0,.28);
-          color: rgba(0,0,0,.88);
         }
+        .duu-variant-mini{
+          background:#fff;
+          border:1px solid rgba(0,0,0,.08);
+          border-radius: 14px;
+          padding: 10px 12px;
+          box-shadow: 0 10px 22px rgba(0,0,0,.06);
+        }
+        .duu-variant-mini .lbl{ font-size:.82rem; color: rgba(0,0,0,.55); font-weight:800; }
         .duu-muted{ color: rgba(0,0,0,.58); }
       `}</style>
 
@@ -911,7 +942,9 @@ function ProductForm({
                 )}
               </div>
 
-              <small className="text-muted">Admin : boutique obligatoire. Vendeur : sa boutique est déduite côté API.</small>
+              <small className="text-muted">
+                Admin : boutique obligatoire. Vendeur : sa boutique est déduite côté API.
+              </small>
             </div>
           </div>
 
@@ -1009,10 +1042,10 @@ function ProductForm({
                     {!draft.style
                       ? "(Choisir le type d’abord)"
                       : !draft.category_id
-                      ? "(Choisir une catégorie d’abord)"
-                      : filteredSubCats.length
-                      ? "(Sélectionner)"
-                      : "(Aucune sous-catégorie)"}
+                        ? "(Choisir une catégorie d’abord)"
+                        : filteredSubCats.length
+                          ? "(Sélectionner)"
+                          : "(Aucune sous-catégorie)"}
                   </option>
 
                   {filteredSubCats.map((sc) => (
@@ -1051,7 +1084,9 @@ function ProductForm({
                 step="0.01"
                 className="form-control duu-focus"
                 value={draft.price ?? ""}
-                onChange={(ev) => setDraft((d) => ({ ...d, price: ev.target.value === "" ? null : Number(ev.target.value) }))}
+                onChange={(ev) =>
+                  setDraft((d) => ({ ...d, price: ev.target.value === "" ? null : Number(ev.target.value) }))
+                }
                 required
               />
             </div>
@@ -1069,17 +1104,19 @@ function ProductForm({
                 type="number"
                 className="form-control duu-focus"
                 value={draft.stock ?? ""}
-                onChange={(ev) => setDraft((d) => ({ ...d, stock: ev.target.value === "" ? null : Number(ev.target.value) }))}
+                onChange={(ev) =>
+                  setDraft((d) => ({ ...d, stock: ev.target.value === "" ? null : Number(ev.target.value) }))
+                }
               />
             </div>
           </div>
 
-          {/* ✅ Variants block (Fashion only) */}
+          {/* ✅ Variants block (Fashion only) — RADIO tailles + CHECKBOX couleurs, affichage groupé */}
           {isFashion && (
             <div className="duu-admin-soft mt-3 p-3">
               <div className="d-flex align-items-start justify-content-between gap-2 flex-wrap">
                 <div>
-                  <div className="d-flex align-items-center gap-2">
+                  <div className="d-flex align-items-center gap-2 flex-wrap">
                     <div className="fw-semibold">Variantes (Fashion)</div>
                     <span className="duu-pill">
                       <small>Total</small> {variants.length}
@@ -1089,26 +1126,32 @@ function ProductForm({
                     </span>
                   </div>
                   <div className="small text-muted mt-1">
-                    Ajoute des tailles/couleurs. Stock et prix override par variante (optionnel). Le prix final affiché sera le prix produit si tu ne mets pas un prix variante.
+                    Choisis une <b>taille</b>, puis coche une ou plusieurs <b>couleurs</b>.
+                    Chaque couleur cochée crée la variante <b>(taille + couleur)</b>.
+                  </div>
+                  <div className="small duu-muted mt-1">
+                    Prix produit: <b>{safeBasePrice > 0 ? moneyMAD(safeBasePrice) : "—"}</b> •
+                    Prix variante (optionnel) remplace le prix produit.
                   </div>
                 </div>
 
                 <div className="d-flex gap-2 flex-wrap">
-                  <button type="button" className="btn btn-sm btn-duu" onClick={() => addVariantRow()} disabled={variantsLoading}>
-                    + Ajouter
-                  </button>
-
                   <button
                     type="button"
                     className="btn btn-sm btn-outline-dark"
                     onClick={() => {
                       setVariantsTouched(true);
-                      setVariants((prev) => prev.map((v) => ({ ...v, sku: toUpperSku(v.sku ?? "") })));
-                      setVariantsOk("SKU normalisés (MAJ + tirets).");
-                      window.setTimeout(() => setVariantsOk(null), 1800);
+                      setVariants((prev) =>
+                        (prev || []).map((v) => ({
+                          ...v,
+                          sku: v.sku && String(v.sku).trim() ? toUpperSku(v.sku) : v.sku,
+                        }))
+                      );
+                      setVariantsOk("SKU normalisés.");
+                      window.setTimeout(() => setVariantsOk(null), 1400);
                     }}
                     disabled={variantsLoading || !variants.length}
-                    title="Met en MAJ et remplace les espaces par -"
+                    title="Met en MAJ et remplace espaces par -"
                   >
                     Nettoyer SKU
                   </button>
@@ -1124,24 +1167,32 @@ function ProductForm({
                       setVariantsErr(null);
                       setVariantsTouched(true);
                       setVariants((prev) =>
-                        prev.map((v) => ({
+                        (prev || []).map((v) => ({
                           ...v,
-                          sku: v.sku && String(v.sku).trim() ? toUpperSku(v.sku) : buildSkuAuto(draft.name, v.size ?? null, v.color ?? null),
+                          sku:
+                            v.sku && String(v.sku).trim()
+                              ? toUpperSku(v.sku)
+                              : buildSkuAuto(draft.name, v.size ?? null, v.color ?? null),
                         }))
                       );
-                      setVariantsOk("SKU générés automatiquement.");
-                      window.setTimeout(() => setVariantsOk(null), 1800);
+                      setVariantsOk("SKU générés.");
+                      window.setTimeout(() => setVariantsOk(null), 1400);
                     }}
                     disabled={variantsLoading || !variants.length}
                   >
                     Générer SKU
                   </button>
 
-                  {isEdit && (
-                    <button type="button" className="btn btn-sm btn-outline-danger" onClick={cleanAllVariants} disabled={variantsLoading} title="Suppression réelle côté API (clean total)">
+                  {isEdit ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger"
+                      onClick={cleanAllVariants}
+                      disabled={variantsLoading}
+                    >
                       Supprimer tout
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -1149,228 +1200,255 @@ function ProductForm({
               {variantsOk ? <div className="alert alert-success py-2 mt-2 mb-0">{variantsOk}</div> : null}
               {variantsErr ? <div className="alert alert-danger py-2 mt-2 mb-0">{variantsErr}</div> : null}
 
+              {/* 1) Tailles */}
               <div className="mt-3">
-                <div className="fw-semibold mb-2">Générateur rapide</div>
-                <div className="row g-2 align-items-end">
-                  <div className="col-12 col-md-4">
-                    <label className="form-label small text-muted mb-1">Tailles (virgules)</label>
-                    <input className="form-control duu-focus" value={bulkSizesRaw} onChange={(e) => setBulkSizesRaw(e.target.value)} placeholder="S, M, L, XL" />
-                  </div>
-                  <div className="col-12 col-md-4">
-                    <label className="form-label small text-muted mb-1">Couleurs (virgules)</label>
-                    <input className="form-control duu-focus" value={bulkColorsRaw} onChange={(e) => setBulkColorsRaw(e.target.value)} placeholder="Noir, Blanc, Rouge" />
-                  </div>
-                  <div className="col-6 col-md-2">
-                    <label className="form-label small text-muted mb-1">Stock</label>
-                    <input type="number" className="form-control duu-focus" value={bulkStock} onChange={(e) => setBulkStock(Number(e.target.value || 0))} min={0} />
-                  </div>
-                  <div className="col-6 col-md-2">
-                    <label className="form-label small text-muted mb-1">Prix var.</label>
-                    <input type="number" step="0.01" className="form-control duu-focus" value={bulkPriceOverride} onChange={(e) => setBulkPriceOverride(e.target.value)} placeholder="(opt)" />
-                  </div>
+                <div className="fw-semibold mb-2">1) Taille</div>
 
-                  <div className="col-12">
-                    <div className="d-flex flex-wrap gap-2">
-                      <button type="button" className="btn btn-outline-dark btn-sm" onClick={bulkAddVariants} disabled={variantsLoading}>
-                        Ajouter combinaisons
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={() => {
-                          setBulkSizesRaw("S, M, L, XL");
-                          setBulkColorsRaw("Noir, Blanc");
-                          setBulkStock(5);
-                          setBulkPriceOverride("");
+                <div className="d-flex flex-wrap gap-2">
+                  {allSizesUI.map((s) => {
+                    const checked = String(activeSize) === String(s);
+                    return (
+                      <label
+                        key={s}
+                        className="duu-chip"
+                        style={{
+                          borderColor: checked ? "rgba(229,57,53,.35)" : "rgba(0,0,0,.10)",
+                          boxShadow: checked ? "0 0 0 .18rem rgba(253,220,0,.28)" : "none",
                         }}
                       >
-                        Exemple
-                      </button>
-                      <span className="small duu-muted align-self-center">Astuce : tu peux mettre seulement tailles ou seulement couleurs (ça crée une liste simple).</span>
-                    </div>
-                  </div>
+                        <input
+                          type="radio"
+                          name="sizeRadio"
+                          checked={checked}
+                          onChange={() => setActiveSize(s)}
+                          style={{ marginRight: 6 }}
+                        />
+                        {s}
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-2 d-flex gap-2 flex-wrap">
+                  <input
+                    className="form-control duu-focus"
+                    style={{ maxWidth: 260 }}
+                    placeholder="Ajouter une taille (ex: 46)"
+                    value={customSize}
+                    onChange={(e) => setCustomSize(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline-dark"
+                    onClick={() => {
+                      const s = String(customSize || "").trim();
+                      if (!s) return;
+                      setActiveSize(s);
+                      setCustomSize("");
+                    }}
+                  >
+                    Ajouter taille
+                  </button>
                 </div>
               </div>
 
-              <div className="mt-3 d-flex flex-wrap gap-2">
-                <div className="small text-muted w-100">Raccourcis tailles</div>
-                {sizesPreset.map((s) => (
-                  <button key={s} type="button" className="duu-mini-chip" onClick={() => addVariantRow({ size: s, stock: 0, is_active: 1 })}>
-                    + {s}
-                  </button>
-                ))}
-              </div>
+              {/* 2) Couleurs */}
+              <div className="mt-3">
+                <div className="fw-semibold mb-2">
+                  2) Couleurs pour : <span className="badge text-bg-dark">{activeSize}</span>
+                </div>
 
-              <div className="mt-2 d-flex flex-wrap gap-2">
-                <div className="small text-muted w-100">Raccourcis couleurs</div>
-                {colorsPreset.map((c) => (
-                  <button key={c} type="button" className="duu-mini-chip" onClick={() => addVariantRow({ color: c, stock: 0, is_active: 1 })}>
-                    + {c}
-                  </button>
-                ))}
-              </div>
-
-              <div className="row g-2 mt-3">
-                {variants.length === 0 ? (
-                  <div className="col-12 text-muted small">Aucune variante. Ajoute au moins une taille/couleur si c’est un produit Fashion.</div>
-                ) : (
-                  variants.map((v, idx) => {
-                    const isOn = (v.is_active ?? 1) === 1;
-                    const stock = normStock(v.stock ?? 0);
-                    const override = v.price_override != null ? Number(v.price_override) : null;
-                    const priceFinal = override != null && override > 0 ? override : safeBasePrice;
-                    const hasPrice = priceFinal > 0;
-
+                <div className="d-flex flex-wrap gap-2">
+                  {allColorsUI.map((c) => {
+                    const checked = hasVariant(activeSize, c);
+                    const k = vKey(activeSize, c);
                     return (
-                      <div className="col-12" key={v.id ? `v-${v.id}` : `new-${idx}`}>
-                        <div className="duu-variant-card">
-                          <div className="duu-variant-head">
-                            <div className="duu-variant-title">
-                              <span className="badge text-bg-dark">#{idx + 1}</span>
-                              <span className="small">
-                                {String(v.size || "").trim() || "—"} <span className="text-muted">·</span> {String(v.color || "").trim() || "—"}
-                              </span>
-                              {!isOn ? <span className="badge bg-secondary">Off</span> : stock <= 0 ? <span className="badge bg-danger">Rupture</span> : <span className="badge bg-success">OK</span>}
-                            </div>
+                      <label key={k} className={`duu-chip ${lastAddedKey === k ? "flash" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) upsertVariant(activeSize, c);
+                            else removeVariant(activeSize, c);
+                          }}
+                          style={{ marginRight: 6 }}
+                        />
+                        {c}
+                      </label>
+                    );
+                  })}
+                </div>
 
-                            <div className="d-flex align-items-center gap-2">
-                              <button
-                                type="button"
-                                className={`btn btn-sm ${isOn ? "btn-outline-dark" : "btn-dark"}`}
-                                onClick={() => patchVariant(idx, { is_active: isOn ? 0 : 1 })}
-                                title="Activer / Désactiver"
-                              >
-                                {isOn ? "Désactiver" : "Activer"}
-                              </button>
+                <div className="mt-2 d-flex gap-2 flex-wrap">
+                  <input
+                    className="form-control duu-focus"
+                    style={{ maxWidth: 260 }}
+                    placeholder="Ajouter une couleur (ex: Orange)"
+                    value={customColor}
+                    onChange={(e) => setCustomColor(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline-dark"
+                    onClick={() => {
+                      const c = String(customColor || "").trim();
+                      if (!c) return;
+                      if (hasVariant(activeSize, c)) {
+                        setCustomColor("");
+                        return;
+                      }
+                      upsertVariant(activeSize, c);
+                      setCustomColor("");
+                    }}
+                  >
+                    Ajouter couleur
+                  </button>
+                </div>
+              </div>
 
-                              <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => removeVariantRowAt(idx)} title="Retirer cette ligne (UI)">
-                                ×
-                              </button>
-                            </div>
+              {/* Affichage groupé */}
+              <div className="mt-4">
+                <div className="fw-semibold mb-2">Variantes ajoutées</div>
+
+                {variantsBySize.length === 0 ? (
+                  <div className="text-muted small">
+                    Aucune variante. Choisis une taille, puis coche une ou plusieurs couleurs.
+                  </div>
+                ) : (
+                  <div className="d-flex flex-column gap-3">
+                    {variantsBySize.map(([size, arr]) => (
+                      <div key={size} className="p-2 rounded" style={{ background: "rgba(0,0,0,.03)" }}>
+                        <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-2">
+                          <div className="fw-semibold">
+                            Taille : <span className="badge text-bg-dark">{size}</span>
+                            <span className="ms-2 small text-muted">({arr.length} couleur(s))</span>
                           </div>
 
-                          <div className="duu-variant-body">
-                            <div className="row g-2">
-                              <div className="col-12 col-md-3">
-                                <label className="form-label small text-muted mb-1">Taille</label>
-                                <input
-                                  list={`sizes-${idx}`}
-                                  className="form-control duu-focus"
-                                  value={v.size ?? ""}
-                                  onChange={(e) => patchVariant(idx, { size: e.target.value })}
-                                  placeholder="S / M / L / 42…"
-                                />
-                                <datalist id={`sizes-${idx}`}>
-                                  {sizesPreset.map((s) => (
-                                    <option key={s} value={s} />
-                                  ))}
-                                </datalist>
-                              </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => {
+                              if (!confirm(`Supprimer toutes les couleurs pour la taille "${size}" ?`)) return;
+                              setVariantsTouched(true);
+                              setVariants((prev) =>
+                                (prev || []).filter((v) => String(v.size || "").trim() !== String(size).trim())
+                              );
+                            }}
+                          >
+                            Tout supprimer (taille)
+                          </button>
+                        </div>
 
-                              <div className="col-12 col-md-3">
-                                <label className="form-label small text-muted mb-1">Couleur</label>
-                                <input
-                                  list={`colors-${idx}`}
-                                  className="form-control duu-focus"
-                                  value={v.color ?? ""}
-                                  onChange={(e) => patchVariant(idx, { color: e.target.value })}
-                                  placeholder="Noir / Blanc…"
-                                />
-                                <datalist id={`colors-${idx}`}>
-                                  {colorsPreset.map((c) => (
-                                    <option key={c} value={c} />
-                                  ))}
-                                </datalist>
-                              </div>
+                        <div className="row g-2">
+                          {arr.map((v) => {
+                            const color = String(v.color || "");
+                            const isOn = (v.is_active ?? 1) === 1;
+                            const stock = normStock(v.stock ?? 0);
+                            const override = v.price_override != null ? Number(v.price_override) : null;
+                            const priceFinal = override != null && override > 0 ? override : safeBasePrice;
 
-                              <div className="col-12 col-md-3">
-                                <label className="form-label small text-muted mb-1">SKU</label>
-                                <div className="input-group">
-                                  <input className="form-control duu-focus" value={v.sku ?? ""} onChange={(e) => patchVariant(idx, { sku: e.target.value })} placeholder="Optionnel" />
-                                  <button
-                                    type="button"
-                                    className="btn btn-outline-secondary"
-                                    onClick={() => {
-                                      const next = buildSkuAuto(draft.name, v.size ?? null, v.color ?? null);
-                                      patchVariant(idx, { sku: next });
-                                    }}
-                                    title="Auto"
-                                  >
-                                    Auto
-                                  </button>
+                            return (
+                              <div className="col-12 col-md-6" key={vKey(size, color)}>
+                                <div className="duu-variant-mini">
+                                  <div className="d-flex align-items-center justify-content-between gap-2">
+                                    <div className="fw-semibold">
+                                      <span className="badge bg-light text-dark border">{color}</span>
+                                      {!isOn ? (
+                                        <span className="ms-2 badge bg-secondary">Off</span>
+                                      ) : stock <= 0 ? (
+                                        <span className="ms-2 badge bg-danger">Rupture</span>
+                                      ) : (
+                                        <span className="ms-2 badge bg-success">OK</span>
+                                      )}
+                                    </div>
+
+                                    <div className="d-flex gap-2">
+                                      <button
+                                        type="button"
+                                        className={`btn btn-sm ${isOn ? "btn-outline-dark" : "btn-dark"}`}
+                                        onClick={() => patchVariantByKey(size, color, { is_active: isOn ? 0 : 1 })}
+                                      >
+                                        {isOn ? "Désactiver" : "Activer"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm btn-outline-danger"
+                                        onClick={() => removeVariant(size, color)}
+                                        title="Supprimer cette variante"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="row g-2 mt-2">
+                                    <div className="col-6">
+                                      <div className="lbl mb-1">Stock</div>
+                                      <input
+                                        type="number"
+                                        className="form-control duu-focus"
+                                        value={stock}
+                                        min={0}
+                                        onChange={(e) => patchVariantByKey(size, color, { stock: Number(e.target.value || 0) })}
+                                      />
+                                    </div>
+
+                                    <div className="col-6">
+                                      <div className="lbl mb-1">Prix var. (opt)</div>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        className="form-control duu-focus"
+                                        value={v.price_override ?? ""}
+                                        placeholder="= prix produit"
+                                        onChange={(e) =>
+                                          patchVariantByKey(size, color, {
+                                            price_override: e.target.value === "" ? null : Number(e.target.value),
+                                          })
+                                        }
+                                      />
+                                    </div>
+
+                                    <div className="col-12">
+                                      <div className="lbl mb-1">SKU (opt)</div>
+                                      <div className="input-group">
+                                        <input
+                                          className="form-control duu-focus"
+                                          value={v.sku ?? ""}
+                                          onChange={(e) => patchVariantByKey(size, color, { sku: e.target.value })}
+                                          placeholder="Optionnel"
+                                        />
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline-secondary"
+                                          onClick={() => {
+                                            const next = buildSkuAuto(draft.name, size, color);
+                                            patchVariantByKey(size, color, { sku: next });
+                                          }}
+                                          title="Auto"
+                                        >
+                                          Auto
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="small text-muted mt-2">
+                                    Aperçu : <b>{moneyMAD(priceFinal)}</b> • Stock <b>{stock}</b>
+                                  </div>
                                 </div>
-                                <div className="small text-muted mt-1">Ex: DUU-TEE-M-NOIR</div>
                               </div>
-
-                              <div className="col-12 col-md-3">
-                                <label className="form-label small text-muted mb-1">Stock</label>
-                                <div className="input-group">
-                                  <button type="button" className="btn btn-outline-dark" onClick={() => patchVariant(idx, { stock: Math.max(0, stock - 1) })}>
-                                    −
-                                  </button>
-                                  <input
-                                    type="number"
-                                    className="form-control duu-focus text-center"
-                                    value={stock}
-                                    onChange={(e) => patchVariant(idx, { stock: e.target.value === "" ? 0 : Number(e.target.value) })}
-                                    min={0}
-                                  />
-                                  <button type="button" className="btn btn-outline-dark" onClick={() => patchVariant(idx, { stock: stock + 1 })}>
-                                    +
-                                  </button>
-                                </div>
-                                <div className="small text-muted mt-1">0 = rupture</div>
-                              </div>
-
-                              <div className="col-12 col-md-4">
-                                <label className="form-label small text-muted mb-1">Prix variante (optionnel)</label>
-                                <div className="input-group">
-                                  <span className="input-group-text">MAD</span>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    className="form-control duu-focus"
-                                    value={v.price_override ?? ""}
-                                    onChange={(e) => patchVariant(idx, { price_override: e.target.value === "" ? null : Number(e.target.value) })}
-                                    placeholder="Laisser vide = prix produit"
-                                  />
-                                  <button type="button" className="btn btn-outline-secondary" onClick={() => patchVariant(idx, { price_override: null })}>
-                                    Reset
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="col-12 col-md-8">
-                                <label className="form-label small text-muted mb-1">Aperçu</label>
-                                <div className="d-flex flex-wrap gap-2 align-items-center">
-                                  <span className="duu-pill">
-                                    <small>Stock</small> {stock}
-                                  </span>
-                                  <span className="duu-pill">
-                                    <small>Prix</small> {hasPrice ? moneyMAD(priceFinal) : "—"}
-                                  </span>
-                                  {override != null && override > 0 ? (
-                                    <span className="badge bg-light text-dark border">Override</span>
-                                  ) : (
-                                    <span className="badge bg-light text-dark border">Prix produit</span>
-                                  )}
-                                  {String(v.sku || "").trim() ? (
-                                    <span className="badge bg-dark-subtle text-dark border">SKU: {toUpperSku(v.sku)}</span>
-                                  ) : null}
-                                </div>
-                                <div className="small text-muted mt-1">Si tu ne mets pas de prix variante → le prix produit s’applique automatiquement.</div>
-                              </div>
-                            </div>
-                          </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    );
-                  })
+                    ))}
+                  </div>
                 )}
-              </div>
 
-              <div className="small text-muted mt-3">
-                Important : à l’enregistrement, seules les variantes avec <strong>taille ou couleur</strong> seront envoyées à l’API.
+                <div className="small text-muted mt-3">
+                  Important : à l’enregistrement, seules les variantes avec <strong>taille + couleur</strong> seront envoyées à l’API.
+                </div>
               </div>
             </div>
           )}
@@ -1378,7 +1456,13 @@ function ProductForm({
           <div className="row g-2 mt-1">
             <div className="col-6">
               <div className="form-check mt-4">
-                <input id="feat" className="form-check-input" type="checkbox" checked={!!draft.is_featured} onChange={(ev) => setDraft((d) => ({ ...d, is_featured: ev.target.checked ? 1 : 0 }))} />
+                <input
+                  id="feat"
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={!!draft.is_featured}
+                  onChange={(ev) => setDraft((d) => ({ ...d, is_featured: ev.target.checked ? 1 : 0 }))}
+                />
                 <label htmlFor="feat" className="form-check-label">
                   Mis en avant
                 </label>
@@ -1419,7 +1503,12 @@ function ProductForm({
                     <select
                       className="form-select duu-focus"
                       value={promoType}
-                      onChange={(ev) => setDraft((d) => ({ ...d, promo_discount_type: (ev.target.value as PromoDiscountType) || "PERCENT" }))}
+                      onChange={(ev) =>
+                        setDraft((d) => ({
+                          ...d,
+                          promo_discount_type: (ev.target.value as PromoDiscountType) || "PERCENT",
+                        }))
+                      }
                     >
                       <option value="PERCENT">Pourcentage (%)</option>
                       <option value="AMOUNT">Montant (MAD)</option>
@@ -1433,7 +1522,12 @@ function ProductForm({
                       step="0.01"
                       className="form-control duu-focus"
                       value={draft.promo_discount_value ?? ""}
-                      onChange={(ev) => setDraft((d) => ({ ...d, promo_discount_value: ev.target.value === "" ? null : Number(ev.target.value) }))}
+                      onChange={(ev) =>
+                        setDraft((d) => ({
+                          ...d,
+                          promo_discount_value: ev.target.value === "" ? null : Number(ev.target.value),
+                        }))
+                      }
                       placeholder={promoType === "PERCENT" ? "Ex: 10" : "Ex: 20"}
                     />
                   </div>
@@ -1449,7 +1543,9 @@ function ProductForm({
                   </div>
                 </div>
 
-                <small className="text-muted d-block mt-2">Cette réduction sera utilisée pour afficher le prix promo côté client.</small>
+                <small className="text-muted d-block mt-2">
+                  Cette réduction sera utilisée pour afficher le prix promo côté client.
+                </small>
               </div>
             </div>
           )}
@@ -1458,7 +1554,12 @@ function ProductForm({
 
           <div className="mt-2">
             <label className="form-label">Description</label>
-            <textarea className="form-control duu-focus" rows={3} value={draft.description || ""} onChange={(ev) => setDraft((d) => ({ ...d, description: ev.target.value }))} />
+            <textarea
+              className="form-control duu-focus"
+              rows={3}
+              value={draft.description || ""}
+              onChange={(ev) => setDraft((d) => ({ ...d, description: ev.target.value }))}
+            />
           </div>
         </div>
 
@@ -1473,7 +1574,12 @@ function ProductForm({
               <div className="row g-2">
                 {(initial as any).images.map((img: ProductImage) => (
                   <div className="col-4" key={img.id}>
-                    <img src={imgUrl(img.url)} alt="existing" className="w-100 rounded border" style={{ aspectRatio: "1 / 1", objectFit: "cover" }} />
+                    <img
+                      src={imgUrl(img.url)}
+                      alt="existing"
+                      className="w-100 rounded border"
+                      style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
+                    />
                   </div>
                 ))}
               </div>
@@ -1487,16 +1593,41 @@ function ProductForm({
             <button type="button" className="btn btn-dark btn-sm" onClick={() => cameraInput?.click()}>
               Ouvrir la caméra
             </button>
-            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setFiles([])} disabled={!files.length}>
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => setFiles([])}
+              disabled={!files.length}
+            >
               Vider
             </button>
           </div>
 
-          <input ref={(el) => setGalleryInput(el)} type="file" accept="image/*" multiple hidden onChange={(ev) => addFiles(ev.target.files)} />
-          <input ref={(el) => setCameraInput(el)} type="file" accept="image/*" capture="environment" hidden onChange={(ev) => addFiles(ev.target.files)} />
+          <input
+            ref={(el) => setGalleryInput(el)}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(ev) => addFiles(ev.target.files)}
+          />
+          <input
+            ref={(el) => setCameraInput(el)}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            hidden
+            onChange={(ev) => addFiles(ev.target.files)}
+          />
 
           <div className="form-check mb-2">
-            <input id="replace_images" className="form-check-input" type="checkbox" checked={replaceImages} onChange={(ev) => setReplaceImages(ev.target.checked)} />
+            <input
+              id="replace_images"
+              className="form-check-input"
+              type="checkbox"
+              checked={replaceImages}
+              onChange={(ev) => setReplaceImages(ev.target.checked)}
+            />
             <label htmlFor="replace_images" className="form-check-label">
               Remplacer la galerie existante
             </label>
@@ -1504,11 +1635,21 @@ function ProductForm({
 
           {files.length > 0 ? (
             <div className="row g-2">
-              {files.map((f, i) => (
+              {previews.map((p, i) => (
                 <div className="col-4" key={i}>
                   <div className="position-relative border rounded overflow-hidden">
-                    <img src={previewURL(f)} alt={`img-${i}`} className="w-100" style={{ aspectRatio: "1 / 1", objectFit: "cover" }} />
-                    <button type="button" className="btn btn-sm btn-danger position-absolute" style={{ top: 6, right: 6 }} onClick={() => removeAt(i)}>
+                    <img
+                      src={p.url}
+                      alt={`img-${i}`}
+                      className="w-100"
+                      style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-danger position-absolute"
+                      style={{ top: 6, right: 6 }}
+                      onClick={() => removeAt(i)}
+                    >
                       ×
                     </button>
                   </div>
@@ -1562,7 +1703,10 @@ export default function ProductsAdminPage() {
   const [filterShopId, setFilterShopId] = useState<number | "">("");
   const [filterCategoryId, setFilterCategoryId] = useState<number | "">("");
 
-  const pages = useMemo(() => (mode === "default" ? Math.max(1, Math.ceil(total / pageSize)) : 1), [total, pageSize, mode]);
+  const pages = useMemo(
+    () => (mode === "default" ? Math.max(1, Math.ceil(total / pageSize)) : 1),
+    [total, pageSize, mode]
+  );
 
   async function refresh() {
     setLoading(true);
@@ -1585,10 +1729,10 @@ export default function ProductsAdminPage() {
         channel === "african-food"
           ? "/api/products/african-food"
           : channel === "african-market"
-          ? "/api/products/african-market"
-          : channel === "fashion"
-          ? "/api/products/fashion"
-          : "/api/products";
+            ? "/api/products/african-market"
+            : channel === "fashion"
+              ? "/api/products/fashion"
+              : "/api/products";
 
       const query: Record<string, any> = { page, pageSize };
       if (onlyActive) query.onlyActive = 1;
@@ -1617,8 +1761,8 @@ export default function ProductsAdminPage() {
     try {
       const res = await listCategories({ page: 1, pageSize: 500 });
       setCategories(res.items || []);
-    } catch (e) {
-      console.error("Erreur chargement catégories", e);
+    } catch (e: any) {
+      setError(e?.message || String(e));
     }
   }
 
@@ -1626,13 +1770,15 @@ export default function ProductsAdminPage() {
     try {
       const res = await listSubCategories({ page: 1, pageSize: 1000 } as any);
       setSubCategories((res as any).items || []);
-    } catch (e) {
+    } catch {
       try {
-        const resRaw = await api.get<{ items: SubCategory[] }>("/api/sub-categories", { query: { page: 1, pageSize: 1000 } });
+        const resRaw = await api.get<{ items: SubCategory[] }>("/api/sub-categories", {
+          query: { page: 1, pageSize: 1000 },
+        });
         const res = unwrap<{ items: SubCategory[] }>(resRaw);
         setSubCategories(res.items || []);
-      } catch (e2) {
-        console.error("Erreur chargement sous-catégories", e, e2);
+      } catch (e2: any) {
+        setError(e2?.message || String(e2));
       }
     }
   }
@@ -1642,8 +1788,8 @@ export default function ProductsAdminPage() {
       const resRaw = await api.get<{ items: Shop[] }>(`/api/shops`, { query: { page: 1, pageSize: 500 } });
       const res = unwrap<{ items: Shop[] }>(resRaw);
       setShops(res.items || []);
-    } catch (e) {
-      console.error("Erreur chargement boutiques", e);
+    } catch (e: any) {
+      setError(e?.message || String(e));
     }
   }
 
@@ -1651,6 +1797,7 @@ export default function ProductsAdminPage() {
     refreshCategories();
     refreshSubCategories();
     refreshShops();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1737,6 +1884,9 @@ export default function ProductsAdminPage() {
         if (payload.is_active == null) payload.is_active = 1;
 
         const cleaned = style === "fashion" ? cleanVariantsForApi(variants) : [];
+        if (style === "fashion" && cleaned.length === 0) {
+          throw new Error("Ajoute au moins une variante (taille + couleur) pour un produit Fashion.");
+        }
         if (cleaned.length) payload.variants = cleaned;
 
         await createProduct(payload, files);
@@ -1746,6 +1896,9 @@ export default function ProductsAdminPage() {
 
         if (style === "fashion") {
           const cleaned = cleanVariantsForApi(variants);
+          if (cleaned.length === 0) {
+            throw new Error("Ajoute au moins une variante (taille + couleur) pour un produit Fashion.");
+          }
           await upsertProductVariants(edit.id, { variants: cleaned as any }, { replace: true });
         }
 
@@ -1790,8 +1943,7 @@ export default function ProductsAdminPage() {
           ? "Activer ce produit ? Il sera de nouveau visible sur Duumini."
           : "Désactiver ce produit ? Il ne sera plus visible sur Duumini (promo incluse)."
       )
-    )
-      return;
+    ) return;
 
     setBusy(true);
     setError(null);
@@ -1800,7 +1952,9 @@ export default function ProductsAdminPage() {
       await updateProduct((p as any).id, { is_active: next } as any, [], false);
       setOk(next ? "Produit activé." : "Produit désactivé.");
 
-      setItems((prev) => prev.map((it) => ((it as any).id === (p as any).id ? ({ ...it, is_active: next } as any) : it)));
+      setItems((prev) =>
+        prev.map((it) => ((it as any).id === (p as any).id ? ({ ...it, is_active: next } as any) : it))
+      );
       setPreview((prev) => (prev && prev.id === (p as any).id ? ({ ...prev, is_active: next } as any) : prev));
     } catch (e: any) {
       setError(e?.message || String(e));

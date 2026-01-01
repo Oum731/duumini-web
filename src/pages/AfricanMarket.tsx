@@ -70,21 +70,13 @@ function isPromoProduct(p: Product) {
 
   if (x.is_promo === true || x.promo === true || x.on_promo === true) return true;
 
-  const promoPercent =
-    Number(x.promo_percent ?? x.discount_percent ?? x.percent_off ?? 0) || 0;
-  const promoAmount =
-    Number(x.promo_amount ?? x.discount_amount ?? x.amount_off ?? 0) || 0;
+  const promoPercent = Number(x.promo_percent ?? x.discount_percent ?? x.percent_off ?? 0) || 0;
+  const promoAmount = Number(x.promo_amount ?? x.discount_amount ?? x.amount_off ?? 0) || 0;
   if (promoPercent > 0 || promoAmount > 0) return true;
 
   const price = Number(x.price_client ?? x.price ?? 0) || 0;
   const promoPrice =
-    Number(
-      x.promo_price_client ??
-        x.promo_price ??
-        x.price_promo ??
-        x.sale_price ??
-        0
-    ) || 0;
+    Number(x.promo_price_client ?? x.promo_price ?? x.price_promo ?? x.sale_price ?? 0) || 0;
   if (promoPrice > 0 && price > 0 && promoPrice < price) return true;
 
   if (String(x.promo_type || x.discount_type || "").trim()) {
@@ -123,8 +115,8 @@ export default function AfricanMarket() {
     : "";
 
   const [items, setItems] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
+  const [allSubCategories, setAllSubCategories] = useState<SubCategory[]>([]);
 
   // ✅ loading séparé: meta (cats/subs) + produits
   const [loading, setLoading] = useState(true);
@@ -147,10 +139,7 @@ export default function AfricanMarket() {
   const abortProductsRef = useRef<AbortController | null>(null);
   const abortMetaRef = useRef<AbortController | null>(null);
 
-  const pages = useMemo(
-    () => Math.max(1, Math.ceil(total / pageSize)),
-    [total, pageSize]
-  );
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
   useEffect(() => {
     if (page > pages) setPage(pages);
   }, [pages, page]);
@@ -172,8 +161,8 @@ export default function AfricanMarket() {
 
       if (ac.signal.aborted) return;
 
-      setCategories(resCats.items || []);
-      setSubCategories(resSubs.items || []);
+      setAllCategories(resCats.items || []);
+      setAllSubCategories(resSubs.items || []);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setError(e?.message || String(e));
@@ -236,32 +225,47 @@ export default function AfricanMarket() {
   /** ✅ bouton retry: refetch produits (et meta si vide) */
   const refresh = useCallback(() => {
     loadProducts();
-    if (!categories.length || !subCategories.length) loadMeta();
-  }, [loadProducts, loadMeta, categories.length, subCategories.length]);
+    if (!allCategories.length || !allSubCategories.length) loadMeta();
+  }, [loadProducts, loadMeta, allCategories.length, allSubCategories.length]);
 
-  // maps
+  /** ✅ IMPORTANT: on ne filtre plus les catégories côté page
+   *  => c’est CategoriesMenu qui filtre selon la page (scope="african-market")
+   */
+  const categoriesAll = useMemo(() => {
+    const out = [...allCategories];
+    out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
+    return out;
+  }, [allCategories]);
+
+  const subCategoriesAll = useMemo(() => {
+    const out = [...allSubCategories];
+    out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
+    return out;
+  }, [allSubCategories]);
+
+  // maps (sur tout le catalogue)
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
-    for (const c of categories) map[c.id] = c;
+    for (const c of categoriesAll) map[c.id] = c;
     return map;
-  }, [categories]);
+  }, [categoriesAll]);
 
   const categoriesBySlug = useMemo(() => {
     const map: Record<string, Category> = {};
-    for (const c of categories) map[String(c.slug || "").toLowerCase()] = c;
+    for (const c of categoriesAll) map[String((c as any).slug || "").toLowerCase()] = c;
     return map;
-  }, [categories]);
+  }, [categoriesAll]);
 
   const subById = useMemo(() => {
     const map: Record<number, SubCategory> = {};
-    for (const s of subCategories) map[s.id] = s;
+    for (const s of subCategoriesAll) map[(s as any).id] = s;
     return map;
-  }, [subCategories]);
+  }, [subCategoriesAll]);
 
   const subsByCatId = useMemo(() => {
     const m: Record<number, SubCategory[]> = {};
-    for (const s of subCategories) {
-      const cid = Number(s.category_id || 0);
+    for (const s of subCategoriesAll) {
+      const cid = Number((s as any).category_id || 0);
       if (!cid) continue;
       if (!m[cid]) m[cid] = [];
       m[cid].push(s);
@@ -270,7 +274,7 @@ export default function AfricanMarket() {
       m[Number(k)].sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
     });
     return m;
-  }, [subCategories]);
+  }, [subCategoriesAll]);
 
   const selectedCategory = useMemo(() => {
     if (!categorySlugParam) return null;
@@ -279,21 +283,18 @@ export default function AfricanMarket() {
 
   const selectedSubCategory = useMemo(() => {
     if (!subSlugParam || !selectedCategory) return null;
-    const list = subsByCatId[selectedCategory.id] || [];
-    return (
-      list.find((s) => String(s.slug || "").toLowerCase() === subSlugParam) ||
-      null
-    );
+    const list = subsByCatId[(selectedCategory as any).id] || [];
+    return list.find((s) => String((s as any).slug || "").toLowerCase() === subSlugParam) || null;
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
-  // URL invalide → redirect (dépend uniquement de categories)
+  // URL invalide → redirect
   useEffect(() => {
-    if (!categories.length) return;
+    if (!categoriesAll.length) return;
     if (categorySlugParam && !selectedCategory) {
       navigate("/african-market", { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categories.length, categorySlugParam, selectedCategory]);
+  }, [categoriesAll.length, categorySlugParam, selectedCategory]);
 
   // search filter
   const filteredBySearch = useMemo(() => {
@@ -312,8 +313,8 @@ export default function AfricanMarket() {
         const c = categoriesById[cid];
         return (
           c &&
-          String(c.slug || "").toLowerCase() ===
-            String(selectedCategory.slug || "").toLowerCase()
+          String((c as any).slug || "").toLowerCase() ===
+            String((selectedCategory as any).slug || "").toLowerCase()
         );
       });
     }
@@ -325,8 +326,8 @@ export default function AfricanMarket() {
         const s = subById[sid];
         return (
           s &&
-          String(s.slug || "").toLowerCase() ===
-            String(selectedSubCategory.slug || "").toLowerCase()
+          String((s as any).slug || "").toLowerCase() ===
+            String((selectedSubCategory as any).slug || "").toLowerCase()
         );
       });
     }
@@ -350,16 +351,15 @@ export default function AfricanMarket() {
 
   // titre
   const title = useMemo(() => {
-    if (selectedSubCategory) return selectedSubCategory.name || "Produits";
-    if (selectedCategory) return selectedCategory.name || "Produits";
+    if (selectedSubCategory) return (selectedSubCategory as any).name || "Produits";
+    if (selectedCategory) return (selectedCategory as any).name || "Produits";
     return "Produits";
   }, [selectedCategory, selectedSubCategory]);
 
-  const activeCategoryId = selectedCategory?.id ?? null;
-  const activeSubCategoryId = selectedSubCategory?.id ?? null;
+  const activeCategoryId = (selectedCategory as any)?.id ?? null;
+  const activeSubCategoryId = (selectedSubCategory as any)?.id ?? null;
 
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
-
   const loadingAny = loading || loadingMeta;
 
   return (
@@ -479,21 +479,24 @@ export default function AfricanMarket() {
                 <SlidersHorizontal size={18} />
               </span>
 
+              {/* ✅ le menu se filtre tout seul pour AfricanMarket */}
               <CategoriesMenu
+                scope="african-market"
                 title="Filtrer"
                 variant="auto"
                 activeCategoryId={activeCategoryId}
                 activeSubCategoryId={activeSubCategoryId}
                 onSelectCategory={(c) => {
                   setPage(1);
-                  navigate(`/african-market/${c.slug}`);
+                  navigate(`/african-market/${(c as any).slug}`);
                 }}
                 onSelectSubCategory={(s) => {
                   setPage(1);
-                  const cat = categoriesById[s.category_id];
-                  const catSlug = cat?.slug || selectedCategory?.slug || "";
+                  const cat = categoriesById[Number((s as any).category_id || 0)];
+                  const catSlug =
+                    (cat as any)?.slug || (selectedCategory as any)?.slug || "";
                   if (!catSlug) return;
-                  navigate(`/african-market/${catSlug}/${s.slug}`);
+                  navigate(`/african-market/${catSlug}/${(s as any).slug}`);
                 }}
               />
             </div>
@@ -528,13 +531,13 @@ export default function AfricanMarket() {
             {selectedCategory && (
               <span className="filter-chip">
                 <span style={{ opacity: 0.7 }}>📦</span>
-                {selectedCategory.name}
+                {(selectedCategory as any).name}
               </span>
             )}
             {selectedSubCategory && (
               <span className="filter-chip">
                 <span style={{ opacity: 0.7 }}>🏷️</span>
-                {selectedSubCategory.name}
+                {(selectedSubCategory as any).name}
               </span>
             )}
 
@@ -555,30 +558,28 @@ export default function AfricanMarket() {
           <div className="d-flex flex-wrap align-items-center gap-2">
             <button
               type="button"
-              className={
-                "btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")
-              }
+              className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
               onClick={() => {
                 setPage(1);
-                navigate(`/african-market/${selectedCategory.slug}`);
+                navigate(`/african-market/${(selectedCategory as any).slug}`);
               }}
             >
               Tout
             </button>
 
-            {(subsByCatId[selectedCategory.id] || []).map((s) => {
-              const active = selectedSubCategory?.id === s.id;
+            {(subsByCatId[(selectedCategory as any).id] || []).map((s) => {
+              const active = (selectedSubCategory as any)?.id === (s as any).id;
               return (
                 <button
-                  key={s.id}
+                  key={(s as any).id}
                   type="button"
                   className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
                   onClick={() => {
                     setPage(1);
-                    navigate(`/african-market/${selectedCategory.slug}/${s.slug}`);
+                    navigate(`/african-market/${(selectedCategory as any).slug}/${(s as any).slug}`);
                   }}
                 >
-                  {s.name}
+                  {(s as any).name}
                 </button>
               );
             })}
@@ -599,7 +600,6 @@ export default function AfricanMarket() {
         <GridSkeleton />
       ) : (
         <>
-          {/* ✅ PROMOS (sans duplication) */}
           {promoItems.length > 0 && (
             <div className="promo-wrap mb-3">
               <div className="promo-head">
@@ -610,10 +610,7 @@ export default function AfricanMarket() {
               <div className="p-3">
                 <div className="row g-3">
                   {promoItems.slice(0, 12).map((p) => (
-                    <div
-                      className="col-6 col-sm-4 col-md-3 col-lg-2"
-                      key={(p as any).id}
-                    >
+                    <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
                       <ProductCard product={p} />
                     </div>
                   ))}
@@ -622,16 +619,12 @@ export default function AfricanMarket() {
             </div>
           )}
 
-          {/* ✅ LISTE NORMALE (hors promos) */}
           {normalItems.length === 0 ? (
             <div className="text-center text-muted py-5">Aucun produit trouvé.</div>
           ) : (
             <div className="row g-3">
               {normalItems.map((p) => (
-                <div
-                  className="col-6 col-sm-4 col-md-3 col-lg-2"
-                  key={(p as any).id}
-                >
+                <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={(p as any).id}>
                   <ProductCard product={p} />
                 </div>
               ))}
