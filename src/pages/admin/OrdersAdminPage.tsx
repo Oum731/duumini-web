@@ -158,15 +158,12 @@ function numSafe(v: any) {
 function getPaymentFromOrder(o: AnyObj) {
   const payment = o?.payment && typeof o.payment === "object" ? o.payment : null;
 
-  const status: PayStatus | null =
-    normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
+  const status: PayStatus | null = normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
 
-  const paid_amount =
-    numSafe(o?.paid_amount) || numSafe(payment?.paid_amount) || numSafe(payment?.paidAmount) || 0;
+  const paid_amount = numSafe(o?.paid_amount) || numSafe(payment?.paid_amount) || numSafe(payment?.paidAmount) || 0;
 
   const remaining_amount_raw = o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
-  const remaining_amount =
-    remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
+  const remaining_amount = remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
 
   const method = String(payment?.method || "").trim() || null;
   const note = payment?.note != null ? String(payment.note) : null;
@@ -189,35 +186,29 @@ function computePayStatus(total: number, paid: number): PayStatus {
   return "PARTIAL";
 }
 
-/** ✅ Dans le tableau : si payé => PAYÉ ; sinon => RESTE: X ; sinon => NON PAYÉ */
+/** ✅ NEW: Dans le tableau => afficher "RESTE: X" même si payé=0 (=> RESTE=total). */
 function getPaymentLabelForRow(o: AnyObj) {
   const { total } = computeOrderAmounts(o);
   const pay = getPaymentFromOrder(o);
 
-  // status explicite si dispo
-  const explicit = pay.status;
+  // 1) Si explicitement PAYÉ
+  if (pay.status === "PAID") return { text: "PAYÉ", cls: "bg-success" };
 
-  if (explicit === "PAID") {
-    return { text: "PAYÉ", cls: "bg-success" };
-  }
-
-  // calc reste (même si explicit UNPAID/PARTIAL)
   const paid = numSafe(pay.paid_amount);
   const remain = computeRemaining(total, paid);
 
-  // fallback: payé >= total => PAYÉ
-  if (paid > 0 && paid >= total - 0.0001) {
-    return { text: "PAYÉ", cls: "bg-success" };
-  }
+  // 2) Si payé couvre tout (cas edge)
+  if (paid > 0 && paid >= total - 0.0001) return { text: "PAYÉ", cls: "bg-success" };
 
-  // si payé > 0 => RESTE
-  if (paid > 0 && remain > 0) {
-    return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
-  }
+  // 3) ✅ Toujours afficher RESTE (même si 0 payé)
+  //    - si total==0 => "PAYÉ" (sinon RESTE: 0)
+  if (Math.max(0, numSafe(total)) <= 0) return { text: "PAYÉ", cls: "bg-success" };
 
-  // si non payé
-  if (explicit === "PARTIAL") return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
-  return { text: "NON PAYÉ", cls: "bg-secondary" };
+  // Badge:
+  // - payé>0 => warning (partiel)
+  // - payé==0 => secondary (non payé) mais on montre RESTE
+  if (paid > 0) return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
+  return { text: `RESTE: ${mad(remain)}`, cls: "bg-secondary" };
 }
 
 /* ===== Message WhatsApp (texte + liens produits) ===== */
@@ -652,8 +643,7 @@ export default function OrdersAdminPage() {
     if (!detail) return null;
     const pay = getPaymentFromOrder(detail);
     const { total } = computeOrderAmounts(detail);
-    const remaining =
-      pay?.remaining_amount != null ? Number(pay.remaining_amount) : computeRemaining(total, pay.paid_amount);
+    const remaining = pay?.remaining_amount != null ? Number(pay.remaining_amount) : computeRemaining(total, pay.paid_amount);
     const status = pay?.status || computePayStatus(total, pay.paid_amount);
     return { ...pay, total, remaining, status };
   }, [detail]);
@@ -925,7 +915,7 @@ export default function OrdersAdminPage() {
                     <th>Client</th>
                     <th>Contact</th>
                     <th>Statut</th>
-                    <th>Paiement</th> {/* ✅ NEW */}
+                    <th>Reste</th> {/* ✅ CHANGED: au lieu de "Paiement" */}
                     <th className="text-end">Total</th>
                     <th className="text-end">Actions</th>
                   </tr>
@@ -943,7 +933,7 @@ export default function OrdersAdminPage() {
 
                     const totalAligned = computeOrderAmounts(o as AnyObj).total;
 
-                    // ✅ Paiement badge (PAYÉ / RESTE / NON PAYÉ)
+                    // ✅ NEW: "RESTE: X" dans le tableau (même si non payé)
                     const payBadge = getPaymentLabelForRow(o as AnyObj);
 
                     return (
@@ -1004,7 +994,7 @@ export default function OrdersAdminPage() {
                           <span className={`badge ${BADGE[o.status]}`}>{o.status}</span>
                         </td>
 
-                        {/* ✅ NEW paiement */}
+                        {/* ✅ NEW "RESTE" */}
                         <td>
                           <span className={`badge ${payBadge.cls}`}>{payBadge.text}</span>
                         </td>
@@ -1177,7 +1167,12 @@ export default function OrdersAdminPage() {
                                 <div className="text-muted small">{client.phone || "—"}</div>
                               </div>
                               <div className="d-flex gap-2">
-                                <a className="btn btn-sm btn-success" href={waHref(detail as AnyObj)} target="_blank" rel="noopener noreferrer">
+                                <a
+                                  className="btn btn-sm btn-success"
+                                  href={waHref(detail as AnyObj)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
                                   WhatsApp
                                 </a>
                                 {client.phone ? (
@@ -1208,7 +1203,12 @@ export default function OrdersAdminPage() {
                             </div>
                             {(detail as AnyObj)?.geo_link ? (
                               <div className="mt-2">
-                                <a className="btn btn-sm btn-outline-secondary" href={(detail as AnyObj).geo_link} target="_blank" rel="noopener noreferrer">
+                                <a
+                                  className="btn btn-sm btn-outline-secondary"
+                                  href={(detail as AnyObj).geo_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
                                   Ouvrir dans Google Maps
                                 </a>
                               </div>
@@ -1216,6 +1216,7 @@ export default function OrdersAdminPage() {
                           </div>
                         </div>
 
+                        {/* ===== Paiement (inchangé) ===== */}
                         <div className="card border-0 shadow-sm">
                           <div className="card-body">
                             <div className="d-flex justify-content-between align-items-center mb-2">
@@ -1319,6 +1320,7 @@ export default function OrdersAdminPage() {
                         </div>
                       </div>
 
+                      {/* ===== Articles + Totaux (inchangés) ===== */}
                       <div className="col-12 col-lg-6">
                         <div className="card border-0 shadow-sm mb-3">
                           <div className="card-body">
