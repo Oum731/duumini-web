@@ -196,7 +196,7 @@ function getPaymentLabelForRow(o: AnyObj) {
 
   // ✅ IMPORTANT: commande annulée => pas de "reste à payer"
   if (status === "CANCELLED") {
-    return { text: "ANNULÉE", cls: "bg-danger" };
+    return { text: "CANCELLED", cls: "bg-danger" };
   }
 
   const { total } = computeOrderAmounts(o);
