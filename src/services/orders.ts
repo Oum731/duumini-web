@@ -10,6 +10,18 @@ export type Paginated<T> = {
 /* ===== Types ===== */
 export type OrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCELLED";
 
+/** ✅ NEW: paiement */
+export type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
+
+export type OrderPayment = {
+  status: PaymentStatus;
+  paid_amount: number;
+  remaining_amount: number;
+  currency: string;
+  method?: string;
+  note?: string | null;
+};
+
 /** ✅ Input envoyé au backend */
 export type OrderItemInput = {
   product_id: number;
@@ -54,9 +66,13 @@ export type CreateOrderPayload = {
     currency?: string;
   };
 
+  /** ✅ align backend: buildPaymentFromPayload() accepte paid_amount/amount */
   payment?: {
-    method?: "COD" | string;
+    paid_amount?: number; // ✅ NEW (optionnel) pour paiement partiel à la création
+    amount?: number; // alias compat
+    method?: "CASH" | "COD" | string;
     note?: string | null;
+    status?: PaymentStatus; // optionnel, backend recalcule de toute façon
   };
 
   // compat (si certains endpoints attendent encore ces champs plats)
@@ -74,6 +90,9 @@ export type CreateOrderResult = {
   total?: number;
   currency?: string;
   geo_link?: string | null;
+
+  /** ✅ backend renvoie payment dans POST (si tu l’as gardé) */
+  payment?: OrderPayment | null;
 };
 
 export type Order = {
@@ -116,6 +135,14 @@ export type Order = {
     amount?: number;
     currency?: string;
   } | null;
+
+  /** ✅ NEW: paiement (peut être null/absent si colonnes pas encore là) */
+  payment?: OrderPayment | null;
+
+  /** ✅ NEW: colonnes plates si tu les ajoutes en DB */
+  payment_status?: PaymentStatus | string | null;
+  paid_amount?: number | null;
+  remaining_amount?: number | null;
 };
 
 export type OrderItem = {
@@ -181,10 +208,8 @@ export type OrderDetail = Order & {
     currency: string;
   };
 
-  payment?: {
-    method: string;
-    note?: string | null;
-  };
+  /** ✅ NEW */
+  payment?: OrderPayment | null;
 };
 
 /* ===== Types pour la liste ===== */
@@ -194,6 +219,25 @@ export type ListOrdersOptions = {
   status?: OrderStatus | "ALL";
   mineOnly?: boolean;
   q?: string;
+
+  /** ✅ NEW: filtre paiement (backend: /api/orders?payment_status=PAID|UNPAID|PARTIAL) */
+  payment_status?: PaymentStatus | "ALL";
+  pay?: PaymentStatus | "ALL"; // alias
+};
+
+/* ===== Types pour update payment ===== */
+export type UpdateOrderPaymentPayload = {
+  mode?: "SET" | "ADD";
+  paid_amount?: number; // required si mode=SET
+  add_amount?: number; // required si mode=ADD
+  method?: string;
+  note?: string | null;
+};
+
+export type UpdateOrderPaymentResult = {
+  ok: true;
+  id: number;
+  payment: OrderPayment;
 };
 
 /* ===== Helpers ===== */
@@ -206,6 +250,11 @@ function toPositiveInt(v: any, fallback: number) {
 function cleanString(v: any) {
   const s = String(v ?? "").trim();
   return s ? s : "";
+}
+
+function toNumOrNull(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /** ✅ Normalise un item, sans exiger name/price (UI only) */
@@ -237,13 +286,25 @@ function normalizeCreatePayload(payload: CreateOrderPayload): CreateOrderPayload
   const itemsRaw = Array.isArray(payload?.items) ? payload.items : [];
   const cleanItems = itemsRaw.map(normalizeItemInput).filter(Boolean) as OrderItemInput[];
 
+  const phone = cleanString(payload?.contact?.phone);
+
+  const paidAmount =
+    payload?.payment?.paid_amount ?? payload?.payment?.amount ?? null;
+
   return {
     ...payload,
     contact: {
       ...payload.contact,
-      phone: cleanString(payload?.contact?.phone),
+      phone,
     },
     items: cleanItems,
+    payment: payload.payment
+      ? {
+          ...payload.payment,
+          // ✅ si payé fourni, le backend calculera status/remaining
+          ...(paidAmount != null ? { paid_amount: toNumOrNull(paidAmount) ?? 0 } : {}),
+        }
+      : undefined,
   };
 }
 
@@ -257,6 +318,13 @@ export async function listOrders(opts: ListOrdersOptions = {}) {
   if (opts.status && opts.status !== "ALL") query.status = opts.status;
   if (opts.mineOnly) query.mine = 1;
   if (opts.q && cleanString(opts.q)) query.q = cleanString(opts.q);
+
+  // ✅ payment filter
+  const pay = (opts.payment_status && opts.payment_status !== "ALL")
+    ? opts.payment_status
+    : (opts.pay && opts.pay !== "ALL" ? opts.pay : null);
+
+  if (pay) query.payment_status = pay; // backend accepte payment_status / pay / etc.
 
   return api.get<Paginated<Order>>("/api/orders", { query });
 }
@@ -279,4 +347,9 @@ export async function createOrder(payload: CreateOrderPayload) {
 
 export async function createGuestOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>("/api/orders/guest", normalizeCreatePayload(payload));
+}
+
+/** ✅ NEW: update payment */
+export async function updateOrderPayment(id: number, payload: UpdateOrderPaymentPayload) {
+  return api.put<UpdateOrderPaymentResult>(`/api/orders/${id}/payment`, payload);
 }
