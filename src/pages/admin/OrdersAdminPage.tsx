@@ -186,8 +186,19 @@ function computePayStatus(total: number, paid: number): PayStatus {
   return "PARTIAL";
 }
 
-/** ✅ NEW: Dans le tableau => afficher "RESTE: X" même si payé=0 (=> RESTE=total). */
+/**
+ * ✅ NEW: Dans le tableau => "Reste" ne doit PAS s'afficher pour les commandes annulées.
+ * - CANCELLED => badge "ANNULÉE"
+ * - Sinon: logique RESTE/PAYÉ habituelle
+ */
 function getPaymentLabelForRow(o: AnyObj) {
+  const status = String(o?.status || "").toUpperCase();
+
+  // ✅ IMPORTANT: commande annulée => pas de "reste à payer"
+  if (status === "CANCELLED") {
+    return { text: "ANNULÉE", cls: "bg-danger" };
+  }
+
   const { total } = computeOrderAmounts(o);
   const pay = getPaymentFromOrder(o);
 
@@ -200,13 +211,10 @@ function getPaymentLabelForRow(o: AnyObj) {
   // 2) Si payé couvre tout (cas edge)
   if (paid > 0 && paid >= total - 0.0001) return { text: "PAYÉ", cls: "bg-success" };
 
-  // 3) ✅ Toujours afficher RESTE (même si 0 payé)
-  //    - si total==0 => "PAYÉ" (sinon RESTE: 0)
+  // 3) total==0 => PAYÉ (sinon RESTE: 0)
   if (Math.max(0, numSafe(total)) <= 0) return { text: "PAYÉ", cls: "bg-success" };
 
   // Badge:
-  // - payé>0 => warning (partiel)
-  // - payé==0 => secondary (non payé) mais on montre RESTE
   if (paid > 0) return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
   return { text: `RESTE: ${mad(remain)}`, cls: "bg-secondary" };
 }
@@ -633,7 +641,9 @@ export default function OrdersAdminPage() {
   );
 
   const totalAmountDetail: number =
-    typeof detail?.total === "number" ? (detail as any).total : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
+    typeof detail?.total === "number"
+      ? (detail as any).total
+      : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
 
   const deliveryFeeDetail =
     (detail as any)?.totals?.delivery_fee ?? Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
@@ -915,7 +925,7 @@ export default function OrdersAdminPage() {
                     <th>Client</th>
                     <th>Contact</th>
                     <th>Statut</th>
-                    <th>Reste</th> {/* ✅ CHANGED: au lieu de "Paiement" */}
+                    <th>Reste</th>
                     <th className="text-end">Total</th>
                     <th className="text-end">Actions</th>
                   </tr>
@@ -933,7 +943,7 @@ export default function OrdersAdminPage() {
 
                     const totalAligned = computeOrderAmounts(o as AnyObj).total;
 
-                    // ✅ NEW: "RESTE: X" dans le tableau (même si non payé)
+                    // ✅ "ANNULÉE" si CANCELLED, sinon RESTE/PAYÉ
                     const payBadge = getPaymentLabelForRow(o as AnyObj);
 
                     return (
@@ -994,7 +1004,6 @@ export default function OrdersAdminPage() {
                           <span className={`badge ${BADGE[o.status]}`}>{o.status}</span>
                         </td>
 
-                        {/* ✅ NEW "RESTE" */}
                         <td>
                           <span className={`badge ${payBadge.cls}`}>{payBadge.text}</span>
                         </td>
@@ -1129,7 +1138,11 @@ export default function OrdersAdminPage() {
                           </button>
                           <button
                             className="btn btn-sm btn-outline-success"
-                            disabled={viewSaving || (detail as AnyObj).status === "DONE" || (detail as AnyObj).status === "CANCELLED"}
+                            disabled={
+                              viewSaving ||
+                              (detail as AnyObj).status === "DONE" ||
+                              (detail as AnyObj).status === "CANCELLED"
+                            }
                             onClick={() => onConfirmQuick("DONE")}
                             title="Marquer comme livrée"
                           >
@@ -1167,12 +1180,7 @@ export default function OrdersAdminPage() {
                                 <div className="text-muted small">{client.phone || "—"}</div>
                               </div>
                               <div className="d-flex gap-2">
-                                <a
-                                  className="btn btn-sm btn-success"
-                                  href={waHref(detail as AnyObj)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
+                                <a className="btn btn-sm btn-success" href={waHref(detail as AnyObj)} target="_blank" rel="noopener noreferrer">
                                   WhatsApp
                                 </a>
                                 {client.phone ? (
@@ -1203,12 +1211,7 @@ export default function OrdersAdminPage() {
                             </div>
                             {(detail as AnyObj)?.geo_link ? (
                               <div className="mt-2">
-                                <a
-                                  className="btn btn-sm btn-outline-secondary"
-                                  href={(detail as AnyObj).geo_link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
+                                <a className="btn btn-sm btn-outline-secondary" href={(detail as AnyObj).geo_link} target="_blank" rel="noopener noreferrer">
                                   Ouvrir dans Google Maps
                                 </a>
                               </div>
