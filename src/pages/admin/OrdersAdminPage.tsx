@@ -179,7 +179,6 @@ function buildAdminWhatsappMessage(order: AnyObj) {
           const unit = Number(it.unit_price ?? it.price ?? 0);
           const lineTotal = unit * qty;
 
-          // ✅ lien produit (aperçu image si page a og:image)
           const link = productShareUrl(it);
           const linkPart = link ? `\n  🔗 ${link}` : "";
 
@@ -228,6 +227,55 @@ function waHref(order: AnyObj) {
   return `https://wa.me/${recipient}?text=${text}`;
 }
 
+/* =========================
+ * ✅ Vente sur place helpers
+ * =======================*/
+
+/** Détecte un prix promo / final price (multi-noms) */
+function getProductUnitPrice(p: Product): number {
+  const anyP = p as AnyObj;
+
+  // Essaye plusieurs champs possibles (selon ton backend)
+  const promo =
+    anyP.promo_price ??
+    anyP.promoPrice ??
+    anyP.price_promo ??
+    anyP.sale_price ??
+    anyP.salePrice ??
+    anyP.final_price ??
+    anyP.finalPrice ??
+    anyP.discounted_price ??
+    null;
+
+  const base = anyP.price ?? 0;
+
+  const promoNum = Number(promo);
+  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity)) return promoNum;
+
+  const baseNum = Number(base);
+  return Number.isFinite(baseNum) ? baseNum : 0;
+}
+
+function hasPromo(p: Product): boolean {
+  const anyP = p as AnyObj;
+  const promo =
+    anyP.promo_price ??
+    anyP.promoPrice ??
+    anyP.price_promo ??
+    anyP.sale_price ??
+    anyP.salePrice ??
+    anyP.final_price ??
+    anyP.finalPrice ??
+    anyP.discounted_price ??
+    null;
+
+  const base = Number(anyP.price ?? 0);
+  const promoNum = Number(promo);
+  return Number.isFinite(promoNum) && promoNum > 0 && promoNum < base;
+}
+
+type PayStatus = "PAID" | "UNPAID" | "PARTIAL";
+
 /* ===================== Page ===================== */
 export default function OrdersAdminPage() {
   const [items, setItems] = useState<Order[]>([]);
@@ -257,7 +305,16 @@ export default function OrdersAdminPage() {
   const [cLast, setCLast] = useState("");
   const [cPhone, setCPhone] = useState("");
   const [basket, setBasket] = useState<{ product: Product; qty: number }[]>([]);
+
+  // ✅ filtres produits
   const [search, setSearch] = useState("");
+  const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
+  const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">("NAME");
+
+  // ✅ paiement sur place
+  const [payStatus, setPayStatus] = useState<PayStatus>("UNPAID");
+  const [amountPaid, setAmountPaid] = useState<number>(0);
+
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchErr, setSearchErr] = useState<string | null>(null);
   const [results, setResults] = useState<Product[]>([]);
@@ -265,11 +322,6 @@ export default function OrdersAdminPage() {
   const searchAbort = useRef<AbortController | null>(null);
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
-
-  const [prodPage, setProdPage] = useState(1);
-  const [prodPageSize] = useState(20);
-  const [prodTotal, setProdTotal] = useState(0);
-  const prodPages = useMemo(() => Math.max(1, Math.ceil(prodTotal / prodPageSize)), [prodTotal, prodPageSize]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -430,7 +482,35 @@ export default function OrdersAdminPage() {
   const deliveryFee =
     (detail as any)?.totals?.delivery_fee ?? Math.max(0, Number(totalAmount) - Number(itemsAmount));
 
-  const basketTotal = basket.reduce((s, it) => s + Number(it.product.price || 0) * Number(it.qty || 0), 0);
+  // ✅ total panier basé sur le prix "unifié" (promo si dispo)
+  const basketTotal = useMemo(() => {
+    return basket.reduce((s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0), 0);
+  }, [basket]);
+
+  // ✅ reste à payer
+  const remainingToPay = useMemo(() => {
+    const paid = Number(amountPaid || 0);
+    return Math.max(0, Number(basketTotal) - paid);
+  }, [basketTotal, amountPaid]);
+
+  // ✅ auto cohérence payStatus <-> amountPaid
+  useEffect(() => {
+    const total = Number(basketTotal || 0);
+    const paid = Math.max(0, Math.min(Number(amountPaid || 0), total));
+
+    // clamp
+    if (paid !== amountPaid) setAmountPaid(paid);
+
+    if (total <= 0) {
+      if (payStatus !== "UNPAID") setPayStatus("UNPAID");
+      return;
+    }
+
+    if (paid === 0 && payStatus !== "UNPAID") setPayStatus("UNPAID");
+    else if (paid >= total && payStatus !== "PAID") setPayStatus("PAID");
+    else if (paid > 0 && paid < total && payStatus !== "PARTIAL") setPayStatus("PARTIAL");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basketTotal]);
 
   function addToBasket(p: Product) {
     setBasket((prev) => {
@@ -452,36 +532,87 @@ export default function OrdersAdminPage() {
     setBasket((prev) => prev.filter((x) => x.product.id !== pId));
   }
 
-  async function runSearch() {
+  /** ✅ Charge TOUS les produits (pages) */
+  const loadAllProducts = useCallback(async () => {
     if (!openCreate) return;
+
     searchAbort.current?.abort();
     const ac = new AbortController();
     searchAbort.current = ac;
+
     setSearchLoading(true);
     setSearchErr(null);
+
     try {
-      const res = await listProducts({ page: prodPage, pageSize: prodPageSize });
+      const pageSizeAll = 100; // ajuste si besoin
+      let page = 1;
+      let all: Product[] = [];
+      let totalExpected = Infinity;
+
+      while (!ac.signal.aborted) {
+        const res = await listProducts({ page, pageSize: pageSizeAll });
+        if (ac.signal.aborted) return;
+
+        const batch = (res.items || []) as Product[];
+        all = all.concat(batch);
+
+        const t = Number(res.pageInfo?.total ?? all.length);
+        if (Number.isFinite(t)) totalExpected = t;
+
+        if (all.length >= totalExpected) break;
+        if (batch.length === 0) break;
+
+        page += 1;
+        // sécurité anti boucle infinie
+        if (page > 200) break;
+      }
+
       if (ac.signal.aborted) return;
-      setProdTotal(res.pageInfo.total);
-      setResults(res.items || []);
+
+      // Dé-dup au cas où
+      const map = new Map<number, Product>();
+      all.forEach((p) => map.set(p.id, p));
+      setResults(Array.from(map.values()));
     } catch (e: any) {
       if (ac.signal.aborted) return;
-      setSearchErr(e?.message || "Impossible de rechercher.");
+      setSearchErr(e?.message || "Impossible de charger les produits.");
     } finally {
       if (!ac.signal.aborted) setSearchLoading(false);
     }
-  }
+  }, [openCreate]);
 
   useEffect(() => {
-    if (openCreate) runSearch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openCreate, prodPage, prodPageSize]);
+    if (openCreate) loadAllProducts();
+  }, [openCreate, loadAllProducts]);
 
+  // ✅ filtre + tri
   const filteredResults = useMemo(() => {
     const ql = search.trim().toLowerCase();
-    if (!ql) return results;
-    return results.filter((p) => (p.name || "").toLowerCase().includes(ql));
-  }, [results, search]);
+
+    let arr = results;
+
+    if (promoFilter === "PROMO") arr = arr.filter((p) => hasPromo(p));
+    if (promoFilter === "NO_PROMO") arr = arr.filter((p) => !hasPromo(p));
+
+    if (ql) {
+      arr = arr.filter((p) => {
+        const anyP = p as AnyObj;
+        const name = String(p.name || "").toLowerCase();
+        const sku = String(anyP.sku || anyP.ref || anyP.code || "").toLowerCase();
+        return name.includes(ql) || (sku && sku.includes(ql));
+      });
+    }
+
+    const sorted = [...arr];
+    if (sortBy === "NAME") {
+      sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+    } else if (sortBy === "PRICE_ASC") {
+      sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
+    } else if (sortBy === "PRICE_DESC") {
+      sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
+    }
+    return sorted;
+  }, [results, search, promoFilter, sortBy]);
 
   async function submitCreate() {
     if (basket.length === 0) {
@@ -489,12 +620,25 @@ export default function OrdersAdminPage() {
       return;
     }
 
-    const itemsPayload = basket.map((b) => ({
-      product_id: b.product.id,
-      name: b.product.name,
-      price: Number(b.product.price || 0),
-      qty: b.qty,
-    }));
+    // ✅ clamp paiement
+    const total = Number(basketTotal || 0);
+    const paid = Math.max(0, Math.min(Number(amountPaid || 0), total));
+    const remain = Math.max(0, total - paid);
+
+    const itemsPayload = basket.map((b) => {
+      const unit = getProductUnitPrice(b.product);
+      return {
+        product_id: b.product.id,
+        name: b.product.name,
+        price: Number(unit || 0),
+        qty: b.qty,
+        // info bonus (si backend stocke)
+        meta: {
+          base_price: Number((b.product as AnyObj)?.price ?? unit ?? 0),
+          has_promo: hasPromo(b.product),
+        },
+      };
+    });
 
     const payload = {
       contact: {
@@ -509,10 +653,18 @@ export default function OrdersAdminPage() {
         items_count: itemsPayload.reduce((s, it) => s + it.qty, 0),
         items_amount: itemsPayload.reduce((s, it) => s + it.price * it.qty, 0),
         delivery_fee: 0,
-        amount: basketTotal,
+        amount: total,
         currency: "MAD",
       },
-      payment: { method: "COD", note: "Vente sur place (boutique)" },
+      payment: {
+        method: "CASH",
+        // ✅ on garde une note lisible + champs structurés (si ton backend les conserve)
+        note: `Vente sur place (boutique) | statut=${payStatus} | payé=${paid} | reste=${remain}`,
+        status: payStatus,
+        paid_amount: paid,
+        remaining_amount: remain,
+        currency: "MAD",
+      },
     };
 
     try {
@@ -527,8 +679,10 @@ export default function OrdersAdminPage() {
       setCPhone("");
       setSearch("");
       setResults([]);
-      setProdPage(1);
-      setProdTotal(0);
+
+      // reset paiement
+      setPayStatus("UNPAID");
+      setAmountPaid(0);
 
       await refresh();
     } catch (e: any) {
@@ -551,7 +705,6 @@ export default function OrdersAdminPage() {
             className="btn btn-duu"
             onClick={() => {
               setOpenCreate(true);
-              setProdPage(1);
             }}
           >
             + Vente sur place
@@ -633,7 +786,6 @@ export default function OrdersAdminPage() {
                     const thumb = getOrderThumb(o as AnyObj);
                     const displayCode = getOrderDisplayCode(o);
 
-                    // ✅ total aligné (totals.amount si dispo)
                     const totalAligned = computeOrderAmounts(o as AnyObj).total;
 
                     return (
@@ -946,46 +1098,79 @@ export default function OrdersAdminPage() {
                   <div className="col-12 col-lg-6">
                     <div className="card border-0 shadow-sm h-100">
                       <div className="card-body d-flex flex-column">
-                        <h6 className="mb-2">Ajouter des produits</h6>
+                        <div className="d-flex align-items-center justify-content-between gap-2">
+                          <h6 className="mb-2">Ajouter des produits</h6>
+                          <button className="btn btn-sm btn-outline-dark" onClick={loadAllProducts} disabled={searchLoading}>
+                            Rafraîchir
+                          </button>
+                        </div>
+
                         <input
                           className="form-control mb-2"
                           placeholder="Rechercher un produit…"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
                         />
+
+                        <div className="row g-2 mb-2">
+                          <div className="col-12 col-md-6">
+                            <select className="form-select" value={promoFilter} onChange={(e) => setPromoFilter(e.target.value as any)}>
+                              <option value="ALL">Tous</option>
+                              <option value="PROMO">Promotions</option>
+                              <option value="NO_PROMO">Non promo</option>
+                            </select>
+                          </div>
+                          <div className="col-12 col-md-6">
+                            <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+                              <option value="NAME">Tri : Nom</option>
+                              <option value="PRICE_ASC">Tri : Prix ↑</option>
+                              <option value="PRICE_DESC">Tri : Prix ↓</option>
+                            </select>
+                          </div>
+                        </div>
+
                         {searchErr && <div className="alert alert-danger">{searchErr}</div>}
                         {searchLoading ? (
-                          <div className="text-muted">Recherche…</div>
+                          <div className="text-muted">Chargement de tous les produits…</div>
                         ) : (
                           <>
-                            <div className="vstack gap-2">
-                              {filteredResults.map((p) => (
-                                <div key={p.id} className="d-flex justify-content-between align-items-center border rounded p-2">
-                                  <div className="text-truncate" style={{ maxWidth: 220 }}>
-                                    <div className="fw-semibold text-truncate">{p.name}</div>
-                                    <div className="text-muted small">{mad(p.price)}</div>
+                            <div className="vstack gap-2" style={{ maxHeight: 520, overflow: "auto" }}>
+                              {filteredResults.map((p) => {
+                                const unit = getProductUnitPrice(p);
+                                const promo = hasPromo(p);
+                                const base = Number((p as AnyObj)?.price ?? unit);
+
+                                return (
+                                  <div key={p.id} className="d-flex justify-content-between align-items-center border rounded p-2">
+                                    <div className="text-truncate" style={{ maxWidth: 260 }}>
+                                      <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
+                                        <span className="text-truncate">{p.name}</span>
+                                        {promo ? <span className="badge bg-danger">Promo</span> : null}
+                                      </div>
+
+                                      <div className="text-muted small">
+                                        {promo ? (
+                                          <>
+                                            <span className="text-decoration-line-through me-2">{mad(base)}</span>
+                                            <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                          </>
+                                        ) : (
+                                          <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <button className="btn btn-sm btn-duu" onClick={() => addToBasket(p)}>
+                                      Ajouter
+                                    </button>
                                   </div>
-                                  <button className="btn btn-sm btn-duu" onClick={() => addToBasket(p)}>
-                                    Ajouter
-                                  </button>
-                                </div>
-                              ))}
-                              {filteredResults.length === 0 && <div className="text-muted small">Aucun produit sur cette page.</div>}
+                                );
+                              })}
+
+                              {filteredResults.length === 0 && <div className="text-muted small">Aucun produit.</div>}
                             </div>
 
-                            <div className="d-flex justify-content-between align-items-center mt-2">
-                              <div className="small text-muted">
-                                {prodTotal} produits — page {prodPage} / {prodPages}
-                              </div>
-                              <div className="btn-group btn-group-sm">
-                                <button className="btn btn-outline-dark" disabled={prodPage <= 1} onClick={() => setProdPage((p) => p - 1)}>
-                                  ◀
-                                </button>
-                                <button className="btn btn-outline-dark" disabled={prodPage >= prodPages} onClick={() => setProdPage((p) => p + 1)}>
-                                  ▶
-                                </button>
-                              </div>
-                            </div>
+                            <div className="small text-muted mt-2">{results.length} produits chargés</div>
                           </>
                         )}
                       </div>
@@ -1000,28 +1185,88 @@ export default function OrdersAdminPage() {
                           {basket.length === 0 ? (
                             <div className="text-muted small">Aucun article.</div>
                           ) : (
-                            basket.map((ln) => (
-                              <div key={ln.product.id} className="d-flex align-items-center justify-content-between border rounded p-2">
-                                <div className="text-truncate" style={{ maxWidth: 180 }}>
-                                  <div className="fw-semibold text-truncate">{ln.product.name}</div>
-                                  <div className="text-muted small">{mad(ln.product.price)}</div>
+                            basket.map((ln) => {
+                              const unit = getProductUnitPrice(ln.product);
+                              const promo = hasPromo(ln.product);
+                              const base = Number((ln.product as AnyObj)?.price ?? unit);
+
+                              return (
+                                <div key={ln.product.id} className="d-flex align-items-center justify-content-between border rounded p-2">
+                                  <div className="text-truncate" style={{ maxWidth: 220 }}>
+                                    <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
+                                      <span className="text-truncate">{ln.product.name}</span>
+                                      {promo ? <span className="badge bg-danger">Promo</span> : null}
+                                    </div>
+                                    <div className="text-muted small">
+                                      {promo ? (
+                                        <>
+                                          <span className="text-decoration-line-through me-2">{mad(base)}</span>
+                                          <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                        </>
+                                      ) : (
+                                        <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="d-flex align-items-center gap-2">
+                                    <input
+                                      type="number"
+                                      className="form-control form-control-sm"
+                                      style={{ width: 80 }}
+                                      min={1}
+                                      value={ln.qty}
+                                      onChange={(e) => setQty(ln.product.id, Math.max(1, Number(e.target.value || 1)))}
+                                    />
+                                    <button className="btn btn-sm btn-outline-danger" onClick={() => removeLine(ln.product.id)}>
+                                      Retirer
+                                    </button>
+                                  </div>
                                 </div>
-                                <div className="d-flex align-items-center gap-2">
-                                  <input
-                                    type="number"
-                                    className="form-control form-control-sm"
-                                    style={{ width: 80 }}
-                                    min={1}
-                                    value={ln.qty}
-                                    onChange={(e) => setQty(ln.product.id, Math.max(1, Number(e.target.value || 1)))}
-                                  />
-                                  <button className="btn btn-sm btn-outline-danger" onClick={() => removeLine(ln.product.id)}>
-                                    Retirer
-                                  </button>
-                                </div>
-                              </div>
-                            ))
+                              );
+                            })
                           )}
+                        </div>
+
+                        <hr className="my-3" />
+
+                        <h6 className="mb-2">Paiement</h6>
+                        <div className="row g-2">
+                          <div className="col-12 col-md-6">
+                            <select
+                              className="form-select"
+                              value={payStatus}
+                              onChange={(e) => {
+                                const v = e.target.value as PayStatus;
+                                setPayStatus(v);
+                                if (v === "PAID") setAmountPaid(Number(basketTotal || 0));
+                                if (v === "UNPAID") setAmountPaid(0);
+                              }}
+                            >
+                              <option value="PAID">Payé</option>
+                              <option value="UNPAID">Non payé</option>
+                              <option value="PARTIAL">Partiel</option>
+                            </select>
+                          </div>
+
+                          <div className="col-12 col-md-6">
+                            <input
+                              type="number"
+                              min={0}
+                              step="1"
+                              className="form-control"
+                              placeholder="Montant payé"
+                              value={amountPaid}
+                              onChange={(e) => setAmountPaid(Number(e.target.value || 0))}
+                            />
+                          </div>
+
+                          <div className="col-12">
+                            <div className="d-flex justify-content-between align-items-center border rounded p-2">
+                              <div className="text-muted">Reste à payer</div>
+                              <div className="fw-semibold">{mad(remainingToPay)}</div>
+                            </div>
+                          </div>
                         </div>
 
                         <hr className="my-3" />
