@@ -1,3 +1,4 @@
+// src/pages/admin/OrdersAdminPage.tsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   listOrders,
@@ -5,7 +6,7 @@ import {
   updateOrderStatus,
   cancelOrder,
   createOrder,
-  updateOrderPayment, // ✅ NEW (si tu l'as ajouté dans services/orders.ts)
+  updateOrderPayment, // ✅ si présent dans services/orders.ts
   type Order,
   type OrderStatus,
 } from "../../services/orders";
@@ -141,42 +142,82 @@ function computeOrderAmounts(order: AnyObj) {
 /* ===== Payment helpers (robuste) ===== */
 type PayStatus = "PAID" | "UNPAID" | "PARTIAL";
 
+function normPayStatus(s: any): PayStatus | null {
+  const v = String(s || "").trim().toUpperCase();
+  if (v === "PAID") return "PAID";
+  if (v === "UNPAID") return "UNPAID";
+  if (v === "PARTIAL") return "PARTIAL";
+  return null;
+}
+
+function numSafe(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function getPaymentFromOrder(o: AnyObj) {
-  const payment = (o?.payment && typeof o.payment === "object") ? o.payment : null;
+  const payment = o?.payment && typeof o.payment === "object" ? o.payment : null;
 
   const status: PayStatus | null =
-    (o?.payment_status || payment?.status || null) as any;
+    normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
 
   const paid_amount =
-    Number(o?.paid_amount ?? payment?.paid_amount ?? 0) || 0;
+    numSafe(o?.paid_amount) || numSafe(payment?.paid_amount) || numSafe(payment?.paidAmount) || 0;
 
+  const remaining_amount_raw = o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
   const remaining_amount =
-    Number(o?.remaining_amount ?? payment?.remaining_amount ?? null);
+    remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
 
-  const method =
-    String(payment?.method || "").trim() || null;
-
-  const note =
-    payment?.note != null ? String(payment.note) : null;
-
-  const currency =
-    String(payment?.currency || o?.currency || "MAD").toUpperCase();
+  const method = String(payment?.method || "").trim() || null;
+  const note = payment?.note != null ? String(payment.note) : null;
+  const currency = String(payment?.currency || o?.currency || "MAD").toUpperCase();
 
   return { payment, status, paid_amount, remaining_amount, method, note, currency };
 }
 
 function computeRemaining(total: number, paid: number) {
-  const t = Number(total || 0);
-  const p = Math.max(0, Math.min(Number(paid || 0), t));
+  const t = Math.max(0, numSafe(total));
+  const p = Math.max(0, Math.min(numSafe(paid), t));
   return Math.max(0, t - p);
 }
 
 function computePayStatus(total: number, paid: number): PayStatus {
-  const t = Number(total || 0);
-  const p = Math.max(0, Math.min(Number(paid || 0), t));
+  const t = Math.max(0, numSafe(total));
+  const p = Math.max(0, Math.min(numSafe(paid), t));
   if (t <= 0 || p <= 0) return "UNPAID";
   if (p >= t) return "PAID";
   return "PARTIAL";
+}
+
+/** ✅ Dans le tableau : si payé => PAYÉ ; sinon => RESTE: X ; sinon => NON PAYÉ */
+function getPaymentLabelForRow(o: AnyObj) {
+  const { total } = computeOrderAmounts(o);
+  const pay = getPaymentFromOrder(o);
+
+  // status explicite si dispo
+  const explicit = pay.status;
+
+  if (explicit === "PAID") {
+    return { text: "PAYÉ", cls: "bg-success" };
+  }
+
+  // calc reste (même si explicit UNPAID/PARTIAL)
+  const paid = numSafe(pay.paid_amount);
+  const remain = computeRemaining(total, paid);
+
+  // fallback: payé >= total => PAYÉ
+  if (paid > 0 && paid >= total - 0.0001) {
+    return { text: "PAYÉ", cls: "bg-success" };
+  }
+
+  // si payé > 0 => RESTE
+  if (paid > 0 && remain > 0) {
+    return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
+  }
+
+  // si non payé
+  if (explicit === "PARTIAL") return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
+  return { text: "NON PAYÉ", cls: "bg-secondary" };
 }
 
 /* ===== Message WhatsApp (texte + liens produits) ===== */
@@ -331,17 +372,15 @@ export default function OrdersAdminPage() {
   const [editStatus, setEditStatus] = useState<OrderStatus>("OPEN");
   const [saving, setSaving] = useState(false);
 
-  // ✅ Confirmation de commande (modale "voir", organisée)
+  // ✅ Modale Voir/Confirmer
   const [viewId, setViewId] = useState<number | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
   const [viewErr, setViewErr] = useState<string | null>(null);
   const [detail, setDetail] = useState<AnyObj | null>(null);
-
-  // ✅ status dans modale voir
   const [viewStatus, setViewStatus] = useState<OrderStatus>("OPEN");
   const [viewSaving, setViewSaving] = useState(false);
 
-  // ✅ paiement dans modale voir (admin/vendor)
+  // ✅ paiement dans modale voir
   const [payEditMode, setPayEditMode] = useState<"SET" | "ADD">("ADD");
   const [payInput, setPayInput] = useState<number>(0);
   const [payMethod, setPayMethod] = useState<string>("CASH");
@@ -462,6 +501,10 @@ export default function OrdersAdminPage() {
     try {
       await cancelOrder(id);
       await refresh();
+      if (viewId === id) {
+        setViewId(null);
+        setDetail(null);
+      }
     } catch (e: any) {
       setError(e?.message || String(e));
     }
@@ -491,10 +534,9 @@ export default function OrdersAdminPage() {
 
     try {
       const d = await getOrder(id);
-      setDetail(d);
-      setViewStatus(d?.status || "OPEN");
+      setDetail(d as any);
+      setViewStatus((d as any)?.status || "OPEN");
 
-      // init method/note from payment if exists
       const pay = getPaymentFromOrder(d as AnyObj);
       if (pay?.method) setPayMethod(pay.method);
       if (pay?.note) setPayNote(String(pay.note || ""));
@@ -511,10 +553,9 @@ export default function OrdersAdminPage() {
     try {
       await updateOrderStatus(viewId, viewStatus);
       await refresh();
-      // re-load detail for consistency
       const d = await getOrder(viewId);
       setDetail(d as any);
-      setViewStatus(d?.status || "OPEN");
+      setViewStatus((d as any)?.status || viewStatus);
     } catch (e: any) {
       setViewErr(e?.message || String(e));
     } finally {
@@ -523,7 +564,6 @@ export default function OrdersAdminPage() {
   }
 
   async function onConfirmQuick(status: OrderStatus) {
-    // ✅ bouton "Confirmer" = passer OPEN -> PREPARATION (ou au choix)
     if (!viewId) return;
     setViewSaving(true);
     try {
@@ -531,7 +571,7 @@ export default function OrdersAdminPage() {
       await refresh();
       const d = await getOrder(viewId);
       setDetail(d as any);
-      setViewStatus(d?.status || status);
+      setViewStatus((d as any)?.status || status);
     } catch (e: any) {
       setViewErr(e?.message || String(e));
     } finally {
@@ -541,13 +581,11 @@ export default function OrdersAdminPage() {
 
   async function onSavePayment() {
     if (!viewId || !detail) return;
-
-    // ✅ si services/orders.ts n'a pas updateOrderPayment, on n'affiche pas ce bloc (voir condition plus bas)
     if (typeof updateOrderPayment !== "function") return;
 
     const { total } = computeOrderAmounts(detail as AnyObj);
     const curPay = getPaymentFromOrder(detail as AnyObj);
-    const currentPaid = Number(curPay?.paid_amount || 0);
+    const currentPaid = numSafe(curPay?.paid_amount);
 
     const raw = Number(payInput || 0);
     if (!Number.isFinite(raw)) {
@@ -555,25 +593,12 @@ export default function OrdersAdminPage() {
       return;
     }
 
-    // validations
     if (payEditMode === "ADD") {
-      if (raw <= 0) {
-        setViewErr("Le montant à ajouter doit être > 0.");
-        return;
-      }
-      if (currentPaid + raw > total + 0.0001) {
-        setViewErr("Vous dépassez le total de la commande.");
-        return;
-      }
+      if (raw <= 0) return setViewErr("Le montant à ajouter doit être > 0.");
+      if (currentPaid + raw > total + 0.0001) return setViewErr("Vous dépassez le total de la commande.");
     } else {
-      if (raw < 0) {
-        setViewErr("Le montant payé ne peut pas être négatif.");
-        return;
-      }
-      if (raw > total + 0.0001) {
-        setViewErr("Le montant payé ne peut pas dépasser le total.");
-        return;
-      }
+      if (raw < 0) return setViewErr("Le montant payé ne peut pas être négatif.");
+      if (raw > total + 0.0001) return setViewErr("Le montant payé ne peut pas dépasser le total.");
     }
 
     setPaySaving(true);
@@ -586,14 +611,12 @@ export default function OrdersAdminPage() {
 
       await updateOrderPayment(viewId, payload as any);
 
-      // reload order detail to show updated payment
       const d = await getOrder(viewId);
       setDetail(d as any);
       await refresh();
 
       setPayInput(0);
     } catch (e: any) {
-      // backend peut renvoyer 409 PAYMENT_COLUMNS_MISSING ou 400/500
       setViewErr(e?.message || "Impossible de mettre à jour le paiement.");
     } finally {
       setPaySaving(false);
@@ -602,7 +625,7 @@ export default function OrdersAdminPage() {
 
   const client = (() => {
     const d = detail || {};
-    const c = d.contact || d.user || d;
+    const c = (d as any).contact || (d as any).user || d;
     const first_name = c?.first_name ?? "";
     const last_name = c?.last_name ?? "";
     const phone = c?.phone ?? c?.user_phone ?? "";
@@ -611,7 +634,7 @@ export default function OrdersAdminPage() {
   })();
 
   const address = (detail?.address as AnyObj) || {};
-  const itemsDetail: AnyObj[] = Array.isArray(detail?.items) ? detail!.items : [];
+  const itemsDetail: AnyObj[] = Array.isArray(detail?.items) ? (detail as any).items : [];
 
   const itemsAmountDetail = itemsDetail.reduce(
     (sum, it) => sum + Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1),
@@ -619,28 +642,37 @@ export default function OrdersAdminPage() {
   );
 
   const totalAmountDetail: number =
-    typeof detail?.total === "number" ? detail!.total : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
+    typeof detail?.total === "number" ? (detail as any).total : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
 
   const deliveryFeeDetail =
     (detail as any)?.totals?.delivery_fee ?? Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
 
-  // ✅ total panier basé sur le prix "unifié" (promo si dispo)
+  // ✅ paiement modale voir
+  const viewPay = useMemo(() => {
+    if (!detail) return null;
+    const pay = getPaymentFromOrder(detail);
+    const { total } = computeOrderAmounts(detail);
+    const remaining =
+      pay?.remaining_amount != null ? Number(pay.remaining_amount) : computeRemaining(total, pay.paid_amount);
+    const status = pay?.status || computePayStatus(total, pay.paid_amount);
+    return { ...pay, total, remaining, status };
+  }, [detail]);
+
+  // ✅ total panier vente sur place
   const basketTotal = useMemo(() => {
     return basket.reduce((s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0), 0);
   }, [basket]);
 
-  // ✅ paiement sur place calculé proprement (pas de statut saisi manuellement)
+  // ✅ payé clamp + status auto
   const posPaidClamped = useMemo(() => {
-    const t = Number(basketTotal || 0);
-    const p = Math.max(0, Math.min(Number(amountPaid || 0), t));
+    const t = Math.max(0, numSafe(basketTotal));
+    const p = Math.max(0, Math.min(numSafe(amountPaid), t));
     return p;
   }, [basketTotal, amountPaid]);
 
   const posRemaining = useMemo(() => computeRemaining(basketTotal, posPaidClamped), [basketTotal, posPaidClamped]);
-
   const posStatus = useMemo(() => computePayStatus(basketTotal, posPaidClamped), [basketTotal, posPaidClamped]);
 
-  // clamp du champ
   useEffect(() => {
     if (posPaidClamped !== amountPaid) setAmountPaid(posPaidClamped);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -724,10 +756,9 @@ export default function OrdersAdminPage() {
     if (openCreate) loadAllProducts();
   }, [openCreate, loadAllProducts]);
 
-  // ✅ filtre + tri
+  // ✅ filtre + tri produits
   const filteredResults = useMemo(() => {
     const ql = search.trim().toLowerCase();
-
     let arr = results;
 
     if (promoFilter === "PROMO") arr = arr.filter((p) => hasPromo(p));
@@ -743,13 +774,9 @@ export default function OrdersAdminPage() {
     }
 
     const sorted = [...arr];
-    if (sortBy === "NAME") {
-      sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
-    } else if (sortBy === "PRICE_ASC") {
-      sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
-    } else if (sortBy === "PRICE_DESC") {
-      sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
-    }
+    if (sortBy === "NAME") sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+    else if (sortBy === "PRICE_ASC") sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
+    else if (sortBy === "PRICE_DESC") sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
     return sorted;
   }, [results, search, promoFilter, sortBy]);
 
@@ -759,9 +786,9 @@ export default function OrdersAdminPage() {
       return;
     }
 
-    const total = Number(basketTotal || 0);
+    const total = Math.max(0, numSafe(basketTotal));
     const paid = posPaidClamped;
-    const remain = Math.max(0, total - paid);
+    const remain = computeRemaining(total, paid);
     const status = computePayStatus(total, paid);
 
     const itemsPayload = basket.map((b) => {
@@ -781,7 +808,6 @@ export default function OrdersAdminPage() {
         last_name: cLast || "",
         phone: cPhone || "",
       },
-      // ✅ Vente sur place claire
       address: { ville: "Casablanca", commune: "Sur place", quartier: "Boutique", gps: null },
       delivery: { mode: "SIMPLE" as const, fee: 0, currency: "MAD" as const },
       items: itemsPayload,
@@ -792,7 +818,6 @@ export default function OrdersAdminPage() {
         amount: total,
         currency: "MAD",
       },
-      // ✅ backend buildPaymentFromPayload lit paid_amount
       payment: {
         method: "CASH",
         note: `Vente sur place | ${status} | payé=${paid} | reste=${remain}`,
@@ -827,27 +852,12 @@ export default function OrdersAdminPage() {
   const viewDisplayCode =
     viewId !== null ? (detail ? getOrderDisplayCode(detail as AnyObj) : getOrderDisplayCode(viewId)) : "";
 
-  // ✅ infos paiement dans la modale "voir"
-  const viewPay = useMemo(() => {
-    if (!detail) return null;
-    const pay = getPaymentFromOrder(detail);
-    const { total } = computeOrderAmounts(detail);
-    const remaining = pay?.remaining_amount != null ? Number(pay.remaining_amount) : computeRemaining(total, pay.paid_amount);
-    const status = (pay?.status as any) || computePayStatus(total, pay.paid_amount);
-    return { ...pay, total, remaining, status };
-  }, [detail]);
-
   return (
     <div className="container-xxl py-4">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <h1 className="h5 m-0">Commandes</h1>
         <div className="d-flex gap-2">
-          <button
-            className="btn btn-duu"
-            onClick={() => {
-              setOpenCreate(true);
-            }}
-          >
+          <button className="btn btn-duu" onClick={() => setOpenCreate(true)}>
             + Vente sur place
           </button>
           <Link to="/admin" className="btn btn-outline-dark">
@@ -915,6 +925,7 @@ export default function OrdersAdminPage() {
                     <th>Client</th>
                     <th>Contact</th>
                     <th>Statut</th>
+                    <th>Paiement</th> {/* ✅ NEW */}
                     <th className="text-end">Total</th>
                     <th className="text-end">Actions</th>
                   </tr>
@@ -932,6 +943,9 @@ export default function OrdersAdminPage() {
 
                     const totalAligned = computeOrderAmounts(o as AnyObj).total;
 
+                    // ✅ Paiement badge (PAYÉ / RESTE / NON PAYÉ)
+                    const payBadge = getPaymentLabelForRow(o as AnyObj);
+
                     return (
                       <tr key={o.id}>
                         <td>
@@ -946,15 +960,7 @@ export default function OrdersAdminPage() {
 
                         <td>
                           {thumb ? (
-                            <div
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 8,
-                                overflow: "hidden",
-                                background: "#f5f5f5",
-                              }}
-                            >
+                            <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "#f5f5f5" }}>
                               <img
                                 src={thumb}
                                 alt={`Produit commande #${displayCode}`}
@@ -996,6 +1002,11 @@ export default function OrdersAdminPage() {
 
                         <td>
                           <span className={`badge ${BADGE[o.status]}`}>{o.status}</span>
+                        </td>
+
+                        {/* ✅ NEW paiement */}
+                        <td>
+                          <span className={`badge ${payBadge.cls}`}>{payBadge.text}</span>
                         </td>
 
                         <td className="text-end">{mad(totalAligned)}</td>
@@ -1100,19 +1111,19 @@ export default function OrdersAdminPage() {
                   <div className="text-muted">Aucun détail.</div>
                 ) : (
                   <>
-                    {/* ✅ Barre d'actions "confirmation" claire */}
                     <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                       <div className="d-flex align-items-center gap-2">
-                        <span className={`badge ${BADGE[(detail.status as OrderStatus) || "OPEN"]}`}>{detail.status}</span>
-                        <small className="text-muted">{dateTime(detail.created_at)}</small>
+                        <span className={`badge ${BADGE[((detail as AnyObj).status as OrderStatus) || "OPEN"]}`}>
+                          {(detail as AnyObj).status}
+                        </span>
+                        <small className="text-muted">{dateTime((detail as AnyObj).created_at)}</small>
                       </div>
 
                       <div className="d-flex flex-wrap gap-2 align-items-center">
-                        {/* Actions rapides */}
                         <div className="btn-group">
                           <button
                             className="btn btn-sm btn-outline-dark"
-                            disabled={viewSaving || detail.status !== "OPEN"}
+                            disabled={viewSaving || (detail as AnyObj).status !== "OPEN"}
                             onClick={() => onConfirmQuick("PREPARATION")}
                             title="Confirmer = passer en préparation"
                           >
@@ -1120,7 +1131,7 @@ export default function OrdersAdminPage() {
                           </button>
                           <button
                             className="btn btn-sm btn-outline-secondary"
-                            disabled={viewSaving || detail.status !== "PREPARATION"}
+                            disabled={viewSaving || (detail as AnyObj).status !== "PREPARATION"}
                             onClick={() => onConfirmQuick("DELIVERY")}
                             title="Mettre en livraison"
                           >
@@ -1128,7 +1139,7 @@ export default function OrdersAdminPage() {
                           </button>
                           <button
                             className="btn btn-sm btn-outline-success"
-                            disabled={viewSaving || detail.status === "DONE" || detail.status === "CANCELLED"}
+                            disabled={viewSaving || (detail as AnyObj).status === "DONE" || (detail as AnyObj).status === "CANCELLED"}
                             onClick={() => onConfirmQuick("DONE")}
                             title="Marquer comme livrée"
                           >
@@ -1136,7 +1147,6 @@ export default function OrdersAdminPage() {
                           </button>
                         </div>
 
-                        {/* Select + save (si besoin) */}
                         <select
                           className="form-select form-select-sm"
                           value={viewStatus}
@@ -1156,7 +1166,6 @@ export default function OrdersAdminPage() {
                       </div>
                     </div>
 
-                    {/* ✅ Deux colonnes propres */}
                     <div className="row g-3">
                       <div className="col-12 col-lg-6">
                         <div className="card border-0 shadow-sm mb-3">
@@ -1168,12 +1177,7 @@ export default function OrdersAdminPage() {
                                 <div className="text-muted small">{client.phone || "—"}</div>
                               </div>
                               <div className="d-flex gap-2">
-                                <a
-                                  className="btn btn-sm btn-success"
-                                  href={waHref(detail as AnyObj)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
+                                <a className="btn btn-sm btn-success" href={waHref(detail as AnyObj)} target="_blank" rel="noopener noreferrer">
                                   WhatsApp
                                 </a>
                                 {client.phone ? (
@@ -1202,14 +1206,9 @@ export default function OrdersAdminPage() {
                                 </>
                               ) : null}
                             </div>
-                            {detail?.geo_link ? (
+                            {(detail as AnyObj)?.geo_link ? (
                               <div className="mt-2">
-                                <a
-                                  className="btn btn-sm btn-outline-secondary"
-                                  href={detail.geo_link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
+                                <a className="btn btn-sm btn-outline-secondary" href={(detail as AnyObj).geo_link} target="_blank" rel="noopener noreferrer">
                                   Ouvrir dans Google Maps
                                 </a>
                               </div>
@@ -1217,7 +1216,6 @@ export default function OrdersAdminPage() {
                           </div>
                         </div>
 
-                        {/* ✅ Paiement (si dispo) */}
                         <div className="card border-0 shadow-sm">
                           <div className="card-body">
                             <div className="d-flex justify-content-between align-items-center mb-2">
@@ -1228,11 +1226,11 @@ export default function OrdersAdminPage() {
                                     viewPay.status === "PAID"
                                       ? "bg-success"
                                       : viewPay.status === "PARTIAL"
-                                      ? "bg-warning"
+                                      ? "bg-warning text-dark"
                                       : "bg-secondary"
                                   }`}
                                 >
-                                  {viewPay.status}
+                                  {viewPay.status === "PAID" ? "PAYÉ" : viewPay.status === "PARTIAL" ? "PARTIEL" : "NON PAYÉ"}
                                 </span>
                               ) : (
                                 <span className="text-muted small">—</span>
@@ -1261,7 +1259,6 @@ export default function OrdersAdminPage() {
                                   </div>
                                 )}
 
-                                {/* ✅ Edition paiement (si endpoint présent) */}
                                 {typeof updateOrderPayment === "function" ? (
                                   <div className="mt-3">
                                     <div className="row g-2">
@@ -1316,9 +1313,7 @@ export default function OrdersAdminPage() {
                                 ) : null}
                               </>
                             ) : (
-                              <div className="text-muted small">
-                                Paiement non disponible (colonnes ou champ payment absents).
-                              </div>
+                              <div className="text-muted small">Paiement non disponible.</div>
                             )}
                           </div>
                         </div>
@@ -1337,22 +1332,10 @@ export default function OrdersAdminPage() {
                                 const lineTotal = unit * qty;
 
                                 return (
-                                  <li
-                                    key={i}
-                                    className="list-group-item d-flex justify-content-between align-items-center gap-2"
-                                  >
+                                  <li key={i} className="list-group-item d-flex justify-content-between align-items-center gap-2">
                                     <div className="d-flex align-items-center gap-2 flex-grow-1">
                                       {img ? (
-                                        <div
-                                          className="flex-shrink-0"
-                                          style={{
-                                            width: 48,
-                                            height: 48,
-                                            borderRadius: 8,
-                                            overflow: "hidden",
-                                            background: "#f5f5f5",
-                                          }}
-                                        >
+                                        <div style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", background: "#f5f5f5" }}>
                                           <img src={img} alt={name} className="w-100 h-100 object-fit-cover" loading="lazy" />
                                         </div>
                                       ) : null}
@@ -1393,14 +1376,9 @@ export default function OrdersAdminPage() {
                           </div>
                         </div>
 
-                        {/* ✅ Action "Annuler" directement depuis la modale */}
-                        {detail?.status !== "CANCELLED" && detail?.status !== "DONE" ? (
+                        {(detail as AnyObj)?.status !== "CANCELLED" && (detail as AnyObj)?.status !== "DONE" ? (
                           <div className="d-flex justify-content-end mt-3">
-                            <button
-                              className="btn btn-outline-danger"
-                              onClick={() => onCancel(viewId)}
-                              disabled={viewSaving}
-                            >
+                            <button className="btn btn-outline-danger" onClick={() => onCancel(viewId)} disabled={viewSaving}>
                               Annuler la commande
                             </button>
                           </div>
@@ -1422,21 +1400,23 @@ export default function OrdersAdminPage() {
       )}
 
       {/* ===========================
-          MODAL: Vente sur place
+          MODAL: Vente sur place (✅ scroll fixé)
          =========================== */}
       {openCreate && (
         <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
           <div className="modal-dialog modal-xl" role="document">
-            <div className="modal-content">
-              <div className="modal-header">
+            <div className="modal-content pos-modal">
+              {/* ✅ Header sticky */}
+              <div className="modal-header pos-sticky-header">
                 <h5 className="modal-title">Vente sur place</h5>
                 <button className="btn-close" onClick={() => setOpenCreate(false)} />
               </div>
 
-              <div className="modal-body">
-                <div className="row g-3">
-                  {/* ✅ Colonne gauche: catalogue */}
-                  <div className="col-12 col-lg-7">
+              {/* ✅ Body scrollable (le footer reste visible) */}
+              <div className="modal-body pos-body">
+                <div className="row g-3 pos-grid">
+                  {/* Catalogue */}
+                  <div className="col-12 col-lg-7 pos-col">
                     <div className="card border-0 shadow-sm h-100">
                       <div className="card-body d-flex flex-column">
                         <div className="d-flex align-items-center justify-content-between gap-2">
@@ -1476,11 +1456,12 @@ export default function OrdersAdminPage() {
 
                         {searchErr && <div className="alert alert-danger mt-2 mb-0">{searchErr}</div>}
 
-                        <div className="mt-2" style={{ minHeight: 520 }}>
+                        {/* ✅ Liste produits scrollable indépendante */}
+                        <div className="mt-2 pos-scroll">
                           {searchLoading ? (
                             <div className="text-muted">Chargement de tous les produits…</div>
                           ) : (
-                            <div className="vstack gap-2" style={{ maxHeight: 520, overflow: "auto" }}>
+                            <div className="vstack gap-2">
                               {filteredResults.map((p) => {
                                 const unit = getProductUnitPrice(p);
                                 const promo = hasPromo(p);
@@ -1523,21 +1504,48 @@ export default function OrdersAdminPage() {
                     </div>
                   </div>
 
-                  {/* ✅ Colonne droite: panier + paiement + client */}
-                  <div className="col-12 col-lg-5">
+                  {/* Panier + paiement */}
+                  <div className="col-12 col-lg-5 pos-col">
                     <div className="card border-0 shadow-sm h-100">
                       <div className="card-body d-flex flex-column">
-                        <div className="d-flex align-items-start justify-content-between">
+                        {/* ✅ Résumé + actions en haut */}
+                        <div className="d-flex align-items-start justify-content-between gap-2">
                           <div>
-                            <h6 className="mb-0">Panier</h6>
-                            <div className="text-muted small">Quantités + paiement</div>
+                            <h6 className="mb-0">Panier & Paiement</h6>
+                            <div className="text-muted small">Tout est ici, sans scroller jusqu’en bas</div>
                           </div>
                           <button className="btn btn-sm btn-outline-danger" onClick={clearBasket} disabled={!basket.length}>
                             Vider
                           </button>
                         </div>
 
-                        <div className="vstack gap-2 mt-2" style={{ maxHeight: 260, overflow: "auto" }}>
+                        {/* ✅ Total + reste sticky dans la colonne droite */}
+                        <div className="pos-summary mt-2">
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="text-muted">Total</span>
+                            <span className="fw-semibold">{mad(basketTotal)}</span>
+                          </div>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="text-muted">Payé</span>
+                            <span className="fw-semibold">{mad(posPaidClamped)}</span>
+                          </div>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="text-muted">Reste</span>
+                            <span className="fw-semibold">{mad(posRemaining)}</span>
+                          </div>
+                          <div className="mt-2">
+                            <span
+                              className={`badge ${
+                                posStatus === "PAID" ? "bg-success" : posStatus === "PARTIAL" ? "bg-warning text-dark" : "bg-secondary"
+                              }`}
+                            >
+                              {posStatus === "PAID" ? "PAYÉ" : posStatus === "PARTIAL" ? "PARTIEL" : "NON PAYÉ"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* ✅ Panier scrollable */}
+                        <div className="vstack gap-2 mt-2 pos-scroll">
                           {basket.length === 0 ? (
                             <div className="text-muted small">Aucun article.</div>
                           ) : (
@@ -1586,45 +1594,15 @@ export default function OrdersAdminPage() {
 
                         <hr className="my-3" />
 
-                        <h6 className="mb-2">Paiement</h6>
-                        <div className="row g-2">
-                          <div className="col-12">
-                            <div className="d-flex justify-content-between align-items-center border rounded p-2">
-                              <div className="text-muted">Total</div>
-                              <div className="fw-semibold">{mad(basketTotal)}</div>
-                            </div>
-                          </div>
-
-                          <div className="col-12 col-md-6">
-                            <label className="form-label small text-muted mb-1">Montant payé</label>
-                            <input
-                              type="number"
-                              min={0}
-                              step="1"
-                              className="form-control"
-                              value={amountPaid}
-                              onChange={(e) => setAmountPaid(Number(e.target.value || 0))}
-                            />
-                          </div>
-
-                          <div className="col-12 col-md-6">
-                            <label className="form-label small text-muted mb-1">Statut</label>
-                            <div
-                              className={`border rounded p-2 fw-semibold ${
-                                posStatus === "PAID" ? "text-success" : posStatus === "PARTIAL" ? "text-warning" : "text-muted"
-                              }`}
-                            >
-                              {posStatus}
-                            </div>
-                          </div>
-
-                          <div className="col-12">
-                            <div className="d-flex justify-content-between align-items-center border rounded p-2">
-                              <div className="text-muted">Reste à payer</div>
-                              <div className="fw-semibold">{mad(posRemaining)}</div>
-                            </div>
-                          </div>
-                        </div>
+                        <h6 className="mb-2">Montant payé</h6>
+                        <input
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="form-control"
+                          value={amountPaid}
+                          onChange={(e) => setAmountPaid(Number(e.target.value || 0))}
+                        />
 
                         <hr className="my-3" />
 
@@ -1641,19 +1619,11 @@ export default function OrdersAdminPage() {
                           </div>
                         </div>
 
-                        <div className="d-flex justify-content-between align-items-center mt-3">
-                          <div className="form-check">
-                            <input className="form-check-input" type="checkbox" id="markDone" checked={markDone} onChange={(e) => setMarkDone(e.target.checked)} />
-                            <label className="form-check-label" htmlFor="markDone">
-                              Marquer comme <strong>livrée (DONE)</strong> après création
-                            </label>
-                          </div>
-                        </div>
-
-                        <div className="d-flex justify-content-end mt-3">
-                          <button className="btn btn-dark" onClick={submitCreate} disabled={saving || basket.length === 0}>
-                            {saving ? "Enregistrement…" : "Créer la vente"}
-                          </button>
+                        <div className="form-check mt-3">
+                          <input className="form-check-input" type="checkbox" id="markDone" checked={markDone} onChange={(e) => setMarkDone(e.target.checked)} />
+                          <label className="form-check-label" htmlFor="markDone">
+                            Marquer comme <strong>livrée (DONE)</strong> après création
+                          </label>
                         </div>
                       </div>
                     </div>
@@ -1661,9 +1631,13 @@ export default function OrdersAdminPage() {
                 </div>
               </div>
 
-              <div className="modal-footer">
+              {/* ✅ Footer sticky: toujours visible => plus besoin de scroller pour confirmer */}
+              <div className="modal-footer pos-sticky-footer">
                 <button className="btn btn-outline-dark" onClick={() => setOpenCreate(false)} disabled={saving}>
                   Fermer
+                </button>
+                <button className="btn btn-dark" onClick={submitCreate} disabled={saving || basket.length === 0}>
+                  {saving ? "Enregistrement…" : "Créer la vente"}
                 </button>
               </div>
             </div>
@@ -1678,6 +1652,44 @@ export default function OrdersAdminPage() {
           border: none;
         }
         .btn-duu:hover{ filter: brightness(0.95); }
+
+        /* ✅ POS modal: on fixe le souci de scroll */
+        .pos-modal{
+          max-height: calc(100vh - 2rem);
+          display: flex;
+          flex-direction: column;
+        }
+        .pos-sticky-header{
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          background: #fff;
+          border-bottom: 1px solid rgba(0,0,0,.06);
+        }
+        .pos-body{
+          overflow: auto;  /* ✅ le scroll est ici */
+          flex: 1 1 auto;
+        }
+        .pos-sticky-footer{
+          position: sticky;
+          bottom: 0;
+          z-index: 2;
+          background: #fff;
+          border-top: 1px solid rgba(0,0,0,.06);
+        }
+        .pos-grid .pos-col{
+          min-height: 520px;
+        }
+        .pos-scroll{
+          max-height: 420px;
+          overflow: auto;
+        }
+        .pos-summary{
+          border: 1px solid rgba(0,0,0,.08);
+          border-radius: 12px;
+          padding: 10px 12px;
+          background: #fff;
+        }
       `}</style>
     </div>
   );
