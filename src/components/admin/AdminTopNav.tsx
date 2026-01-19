@@ -43,7 +43,15 @@ export default function AdminTopNav({
             Promotions
           </NavLink>
         </div>
-{/*
+
+        {/* ✅ NOUVEL ONGLET: Contenu IA (SEO) */}
+        <div className="col">
+          <NavLink to="/admin/content-ai" className={cls}>
+            Contenu IA
+          </NavLink>
+        </div>
+
+        {/*
         <div className="col">
           <NavLink to="/admin/copy" className={cls}>
             Copy du site

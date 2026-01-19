@@ -18,6 +18,9 @@ import UsersAdminPage from "./pages/admin/UsersAdminPage";
 // ✅ Nouvelle page IA (Admin)
 import AiToolsAdminPage from "./pages/admin/AiToolsAdminPage";
 
+// ✅ Nouvelle page Contenu IA (SEO)
+import ContentAiPage from "./pages/admin/ContentAiPage";
+
 // ✅ Vitrine
 import AfricanFood from "./pages/AfricanFood";
 import AfricanMarket from "./pages/AfricanMarket";
@@ -401,6 +404,9 @@ export default function App() {
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
+
+                    {/* ✅ NOUVELLE PAGE: Contenu IA (SEO) */}
+                    <Route path="content-ai" element={<ContentAiPage />} />
                   </Route>
                 </Route>
 

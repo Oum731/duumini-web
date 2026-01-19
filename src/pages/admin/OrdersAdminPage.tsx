@@ -15,7 +15,13 @@ import { Link } from "react-router-dom";
 import { subscribeSSE, type ServerEvent } from "../../services/events";
 import { API_BASE } from "../../services/http";
 
-const STATUSES: OrderStatus[] = ["OPEN", "PREPARATION", "DELIVERY", "DONE", "CANCELLED"];
+const STATUSES: OrderStatus[] = [
+  "OPEN",
+  "PREPARATION",
+  "DELIVERY",
+  "DONE",
+  "CANCELLED",
+];
 
 const BADGE: Record<OrderStatus, string> = {
   OPEN: "bg-secondary",
@@ -91,15 +97,20 @@ function productShareUrl(it: AnyObj) {
 
 /* ====== Petit util prix ====== */
 const mad = (n?: number | null) =>
-  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD", maximumFractionDigits: 0 }).format(
-    Number(n || 0)
-  );
+  new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "MAD",
+    maximumFractionDigits: 0,
+  }).format(Number(n || 0));
 
 /* ===== Helper: code alphanumérique pour affichage ===== */
-function getOrderDisplayCode(orderOrId: string | number | { id?: string | number }): string {
+function getOrderDisplayCode(
+  orderOrId: string | number | { id?: string | number },
+): string {
   let rawId: string | number | undefined;
 
-  if (typeof orderOrId === "number" || typeof orderOrId === "string") rawId = orderOrId;
+  if (typeof orderOrId === "number" || typeof orderOrId === "string")
+    rawId = orderOrId;
   else rawId = orderOrId?.id;
 
   if (rawId == null) return "";
@@ -110,40 +121,105 @@ function getOrderDisplayCode(orderOrId: string | number | { id?: string | number
   return String(rawId ?? "").toUpperCase();
 }
 
-/* ===== Montants alignés backend ===== */
 function computeOrderAmounts(order: AnyObj) {
-  const totals = order.totals || {};
-  const hasTotals = typeof totals === "object" && totals !== null;
+  const totals = order?.totals || null;
+  const hasTotals = totals && typeof totals === "object";
 
+  // total
   const total =
-    typeof order.total === "number"
+    typeof order?.total === "number"
       ? order.total
       : hasTotals && typeof totals.amount === "number"
-      ? totals.amount
-      : Number(order.total || 0) || 0;
+      ? Number(totals.amount)
+      : Number(order?.total || 0) || 0;
 
-  const deliveryFee = hasTotals && typeof totals.delivery_fee === "number" ? Number(totals.delivery_fee) : 0;
+  // livraison
+  const deliveryFee =
+    hasTotals && typeof totals.delivery_fee === "number"
+      ? Number(totals.delivery_fee)
+      : Number(order?.delivery_fee || order?.deliveryFee || 0) || 0;
 
-  const itemsAmount =
+  // items_amount (on tente totals, sinon items[], sinon total - delivery)
+  let itemsAmount =
     hasTotals && typeof totals.items_amount === "number"
       ? Number(totals.items_amount)
-      : Math.max(0, Number(total) - Number(deliveryFee));
+      : typeof order?.items_amount === "number"
+      ? Number(order.items_amount)
+      : 0;
 
-  const duuShare =
-    (hasTotals && typeof totals.duumini_amount === "number"
+  if (!itemsAmount || itemsAmount <= 0) {
+    const arr = Array.isArray(order?.items) ? order.items : Array.isArray(order?.order_items) ? order.order_items : [];
+    if (arr.length) {
+      itemsAmount = arr.reduce((s: number, it: AnyObj) => {
+        const qty = Number(it?.qty ?? 1) || 1;
+        const unit = Number(it?.unit_price ?? it?.price ?? it?.final_price ?? 0) || 0;
+        return s + unit * qty;
+      }, 0);
+    } else {
+      itemsAmount = Math.max(0, Number(total) - Number(deliveryFee));
+    }
+  }
+
+  /* =========================
+   * ✅ Commission Duumini
+   * Priorité:
+   * 1) order.commission_duumini (DB)
+   * 2) totals.duumini_amount / totals.commission
+   * 3) calcul fallback sur itemsAmount avec un taux déduit du vertical (si dispo)
+   * =======================*/
+
+  // 1) valeur plate (si backend la renvoie)
+  const direct =
+    typeof order?.commission_duumini === "number"
+      ? Number(order.commission_duumini)
+      : null;
+
+  // 2) totals
+  const totalsShare =
+    hasTotals && typeof totals.duumini_amount === "number"
       ? Number(totals.duumini_amount)
       : hasTotals && typeof totals.commission === "number"
       ? Number(totals.commission)
-      : 0) || 0;
+      : null;
+
+  // 3) fallback calcul (si rien n’est fourni)
+  // - Si tu as un champ vertical (FOOD/MARKET/FASHION) sur la commande, on peut appliquer des taux connus
+  const vertical = String(order?.vertical || order?.shop_vertical || order?.shop?.vertical || "").toUpperCase();
+
+  const defaultRate = 0; // on évite d’inventer si on ne sait pas
+  const rate =
+    vertical === "MARKET"
+      ? 0.11
+      : vertical === "FOOD"
+      ? 0.18
+      : vertical === "FASHION"
+      ? 0.18
+      : defaultRate;
+
+  const computedShare = rate > 0 ? Math.max(0, itemsAmount * rate) : 0;
+
+  const duuShare = Math.max(
+    0,
+    Number(
+      direct != null
+        ? direct
+        : totalsShare != null
+        ? totalsShare
+        : computedShare
+    ) || 0
+  );
 
   return { total, deliveryFee, itemsAmount, duuShare };
 }
+
 
 /* ===== Payment helpers (robuste) ===== */
 type PayStatus = "PAID" | "UNPAID" | "PARTIAL";
 
 function normPayStatus(s: any): PayStatus | null {
-  const v = String(s || "").trim().toUpperCase();
+  const v = String(s || "")
+    .trim()
+    .toUpperCase();
   if (v === "PAID") return "PAID";
   if (v === "UNPAID") return "UNPAID";
   if (v === "PARTIAL") return "PARTIAL";
@@ -154,22 +230,56 @@ function numSafe(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
+function toInputNumberValue(n: number) {
+  // si 0 => on affiche vide pour faciliter la saisie
+  return n === 0 ? "" : String(n);
+}
+
+function fromInputNumberValue(v: string) {
+  // vide => 0, sinon nombre
+  if (v.trim() === "") return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 function getPaymentFromOrder(o: AnyObj) {
-  const payment = o?.payment && typeof o.payment === "object" ? o.payment : null;
+  const payment =
+    o?.payment && typeof o.payment === "object" ? o.payment : null;
 
-  const status: PayStatus | null = normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
+  const status: PayStatus | null =
+    normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
 
-  const paid_amount = numSafe(o?.paid_amount) || numSafe(payment?.paid_amount) || numSafe(payment?.paidAmount) || 0;
+  const paid_amount =
+    numSafe(o?.paid_amount) ||
+    numSafe(payment?.paid_amount) ||
+    numSafe(payment?.paidAmount) ||
+    0;
 
-  const remaining_amount_raw = o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
-  const remaining_amount = remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
+  const remaining_amount_raw =
+    o?.remaining_amount ??
+    payment?.remaining_amount ??
+    payment?.remainingAmount ??
+    null;
+  const remaining_amount =
+    remaining_amount_raw == null
+      ? null
+      : Math.max(0, numSafe(remaining_amount_raw));
 
   const method = String(payment?.method || "").trim() || null;
   const note = payment?.note != null ? String(payment.note) : null;
-  const currency = String(payment?.currency || o?.currency || "MAD").toUpperCase();
+  const currency = String(
+    payment?.currency || o?.currency || "MAD",
+  ).toUpperCase();
 
-  return { payment, status, paid_amount, remaining_amount, method, note, currency };
+  return {
+    payment,
+    status,
+    paid_amount,
+    remaining_amount,
+    method,
+    note,
+    currency,
+  };
 }
 
 function computeRemaining(total: number, paid: number) {
@@ -209,13 +319,16 @@ function getPaymentLabelForRow(o: AnyObj) {
   const remain = computeRemaining(total, paid);
 
   // 2) Si payé couvre tout (cas edge)
-  if (paid > 0 && paid >= total - 0.0001) return { text: "PAYÉ", cls: "bg-success" };
+  if (paid > 0 && paid >= total - 0.0001)
+    return { text: "PAYÉ", cls: "bg-success" };
 
   // 3) total==0 => PAYÉ (sinon RESTE: 0)
-  if (Math.max(0, numSafe(total)) <= 0) return { text: "PAYÉ", cls: "bg-success" };
+  if (Math.max(0, numSafe(total)) <= 0)
+    return { text: "PAYÉ", cls: "bg-success" };
 
   // Badge:
-  if (paid > 0) return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
+  if (paid > 0)
+    return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
   return { text: `RESTE: ${mad(remain)}`, cls: "bg-secondary" };
 }
 
@@ -224,12 +337,16 @@ function buildAdminWhatsappMessage(order: AnyObj) {
   const items: AnyObj[] = Array.isArray(order.items) ? order.items : [];
   const hasItems = items.length > 0;
 
-  const created = order.created_at ? new Date(order.created_at).toLocaleString("fr-FR") : "";
+  const created = order.created_at
+    ? new Date(order.created_at).toLocaleString("fr-FR")
+    : "";
 
   const address = order.address || {};
   const contact = order.contact || order.user || {};
   const fullName =
-    `${contact.first_name || ""} ${contact.last_name || ""}`.trim() || contact.name || "cher(e) client(e)";
+    `${contact.first_name || ""} ${contact.last_name || ""}`.trim() ||
+    contact.name ||
+    "cher(e) client(e)";
 
   const phone = contact.phone || order.phone || "";
   const displayCode = getOrderDisplayCode(order);
@@ -238,26 +355,28 @@ function buildAdminWhatsappMessage(order: AnyObj) {
 
   const ville = address.city || address.ville || order.address_city || "";
   const commune = address.commune || order.address_commune || "";
-  const quartier = address.district || address.quartier || order.address_district || "";
+  const quartier =
+    address.district || address.quartier || order.address_district || "";
 
   const status: OrderStatus | string = order.status || "OPEN";
   const statusText =
     status === "OPEN"
       ? "Nous avons bien reçu votre commande. Elle vient d’être prise en charge par notre équipe."
       : status === "PREPARATION"
-      ? "Votre commande est en cours de préparation."
-      : status === "DELIVERY"
-      ? "Votre commande est en cours de livraison vers votre adresse."
-      : status === "DONE"
-      ? "Votre commande a été livrée. Nous espérons qu’elle vous plaira !"
-      : status === "CANCELLED"
-      ? "Votre commande a été annulée. N’hésitez pas à nous contacter pour plus d’informations."
-      : "Voici un récapitulatif de votre commande.";
+        ? "Votre commande est en cours de préparation."
+        : status === "DELIVERY"
+          ? "Votre commande est en cours de livraison vers votre adresse."
+          : status === "DONE"
+            ? "Votre commande a été livrée. Nous espérons qu’elle vous plaira !"
+            : status === "CANCELLED"
+              ? "Votre commande a été annulée. N’hésitez pas à nous contacter pour plus d’informations."
+              : "Voici un récapitulatif de votre commande.";
 
   const lines = hasItems
     ? items
         .map((it) => {
-          const name = it.product_name || it.name || `Produit #${it.product_id ?? ""}`;
+          const name =
+            it.product_name || it.name || `Produit #${it.product_id ?? ""}`;
           const qty = Number(it.qty ?? 1);
           const unit = Number(it.unit_price ?? it.price ?? 0);
           const lineTotal = unit * qty;
@@ -332,7 +451,12 @@ function getProductUnitPrice(p: Product): number {
   const base = anyP.price ?? 0;
 
   const promoNum = Number(promo);
-  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity)) return promoNum;
+  if (
+    Number.isFinite(promoNum) &&
+    promoNum > 0 &&
+    promoNum < Number(base || Infinity)
+  )
+    return promoNum;
 
   const baseNum = Number(base);
   return Number.isFinite(baseNum) ? baseNum : 0;
@@ -395,8 +519,12 @@ export default function OrdersAdminPage() {
 
   // ✅ filtres produits
   const [search, setSearch] = useState("");
-  const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
-  const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">("NAME");
+  const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">(
+    "ALL",
+  );
+  const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">(
+    "NAME",
+  );
 
   // ✅ paiement sur place
   const [amountPaid, setAmountPaid] = useState<number>(0);
@@ -407,7 +535,10 @@ export default function OrdersAdminPage() {
   const [markDone, setMarkDone] = useState(true);
   const searchAbort = useRef<AbortController | null>(null);
 
-  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+  const pages = useMemo(
+    () => Math.max(1, Math.ceil(total / pageSize)),
+    [total, pageSize],
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -433,7 +564,11 @@ export default function OrdersAdminPage() {
         refresh();
         // @ts-ignore
         window?.duuminiToast?.({
-          title: evt.payload?.title || (evt.type === "ORDER_CREATED" ? "Nouvelle commande" : "Commande mise à jour"),
+          title:
+            evt.payload?.title ||
+            (evt.type === "ORDER_CREATED"
+              ? "Nouvelle commande"
+              : "Commande mise à jour"),
           message: evt.payload?.body || "",
         });
       }
@@ -441,13 +576,15 @@ export default function OrdersAdminPage() {
     return () => sub.close();
   }, [refresh]);
 
-  const dateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString("fr-FR") : "");
+  const dateTime = (iso?: string) =>
+    iso ? new Date(iso).toLocaleString("fr-FR") : "";
 
   const filtered = items.filter((o) => {
     if (!q.trim()) return true;
     const txt = q.toLowerCase();
     const contact = (o as any)?.contact || (o as any)?.user || {};
-    const contactName = `${(contact?.first_name || "")} ${(contact?.last_name || "")}`.trim();
+    const contactName =
+      `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
     return (
       String(o.id).includes(txt) ||
       (o.status?.toLowerCase() || "").includes(txt) ||
@@ -462,7 +599,9 @@ export default function OrdersAdminPage() {
     let caDuumini = 0;
 
     items.forEach((o) => {
-      const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(o as AnyObj);
+      const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(
+        o as AnyObj,
+      );
       caNet += itemsAmount;
       caDelivery += deliveryFee;
       caDuumini += duuShare;
@@ -594,10 +733,13 @@ export default function OrdersAdminPage() {
 
     if (payEditMode === "ADD") {
       if (raw <= 0) return setViewErr("Le montant à ajouter doit être > 0.");
-      if (currentPaid + raw > total + 0.0001) return setViewErr("Vous dépassez le total de la commande.");
+      if (currentPaid + raw > total + 0.0001)
+        return setViewErr("Vous dépassez le total de la commande.");
     } else {
-      if (raw < 0) return setViewErr("Le montant payé ne peut pas être négatif.");
-      if (raw > total + 0.0001) return setViewErr("Le montant payé ne peut pas dépasser le total.");
+      if (raw < 0)
+        return setViewErr("Le montant payé ne peut pas être négatif.");
+      if (raw > total + 0.0001)
+        return setViewErr("Le montant payé ne peut pas dépasser le total.");
     }
 
     setPaySaving(true);
@@ -605,8 +747,18 @@ export default function OrdersAdminPage() {
     try {
       const payload =
         payEditMode === "ADD"
-          ? { mode: "ADD" as const, add_amount: raw, method: payMethod, note: payNote }
-          : { mode: "SET" as const, paid_amount: raw, method: payMethod, note: payNote };
+          ? {
+              mode: "ADD" as const,
+              add_amount: raw,
+              method: payMethod,
+              note: payNote,
+            }
+          : {
+              mode: "SET" as const,
+              paid_amount: raw,
+              method: payMethod,
+              note: payNote,
+            };
 
       await updateOrderPayment(viewId, payload as any);
 
@@ -628,16 +780,20 @@ export default function OrdersAdminPage() {
     const first_name = c?.first_name ?? "";
     const last_name = c?.last_name ?? "";
     const phone = c?.phone ?? c?.user_phone ?? "";
-    const fullName = `${(first_name || "").trim()} ${(last_name || "").trim()}`.trim() || "—";
+    const fullName =
+      `${(first_name || "").trim()} ${(last_name || "").trim()}`.trim() || "—";
     return { first_name, last_name, fullName, phone };
   })();
 
   const address = (detail?.address as AnyObj) || {};
-  const itemsDetail: AnyObj[] = Array.isArray(detail?.items) ? (detail as any).items : [];
+  const itemsDetail: AnyObj[] = Array.isArray(detail?.items)
+    ? (detail as any).items
+    : [];
 
   const itemsAmountDetail = itemsDetail.reduce(
-    (sum, it) => sum + Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1),
-    0
+    (sum, it) =>
+      sum + Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1),
+    0,
   );
 
   const totalAmountDetail: number =
@@ -646,21 +802,28 @@ export default function OrdersAdminPage() {
       : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
 
   const deliveryFeeDetail =
-    (detail as any)?.totals?.delivery_fee ?? Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
+    (detail as any)?.totals?.delivery_fee ??
+    Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
 
   // ✅ paiement modale voir
   const viewPay = useMemo(() => {
     if (!detail) return null;
     const pay = getPaymentFromOrder(detail);
     const { total } = computeOrderAmounts(detail);
-    const remaining = pay?.remaining_amount != null ? Number(pay.remaining_amount) : computeRemaining(total, pay.paid_amount);
+    const remaining =
+      pay?.remaining_amount != null
+        ? Number(pay.remaining_amount)
+        : computeRemaining(total, pay.paid_amount);
     const status = pay?.status || computePayStatus(total, pay.paid_amount);
     return { ...pay, total, remaining, status };
   }, [detail]);
 
   // ✅ total panier vente sur place
   const basketTotal = useMemo(() => {
-    return basket.reduce((s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0), 0);
+    return basket.reduce(
+      (s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0),
+      0,
+    );
   }, [basket]);
 
   // ✅ payé clamp + status auto
@@ -670,8 +833,14 @@ export default function OrdersAdminPage() {
     return p;
   }, [basketTotal, amountPaid]);
 
-  const posRemaining = useMemo(() => computeRemaining(basketTotal, posPaidClamped), [basketTotal, posPaidClamped]);
-  const posStatus = useMemo(() => computePayStatus(basketTotal, posPaidClamped), [basketTotal, posPaidClamped]);
+  const posRemaining = useMemo(
+    () => computeRemaining(basketTotal, posPaidClamped),
+    [basketTotal, posPaidClamped],
+  );
+  const posStatus = useMemo(
+    () => computePayStatus(basketTotal, posPaidClamped),
+    [basketTotal, posPaidClamped],
+  );
 
   useEffect(() => {
     if (posPaidClamped !== amountPaid) setAmountPaid(posPaidClamped);
@@ -691,7 +860,11 @@ export default function OrdersAdminPage() {
   }
 
   function setQty(pId: number, qty: number) {
-    setBasket((prev) => prev.map((x) => (x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x)));
+    setBasket((prev) =>
+      prev.map((x) =>
+        x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x,
+      ),
+    );
   }
 
   function removeLine(pId: number) {
@@ -768,15 +941,22 @@ export default function OrdersAdminPage() {
       arr = arr.filter((p) => {
         const anyP = p as AnyObj;
         const name = String(p.name || "").toLowerCase();
-        const sku = String(anyP.sku || anyP.ref || anyP.code || "").toLowerCase();
+        const sku = String(
+          anyP.sku || anyP.ref || anyP.code || "",
+        ).toLowerCase();
         return name.includes(ql) || (sku && sku.includes(ql));
       });
     }
 
     const sorted = [...arr];
-    if (sortBy === "NAME") sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
-    else if (sortBy === "PRICE_ASC") sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
-    else if (sortBy === "PRICE_DESC") sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
+    if (sortBy === "NAME")
+      sorted.sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), "fr"),
+      );
+    else if (sortBy === "PRICE_ASC")
+      sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
+    else if (sortBy === "PRICE_DESC")
+      sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
     return sorted;
   }, [results, search, promoFilter, sortBy]);
 
@@ -808,7 +988,12 @@ export default function OrdersAdminPage() {
         last_name: cLast || "",
         phone: cPhone || "",
       },
-      address: { ville: "Casablanca", commune: "Sur place", quartier: "Boutique", gps: null },
+      address: {
+        ville: "Casablanca",
+        commune: "Sur place",
+        quartier: "Boutique",
+        gps: null,
+      },
       delivery: { mode: "SIMPLE" as const, fee: 0, currency: "MAD" as const },
       items: itemsPayload,
       totals: {
@@ -850,7 +1035,11 @@ export default function OrdersAdminPage() {
 
   const editDisplayCode = editId !== null ? getOrderDisplayCode(editId) : "";
   const viewDisplayCode =
-    viewId !== null ? (detail ? getOrderDisplayCode(detail as AnyObj) : getOrderDisplayCode(viewId)) : "";
+    viewId !== null
+      ? detail
+        ? getOrderDisplayCode(detail as AnyObj)
+        : getOrderDisplayCode(viewId)
+      : "";
 
   return (
     <div className="container-xxl py-4">
@@ -870,7 +1059,9 @@ export default function OrdersAdminPage() {
         <div className="col-12 col-md-4">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
-              <div className="text-muted small mb-1">CA (page) hors livraison</div>
+              <div className="text-muted small mb-1">
+                CA (page) hors livraison
+              </div>
               <div className="h6 m-0">{mad(globalStats.caNet)}</div>
             </div>
           </div>
@@ -878,7 +1069,9 @@ export default function OrdersAdminPage() {
         <div className="col-12 col-md-4">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
-              <div className="text-muted small mb-1">Frais de livraison (page)</div>
+              <div className="text-muted small mb-1">
+                Frais de livraison (page)
+              </div>
               <div className="h6 m-0">{mad(globalStats.caDelivery)}</div>
             </div>
           </div>
@@ -927,6 +1120,7 @@ export default function OrdersAdminPage() {
                     <th>Statut</th>
                     <th>Reste</th>
                     <th className="text-end">Total</th>
+                    <th className="text-end">Commission</th>
                     <th className="text-end">Actions</th>
                   </tr>
                 </thead>
@@ -942,6 +1136,7 @@ export default function OrdersAdminPage() {
                     const displayCode = getOrderDisplayCode(o);
 
                     const totalAligned = computeOrderAmounts(o as AnyObj).total;
+const duuCommission = computeOrderAmounts(o as AnyObj).duuShare;
 
                     // ✅ "ANNULÉE" si CANCELLED, sinon RESTE/PAYÉ
                     const payBadge = getPaymentLabelForRow(o as AnyObj);
@@ -960,7 +1155,15 @@ export default function OrdersAdminPage() {
 
                         <td>
                           {thumb ? (
-                            <div style={{ width: 40, height: 40, borderRadius: 8, overflow: "hidden", background: "#f5f5f5" }}>
+                            <div
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 8,
+                                overflow: "hidden",
+                                background: "#f5f5f5",
+                              }}
+                            >
                               <img
                                 src={thumb}
                                 alt={`Produit commande #${displayCode}`}
@@ -992,7 +1195,11 @@ export default function OrdersAdminPage() {
                                 WhatsApp
                               </button>
                               {hrefTel ? (
-                                <a className="btn btn-sm btn-outline-dark" href={hrefTel} aria-label="Appeler">
+                                <a
+                                  className="btn btn-sm btn-outline-dark"
+                                  href={hrefTel}
+                                  aria-label="Appeler"
+                                >
                                   Appeler
                                 </a>
                               ) : null}
@@ -1001,28 +1208,45 @@ export default function OrdersAdminPage() {
                         </td>
 
                         <td>
-                          <span className={`badge ${BADGE[o.status]}`}>{o.status}</span>
+                          <span className={`badge ${BADGE[o.status]}`}>
+                            {o.status}
+                          </span>
                         </td>
 
                         <td>
-                          <span className={`badge ${payBadge.cls}`}>{payBadge.text}</span>
+                          <span className={`badge ${payBadge.cls}`}>
+                            {payBadge.text}
+                          </span>
                         </td>
 
-                        <td className="text-end">{mad(totalAligned)}</td>
 
+                        <td className="text-end">{mad(totalAligned)}</td>
+<td className="text-end">
+  <span className="fw-semibold">{mad(duuCommission)}</span>
+</td>
                         <td className="text-end">
                           <div className="btn-group">
-                            <button className="btn btn-sm btn-outline-secondary" onClick={() => onView(o.id)}>
+                            <button
+                              className="btn btn-sm btn-outline-secondary"
+                              onClick={() => onView(o.id)}
+                            >
                               Voir
                             </button>
-                            <button className="btn btn-sm btn-outline-dark" onClick={() => onEdit(o.id)}>
+                            <button
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => onEdit(o.id)}
+                            >
                               Modifier
                             </button>
-                            {o.status !== "CANCELLED" && o.status !== "DONE" && (
-                              <button className="btn btn-sm btn-outline-danger" onClick={() => onCancel(o.id)}>
-                                Annuler
-                              </button>
-                            )}
+                            {o.status !== "CANCELLED" &&
+                              o.status !== "DONE" && (
+                                <button
+                                  className="btn btn-sm btn-outline-danger"
+                                  onClick={() => onCancel(o.id)}
+                                >
+                                  Annuler
+                                </button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -1036,13 +1260,21 @@ export default function OrdersAdminPage() {
           <div className="d-flex justify-content-between align-items-center mt-2">
             <div className="text-muted small">{total} éléments</div>
             <div className="btn-group">
-              <button className="btn btn-sm btn-outline-dark" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <button
+                className="btn btn-sm btn-outline-dark"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
                 Préc.
               </button>
               <span className="btn btn-sm btn-outline-dark disabled">
                 {page} / {pages}
               </span>
-              <button className="btn btn-sm btn-outline-dark" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+              <button
+                className="btn btn-sm btn-outline-dark"
+                disabled={page >= pages}
+                onClick={() => setPage((p) => p + 1)}
+              >
                 Suiv.
               </button>
             </div>
@@ -1054,7 +1286,12 @@ export default function OrdersAdminPage() {
           MODAL: Edition rapide statut
          =========================== */}
       {editId !== null && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.2)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ background: "rgba(0,0,0,.2)" }}
+        >
           <div className="modal-dialog" role="document">
             <div className="modal-content">
               <div className="modal-header">
@@ -1077,10 +1314,18 @@ export default function OrdersAdminPage() {
                 </select>
               </div>
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" disabled={saving} onClick={() => setEditId(null)}>
+                <button
+                  className="btn btn-outline-dark"
+                  disabled={saving}
+                  onClick={() => setEditId(null)}
+                >
                   Fermer
                 </button>
-                <button className="btn btn-dark" disabled={saving} onClick={onSave}>
+                <button
+                  className="btn btn-dark"
+                  disabled={saving}
+                  onClick={onSave}
+                >
                   {saving ? "Enregistrement…" : "Enregistrer"}
                 </button>
               </div>
@@ -1093,7 +1338,12 @@ export default function OrdersAdminPage() {
           MODAL: Voir / Confirmer
          =========================== */}
       {viewId !== null && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ background: "rgba(0,0,0,.35)" }}
+        >
           <div className="modal-dialog modal-lg" role="document">
             <div className="modal-content">
               <div className="modal-header">
@@ -1112,17 +1362,23 @@ export default function OrdersAdminPage() {
                   <>
                     <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                       <div className="d-flex align-items-center gap-2">
-                        <span className={`badge ${BADGE[((detail as AnyObj).status as OrderStatus) || "OPEN"]}`}>
+                        <span
+                          className={`badge ${BADGE[((detail as AnyObj).status as OrderStatus) || "OPEN"]}`}
+                        >
                           {(detail as AnyObj).status}
                         </span>
-                        <small className="text-muted">{dateTime((detail as AnyObj).created_at)}</small>
+                        <small className="text-muted">
+                          {dateTime((detail as AnyObj).created_at)}
+                        </small>
                       </div>
 
                       <div className="d-flex flex-wrap gap-2 align-items-center">
                         <div className="btn-group">
                           <button
                             className="btn btn-sm btn-outline-dark"
-                            disabled={viewSaving || (detail as AnyObj).status !== "OPEN"}
+                            disabled={
+                              viewSaving || (detail as AnyObj).status !== "OPEN"
+                            }
                             onClick={() => onConfirmQuick("PREPARATION")}
                             title="Confirmer = passer en préparation"
                           >
@@ -1130,7 +1386,10 @@ export default function OrdersAdminPage() {
                           </button>
                           <button
                             className="btn btn-sm btn-outline-secondary"
-                            disabled={viewSaving || (detail as AnyObj).status !== "PREPARATION"}
+                            disabled={
+                              viewSaving ||
+                              (detail as AnyObj).status !== "PREPARATION"
+                            }
                             onClick={() => onConfirmQuick("DELIVERY")}
                             title="Mettre en livraison"
                           >
@@ -1153,7 +1412,9 @@ export default function OrdersAdminPage() {
                         <select
                           className="form-select form-select-sm"
                           value={viewStatus}
-                          onChange={(e) => setViewStatus(e.target.value as OrderStatus)}
+                          onChange={(e) =>
+                            setViewStatus(e.target.value as OrderStatus)
+                          }
                           style={{ width: 180 }}
                           disabled={viewSaving}
                         >
@@ -1163,7 +1424,11 @@ export default function OrdersAdminPage() {
                             </option>
                           ))}
                         </select>
-                        <button className="btn btn-sm btn-dark" disabled={viewSaving} onClick={onViewSaveStatus}>
+                        <button
+                          className="btn btn-sm btn-dark"
+                          disabled={viewSaving}
+                          onClick={onViewSaveStatus}
+                        >
                           {viewSaving ? "…" : "Enregistrer"}
                         </button>
                       </div>
@@ -1176,15 +1441,27 @@ export default function OrdersAdminPage() {
                             <h6 className="mb-2">Client</h6>
                             <div className="d-flex flex-wrap justify-content-between align-items-center">
                               <div>
-                                <div className="fw-semibold">{client.fullName}</div>
-                                <div className="text-muted small">{client.phone || "—"}</div>
+                                <div className="fw-semibold">
+                                  {client.fullName}
+                                </div>
+                                <div className="text-muted small">
+                                  {client.phone || "—"}
+                                </div>
                               </div>
                               <div className="d-flex gap-2">
-                                <a className="btn btn-sm btn-success" href={waHref(detail as AnyObj)} target="_blank" rel="noopener noreferrer">
+                                <a
+                                  className="btn btn-sm btn-success"
+                                  href={waHref(detail as AnyObj)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
                                   WhatsApp
                                 </a>
                                 {client.phone ? (
-                                  <a className="btn btn-sm btn-outline-dark" href={telHref(client.phone)}>
+                                  <a
+                                    className="btn btn-sm btn-outline-dark"
+                                    href={telHref(client.phone)}
+                                  >
                                     Appeler
                                   </a>
                                 ) : null}
@@ -1199,19 +1476,27 @@ export default function OrdersAdminPage() {
                             <div>
                               {address?.city || address?.ville || "—"}
                               {address?.commune ? `, ${address.commune}` : ""}
-                              {address?.district || address?.quartier ? `, ${address.district ?? address.quartier}` : ""}
+                              {address?.district || address?.quartier
+                                ? `, ${address.district ?? address.quartier}`
+                                : ""}
                               {address?.gps ? (
                                 <>
                                   <br />
                                   <span className="text-muted small">
-                                    GPS: {address.gps.lat?.toFixed?.(5)}, {address.gps.lng?.toFixed?.(5)}
+                                    GPS: {address.gps.lat?.toFixed?.(5)},{" "}
+                                    {address.gps.lng?.toFixed?.(5)}
                                   </span>
                                 </>
                               ) : null}
                             </div>
                             {(detail as AnyObj)?.geo_link ? (
                               <div className="mt-2">
-                                <a className="btn btn-sm btn-outline-secondary" href={(detail as AnyObj).geo_link} target="_blank" rel="noopener noreferrer">
+                                <a
+                                  className="btn btn-sm btn-outline-secondary"
+                                  href={(detail as AnyObj).geo_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
                                   Ouvrir dans Google Maps
                                 </a>
                               </div>
@@ -1230,11 +1515,15 @@ export default function OrdersAdminPage() {
                                     viewPay.status === "PAID"
                                       ? "bg-success"
                                       : viewPay.status === "PARTIAL"
-                                      ? "bg-warning text-dark"
-                                      : "bg-secondary"
+                                        ? "bg-warning text-dark"
+                                        : "bg-secondary"
                                   }`}
                                 >
-                                  {viewPay.status === "PAID" ? "PAYÉ" : viewPay.status === "PARTIAL" ? "PARTIEL" : "NON PAYÉ"}
+                                  {viewPay.status === "PAID"
+                                    ? "PAYÉ"
+                                    : viewPay.status === "PARTIAL"
+                                      ? "PARTIEL"
+                                      : "NON PAYÉ"}
                                 </span>
                               ) : (
                                 <span className="text-muted small">—</span>
@@ -1245,21 +1534,33 @@ export default function OrdersAdminPage() {
                               <>
                                 <div className="d-flex justify-content-between small">
                                   <span className="text-muted">Total</span>
-                                  <span className="fw-semibold">{mad(viewPay.total)}</span>
+                                  <span className="fw-semibold">
+                                    {mad(viewPay.total)}
+                                  </span>
                                 </div>
                                 <div className="d-flex justify-content-between small">
                                   <span className="text-muted">Payé</span>
-                                  <span className="fw-semibold">{mad(viewPay.paid_amount)}</span>
+                                  <span className="fw-semibold">
+                                    {mad(viewPay.paid_amount)}
+                                  </span>
                                 </div>
                                 <div className="d-flex justify-content-between small mb-2">
                                   <span className="text-muted">Reste</span>
-                                  <span className="fw-semibold">{mad(viewPay.remaining)}</span>
+                                  <span className="fw-semibold">
+                                    {mad(viewPay.remaining)}
+                                  </span>
                                 </div>
 
                                 {(viewPay.method || viewPay.note) && (
                                   <div className="small text-muted">
-                                    {viewPay.method ? <div>Méthode: {String(viewPay.method)}</div> : null}
-                                    {viewPay.note ? <div>Note: {String(viewPay.note)}</div> : null}
+                                    {viewPay.method ? (
+                                      <div>
+                                        Méthode: {String(viewPay.method)}
+                                      </div>
+                                    ) : null}
+                                    {viewPay.note ? (
+                                      <div>Note: {String(viewPay.note)}</div>
+                                    ) : null}
                                   </div>
                                 )}
 
@@ -1270,7 +1571,11 @@ export default function OrdersAdminPage() {
                                         <select
                                           className="form-select form-select-sm"
                                           value={payEditMode}
-                                          onChange={(e) => setPayEditMode(e.target.value as any)}
+                                          onChange={(e) =>
+                                            setPayEditMode(
+                                              e.target.value as any,
+                                            )
+                                          }
                                           disabled={paySaving}
                                         >
                                           <option value="ADD">Ajouter</option>
@@ -1279,22 +1584,29 @@ export default function OrdersAdminPage() {
                                       </div>
                                       <div className="col-12 col-md-4">
                                         <input
-                                          type="number"
-                                          min={0}
-                                          step="1"
-                                          className="form-control form-control-sm"
-                                          placeholder={payEditMode === "ADD" ? "Montant à ajouter" : "Montant payé"}
-                                          value={payInput}
-                                          onChange={(e) => setPayInput(Number(e.target.value || 0))}
-                                          disabled={paySaving}
-                                        />
+  type="number"
+  min={0}
+  step="1"
+  className="form-control form-control-sm"
+  placeholder={payEditMode === "ADD" ? "Montant à ajouter" : "Montant payé"}
+  value={toInputNumberValue(payInput)}
+  onChange={(e) => setPayInput(fromInputNumberValue(e.target.value))}
+  onFocus={() => {
+    // au clic: si 0 -> on vide visuellement (reste 0 dans le state tant qu'il ne tape rien)
+    if (payInput === 0) setPayInput(0);
+  }}
+  disabled={paySaving}
+/>
+
                                       </div>
                                       <div className="col-12 col-md-4">
                                         <input
                                           className="form-control form-control-sm"
                                           placeholder="Méthode (CASH, ...)"
                                           value={payMethod}
-                                          onChange={(e) => setPayMethod(e.target.value)}
+                                          onChange={(e) =>
+                                            setPayMethod(e.target.value)
+                                          }
                                           disabled={paySaving}
                                         />
                                       </div>
@@ -1303,21 +1615,31 @@ export default function OrdersAdminPage() {
                                           className="form-control form-control-sm"
                                           placeholder="Note (optionnel)"
                                           value={payNote}
-                                          onChange={(e) => setPayNote(e.target.value)}
+                                          onChange={(e) =>
+                                            setPayNote(e.target.value)
+                                          }
                                           disabled={paySaving}
                                         />
                                       </div>
                                     </div>
                                     <div className="d-flex justify-content-end mt-2">
-                                      <button className="btn btn-sm btn-dark" onClick={onSavePayment} disabled={paySaving}>
-                                        {paySaving ? "…" : "Mettre à jour paiement"}
+                                      <button
+                                        className="btn btn-sm btn-dark"
+                                        onClick={onSavePayment}
+                                        disabled={paySaving}
+                                      >
+                                        {paySaving
+                                          ? "…"
+                                          : "Mettre à jour paiement"}
                                       </button>
                                     </div>
                                   </div>
                                 ) : null}
                               </>
                             ) : (
-                              <div className="text-muted small">Paiement non disponible.</div>
+                              <div className="text-muted small">
+                                Paiement non disponible.
+                              </div>
                             )}
                           </div>
                         </div>
@@ -1330,30 +1652,59 @@ export default function OrdersAdminPage() {
                             <h6 className="mb-2">Articles</h6>
                             <ul className="list-group list-group-flush">
                               {itemsDetail.map((it, i) => {
-                                const name = it?.product_name || it?.name || `Produit #${it?.product_id ?? ""}`;
+                                const name =
+                                  it?.product_name ||
+                                  it?.name ||
+                                  `Produit #${it?.product_id ?? ""}`;
                                 const qty = Number(it?.qty ?? 1);
-                                const unit = Number(it?.unit_price ?? it?.price ?? 0);
+                                const unit = Number(
+                                  it?.unit_price ?? it?.price ?? 0,
+                                );
                                 const img = getItemImage(it);
                                 const lineTotal = unit * qty;
 
                                 return (
-                                  <li key={i} className="list-group-item d-flex justify-content-between align-items-center gap-2">
+                                  <li
+                                    key={i}
+                                    className="list-group-item d-flex justify-content-between align-items-center gap-2"
+                                  >
                                     <div className="d-flex align-items-center gap-2 flex-grow-1">
                                       {img ? (
-                                        <div style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", background: "#f5f5f5" }}>
-                                          <img src={img} alt={name} className="w-100 h-100 object-fit-cover" loading="lazy" />
+                                        <div
+                                          style={{
+                                            width: 48,
+                                            height: 48,
+                                            borderRadius: 8,
+                                            overflow: "hidden",
+                                            background: "#f5f5f5",
+                                          }}
+                                        >
+                                          <img
+                                            src={img}
+                                            alt={name}
+                                            className="w-100 h-100 object-fit-cover"
+                                            loading="lazy"
+                                          />
                                         </div>
                                       ) : null}
                                       <div style={{ minWidth: 0 }}>
-                                        <div className="fw-semibold text-truncate" title={name}>
+                                        <div
+                                          className="fw-semibold text-truncate"
+                                          title={name}
+                                        >
                                           {name}
                                         </div>
                                         <div className="small text-muted">
-                                          {mad(unit)} <span className="text-muted">×{qty}</span>
+                                          {mad(unit)}{" "}
+                                          <span className="text-muted">
+                                            ×{qty}
+                                          </span>
                                         </div>
                                       </div>
                                     </div>
-                                    <span className="fw-semibold ms-2">{mad(lineTotal)}</span>
+                                    <span className="fw-semibold ms-2">
+                                      {mad(lineTotal)}
+                                    </span>
                                   </li>
                                 );
                               })}
@@ -1361,7 +1712,9 @@ export default function OrdersAdminPage() {
                               {deliveryFeeDetail > 0 && (
                                 <li className="list-group-item d-flex justify-content-between align-items-center">
                                   <span className="text-muted">Livraison</span>
-                                  <span className="fw-semibold">{mad(deliveryFeeDetail)}</span>
+                                  <span className="fw-semibold">
+                                    {mad(deliveryFeeDetail)}
+                                  </span>
                                 </li>
                               )}
                             </ul>
@@ -1372,18 +1725,27 @@ export default function OrdersAdminPage() {
                           <div className="card-body">
                             <div className="d-flex justify-content-between align-items-center">
                               <div className="text-muted">Sous-total</div>
-                              <div className="fw-semibold">{mad(itemsAmountDetail)}</div>
+                              <div className="fw-semibold">
+                                {mad(itemsAmountDetail)}
+                              </div>
                             </div>
                             <div className="d-flex justify-content-between align-items-center">
                               <div className="text-muted">Total</div>
-                              <div className="h6 m-0">{mad(totalAmountDetail)}</div>
+                              <div className="h6 m-0">
+                                {mad(totalAmountDetail)}
+                              </div>
                             </div>
                           </div>
                         </div>
 
-                        {(detail as AnyObj)?.status !== "CANCELLED" && (detail as AnyObj)?.status !== "DONE" ? (
+                        {(detail as AnyObj)?.status !== "CANCELLED" &&
+                        (detail as AnyObj)?.status !== "DONE" ? (
                           <div className="d-flex justify-content-end mt-3">
-                            <button className="btn btn-outline-danger" onClick={() => onCancel(viewId)} disabled={viewSaving}>
+                            <button
+                              className="btn btn-outline-danger"
+                              onClick={() => onCancel(viewId)}
+                              disabled={viewSaving}
+                            >
                               Annuler la commande
                             </button>
                           </div>
@@ -1395,7 +1757,10 @@ export default function OrdersAdminPage() {
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-outline-dark" onClick={() => setViewId(null)}>
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={() => setViewId(null)}
+                >
                   Fermer
                 </button>
               </div>
@@ -1408,13 +1773,21 @@ export default function OrdersAdminPage() {
           MODAL: Vente sur place (✅ scroll fixé)
          =========================== */}
       {openCreate && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ background: "rgba(0,0,0,.35)" }}
+        >
           <div className="modal-dialog modal-xl" role="document">
             <div className="modal-content pos-modal">
               {/* ✅ Header sticky */}
               <div className="modal-header pos-sticky-header">
                 <h5 className="modal-title">Vente sur place</h5>
-                <button className="btn-close" onClick={() => setOpenCreate(false)} />
+                <button
+                  className="btn-close"
+                  onClick={() => setOpenCreate(false)}
+                />
               </div>
 
               {/* ✅ Body scrollable (le footer reste visible) */}
@@ -1427,9 +1800,15 @@ export default function OrdersAdminPage() {
                         <div className="d-flex align-items-center justify-content-between gap-2">
                           <div>
                             <h6 className="mb-0">Catalogue</h6>
-                            <div className="text-muted small">Ajoute des produits au panier</div>
+                            <div className="text-muted small">
+                              Ajoute des produits au panier
+                            </div>
                           </div>
-                          <button className="btn btn-sm btn-outline-dark" onClick={loadAllProducts} disabled={searchLoading}>
+                          <button
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={loadAllProducts}
+                            disabled={searchLoading}
+                          >
                             Rafraîchir
                           </button>
                         </div>
@@ -1444,14 +1823,24 @@ export default function OrdersAdminPage() {
                             />
                           </div>
                           <div className="col-12 col-md-3">
-                            <select className="form-select" value={promoFilter} onChange={(e) => setPromoFilter(e.target.value as any)}>
+                            <select
+                              className="form-select"
+                              value={promoFilter}
+                              onChange={(e) =>
+                                setPromoFilter(e.target.value as any)
+                              }
+                            >
                               <option value="ALL">Tous</option>
                               <option value="PROMO">Promos</option>
                               <option value="NO_PROMO">Sans promo</option>
                             </select>
                           </div>
                           <div className="col-12 col-md-3">
-                            <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
+                            <select
+                              className="form-select"
+                              value={sortBy}
+                              onChange={(e) => setSortBy(e.target.value as any)}
+                            >
                               <option value="NAME">Nom</option>
                               <option value="PRICE_ASC">Prix ↑</option>
                               <option value="PRICE_DESC">Prix ↓</option>
@@ -1459,51 +1848,86 @@ export default function OrdersAdminPage() {
                           </div>
                         </div>
 
-                        {searchErr && <div className="alert alert-danger mt-2 mb-0">{searchErr}</div>}
+                        {searchErr && (
+                          <div className="alert alert-danger mt-2 mb-0">
+                            {searchErr}
+                          </div>
+                        )}
 
                         {/* ✅ Liste produits scrollable indépendante */}
                         <div className="mt-2 pos-scroll">
                           {searchLoading ? (
-                            <div className="text-muted">Chargement de tous les produits…</div>
+                            <div className="text-muted">
+                              Chargement de tous les produits…
+                            </div>
                           ) : (
                             <div className="vstack gap-2">
                               {filteredResults.map((p) => {
                                 const unit = getProductUnitPrice(p);
                                 const promo = hasPromo(p);
-                                const base = Number((p as AnyObj)?.price ?? unit);
+                                const base = Number(
+                                  (p as AnyObj)?.price ?? unit,
+                                );
 
                                 return (
-                                  <div key={p.id} className="d-flex justify-content-between align-items-center border rounded p-2">
-                                    <div className="text-truncate" style={{ maxWidth: 420 }}>
+                                  <div
+                                    key={p.id}
+                                    className="d-flex justify-content-between align-items-center border rounded p-2"
+                                  >
+                                    <div
+                                      className="text-truncate"
+                                      style={{ maxWidth: 420 }}
+                                    >
                                       <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
-                                        <span className="text-truncate">{p.name}</span>
-                                        {promo ? <span className="badge bg-danger">Promo</span> : null}
+                                        <span className="text-truncate">
+                                          {p.name}
+                                        </span>
+                                        {promo ? (
+                                          <span className="badge bg-danger">
+                                            Promo
+                                          </span>
+                                        ) : null}
                                       </div>
 
                                       <div className="text-muted small">
                                         {promo ? (
                                           <>
-                                            <span className="text-decoration-line-through me-2">{mad(base)}</span>
-                                            <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                            <span className="text-decoration-line-through me-2">
+                                              {mad(base)}
+                                            </span>
+                                            <span className="fw-semibold text-dark">
+                                              {mad(unit)}
+                                            </span>
                                           </>
                                         ) : (
-                                          <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                          <span className="fw-semibold text-dark">
+                                            {mad(unit)}
+                                          </span>
                                         )}
                                       </div>
                                     </div>
 
-                                    <button className="btn btn-sm btn-duu" onClick={() => addToBasket(p)}>
+                                    <button
+                                      className="btn btn-sm btn-duu"
+                                      onClick={() => addToBasket(p)}
+                                    >
                                       Ajouter
                                     </button>
                                   </div>
                                 );
                               })}
 
-                              {filteredResults.length === 0 && <div className="text-muted small">Aucun produit.</div>}
+                              {filteredResults.length === 0 && (
+                                <div className="text-muted small">
+                                  Aucun produit.
+                                </div>
+                              )}
                             </div>
                           )}
 
-                          <div className="small text-muted mt-2">{results.length} produits chargés</div>
+                          <div className="small text-muted mt-2">
+                            {results.length} produits chargés
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1517,9 +1941,15 @@ export default function OrdersAdminPage() {
                         <div className="d-flex align-items-start justify-content-between gap-2">
                           <div>
                             <h6 className="mb-0">Panier & Paiement</h6>
-                            <div className="text-muted small">Tout est ici, sans scroller jusqu’en bas</div>
+                            <div className="text-muted small">
+                              Tout est ici, sans scroller jusqu’en bas
+                            </div>
                           </div>
-                          <button className="btn btn-sm btn-outline-danger" onClick={clearBasket} disabled={!basket.length}>
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={clearBasket}
+                            disabled={!basket.length}
+                          >
                             Vider
                           </button>
                         </div>
@@ -1528,23 +1958,37 @@ export default function OrdersAdminPage() {
                         <div className="pos-summary mt-2">
                           <div className="d-flex justify-content-between align-items-center">
                             <span className="text-muted">Total</span>
-                            <span className="fw-semibold">{mad(basketTotal)}</span>
+                            <span className="fw-semibold">
+                              {mad(basketTotal)}
+                            </span>
                           </div>
                           <div className="d-flex justify-content-between align-items-center">
                             <span className="text-muted">Payé</span>
-                            <span className="fw-semibold">{mad(posPaidClamped)}</span>
+                            <span className="fw-semibold">
+                              {mad(posPaidClamped)}
+                            </span>
                           </div>
                           <div className="d-flex justify-content-between align-items-center">
                             <span className="text-muted">Reste</span>
-                            <span className="fw-semibold">{mad(posRemaining)}</span>
+                            <span className="fw-semibold">
+                              {mad(posRemaining)}
+                            </span>
                           </div>
                           <div className="mt-2">
                             <span
                               className={`badge ${
-                                posStatus === "PAID" ? "bg-success" : posStatus === "PARTIAL" ? "bg-warning text-dark" : "bg-secondary"
+                                posStatus === "PAID"
+                                  ? "bg-success"
+                                  : posStatus === "PARTIAL"
+                                    ? "bg-warning text-dark"
+                                    : "bg-secondary"
                               }`}
                             >
-                              {posStatus === "PAID" ? "PAYÉ" : posStatus === "PARTIAL" ? "PARTIEL" : "NON PAYÉ"}
+                              {posStatus === "PAID"
+                                ? "PAYÉ"
+                                : posStatus === "PARTIAL"
+                                  ? "PARTIEL"
+                                  : "NON PAYÉ"}
                             </span>
                           </div>
                         </div>
@@ -1552,28 +1996,50 @@ export default function OrdersAdminPage() {
                         {/* ✅ Panier scrollable */}
                         <div className="vstack gap-2 mt-2 pos-scroll">
                           {basket.length === 0 ? (
-                            <div className="text-muted small">Aucun article.</div>
+                            <div className="text-muted small">
+                              Aucun article.
+                            </div>
                           ) : (
                             basket.map((ln) => {
                               const unit = getProductUnitPrice(ln.product);
                               const promo = hasPromo(ln.product);
-                              const base = Number((ln.product as AnyObj)?.price ?? unit);
+                              const base = Number(
+                                (ln.product as AnyObj)?.price ?? unit,
+                              );
 
                               return (
-                                <div key={ln.product.id} className="d-flex align-items-center justify-content-between border rounded p-2">
-                                  <div className="text-truncate" style={{ maxWidth: 220 }}>
+                                <div
+                                  key={ln.product.id}
+                                  className="d-flex align-items-center justify-content-between border rounded p-2"
+                                >
+                                  <div
+                                    className="text-truncate"
+                                    style={{ maxWidth: 220 }}
+                                  >
                                     <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
-                                      <span className="text-truncate">{ln.product.name}</span>
-                                      {promo ? <span className="badge bg-danger">Promo</span> : null}
+                                      <span className="text-truncate">
+                                        {ln.product.name}
+                                      </span>
+                                      {promo ? (
+                                        <span className="badge bg-danger">
+                                          Promo
+                                        </span>
+                                      ) : null}
                                     </div>
                                     <div className="text-muted small">
                                       {promo ? (
                                         <>
-                                          <span className="text-decoration-line-through me-2">{mad(base)}</span>
-                                          <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                          <span className="text-decoration-line-through me-2">
+                                            {mad(base)}
+                                          </span>
+                                          <span className="fw-semibold text-dark">
+                                            {mad(unit)}
+                                          </span>
                                         </>
                                       ) : (
-                                        <span className="fw-semibold text-dark">{mad(unit)}</span>
+                                        <span className="fw-semibold text-dark">
+                                          {mad(unit)}
+                                        </span>
                                       )}
                                     </div>
                                   </div>
@@ -1585,9 +2051,20 @@ export default function OrdersAdminPage() {
                                       style={{ width: 80 }}
                                       min={1}
                                       value={ln.qty}
-                                      onChange={(e) => setQty(ln.product.id, Math.max(1, Number(e.target.value || 1)))}
+                                      onChange={(e) =>
+                                        setQty(
+                                          ln.product.id,
+                                          Math.max(
+                                            1,
+                                            Number(e.target.value || 1),
+                                          ),
+                                        )
+                                      }
                                     />
-                                    <button className="btn btn-sm btn-outline-danger" onClick={() => removeLine(ln.product.id)}>
+                                    <button
+                                      className="btn btn-sm btn-outline-danger"
+                                      onClick={() => removeLine(ln.product.id)}
+                                    >
                                       ✕
                                     </button>
                                   </div>
@@ -1601,33 +2078,59 @@ export default function OrdersAdminPage() {
 
                         <h6 className="mb-2">Montant payé</h6>
                         <input
-                          type="number"
-                          min={0}
-                          step="1"
-                          className="form-control"
-                          value={amountPaid}
-                          onChange={(e) => setAmountPaid(Number(e.target.value || 0))}
-                        />
+  type="number"
+  min={0}
+  step="1"
+  className="form-control"
+  value={toInputNumberValue(amountPaid)}
+  onChange={(e) => setAmountPaid(fromInputNumberValue(e.target.value))}
+/>
+
 
                         <hr className="my-3" />
 
                         <h6 className="mb-2">Client (facultatif)</h6>
                         <div className="row g-2">
                           <div className="col-12 col-sm-6">
-                            <input className="form-control" placeholder="Prénom" value={cFirst} onChange={(e) => setCFirst(e.target.value)} />
+                            <input
+                              className="form-control"
+                              placeholder="Prénom"
+                              value={cFirst}
+                              onChange={(e) => setCFirst(e.target.value)}
+                            />
                           </div>
                           <div className="col-12 col-sm-6">
-                            <input className="form-control" placeholder="Nom" value={cLast} onChange={(e) => setCLast(e.target.value)} />
+                            <input
+                              className="form-control"
+                              placeholder="Nom"
+                              value={cLast}
+                              onChange={(e) => setCLast(e.target.value)}
+                            />
                           </div>
                           <div className="col-12">
-                            <input className="form-control" placeholder="Téléphone (+212…)" value={cPhone} onChange={(e) => setCPhone(e.target.value)} />
+                            <input
+                              className="form-control"
+                              placeholder="Téléphone (+212…)"
+                              value={cPhone}
+                              onChange={(e) => setCPhone(e.target.value)}
+                            />
                           </div>
                         </div>
 
                         <div className="form-check mt-3">
-                          <input className="form-check-input" type="checkbox" id="markDone" checked={markDone} onChange={(e) => setMarkDone(e.target.checked)} />
-                          <label className="form-check-label" htmlFor="markDone">
-                            Marquer comme <strong>livrée (DONE)</strong> après création
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            id="markDone"
+                            checked={markDone}
+                            onChange={(e) => setMarkDone(e.target.checked)}
+                          />
+                          <label
+                            className="form-check-label"
+                            htmlFor="markDone"
+                          >
+                            Marquer comme <strong>livrée (DONE)</strong> après
+                            création
                           </label>
                         </div>
                       </div>
@@ -1638,10 +2141,18 @@ export default function OrdersAdminPage() {
 
               {/* ✅ Footer sticky: toujours visible => plus besoin de scroller pour confirmer */}
               <div className="modal-footer pos-sticky-footer">
-                <button className="btn btn-outline-dark" onClick={() => setOpenCreate(false)} disabled={saving}>
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={() => setOpenCreate(false)}
+                  disabled={saving}
+                >
                   Fermer
                 </button>
-                <button className="btn btn-dark" onClick={submitCreate} disabled={saving || basket.length === 0}>
+                <button
+                  className="btn btn-dark"
+                  onClick={submitCreate}
+                  disabled={saving || basket.length === 0}
+                >
                   {saving ? "Enregistrement…" : "Créer la vente"}
                 </button>
               </div>
