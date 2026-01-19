@@ -38,10 +38,29 @@ export class HttpError extends Error {
   }
 }
 
-/** Base URL (en .env Vite : VITE_API_BASE=https://duumini-api.onrender.com) */
-export const API_BASE =
-  (import.meta as any).env?.VITE_API_BASE?.toString().replace(/\/+$/, "") ||
-  window.location.origin.replace(/\/+$/, "");
+/* =========================
+ * ✅ API_BASE robuste
+ * - Dev: fallback sur origin (vite proxy possible)
+ * - Prod: JAMAIS fallback sur www.duumini.com par erreur
+ * =======================*/
+const ENV_API =
+  (import.meta as any).env?.VITE_API_BASE?.toString().trim().replace(/\/+$/, "") ||
+  "";
+
+/** ⚠️ Mets ici ton vrai backend prod si VITE_API_BASE n'est pas défini */
+const DEFAULT_PROD_API = "https://duumini-api.onrender.com";
+
+function safeDefaultApiBase() {
+  const host = window.location.hostname;
+  const isLocal = host === "localhost" || host === "127.0.0.1";
+
+  if (isLocal) return window.location.origin.replace(/\/+$/, "");
+
+  // Prod: fallback sûr vers l'API (pas le front)
+  return DEFAULT_PROD_API.replace(/\/+$/, "");
+}
+
+export const API_BASE = ENV_API || safeDefaultApiBase();
 
 /** Construit l'URL absolue + query params */
 function buildUrl(path: string, query?: HttpConfig["query"]): string {
@@ -80,8 +99,8 @@ function mergeSignals(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined
   if (!a) return b;
   if (!b) return a;
 
-  const anyAbort = () => controller.abort();
   const controller = new AbortController();
+  const anyAbort = () => controller.abort();
 
   // Si un des deux est déjà aborted
   if (a.aborted || b.aborted) {
@@ -179,7 +198,7 @@ export async function http<T = unknown>(
     // 1) première tentative
     res = await fetchWithTimeout(url, makeInit(), timeout, signal);
 
-    // 2) si 401 → refresh 1 fois puis retry avec un NOUVEAU timeout complet
+    // 2) si 401 → refresh 1 fois puis retry
     if (res.status === 401 && !noAuth) {
       try {
         await doRefresh();
@@ -245,10 +264,7 @@ export const api = {
   ) {
     return http<T>(path, { ...cfg, method: "PATCH", body });
   },
-  delete<T = unknown>(
-    path: string,
-    cfg?: Omit<HttpConfig, "method" | "body">
-  ) {
+  delete<T = unknown>(path: string, cfg?: Omit<HttpConfig, "method" | "body">) {
     return http<T>(path, { ...cfg, method: "DELETE" });
   },
 

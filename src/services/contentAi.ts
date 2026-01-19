@@ -1,9 +1,8 @@
 // src/services/contentAi.ts
-import { API_BASE } from "./http";
-import { getAccessToken } from "./auth";
+import { api } from "./http";
 
 /* =========================
- * Types (alignés sur ta page)
+ * Types
  * =======================*/
 export type ContentStatus = "draft" | "published" | "archived";
 export type ContentType = "page" | "city_page" | string;
@@ -35,35 +34,6 @@ export type VersionRow = {
   created_at?: string | null;
 };
 
-function authHeaders(): Record<string, string> {
-  const t = getAccessToken();
-  if (!t) return {};
-  return { Authorization: `Bearer ${t}`, "x-access-token": t };
-}
-
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "GET",
-    credentials: "include",
-    headers: { Accept: "application/json", ...authHeaders() },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.details || data?.error || `GET ${path} failed`);
-  return data as T;
-}
-
-async function apiPost<T>(path: string, body?: any): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", Accept: "application/json", ...authHeaders() },
-    body: JSON.stringify(body ?? {}),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.details || data?.error || `POST ${path} failed`);
-  return data as T;
-}
-
 /* =========================
  * API: Content AI Admin
  * =======================*/
@@ -75,35 +45,53 @@ export function listContentAi(opts: {
   limit?: number;
   offset?: number;
 }) {
-  const qs = new URLSearchParams();
-  if (opts.status) qs.set("status", opts.status);
-  if (opts.type) qs.set("type", opts.type);
-  if (opts.lang) qs.set("lang", opts.lang);
-  if (opts.q?.trim()) qs.set("q", opts.q.trim());
-  qs.set("limit", String(opts.limit ?? 80));
-  qs.set("offset", String(opts.offset ?? 0));
-
-  return apiGet<{ ok: boolean; items: ContentListItem[] }>(`/api/admin/content-ai?${qs.toString()}`);
+  return api.get<{ ok: boolean; items: ContentListItem[] }>(
+    `/api/admin/content-ai`,
+    {
+      credentials: "include",
+      query: {
+        status: opts.status || undefined,
+        type: opts.type || undefined,
+        lang: opts.lang || undefined,
+        q: opts.q?.trim() ? opts.q.trim() : undefined,
+        limit: opts.limit ?? 80,
+        offset: opts.offset ?? 0,
+      },
+    }
+  );
 }
 
 export function getContentAi(id: number) {
-  return apiGet<{ ok: boolean; item: ContentItem }>(`/api/admin/content-ai/${id}`);
+  return api.get<{ ok: boolean; item: ContentItem }>(`/api/admin/content-ai/${id}`, {
+    credentials: "include",
+  });
 }
 
 export function getContentAiVersions(id: number) {
-  return apiGet<{ ok: boolean; versions: VersionRow[] }>(`/api/admin/content-ai/${id}/versions`);
+  return api.get<{ ok: boolean; versions: VersionRow[] }>(
+    `/api/admin/content-ai/${id}/versions`,
+    { credentials: "include" }
+  );
 }
 
 export function publishContentAi(id: number) {
-  return apiPost<{ ok: boolean }>(`/api/admin/content-ai/${id}/publish`);
+  return api.post<{ ok: boolean }>(`/api/admin/content-ai/${id}/publish`, {}, {
+    credentials: "include",
+  });
 }
 
 export function unpublishContentAi(id: number) {
-  return apiPost<{ ok: boolean }>(`/api/admin/content-ai/${id}/unpublish`);
+  return api.post<{ ok: boolean }>(`/api/admin/content-ai/${id}/unpublish`, {}, {
+    credentials: "include",
+  });
 }
 
 export function rollbackContentAi(id: number, versionId: number) {
-  return apiPost<{ ok: boolean }>(`/api/admin/content-ai/${id}/rollback`, { version_id: versionId });
+  return api.post<{ ok: boolean }>(
+    `/api/admin/content-ai/${id}/rollback`,
+    { version_id: versionId },
+    { credentials: "include" }
+  );
 }
 
 /**
@@ -116,8 +104,9 @@ export function optimizeSeoDraft(payload: {
   type: string;
   current?: any;
 }) {
-  return apiPost<{ ok: boolean; draft: { id: number }; preview: any }>(
+  return api.post<{ ok: boolean; draft: { id: number }; preview: any }>(
     `/api/ai/seo/optimize-page`,
-    payload
+    payload,
+    { credentials: "include" }
   );
 }
