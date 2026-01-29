@@ -130,8 +130,8 @@ function computeOrderAmounts(order: AnyObj) {
     typeof order?.total === "number"
       ? order.total
       : hasTotals && typeof totals.amount === "number"
-      ? Number(totals.amount)
-      : Number(order?.total || 0) || 0;
+        ? Number(totals.amount)
+        : Number(order?.total || 0) || 0;
 
   // livraison
   const deliveryFee =
@@ -144,15 +144,20 @@ function computeOrderAmounts(order: AnyObj) {
     hasTotals && typeof totals.items_amount === "number"
       ? Number(totals.items_amount)
       : typeof order?.items_amount === "number"
-      ? Number(order.items_amount)
-      : 0;
+        ? Number(order.items_amount)
+        : 0;
 
   if (!itemsAmount || itemsAmount <= 0) {
-    const arr = Array.isArray(order?.items) ? order.items : Array.isArray(order?.order_items) ? order.order_items : [];
+    const arr = Array.isArray(order?.items)
+      ? order.items
+      : Array.isArray(order?.order_items)
+        ? order.order_items
+        : [];
     if (arr.length) {
       itemsAmount = arr.reduce((s: number, it: AnyObj) => {
         const qty = Number(it?.qty ?? 1) || 1;
-        const unit = Number(it?.unit_price ?? it?.price ?? it?.final_price ?? 0) || 0;
+        const unit =
+          Number(it?.unit_price ?? it?.price ?? it?.final_price ?? 0) || 0;
         return s + unit * qty;
       }, 0);
     } else {
@@ -179,22 +184,23 @@ function computeOrderAmounts(order: AnyObj) {
     hasTotals && typeof totals.duumini_amount === "number"
       ? Number(totals.duumini_amount)
       : hasTotals && typeof totals.commission === "number"
-      ? Number(totals.commission)
-      : null;
+        ? Number(totals.commission)
+        : null;
 
   // 3) fallback calcul (si rien n’est fourni)
-  // - Si tu as un champ vertical (FOOD/MARKET/FASHION) sur la commande, on peut appliquer des taux connus
-  const vertical = String(order?.vertical || order?.shop_vertical || order?.shop?.vertical || "").toUpperCase();
+  const vertical = String(
+    order?.vertical || order?.shop_vertical || order?.shop?.vertical || "",
+  ).toUpperCase();
 
   const defaultRate = 0; // on évite d’inventer si on ne sait pas
   const rate =
     vertical === "MARKET"
       ? 0.11
       : vertical === "FOOD"
-      ? 0.18
-      : vertical === "FASHION"
-      ? 0.18
-      : defaultRate;
+        ? 0.18
+        : vertical === "FASHION"
+          ? 0.18
+          : defaultRate;
 
   const computedShare = rate > 0 ? Math.max(0, itemsAmount * rate) : 0;
 
@@ -204,14 +210,13 @@ function computeOrderAmounts(order: AnyObj) {
       direct != null
         ? direct
         : totalsShare != null
-        ? totalsShare
-        : computedShare
-    ) || 0
+          ? totalsShare
+          : computedShare,
+    ) || 0,
   );
 
   return { total, deliveryFee, itemsAmount, duuShare };
 }
-
 
 /* ===== Payment helpers (robuste) ===== */
 type PayStatus = "PAID" | "UNPAID" | "PARTIAL";
@@ -1135,8 +1140,8 @@ export default function OrdersAdminPage() {
                     const thumb = getOrderThumb(o as AnyObj);
                     const displayCode = getOrderDisplayCode(o);
 
-                    const totalAligned = computeOrderAmounts(o as AnyObj).total;
-const duuCommission = computeOrderAmounts(o as AnyObj).duuShare;
+                    const { total: totalAligned, duuShare: duuCommission } =
+                      computeOrderAmounts(o as AnyObj);
 
                     // ✅ "ANNULÉE" si CANCELLED, sinon RESTE/PAYÉ
                     const payBadge = getPaymentLabelForRow(o as AnyObj);
@@ -1219,11 +1224,14 @@ const duuCommission = computeOrderAmounts(o as AnyObj).duuShare;
                           </span>
                         </td>
 
-
                         <td className="text-end">{mad(totalAligned)}</td>
-<td className="text-end">
-  <span className="fw-semibold">{mad(duuCommission)}</span>
-</td>
+
+                        <td className="text-end">
+                          <span className="fw-semibold">
+                            {mad(duuCommission)}
+                          </span>
+                        </td>
+
                         <td className="text-end">
                           <div className="btn-group">
                             <button
@@ -1363,7 +1371,12 @@ const duuCommission = computeOrderAmounts(o as AnyObj).duuShare;
                     <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                       <div className="d-flex align-items-center gap-2">
                         <span
-                          className={`badge ${BADGE[((detail as AnyObj).status as OrderStatus) || "OPEN"]}`}
+                          className={`badge ${
+                            BADGE[
+                              ((detail as AnyObj).status as OrderStatus) ||
+                                "OPEN"
+                            ]
+                          }`}
                         >
                           {(detail as AnyObj).status}
                         </span>
@@ -1584,20 +1597,29 @@ const duuCommission = computeOrderAmounts(o as AnyObj).duuShare;
                                       </div>
                                       <div className="col-12 col-md-4">
                                         <input
-  type="number"
-  min={0}
-  step="1"
-  className="form-control form-control-sm"
-  placeholder={payEditMode === "ADD" ? "Montant à ajouter" : "Montant payé"}
-  value={toInputNumberValue(payInput)}
-  onChange={(e) => setPayInput(fromInputNumberValue(e.target.value))}
-  onFocus={() => {
-    // au clic: si 0 -> on vide visuellement (reste 0 dans le state tant qu'il ne tape rien)
-    if (payInput === 0) setPayInput(0);
-  }}
-  disabled={paySaving}
-/>
-
+                                          type="number"
+                                          min={0}
+                                          step="1"
+                                          className="form-control form-control-sm"
+                                          placeholder={
+                                            payEditMode === "ADD"
+                                              ? "Montant à ajouter"
+                                              : "Montant payé"
+                                          }
+                                          value={toInputNumberValue(payInput)}
+                                          onChange={(e) =>
+                                            setPayInput(
+                                              fromInputNumberValue(
+                                                e.target.value,
+                                              ),
+                                            )
+                                          }
+                                          onFocus={() => {
+                                            // au clic: si 0 -> on vide visuellement (reste 0 dans le state tant qu'il ne tape rien)
+                                            if (payInput === 0) setPayInput(0);
+                                          }}
+                                          disabled={paySaving}
+                                        />
                                       </div>
                                       <div className="col-12 col-md-4">
                                         <input
@@ -2078,14 +2100,15 @@ const duuCommission = computeOrderAmounts(o as AnyObj).duuShare;
 
                         <h6 className="mb-2">Montant payé</h6>
                         <input
-  type="number"
-  min={0}
-  step="1"
-  className="form-control"
-  value={toInputNumberValue(amountPaid)}
-  onChange={(e) => setAmountPaid(fromInputNumberValue(e.target.value))}
-/>
-
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="form-control"
+                          value={toInputNumberValue(amountPaid)}
+                          onChange={(e) =>
+                            setAmountPaid(fromInputNumberValue(e.target.value))
+                          }
+                        />
 
                         <hr className="my-3" />
 

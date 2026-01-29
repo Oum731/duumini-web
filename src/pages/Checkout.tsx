@@ -17,7 +17,6 @@ import {
 } from "../context/LocationContext";
 import { api } from "../services/http";
 
-/* ——— Style local : focus rouge + état loading ——— */
 const FocusAndLoadingStyle = () => (
   <style>{`
     .checkout .btn:focus,
@@ -69,15 +68,7 @@ const FocusAndLoadingStyle = () => (
   `}</style>
 );
 
-/* =========================
-   ✅ Location Suggestions API
-   ========================= */
-
-type LocationSuggestion = {
-  value: string;
-  count?: number;
-};
-
+type LocationSuggestion = { value: string; count?: number };
 type ItemsEnvelope<T> = { items: T[] };
 
 function normalizeSuggestionItems(input: any): LocationSuggestion[] {
@@ -130,10 +121,6 @@ async function trackLocationSuggestion(
   } catch {}
 }
 
-/* =========================
-   ✅ Livraison
-   ========================= */
-
 function normToken(x: any) {
   return String(x ?? "").trim().toLowerCase();
 }
@@ -168,22 +155,17 @@ function isCasablanca(label: string) {
   const s = String(label || "").trim().toLowerCase();
   return s.includes("casa");
 }
-function computeDeliveryFeeByCity(cityLabel: string) {
-  if (!cityLabel) return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
-  if (isCasablanca(cityLabel)) return DELIVERY_RULES.CASABLANCA_FEE;
+function computeDeliveryFeeByCity(cityText: string) {
+  if (!cityText) return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
+  if (isCasablanca(cityText)) return DELIVERY_RULES.CASABLANCA_FEE;
   return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
 }
-
-/* =========================
-   ✅ Variantes (panier v2)
-   ========================= */
 
 function getLineVariantKey(l: any) {
   return String(l?.variant?.variant_key || "default").trim() || "default";
 }
 function getLineVariantLabel(l: any) {
-  const label = String(l?.variant?.label || "").trim();
-  return label;
+  return String(l?.variant?.label || "").trim();
 }
 function getLineVariantId(l: any) {
   const id = l?.variant?.variant_id ?? null;
@@ -197,9 +179,6 @@ function lineKey(l: any) {
   return `${pid}:${getLineVariantKey(l)}`;
 }
 
-/* =========================
-   ✅ Utils: debounce
-   ========================= */
 function useDebouncedValue<T>(value: T, delayMs: number) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -209,10 +188,6 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-/* =========================
-   ✅ Checkout
-   ========================= */
-
 export default function CheckoutPage() {
   const nav = useNavigate();
   const location = useLocation();
@@ -220,6 +195,13 @@ export default function CheckoutPage() {
 
   const { city, setCity, isReady } = useLocationCity();
   const cityLabel = useMemo(() => cityLabelFromCode(city), [city]);
+
+  const cityText = useMemo(() => {
+    const a = String(cityLabel || "").trim();
+    if (a) return a;
+    const b = String(city || "").trim();
+    return b;
+  }, [cityLabel, city]);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -271,8 +253,8 @@ export default function CheckoutPage() {
   }, [lines]);
 
   const deliveryFee = useMemo(
-    () => computeDeliveryFeeByCity(cityLabel),
-    [cityLabel]
+    () => computeDeliveryFeeByCity(cityText),
+    [cityText]
   );
 
   const grandTotalUi = totalAmount + deliveryFee;
@@ -291,19 +273,21 @@ export default function CheckoutPage() {
     return base;
   }, [commune, communeOther]);
 
-  const debouncedCityLabel = useDebouncedValue(String(cityLabel || "").trim(), 250);
-  const debouncedCommuneVal = useDebouncedValue(String(communeVal || "").trim(), 250);
+  const debouncedCityText = useDebouncedValue(String(cityText || "").trim(), 250);
+  const debouncedCommuneVal = useDebouncedValue(
+    String(communeVal || "").trim(),
+    250
+  );
 
   const hasName = hasToken
     ? firstName.trim().length > 0 || lastName.trim().length > 0
     : guestName.trim().length > 0;
 
   const addressOk = hasToken
-    ? !!cityLabel &&
+    ? !!cityText &&
       (useGps ? !!coords : communeVal.length > 0 && quartier.trim().length > 0)
-    : !!cityLabel && (useGps ? !!coords : guestAddress.trim().length > 0);
+    : !!cityText && (useGps ? !!coords : guestAddress.trim().length > 0);
 
-  // ✅ plus de "guestConfirmed" : on autorise directement le checkout invité
   const canSubmit = lines.length > 0 && hasName && validPhone && addressOk;
 
   const askGps = useCallback(() => {
@@ -331,7 +315,6 @@ export default function CheckoutPage() {
     );
   }, []);
 
-  /* ---------- Pré-remplissage depuis /me ---------- */
   useEffect(() => {
     let alive = true;
 
@@ -354,15 +337,18 @@ export default function CheckoutPage() {
           setLastName((u as any).last_name || "");
           setPhone(normalizePhoneInput((u as any).phone || ""));
 
-          // ✅ Ville : pré-remplir si possible, MAIS l’utilisateur peut toujours changer via le bouton "Changer"
-          const profileCityRaw = String((u as any).city || (u as any).ville || "")
+          const profileCityRaw = String(
+            (u as any).city || (u as any).ville || ""
+          )
             .trim()
             .toLowerCase();
 
-          // Si pas de ville déjà sélectionnée côté app, on essaie d'en mettre une depuis profil
           if (!city) {
-            if (profileCityRaw.includes("casa")) setCity("CASABLANCA" as CityCode);
-            else if (profileCityRaw.includes("marr")) setCity("MARRAKECH" as CityCode);
+            if (profileCityRaw.includes("casa"))
+              setCity("CASABLANCA" as CityCode);
+            else if (profileCityRaw.includes("marr"))
+              setCity("MARRAKECH" as CityCode);
+            else if (profileCityRaw) setCity(profileCityRaw as any);
           }
 
           const c = String((u as any).commune || "").trim();
@@ -420,20 +406,16 @@ export default function CheckoutPage() {
     }
   }, []);
 
-  /* =========================
-     ✅ Suggestions: cache + abort + anti-spam
-     ========================= */
   const communeCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
   const quartierCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
 
   const communesAbortRef = useRef<AbortController | null>(null);
   const quartiersAbortRef = useRef<AbortController | null>(null);
 
-  // City change => communes
   useEffect(() => {
     if (!isReady) return;
 
-    const v = debouncedCityLabel;
+    const v = debouncedCityText;
     if (!v) return;
 
     setQuartier("");
@@ -475,11 +457,10 @@ export default function CheckoutPage() {
         ac.abort();
       } catch {}
     };
-  }, [debouncedCityLabel, isReady]);
+  }, [debouncedCityText, isReady]);
 
-  // Commune change => quartiers
   useEffect(() => {
-    const v = debouncedCityLabel;
+    const v = debouncedCityText;
     const c = debouncedCommuneVal;
 
     if (!v || !c) {
@@ -521,7 +502,7 @@ export default function CheckoutPage() {
         ac.abort();
       } catch {}
     };
-  }, [debouncedCityLabel, debouncedCommuneVal]);
+  }, [debouncedCityText, debouncedCommuneVal]);
 
   const submitOrder = useCallback(async () => {
     if (!canSubmit || submitting) return;
@@ -531,7 +512,7 @@ export default function CheckoutPage() {
       setSubmitting(true);
 
       const normalizedPhone = normalizePhoneInput(phone.trim());
-      const finalCity = cityLabel || "";
+      const finalCity = String(cityText || "").trim();
 
       const address: CreateOrderPayload["address"] = hasToken
         ? {
@@ -549,8 +530,9 @@ export default function CheckoutPage() {
 
       const fullName = hasToken
         ? (
-            `${firstName.trim()} ${lastName.trim()}`
-              .trim() || firstName.trim() || lastName.trim()
+            `${firstName.trim()} ${lastName.trim()}`.trim() ||
+            firstName.trim() ||
+            lastName.trim()
           ).trim()
         : guestName.trim();
 
@@ -591,21 +573,21 @@ export default function CheckoutPage() {
 
         address_city: address.ville,
         address_commune: (address as any).commune ?? null,
-        address_district: address.quartier,
-        address_gps_lat: address.gps?.lat ?? null,
-        address_gps_lng: address.gps?.lng ?? null,
+        address_district: (address as any).quartier ?? null,
+        address_gps_lat: (address as any).gps?.lat ?? null,
+        address_gps_lng: (address as any).gps?.lng ?? null,
       };
 
-      const result = hasToken ? await createOrder(payload) : await createGuestOrder(payload);
+      const result = hasToken
+        ? await createOrder(payload)
+        : await createGuestOrder(payload);
 
       const orderId = (result as any).id;
       const serverTotal = Number((result as any).total ?? 0);
       const serverCurrency = String((result as any).currency || "MAD").toUpperCase();
 
       const createdAtStr =
-        (result as any).created_at ||
-        (result as any).created ||
-        new Date().toISOString();
+        (result as any).created_at || (result as any).created || new Date().toISOString();
       const createdAt = new Date(createdAtStr);
 
       const numericId = typeof orderId === "number" ? orderId : Number(orderId) || 0;
@@ -623,8 +605,7 @@ export default function CheckoutPage() {
               l.category_name ||
               l.sub_category_name ||
               l.sub_category_slug ||
-              (l.sub_category_id != null &&
-              String(l.sub_category_id).trim() !== ""
+              (l.sub_category_id != null && String(l.sub_category_id).trim() !== ""
                 ? String(l.sub_category_id)
                 : "") ||
               "";
@@ -667,9 +648,7 @@ export default function CheckoutPage() {
             currency: serverCurrency,
           })
         );
-        if (!hasToken) {
-          window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
-        }
+        if (!hasToken) window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
       } catch {}
 
       if (!useGps) {
@@ -692,14 +671,18 @@ export default function CheckoutPage() {
 
       clear();
 
-      if (hasToken) {
-        nav(`/orders?order=${orderId}`);
-      } else {
+      if (hasToken) nav(`/orders?order=${orderId}`);
+      else {
         setShowGuestSuccess(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch (e: any) {
-      setErr(e?.message || "Impossible de confirmer la commande pour le moment.");
+      const msg =
+        e?.message ||
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        "Impossible de confirmer la commande pour le moment.";
+      setErr(msg);
     } finally {
       setSubmitting(false);
     }
@@ -707,7 +690,7 @@ export default function CheckoutPage() {
     canSubmit,
     submitting,
     phone,
-    cityLabel,
+    cityText,
     hasToken,
     communeVal,
     quartier,
@@ -758,7 +741,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const deliveryTitle = isCasablanca(cityLabel)
+  const deliveryTitle = isCasablanca(cityText)
     ? "Livraison Casablanca 25 DH"
     : "Hors Casablanca dès 60 DH (selon la ville)";
 
@@ -768,12 +751,7 @@ export default function CheckoutPage() {
 
       {showGuestSuccess && (
         <>
-          <div
-            className="modal fade show d-block"
-            tabIndex={-1}
-            role="dialog"
-            aria-modal="true"
-          >
+          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content">
                 <div className="modal-header">
@@ -846,12 +824,11 @@ export default function CheckoutPage() {
             <span>
               Livraison sur{" "}
               <span className="addr-pill">
-                <span>📍 {cityLabel || "—"}</span>
+                <span>📍 {cityText || "—"}</span>
                 <small>• {mad(deliveryFee)}</small>
               </span>
             </span>
 
-            {/* ✅ Toujours possible de changer la ville, même si elle vient du profil */}
             <button
               type="button"
               className="btn btn-sm btn-outline-dark"
@@ -861,9 +838,7 @@ export default function CheckoutPage() {
               Changer de ville
             </button>
 
-            {hasPromoInCart && (
-              <span className="badge text-bg-warning">Promo active</span>
-            )}
+            {hasPromoInCart && <span className="badge text-bg-warning">Promo active</span>}
           </div>
         </div>
 
@@ -873,7 +848,6 @@ export default function CheckoutPage() {
       {err && <div className="alert alert-danger">{err}</div>}
 
       <div className="row g-4">
-        {/* Formulaire */}
         <div className="col-12 col-lg-7">
           <div className="card border-0 shadow-sm">
             <div className="card-body">
@@ -950,7 +924,7 @@ export default function CheckoutPage() {
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input className="form-control" value={cityLabel || ""} disabled />
+                      <input className="form-control" value={cityText || ""} disabled />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
@@ -969,7 +943,7 @@ export default function CheckoutPage() {
                         <div className="small">
                           <div className="fw-semibold">Adresse de livraison</div>
                           <div className="text-muted">
-                            {cityLabel || "—"}
+                            {cityText || "—"}
                             {communeVal ? `, ${communeVal}` : ""}
                             {quartier ? ` — ${quartier}` : ""}
                             {useGps && coords
@@ -1030,9 +1004,7 @@ export default function CheckoutPage() {
                           )}
 
                           <div className="form-text">
-                            {loadingSuggest
-                              ? "Chargement suggestions…"
-                              : "Choisissez une commune ou saisissez-la."}
+                            {loadingSuggest ? "Chargement suggestions…" : "Choisissez une commune ou saisissez-la."}
                           </div>
                         </div>
 
@@ -1052,18 +1024,13 @@ export default function CheckoutPage() {
                                   <option key={s.value} value={s.value} />
                                 ))}
                               </datalist>
-                              <div className="form-text">
-                                Astuce : commence à taper pour voir des suggestions.
-                              </div>
+                              <div className="form-text">Astuce : commence à taper pour voir des suggestions.</div>
                             </>
                           ) : (
                             <div className="alert alert-info d-flex justify-content-between align-items-center">
                               <span>
                                 Localisation GPS activée{" "}
-                                {coords
-                                  ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
-                                  : ""}
-                                .
+                                {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
                               </span>
                               <button
                                 className="btn btn-sm btn-outline-dark"
@@ -1158,7 +1125,7 @@ export default function CheckoutPage() {
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input className="form-control" value={cityLabel || ""} disabled />
+                      <input className="form-control" value={cityText || ""} disabled />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
@@ -1210,10 +1177,7 @@ export default function CheckoutPage() {
                         <div className="alert alert-info d-flex justify-content-between align-items-center">
                           <span>
                             Localisation GPS activée{" "}
-                            {coords
-                              ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`
-                              : ""}
-                            .
+                            {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
                           </span>
                           <button
                             className="btn btn-sm btn-outline-dark"
@@ -1253,7 +1217,7 @@ export default function CheckoutPage() {
                   La livraison est calculée automatiquement selon votre ville.
                 </div>
                 <div className="small mt-2">
-                  Ville sélectionnée : <strong>{cityLabel || "—"}</strong> • Frais :{" "}
+                  Ville sélectionnée : <strong>{cityText || "—"}</strong> • Frais :{" "}
                   <strong>{mad(deliveryFee)}</strong>
                 </div>
               </div>
@@ -1288,15 +1252,12 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* Récap */}
         <div className="col-12 col-lg-5">
           <div className="card border-0 shadow-sm">
             <div className="card-body">
               <h2 className="h6 mb-3">Récapitulatif</h2>
 
-              {hasPromoInCart && (
-                <div className="badge text-bg-warning mb-3">Promo active</div>
-              )}
+              {hasPromoInCart && <div className="badge text-bg-warning mb-3">Promo active</div>}
 
               <ul className="list-group list-group-flush">
                 {lines.map((l: any) => {
@@ -1316,9 +1277,7 @@ export default function CheckoutPage() {
                           </div>
                         )}
                       </div>
-                      <span className="fw-semibold">
-                        {mad((l.qty || 0) * (l.price || 0))}
-                      </span>
+                      <span className="fw-semibold">{mad((l.qty || 0) * (l.price || 0))}</span>
                     </li>
                   );
                 })}
@@ -1342,8 +1301,8 @@ export default function CheckoutPage() {
               <div className="alert alert-secondary mt-3 mb-0">
                 <div className="fw-semibold mb-1">Paiement à la livraison</div>
                 <small className="d-block text-muted">
-                  Vous réglez <strong>à la réception</strong> — en{" "}
-                  <strong>espèces</strong>. Aucun acompte requis.
+                  Vous réglez <strong>à la réception</strong> — en <strong>espèces</strong>. Aucun
+                  acompte requis.
                 </small>
               </div>
             </div>
