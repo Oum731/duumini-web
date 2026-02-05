@@ -11,7 +11,12 @@ export type Paginated<T> = {
 export type OrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCELLED";
 
 /** ✅ NEW: paiement */
+/** DB status (orders.payment_status) */
 export type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
+
+/** UI status (affichage) : inclut PENDING (virement en attente) */
+export type PayStatus = PaymentStatus | "PENDING";
+
 
 export type OrderPayment = {
   status: PaymentStatus;

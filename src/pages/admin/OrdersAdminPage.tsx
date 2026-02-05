@@ -15,13 +15,7 @@ import { Link } from "react-router-dom";
 import { subscribeSSE, type ServerEvent } from "../../services/events";
 import { API_BASE } from "../../services/http";
 
-const STATUSES: OrderStatus[] = [
-  "OPEN",
-  "PREPARATION",
-  "DELIVERY",
-  "DONE",
-  "CANCELLED",
-];
+const STATUSES: OrderStatus[] = ["OPEN", "PREPARATION", "DELIVERY", "DONE", "CANCELLED"];
 
 const BADGE: Record<OrderStatus, string> = {
   OPEN: "bg-secondary",
@@ -104,28 +98,64 @@ const mad = (n?: number | null) =>
   }).format(Number(n || 0));
 
 /* ===== Helper: code alphanumérique pour affichage ===== */
-function getOrderDisplayCode(
-  orderOrId: string | number | { id?: string | number },
-): string {
+function getOrderDisplayCode(orderOrId: string | number | { id?: string | number }): string {
   let rawId: string | number | undefined;
-
-  if (typeof orderOrId === "number" || typeof orderOrId === "string")
-    rawId = orderOrId;
+  if (typeof orderOrId === "number" || typeof orderOrId === "string") rawId = orderOrId;
   else rawId = orderOrId?.id;
-
   if (rawId == null) return "";
 
   const num = typeof rawId === "number" ? rawId : Number(rawId);
   if (Number.isFinite(num) && num > 0) return num.toString(36).toUpperCase();
-
   return String(rawId ?? "").toUpperCase();
 }
 
+function numSafe(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/* =========================
+ * ✅ Fulfillment (Delivery / Pickup / Expedition)
+ * - DELIVERY (domicile): adresse utile
+ * - PICKUP: retrait sur place (pas d’adresse client)
+ * - EXPEDITION: dépôt Duumini 25DH (client paie transporteur au retrait)
+ * =======================*/
+type Fulfillment = "DELIVERY" | "PICKUP" | "EXPEDITION";
+
+function normFulfillment(o: AnyObj): Fulfillment {
+  const delivery = o?.delivery && typeof o.delivery === "object" ? o.delivery : null;
+  const modeRaw =
+    String(
+      delivery?.mode ??
+        o?.delivery_mode ??
+        o?.fulfillment ??
+        o?.fulfillment_mode ??
+        o?.shipping_mode ??
+        "",
+    )
+      .trim()
+      .toUpperCase() || "";
+
+  if (modeRaw === "PICKUP") return "PICKUP";
+  if (modeRaw === "EXPEDITION") return "EXPEDITION";
+
+  // vieux modes backend: CASABLANCA/CITY/SIMPLE/DELIVERY => DELIVERY
+  if (modeRaw) return "DELIVERY";
+  return "DELIVERY";
+}
+
+function fulfillmentLabel(f: Fulfillment) {
+  if (f === "PICKUP") return { text: "RÉCUPÉRATION", cls: "bg-dark" };
+  if (f === "EXPEDITION") return { text: "EXPÉDITION", cls: "bg-warning text-dark" };
+  return { text: "LIVRAISON", cls: "bg-info" };
+}
+
+/* ====== Totaux/Commission ====== */
 function computeOrderAmounts(order: AnyObj) {
   const totals = order?.totals || null;
   const hasTotals = totals && typeof totals === "object";
+  const status = String(order?.status || "").toUpperCase();
 
-  // total
   const total =
     typeof order?.total === "number"
       ? order.total
@@ -133,13 +163,11 @@ function computeOrderAmounts(order: AnyObj) {
         ? Number(totals.amount)
         : Number(order?.total || 0) || 0;
 
-  // livraison
   const deliveryFee =
     hasTotals && typeof totals.delivery_fee === "number"
       ? Number(totals.delivery_fee)
       : Number(order?.delivery_fee || order?.deliveryFee || 0) || 0;
 
-  // items_amount (on tente totals, sinon items[], sinon total - delivery)
   let itemsAmount =
     hasTotals && typeof totals.items_amount === "number"
       ? Number(totals.items_amount)
@@ -156,8 +184,7 @@ function computeOrderAmounts(order: AnyObj) {
     if (arr.length) {
       itemsAmount = arr.reduce((s: number, it: AnyObj) => {
         const qty = Number(it?.qty ?? 1) || 1;
-        const unit =
-          Number(it?.unit_price ?? it?.price ?? it?.final_price ?? 0) || 0;
+        const unit = Number(it?.unit_price ?? it?.price ?? it?.final_price ?? 0) || 0;
         return s + unit * qty;
       }, 0);
     } else {
@@ -165,21 +192,13 @@ function computeOrderAmounts(order: AnyObj) {
     }
   }
 
-  /* =========================
-   * ✅ Commission Duumini
-   * Priorité:
-   * 1) order.commission_duumini (DB)
-   * 2) totals.duumini_amount / totals.commission
-   * 3) calcul fallback sur itemsAmount avec un taux déduit du vertical (si dispo)
-   * =======================*/
-
-  // 1) valeur plate (si backend la renvoie)
   const direct =
     typeof order?.commission_duumini === "number"
       ? Number(order.commission_duumini)
-      : null;
+      : order?.commission_duumini != null
+        ? Number(order.commission_duumini)
+        : null;
 
-  // 2) totals
   const totalsShare =
     hasTotals && typeof totals.duumini_amount === "number"
       ? Number(totals.duumini_amount)
@@ -187,69 +206,37 @@ function computeOrderAmounts(order: AnyObj) {
         ? Number(totals.commission)
         : null;
 
-  // 3) fallback calcul (si rien n’est fourni)
-  const vertical = String(
-    order?.vertical || order?.shop_vertical || order?.shop?.vertical || "",
-  ).toUpperCase();
+  let duuShareRaw = Number(direct != null ? direct : totalsShare != null ? totalsShare : 0);
+  if (!Number.isFinite(duuShareRaw) || duuShareRaw < 0) duuShareRaw = 0;
 
-  const defaultRate = 0; // on évite d’inventer si on ne sait pas
-  const rate =
-    vertical === "MARKET"
-      ? 0.11
-      : vertical === "FOOD"
-        ? 0.18
-        : vertical === "FASHION"
-          ? 0.18
-          : defaultRate;
-
-  const computedShare = rate > 0 ? Math.max(0, itemsAmount * rate) : 0;
-
-  const duuShare = Math.max(
-    0,
-    Number(
-      direct != null
-        ? direct
-        : totalsShare != null
-          ? totalsShare
-          : computedShare,
-    ) || 0,
-  );
+  const duuShare = status === "DONE" ? duuShareRaw : 0;
 
   return { total, deliveryFee, itemsAmount, duuShare };
 }
 
-/* ===== Payment helpers (robuste) ===== */
-type PayStatus = "PAID" | "UNPAID" | "PARTIAL";
+/* ===== Payment helpers (robuste + virement en attente) ===== */
+type PayStatus = "PAID" | "UNPAID" | "PARTIAL" | "PENDING";
 
 function normPayStatus(s: any): PayStatus | null {
-  const v = String(s || "")
-    .trim()
-    .toUpperCase();
+  const v = String(s || "").trim().toUpperCase();
   if (v === "PAID") return "PAID";
   if (v === "UNPAID") return "UNPAID";
   if (v === "PARTIAL") return "PARTIAL";
+  if (v === "PENDING") return "PENDING";
   return null;
 }
 
-function numSafe(v: any) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
 function toInputNumberValue(n: number) {
-  // si 0 => on affiche vide pour faciliter la saisie
   return n === 0 ? "" : String(n);
 }
-
 function fromInputNumberValue(v: string) {
-  // vide => 0, sinon nombre
   if (v.trim() === "") return 0;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
 function getPaymentFromOrder(o: AnyObj) {
-  const payment =
-    o?.payment && typeof o.payment === "object" ? o.payment : null;
+  const payment = o?.payment && typeof o.payment === "object" ? o.payment : null;
 
   const status: PayStatus | null =
     normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
@@ -261,30 +248,14 @@ function getPaymentFromOrder(o: AnyObj) {
     0;
 
   const remaining_amount_raw =
-    o?.remaining_amount ??
-    payment?.remaining_amount ??
-    payment?.remainingAmount ??
-    null;
-  const remaining_amount =
-    remaining_amount_raw == null
-      ? null
-      : Math.max(0, numSafe(remaining_amount_raw));
+    o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
+  const remaining_amount = remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
 
-  const method = String(payment?.method || "").trim() || null;
+  const method = String(payment?.method || o?.payment_method || "").trim() || null;
   const note = payment?.note != null ? String(payment.note) : null;
-  const currency = String(
-    payment?.currency || o?.currency || "MAD",
-  ).toUpperCase();
+  const currency = String(payment?.currency || o?.currency || "MAD").toUpperCase();
 
-  return {
-    payment,
-    status,
-    paid_amount,
-    remaining_amount,
-    method,
-    note,
-    currency,
-  };
+  return { payment, status, paid_amount, remaining_amount, method, note, currency };
 }
 
 function computeRemaining(total: number, paid: number) {
@@ -302,56 +273,62 @@ function computePayStatus(total: number, paid: number): PayStatus {
 }
 
 /**
- * ✅ NEW: Dans le tableau => "Reste" ne doit PAS s'afficher pour les commandes annulées.
- * - CANCELLED => badge "ANNULÉE"
- * - Sinon: logique RESTE/PAYÉ habituelle
+ * ✅ Dans le tableau => "Reste" ne doit PAS s'afficher pour les commandes annulées.
+ * ✅ Virement: si method=BANK_TRANSFER et status=PENDING => badge "EN ATTENTE"
  */
 function getPaymentLabelForRow(o: AnyObj) {
-  const status = String(o?.status || "").toUpperCase();
-
-  // ✅ IMPORTANT: commande annulée => pas de "reste à payer"
-  if (status === "CANCELLED") {
-    return { text: "CANCELLED", cls: "bg-danger" };
-  }
+  const oStatus = String(o?.status || "").toUpperCase();
+  if (oStatus === "CANCELLED") return { text: "ANNULÉE", cls: "bg-danger" };
 
   const { total } = computeOrderAmounts(o);
   const pay = getPaymentFromOrder(o);
 
-  // 1) Si explicitement PAYÉ
-  if (pay.status === "PAID") return { text: "PAYÉ", cls: "bg-success" };
+  const method = String(pay.method || "").toUpperCase();
+  const isBank =
+    method === "BANK_TRANSFER" ||
+    method === "BANK" ||
+    method === "TRANSFER" ||
+    method === "VIREMENT";
 
   const paid = numSafe(pay.paid_amount);
   const remain = computeRemaining(total, paid);
 
-  // 2) Si payé couvre tout (cas edge)
-  if (paid > 0 && paid >= total - 0.0001)
-    return { text: "PAYÉ", cls: "bg-success" };
+  // status explicite (si présent)
+  const explicit = pay.status; // PayStatus | null
 
-  // 3) total==0 => PAYÉ (sinon RESTE: 0)
-  if (Math.max(0, numSafe(total)) <= 0)
-    return { text: "PAYÉ", cls: "bg-success" };
+  // 1) PAYÉ prioritaire
+  if (explicit === "PAID") return { text: "PAYÉ", cls: "bg-success" };
 
-  // Badge:
-  if (paid > 0)
-    return { text: `RESTE: ${mad(remain)}`, cls: "bg-warning text-dark" };
-  return { text: `RESTE: ${mad(remain)}`, cls: "bg-secondary" };
+  // 2) Virement: EN ATTENTE si:
+  // - explicit=PENDING
+  // - OU méthode virement et pas payé (UNPAID/PARTIAL/null)
+  if (explicit === "PENDING") {
+    return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
+  }
+  if (isBank && (explicit === "UNPAID" || explicit === "PARTIAL" || explicit == null)) {
+    return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
+  }
+
+  // 3) Sinon: afficher PARTIEL / NON PAYÉ selon payé/reste (dérivé)
+  if (paid > 0 && remain > 0) return { text: "PARTIEL", cls: "bg-warning text-dark" };
+  if (paid >= total && total > 0) return { text: "PAYÉ", cls: "bg-success" };
+
+  return { text: "NON PAYÉ", cls: "bg-secondary" };
 }
+
+
 
 /* ===== Message WhatsApp (texte + liens produits) ===== */
 function buildAdminWhatsappMessage(order: AnyObj) {
   const items: AnyObj[] = Array.isArray(order.items) ? order.items : [];
   const hasItems = items.length > 0;
 
-  const created = order.created_at
-    ? new Date(order.created_at).toLocaleString("fr-FR")
-    : "";
+  const created = order.created_at ? new Date(order.created_at).toLocaleString("fr-FR") : "";
 
   const address = order.address || {};
   const contact = order.contact || order.user || {};
   const fullName =
-    `${contact.first_name || ""} ${contact.last_name || ""}`.trim() ||
-    contact.name ||
-    "cher(e) client(e)";
+    `${contact.first_name || ""} ${contact.last_name || ""}`.trim() || contact.name || "cher(e) client(e)";
 
   const phone = contact.phone || order.phone || "";
   const displayCode = getOrderDisplayCode(order);
@@ -360,8 +337,7 @@ function buildAdminWhatsappMessage(order: AnyObj) {
 
   const ville = address.city || address.ville || order.address_city || "";
   const commune = address.commune || order.address_commune || "";
-  const quartier =
-    address.district || address.quartier || order.address_district || "";
+  const quartier = address.district || address.quartier || order.address_district || "";
 
   const status: OrderStatus | string = order.status || "OPEN";
   const statusText =
@@ -380,8 +356,7 @@ function buildAdminWhatsappMessage(order: AnyObj) {
   const lines = hasItems
     ? items
         .map((it) => {
-          const name =
-            it.product_name || it.name || `Produit #${it.product_id ?? ""}`;
+          const name = it.product_name || it.name || `Produit #${it.product_id ?? ""}`;
           const qty = Number(it.qty ?? 1);
           const unit = Number(it.unit_price ?? it.price ?? 0);
           const lineTotal = unit * qty;
@@ -394,31 +369,39 @@ function buildAdminWhatsappMessage(order: AnyObj) {
         .join("\n")
     : "• Détails des articles indisponibles";
 
+  const f = normFulfillment(order);
+  const fLine =
+    f === "PICKUP"
+      ? "Réception : *Récupération sur place*"
+      : f === "EXPEDITION"
+        ? "Réception : *Expédition* (dépôt Duumini, frais transporteur payés au retrait)"
+        : "Réception : *Livraison*";
+
   const blocs: string[] = [];
   blocs.push(`Bonjour ${fullName},`);
   blocs.push("");
   blocs.push(`Merci pour votre commande chez *Duumini*`);
   blocs.push(statusText);
   blocs.push("");
-
   blocs.push(`*Détails de la commande #${displayCode}*`);
   if (created) blocs.push(`Date : ${created}`);
+  blocs.push(fLine);
   blocs.push("");
-
   blocs.push("*Articles*");
   blocs.push(lines);
   blocs.push("");
-
   blocs.push(`Sous-total : ${mad(itemsAmount)}`);
-  blocs.push(`Livraison : ${mad(deliveryFee)}`);
+  blocs.push(`Frais : ${mad(deliveryFee)}`);
   blocs.push(`Total : ${mad(total)}`);
   blocs.push("");
 
-  blocs.push("*Adresse de livraison*");
-  if (ville) blocs.push(`Ville : ${ville}`);
-  if (commune) blocs.push(`Commune : ${commune}`);
-  if (quartier) blocs.push(`Quartier : ${quartier}`);
-  blocs.push("");
+  if (f === "DELIVERY") {
+    blocs.push("*Adresse de livraison*");
+    if (ville) blocs.push(`Ville : ${ville}`);
+    if (commune) blocs.push(`Commune : ${commune}`);
+    if (quartier) blocs.push(`Quartier : ${quartier}`);
+    blocs.push("");
+  }
 
   blocs.push(`Téléphone : ${phone || "—"}`);
   blocs.push("");
@@ -437,8 +420,6 @@ function waHref(order: AnyObj) {
 /* =========================
  * ✅ Vente sur place helpers
  * =======================*/
-
-/** Détecte un prix promo / final price (multi-noms) */
 function getProductUnitPrice(p: Product): number {
   const anyP = p as AnyObj;
 
@@ -456,12 +437,7 @@ function getProductUnitPrice(p: Product): number {
   const base = anyP.price ?? 0;
 
   const promoNum = Number(promo);
-  if (
-    Number.isFinite(promoNum) &&
-    promoNum > 0 &&
-    promoNum < Number(base || Infinity)
-  )
-    return promoNum;
+  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity)) return promoNum;
 
   const baseNum = Number(base);
   return Number.isFinite(baseNum) ? baseNum : 0;
@@ -495,6 +471,10 @@ export default function OrdersAdminPage() {
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
 
+  // ✅ filtres backend (status + payment_status)
+  const [statusFilter, setStatusFilter] = useState<"ALL" | OrderStatus>("ALL");
+  const [payFilter, setPayFilter] = useState<"ALL" | PayStatus>("ALL");
+
   // Edition statut (modale rapide)
   const [editId, setEditId] = useState<number | null>(null);
   const [editStatus, setEditStatus] = useState<OrderStatus>("OPEN");
@@ -524,12 +504,8 @@ export default function OrdersAdminPage() {
 
   // ✅ filtres produits
   const [search, setSearch] = useState("");
-  const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">(
-    "ALL",
-  );
-  const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">(
-    "NAME",
-  );
+  const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
+  const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">("NAME");
 
   // ✅ paiement sur place
   const [amountPaid, setAmountPaid] = useState<number>(0);
@@ -540,15 +516,18 @@ export default function OrdersAdminPage() {
   const [markDone, setMarkDone] = useState(true);
   const searchAbort = useRef<AbortController | null>(null);
 
-  const pages = useMemo(
-    () => Math.max(1, Math.ceil(total / pageSize)),
-    [total, pageSize],
-  );
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listOrders({ page, pageSize });
+      const res = await listOrders({
+        page,
+        pageSize,
+        ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+        ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
+      } as any);
+
       setItems(res.items);
       setTotal(res.pageInfo.total);
       setError(null);
@@ -557,7 +536,7 @@ export default function OrdersAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, statusFilter, payFilter]);
 
   useEffect(() => {
     refresh();
@@ -569,11 +548,7 @@ export default function OrdersAdminPage() {
         refresh();
         // @ts-ignore
         window?.duuminiToast?.({
-          title:
-            evt.payload?.title ||
-            (evt.type === "ORDER_CREATED"
-              ? "Nouvelle commande"
-              : "Commande mise à jour"),
+          title: evt.payload?.title || (evt.type === "ORDER_CREATED" ? "Nouvelle commande" : "Commande mise à jour"),
           message: evt.payload?.body || "",
         });
       }
@@ -581,15 +556,13 @@ export default function OrdersAdminPage() {
     return () => sub.close();
   }, [refresh]);
 
-  const dateTime = (iso?: string) =>
-    iso ? new Date(iso).toLocaleString("fr-FR") : "";
+  const dateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString("fr-FR") : "");
 
   const filtered = items.filter((o) => {
     if (!q.trim()) return true;
     const txt = q.toLowerCase();
     const contact = (o as any)?.contact || (o as any)?.user || {};
-    const contactName =
-      `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
+    const contactName = `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
     return (
       String(o.id).includes(txt) ||
       (o.status?.toLowerCase() || "").includes(txt) ||
@@ -598,15 +571,14 @@ export default function OrdersAdminPage() {
     );
   });
 
+  // ✅ CA Duumini: uniquement DONE (computeOrderAmounts applique la règle)
   const globalStats = useMemo(() => {
     let caNet = 0;
     let caDelivery = 0;
     let caDuumini = 0;
 
     items.forEach((o) => {
-      const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(
-        o as AnyObj,
-      );
+      const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(o as AnyObj);
       caNet += itemsAmount;
       caDelivery += deliveryFee;
       caDuumini += duuShare;
@@ -669,7 +641,6 @@ export default function OrdersAdminPage() {
     setViewErr(null);
     setDetail(null);
 
-    // reset pay form
     setPayEditMode("ADD");
     setPayInput(0);
     setPayMethod("CASH");
@@ -738,13 +709,10 @@ export default function OrdersAdminPage() {
 
     if (payEditMode === "ADD") {
       if (raw <= 0) return setViewErr("Le montant à ajouter doit être > 0.");
-      if (currentPaid + raw > total + 0.0001)
-        return setViewErr("Vous dépassez le total de la commande.");
+      if (currentPaid + raw > total + 0.0001) return setViewErr("Vous dépassez le total de la commande.");
     } else {
-      if (raw < 0)
-        return setViewErr("Le montant payé ne peut pas être négatif.");
-      if (raw > total + 0.0001)
-        return setViewErr("Le montant payé ne peut pas dépasser le total.");
+      if (raw < 0) return setViewErr("Le montant payé ne peut pas être négatif.");
+      if (raw > total + 0.0001) return setViewErr("Le montant payé ne peut pas dépasser le total.");
     }
 
     setPaySaving(true);
@@ -752,18 +720,8 @@ export default function OrdersAdminPage() {
     try {
       const payload =
         payEditMode === "ADD"
-          ? {
-              mode: "ADD" as const,
-              add_amount: raw,
-              method: payMethod,
-              note: payNote,
-            }
-          : {
-              mode: "SET" as const,
-              paid_amount: raw,
-              method: payMethod,
-              note: payNote,
-            };
+          ? { mode: "ADD" as const, add_amount: raw, method: payMethod, note: payNote }
+          : { mode: "SET" as const, paid_amount: raw, method: payMethod, note: payNote };
 
       await updateOrderPayment(viewId, payload as any);
 
@@ -785,67 +743,51 @@ export default function OrdersAdminPage() {
     const first_name = c?.first_name ?? "";
     const last_name = c?.last_name ?? "";
     const phone = c?.phone ?? c?.user_phone ?? "";
-    const fullName =
-      `${(first_name || "").trim()} ${(last_name || "").trim()}`.trim() || "—";
+    const fullName = `${(first_name || "").trim()} ${(last_name || "").trim()}`.trim() || "—";
     return { first_name, last_name, fullName, phone };
   })();
 
   const address = (detail?.address as AnyObj) || {};
-  const itemsDetail: AnyObj[] = Array.isArray(detail?.items)
-    ? (detail as any).items
-    : [];
+  const itemsDetail: AnyObj[] = Array.isArray(detail?.items) ? (detail as any).items : [];
 
   const itemsAmountDetail = itemsDetail.reduce(
-    (sum, it) =>
-      sum + Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1),
+    (sum, it) => sum + Number(it?.unit_price ?? it?.price ?? 0) * Number(it?.qty ?? 1),
     0,
   );
 
   const totalAmountDetail: number =
-    typeof detail?.total === "number"
-      ? (detail as any).total
-      : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
+    typeof detail?.total === "number" ? (detail as any).total : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
 
   const deliveryFeeDetail =
-    (detail as any)?.totals?.delivery_fee ??
-    Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
+    (detail as AnyObj)?.totals?.delivery_fee ?? Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
 
-  // ✅ paiement modale voir
   const viewPay = useMemo(() => {
     if (!detail) return null;
     const pay = getPaymentFromOrder(detail);
     const { total } = computeOrderAmounts(detail);
     const remaining =
-      pay?.remaining_amount != null
-        ? Number(pay.remaining_amount)
-        : computeRemaining(total, pay.paid_amount);
-    const status = pay?.status || computePayStatus(total, pay.paid_amount);
+      pay?.remaining_amount != null ? Number(pay.remaining_amount) : computeRemaining(total, pay.paid_amount);
+    const derived = computePayStatus(total, pay.paid_amount);
+    const status = pay?.status || derived;
+
     return { ...pay, total, remaining, status };
   }, [detail]);
 
-  // ✅ total panier vente sur place
+  const viewFulfillment = useMemo(() => (detail ? normFulfillment(detail) : "DELIVERY"), [detail]);
+  const viewFulLabel = useMemo(() => fulfillmentLabel(viewFulfillment), [viewFulfillment]);
+
   const basketTotal = useMemo(() => {
-    return basket.reduce(
-      (s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0),
-      0,
-    );
+    return basket.reduce((s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0), 0);
   }, [basket]);
 
-  // ✅ payé clamp + status auto
   const posPaidClamped = useMemo(() => {
     const t = Math.max(0, numSafe(basketTotal));
     const p = Math.max(0, Math.min(numSafe(amountPaid), t));
     return p;
   }, [basketTotal, amountPaid]);
 
-  const posRemaining = useMemo(
-    () => computeRemaining(basketTotal, posPaidClamped),
-    [basketTotal, posPaidClamped],
-  );
-  const posStatus = useMemo(
-    () => computePayStatus(basketTotal, posPaidClamped),
-    [basketTotal, posPaidClamped],
-  );
+  const posRemaining = useMemo(() => computeRemaining(basketTotal, posPaidClamped), [basketTotal, posPaidClamped]);
+  const posStatus = useMemo(() => computePayStatus(basketTotal, posPaidClamped), [basketTotal, posPaidClamped]);
 
   useEffect(() => {
     if (posPaidClamped !== amountPaid) setAmountPaid(posPaidClamped);
@@ -865,11 +807,7 @@ export default function OrdersAdminPage() {
   }
 
   function setQty(pId: number, qty: number) {
-    setBasket((prev) =>
-      prev.map((x) =>
-        x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x,
-      ),
-    );
+    setBasket((prev) => prev.map((x) => (x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x)));
   }
 
   function removeLine(pId: number) {
@@ -883,7 +821,6 @@ export default function OrdersAdminPage() {
     setAmountPaid(0);
   }
 
-  /** ✅ Charge TOUS les produits (pages) */
   const loadAllProducts = useCallback(async () => {
     if (!openCreate) return;
 
@@ -934,7 +871,6 @@ export default function OrdersAdminPage() {
     if (openCreate) loadAllProducts();
   }, [openCreate, loadAllProducts]);
 
-  // ✅ filtre + tri produits
   const filteredResults = useMemo(() => {
     const ql = search.trim().toLowerCase();
     let arr = results;
@@ -946,22 +882,15 @@ export default function OrdersAdminPage() {
       arr = arr.filter((p) => {
         const anyP = p as AnyObj;
         const name = String(p.name || "").toLowerCase();
-        const sku = String(
-          anyP.sku || anyP.ref || anyP.code || "",
-        ).toLowerCase();
+        const sku = String(anyP.sku || anyP.ref || anyP.code || "").toLowerCase();
         return name.includes(ql) || (sku && sku.includes(ql));
       });
     }
 
     const sorted = [...arr];
-    if (sortBy === "NAME")
-      sorted.sort((a, b) =>
-        String(a.name || "").localeCompare(String(b.name || ""), "fr"),
-      );
-    else if (sortBy === "PRICE_ASC")
-      sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
-    else if (sortBy === "PRICE_DESC")
-      sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
+    if (sortBy === "NAME") sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+    else if (sortBy === "PRICE_ASC") sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
+    else if (sortBy === "PRICE_DESC") sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
     return sorted;
   }, [results, search, promoFilter, sortBy]);
 
@@ -978,28 +907,13 @@ export default function OrdersAdminPage() {
 
     const itemsPayload = basket.map((b) => {
       const unit = getProductUnitPrice(b.product);
-      return {
-        product_id: b.product.id,
-        qty: b.qty,
-        // UI-only
-        name: b.product.name,
-        price: Number(unit || 0),
-      };
+      return { product_id: b.product.id, qty: b.qty, name: b.product.name, price: Number(unit || 0) };
     });
 
     const payload = {
-      contact: {
-        first_name: cFirst || "",
-        last_name: cLast || "",
-        phone: cPhone || "",
-      },
-      address: {
-        ville: "Casablanca",
-        commune: "Sur place",
-        quartier: "Boutique",
-        gps: null,
-      },
-      delivery: { mode: "SIMPLE" as const, fee: 0, currency: "MAD" as const },
+      contact: { first_name: cFirst || "", last_name: cLast || "", phone: cPhone || "" },
+      address: { ville: "Casablanca", commune: "Sur place", quartier: "Boutique", gps: null },
+      delivery: { mode: "PICKUP" as const, fee: 0, currency: "MAD" as const },
       items: itemsPayload,
       totals: {
         items_count: itemsPayload.reduce((s, it) => s + it.qty, 0),
@@ -1040,11 +954,7 @@ export default function OrdersAdminPage() {
 
   const editDisplayCode = editId !== null ? getOrderDisplayCode(editId) : "";
   const viewDisplayCode =
-    viewId !== null
-      ? detail
-        ? getOrderDisplayCode(detail as AnyObj)
-        : getOrderDisplayCode(viewId)
-      : "";
+    viewId !== null ? (detail ? getOrderDisplayCode(detail as AnyObj) : getOrderDisplayCode(viewId)) : "";
 
   return (
     <div className="container-xxl py-4">
@@ -1064,9 +974,7 @@ export default function OrdersAdminPage() {
         <div className="col-12 col-md-4">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
-              <div className="text-muted small mb-1">
-                CA (page) hors livraison
-              </div>
+              <div className="text-muted small mb-1">CA (page) hors livraison</div>
               <div className="h6 m-0">{mad(globalStats.caNet)}</div>
             </div>
           </div>
@@ -1074,9 +982,7 @@ export default function OrdersAdminPage() {
         <div className="col-12 col-md-4">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
-              <div className="text-muted small mb-1">
-                Frais de livraison (page)
-              </div>
+              <div className="text-muted small mb-1">Frais (page)</div>
               <div className="h6 m-0">{mad(globalStats.caDelivery)}</div>
             </div>
           </div>
@@ -1084,23 +990,70 @@ export default function OrdersAdminPage() {
         <div className="col-12 col-md-4">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
-              <div className="text-muted small mb-1">CA Duumini (page)</div>
+              <div className="text-muted small mb-1">
+                CA Duumini (page) <span className="text-muted">(DONE seulement)</span>
+              </div>
               <div className="h6 m-0">{mad(globalStats.caDuumini)}</div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mb-3 d-flex flex-wrap gap-2 align-items-center justify-content-between">
-        <input
-          className="form-control"
-          placeholder="Recherche (#, statut, client, téléphone...)"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={{ maxWidth: 420 }}
-        />
-        <div className="text-muted small">
-          Page {page}/{pages} • {total} commandes
+      {/* ✅ filtres backend */}
+      <div className="card border-0 shadow-sm mb-3">
+        <div className="card-body d-flex flex-wrap gap-2 align-items-center justify-content-between">
+          <div className="d-flex flex-wrap gap-2 align-items-center">
+            <input
+              className="form-control"
+              placeholder="Recherche (#, statut, client, téléphone...)"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              style={{ maxWidth: 420 }}
+            />
+
+            <select
+              className="form-select"
+              style={{ width: 190 }}
+              value={statusFilter}
+              onChange={(e) => {
+                setPage(1);
+                setStatusFilter(e.target.value as any);
+              }}
+              title="Filtrer par statut (backend)"
+            >
+              <option value="ALL">Tous les statuts</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="form-select"
+              style={{ width: 220 }}
+              value={payFilter}
+              onChange={(e) => {
+                setPage(1);
+                setPayFilter(e.target.value as any);
+              }}
+              title="Filtrer par paiement (backend)"
+            >
+              <option value="ALL">Tous les paiements</option>
+              <option value="PAID">PAYÉ</option>
+              <option value="PARTIAL">PARTIEL</option>
+              <option value="UNPAID">NON PAYÉ</option>
+              <option value="PENDING">EN ATTENTE (virement)</option>
+            </select>
+
+            <button className="btn btn-outline-dark" onClick={refresh} disabled={loading}>
+              Rafraîchir
+            </button>
+          </div>
+
+          <div className="text-muted small">
+            Page {page}/{pages} • {total} commandes
+          </div>
         </div>
       </div>
 
@@ -1123,9 +1076,10 @@ export default function OrdersAdminPage() {
                     <th>Client</th>
                     <th>Contact</th>
                     <th>Statut</th>
+                    <th>Réception</th>
                     <th>Reste</th>
                     <th className="text-end">Total</th>
-                    <th className="text-end">Commission</th>
+                    <th className="text-end">Commission (DONE)</th>
                     <th className="text-end">Actions</th>
                   </tr>
                 </thead>
@@ -1140,11 +1094,12 @@ export default function OrdersAdminPage() {
                     const thumb = getOrderThumb(o as AnyObj);
                     const displayCode = getOrderDisplayCode(o);
 
-                    const { total: totalAligned, duuShare: duuCommission } =
-                      computeOrderAmounts(o as AnyObj);
-
-                    // ✅ "ANNULÉE" si CANCELLED, sinon RESTE/PAYÉ
+                    const { total: totalAligned, duuShare: duuCommission } = computeOrderAmounts(o as AnyObj);
                     const payBadge = getPaymentLabelForRow(o as AnyObj);
+                    const st = String(o.status || "").toUpperCase();
+
+                    const f = normFulfillment(o as AnyObj);
+                    const fBadge = fulfillmentLabel(f);
 
                     return (
                       <tr key={o.id}>
@@ -1200,11 +1155,7 @@ export default function OrdersAdminPage() {
                                 WhatsApp
                               </button>
                               {hrefTel ? (
-                                <a
-                                  className="btn btn-sm btn-outline-dark"
-                                  href={hrefTel}
-                                  aria-label="Appeler"
-                                >
+                                <a className="btn btn-sm btn-outline-dark" href={hrefTel} aria-label="Appeler">
                                   Appeler
                                 </a>
                               ) : null}
@@ -1213,48 +1164,36 @@ export default function OrdersAdminPage() {
                         </td>
 
                         <td>
-                          <span className={`badge ${BADGE[o.status]}`}>
-                            {o.status}
-                          </span>
+                          <span className={`badge ${BADGE[o.status]}`}>{o.status}</span>
                         </td>
 
                         <td>
-                          <span className={`badge ${payBadge.cls}`}>
-                            {payBadge.text}
-                          </span>
+                          <span className={`badge ${fBadge.cls}`}>{fBadge.text}</span>
+                        </td>
+
+                        <td>
+                          <span className={`badge ${payBadge.cls}`}>{payBadge.text}</span>
                         </td>
 
                         <td className="text-end">{mad(totalAligned)}</td>
 
                         <td className="text-end">
-                          <span className="fw-semibold">
-                            {mad(duuCommission)}
-                          </span>
+                          {st === "DONE" ? <span className="fw-semibold">{mad(duuCommission)}</span> : <span className="text-muted">—</span>}
                         </td>
 
                         <td className="text-end">
                           <div className="btn-group">
-                            <button
-                              className="btn btn-sm btn-outline-secondary"
-                              onClick={() => onView(o.id)}
-                            >
+                            <button className="btn btn-sm btn-outline-secondary" onClick={() => onView(o.id)}>
                               Voir
                             </button>
-                            <button
-                              className="btn btn-sm btn-outline-dark"
-                              onClick={() => onEdit(o.id)}
-                            >
+                            <button className="btn btn-sm btn-outline-dark" onClick={() => onEdit(o.id)}>
                               Modifier
                             </button>
-                            {o.status !== "CANCELLED" &&
-                              o.status !== "DONE" && (
-                                <button
-                                  className="btn btn-sm btn-outline-danger"
-                                  onClick={() => onCancel(o.id)}
-                                >
-                                  Annuler
-                                </button>
-                              )}
+                            {o.status !== "CANCELLED" && o.status !== "DONE" && (
+                              <button className="btn btn-sm btn-outline-danger" onClick={() => onCancel(o.id)}>
+                                Annuler
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1268,21 +1207,13 @@ export default function OrdersAdminPage() {
           <div className="d-flex justify-content-between align-items-center mt-2">
             <div className="text-muted small">{total} éléments</div>
             <div className="btn-group">
-              <button
-                className="btn btn-sm btn-outline-dark"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
+              <button className="btn btn-sm btn-outline-dark" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                 Préc.
               </button>
               <span className="btn btn-sm btn-outline-dark disabled">
                 {page} / {pages}
               </span>
-              <button
-                className="btn btn-sm btn-outline-dark"
-                disabled={page >= pages}
-                onClick={() => setPage((p) => p + 1)}
-              >
+              <button className="btn btn-sm btn-outline-dark" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
                 Suiv.
               </button>
             </div>
@@ -1294,12 +1225,7 @@ export default function OrdersAdminPage() {
           MODAL: Edition rapide statut
          =========================== */}
       {editId !== null && (
-        <div
-          className="modal d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ background: "rgba(0,0,0,.2)" }}
-        >
+        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.2)" }}>
           <div className="modal-dialog" role="document">
             <div className="modal-content">
               <div className="modal-header">
@@ -1322,18 +1248,10 @@ export default function OrdersAdminPage() {
                 </select>
               </div>
               <div className="modal-footer">
-                <button
-                  className="btn btn-outline-dark"
-                  disabled={saving}
-                  onClick={() => setEditId(null)}
-                >
+                <button className="btn btn-outline-dark" disabled={saving} onClick={() => setEditId(null)}>
                   Fermer
                 </button>
-                <button
-                  className="btn btn-dark"
-                  disabled={saving}
-                  onClick={onSave}
-                >
+                <button className="btn btn-dark" disabled={saving} onClick={onSave}>
                   {saving ? "Enregistrement…" : "Enregistrer"}
                 </button>
               </div>
@@ -1346,12 +1264,7 @@ export default function OrdersAdminPage() {
           MODAL: Voir / Confirmer
          =========================== */}
       {viewId !== null && (
-        <div
-          className="modal d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ background: "rgba(0,0,0,.35)" }}
-        >
+        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
           <div className="modal-dialog modal-lg" role="document">
             <div className="modal-content">
               <div className="modal-header">
@@ -1370,28 +1283,18 @@ export default function OrdersAdminPage() {
                   <>
                     <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                       <div className="d-flex align-items-center gap-2">
-                        <span
-                          className={`badge ${
-                            BADGE[
-                              ((detail as AnyObj).status as OrderStatus) ||
-                                "OPEN"
-                            ]
-                          }`}
-                        >
+                        <span className={`badge ${BADGE[((detail as AnyObj).status as OrderStatus) || "OPEN"]}`}>
                           {(detail as AnyObj).status}
                         </span>
-                        <small className="text-muted">
-                          {dateTime((detail as AnyObj).created_at)}
-                        </small>
+                        <span className={`badge ${viewFulLabel.cls}`}>{viewFulLabel.text}</span>
+                        <small className="text-muted">{dateTime((detail as AnyObj).created_at)}</small>
                       </div>
 
                       <div className="d-flex flex-wrap gap-2 align-items-center">
                         <div className="btn-group">
                           <button
                             className="btn btn-sm btn-outline-dark"
-                            disabled={
-                              viewSaving || (detail as AnyObj).status !== "OPEN"
-                            }
+                            disabled={viewSaving || (detail as AnyObj).status !== "OPEN"}
                             onClick={() => onConfirmQuick("PREPARATION")}
                             title="Confirmer = passer en préparation"
                           >
@@ -1399,10 +1302,7 @@ export default function OrdersAdminPage() {
                           </button>
                           <button
                             className="btn btn-sm btn-outline-secondary"
-                            disabled={
-                              viewSaving ||
-                              (detail as AnyObj).status !== "PREPARATION"
-                            }
+                            disabled={viewSaving || (detail as AnyObj).status !== "PREPARATION"}
                             onClick={() => onConfirmQuick("DELIVERY")}
                             title="Mettre en livraison"
                           >
@@ -1410,11 +1310,7 @@ export default function OrdersAdminPage() {
                           </button>
                           <button
                             className="btn btn-sm btn-outline-success"
-                            disabled={
-                              viewSaving ||
-                              (detail as AnyObj).status === "DONE" ||
-                              (detail as AnyObj).status === "CANCELLED"
-                            }
+                            disabled={viewSaving || (detail as AnyObj).status === "DONE" || (detail as AnyObj).status === "CANCELLED"}
                             onClick={() => onConfirmQuick("DONE")}
                             title="Marquer comme livrée"
                           >
@@ -1425,9 +1321,7 @@ export default function OrdersAdminPage() {
                         <select
                           className="form-select form-select-sm"
                           value={viewStatus}
-                          onChange={(e) =>
-                            setViewStatus(e.target.value as OrderStatus)
-                          }
+                          onChange={(e) => setViewStatus(e.target.value as OrderStatus)}
                           style={{ width: 180 }}
                           disabled={viewSaving}
                         >
@@ -1437,11 +1331,7 @@ export default function OrdersAdminPage() {
                             </option>
                           ))}
                         </select>
-                        <button
-                          className="btn btn-sm btn-dark"
-                          disabled={viewSaving}
-                          onClick={onViewSaveStatus}
-                        >
+                        <button className="btn btn-sm btn-dark" disabled={viewSaving} onClick={onViewSaveStatus}>
                           {viewSaving ? "…" : "Enregistrer"}
                         </button>
                       </div>
@@ -1454,27 +1344,15 @@ export default function OrdersAdminPage() {
                             <h6 className="mb-2">Client</h6>
                             <div className="d-flex flex-wrap justify-content-between align-items-center">
                               <div>
-                                <div className="fw-semibold">
-                                  {client.fullName}
-                                </div>
-                                <div className="text-muted small">
-                                  {client.phone || "—"}
-                                </div>
+                                <div className="fw-semibold">{client.fullName}</div>
+                                <div className="text-muted small">{client.phone || "—"}</div>
                               </div>
                               <div className="d-flex gap-2">
-                                <a
-                                  className="btn btn-sm btn-success"
-                                  href={waHref(detail as AnyObj)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
+                                <a className="btn btn-sm btn-success" href={waHref(detail as AnyObj)} target="_blank" rel="noopener noreferrer">
                                   WhatsApp
                                 </a>
                                 {client.phone ? (
-                                  <a
-                                    className="btn btn-sm btn-outline-dark"
-                                    href={telHref(client.phone)}
-                                  >
+                                  <a className="btn btn-sm btn-outline-dark" href={telHref(client.phone)}>
                                     Appeler
                                   </a>
                                 ) : null}
@@ -1483,41 +1361,51 @@ export default function OrdersAdminPage() {
                           </div>
                         </div>
 
-                        <div className="card border-0 shadow-sm mb-3">
-                          <div className="card-body">
-                            <h6 className="mb-2">Adresse de livraison</h6>
-                            <div>
-                              {address?.city || address?.ville || "—"}
-                              {address?.commune ? `, ${address.commune}` : ""}
-                              {address?.district || address?.quartier
-                                ? `, ${address.district ?? address.quartier}`
-                                : ""}
-                              {address?.gps ? (
-                                <>
-                                  <br />
-                                  <span className="text-muted small">
-                                    GPS: {address.gps.lat?.toFixed?.(5)},{" "}
-                                    {address.gps.lng?.toFixed?.(5)}
-                                  </span>
-                                </>
+                        {/* ✅ Adresse seulement si LIVRAISON */}
+                        {viewFulfillment === "DELIVERY" ? (
+                          <div className="card border-0 shadow-sm mb-3">
+                            <div className="card-body">
+                              <h6 className="mb-2">Adresse de livraison</h6>
+                              <div>
+                                {address?.city || address?.ville || "—"}
+                                {address?.commune ? `, ${address.commune}` : ""}
+                                {address?.district || address?.quartier ? `, ${address.district ?? address.quartier}` : ""}
+                                {address?.gps ? (
+                                  <>
+                                    <br />
+                                    <span className="text-muted small">
+                                      GPS: {address.gps.lat?.toFixed?.(5)}, {address.gps.lng?.toFixed?.(5)}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </div>
+                              {(detail as AnyObj)?.geo_link ? (
+                                <div className="mt-2">
+                                  <a className="btn btn-sm btn-outline-secondary" href={(detail as AnyObj).geo_link} target="_blank" rel="noopener noreferrer">
+                                    Ouvrir dans Google Maps
+                                  </a>
+                                </div>
                               ) : null}
                             </div>
-                            {(detail as AnyObj)?.geo_link ? (
-                              <div className="mt-2">
-                                <a
-                                  className="btn btn-sm btn-outline-secondary"
-                                  href={(detail as AnyObj).geo_link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  Ouvrir dans Google Maps
-                                </a>
-                              </div>
-                            ) : null}
                           </div>
-                        </div>
+                        ) : (
+                          <div className="card border-0 shadow-sm mb-3">
+                            <div className="card-body">
+                              <h6 className="mb-2">Réception</h6>
+                              {viewFulfillment === "PICKUP" ? (
+                                <div className="text-muted small">
+                                  Récupération sur place (aucune adresse client).
+                                </div>
+                              ) : (
+                                <div className="text-muted small">
+                                  Expédition : Duumini dépose le colis (frais dépôt). Le client paie le transporteur au retrait.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
-                        {/* ===== Paiement (inchangé) ===== */}
+                        {/* ===== Paiement ===== */}
                         <div className="card border-0 shadow-sm">
                           <div className="card-body">
                             <div className="d-flex justify-content-between align-items-center mb-2">
@@ -1529,14 +1417,18 @@ export default function OrdersAdminPage() {
                                       ? "bg-success"
                                       : viewPay.status === "PARTIAL"
                                         ? "bg-warning text-dark"
-                                        : "bg-secondary"
+                                        : viewPay.status === "PENDING"
+                                          ? "bg-warning text-dark"
+                                          : "bg-secondary"
                                   }`}
                                 >
                                   {viewPay.status === "PAID"
                                     ? "PAYÉ"
                                     : viewPay.status === "PARTIAL"
                                       ? "PARTIEL"
-                                      : "NON PAYÉ"}
+                                      : viewPay.status === "PENDING"
+                                        ? "EN ATTENTE"
+                                        : "NON PAYÉ"}
                                 </span>
                               ) : (
                                 <span className="text-muted small">—</span>
@@ -1547,33 +1439,21 @@ export default function OrdersAdminPage() {
                               <>
                                 <div className="d-flex justify-content-between small">
                                   <span className="text-muted">Total</span>
-                                  <span className="fw-semibold">
-                                    {mad(viewPay.total)}
-                                  </span>
+                                  <span className="fw-semibold">{mad(viewPay.total)}</span>
                                 </div>
                                 <div className="d-flex justify-content-between small">
                                   <span className="text-muted">Payé</span>
-                                  <span className="fw-semibold">
-                                    {mad(viewPay.paid_amount)}
-                                  </span>
+                                  <span className="fw-semibold">{mad(viewPay.paid_amount)}</span>
                                 </div>
                                 <div className="d-flex justify-content-between small mb-2">
                                   <span className="text-muted">Reste</span>
-                                  <span className="fw-semibold">
-                                    {mad(viewPay.remaining)}
-                                  </span>
+                                  <span className="fw-semibold">{mad(viewPay.remaining)}</span>
                                 </div>
 
                                 {(viewPay.method || viewPay.note) && (
                                   <div className="small text-muted">
-                                    {viewPay.method ? (
-                                      <div>
-                                        Méthode: {String(viewPay.method)}
-                                      </div>
-                                    ) : null}
-                                    {viewPay.note ? (
-                                      <div>Note: {String(viewPay.note)}</div>
-                                    ) : null}
+                                    {viewPay.method ? <div>Méthode: {String(viewPay.method)}</div> : null}
+                                    {viewPay.note ? <div>Note: {String(viewPay.note)}</div> : null}
                                   </div>
                                 )}
 
@@ -1584,11 +1464,7 @@ export default function OrdersAdminPage() {
                                         <select
                                           className="form-select form-select-sm"
                                           value={payEditMode}
-                                          onChange={(e) =>
-                                            setPayEditMode(
-                                              e.target.value as any,
-                                            )
-                                          }
+                                          onChange={(e) => setPayEditMode(e.target.value as any)}
                                           disabled={paySaving}
                                         >
                                           <option value="ADD">Ajouter</option>
@@ -1601,34 +1477,18 @@ export default function OrdersAdminPage() {
                                           min={0}
                                           step="1"
                                           className="form-control form-control-sm"
-                                          placeholder={
-                                            payEditMode === "ADD"
-                                              ? "Montant à ajouter"
-                                              : "Montant payé"
-                                          }
+                                          placeholder={payEditMode === "ADD" ? "Montant à ajouter" : "Montant payé"}
                                           value={toInputNumberValue(payInput)}
-                                          onChange={(e) =>
-                                            setPayInput(
-                                              fromInputNumberValue(
-                                                e.target.value,
-                                              ),
-                                            )
-                                          }
-                                          onFocus={() => {
-                                            // au clic: si 0 -> on vide visuellement (reste 0 dans le state tant qu'il ne tape rien)
-                                            if (payInput === 0) setPayInput(0);
-                                          }}
+                                          onChange={(e) => setPayInput(fromInputNumberValue(e.target.value))}
                                           disabled={paySaving}
                                         />
                                       </div>
                                       <div className="col-12 col-md-4">
                                         <input
                                           className="form-control form-control-sm"
-                                          placeholder="Méthode (CASH, ...)"
+                                          placeholder="Méthode (COD, CASH, BANK_TRANSFER…)"
                                           value={payMethod}
-                                          onChange={(e) =>
-                                            setPayMethod(e.target.value)
-                                          }
+                                          onChange={(e) => setPayMethod(e.target.value)}
                                           disabled={paySaving}
                                         />
                                       </div>
@@ -1637,106 +1497,65 @@ export default function OrdersAdminPage() {
                                           className="form-control form-control-sm"
                                           placeholder="Note (optionnel)"
                                           value={payNote}
-                                          onChange={(e) =>
-                                            setPayNote(e.target.value)
-                                          }
+                                          onChange={(e) => setPayNote(e.target.value)}
                                           disabled={paySaving}
                                         />
                                       </div>
                                     </div>
                                     <div className="d-flex justify-content-end mt-2">
-                                      <button
-                                        className="btn btn-sm btn-dark"
-                                        onClick={onSavePayment}
-                                        disabled={paySaving}
-                                      >
-                                        {paySaving
-                                          ? "…"
-                                          : "Mettre à jour paiement"}
+                                      <button className="btn btn-sm btn-dark" onClick={onSavePayment} disabled={paySaving}>
+                                        {paySaving ? "…" : "Mettre à jour paiement"}
                                       </button>
                                     </div>
                                   </div>
                                 ) : null}
                               </>
                             ) : (
-                              <div className="text-muted small">
-                                Paiement non disponible.
-                              </div>
+                              <div className="text-muted small">Paiement non disponible.</div>
                             )}
                           </div>
                         </div>
                       </div>
 
-                      {/* ===== Articles + Totaux (inchangés) ===== */}
+                      {/* ===== Articles + Totaux ===== */}
                       <div className="col-12 col-lg-6">
                         <div className="card border-0 shadow-sm mb-3">
                           <div className="card-body">
                             <h6 className="mb-2">Articles</h6>
                             <ul className="list-group list-group-flush">
                               {itemsDetail.map((it, i) => {
-                                const name =
-                                  it?.product_name ||
-                                  it?.name ||
-                                  `Produit #${it?.product_id ?? ""}`;
+                                const name = it?.product_name || it?.name || `Produit #${it?.product_id ?? ""}`;
                                 const qty = Number(it?.qty ?? 1);
-                                const unit = Number(
-                                  it?.unit_price ?? it?.price ?? 0,
-                                );
+                                const unit = Number(it?.unit_price ?? it?.price ?? 0);
                                 const img = getItemImage(it);
                                 const lineTotal = unit * qty;
 
                                 return (
-                                  <li
-                                    key={i}
-                                    className="list-group-item d-flex justify-content-between align-items-center gap-2"
-                                  >
+                                  <li key={i} className="list-group-item d-flex justify-content-between align-items-center gap-2">
                                     <div className="d-flex align-items-center gap-2 flex-grow-1">
                                       {img ? (
-                                        <div
-                                          style={{
-                                            width: 48,
-                                            height: 48,
-                                            borderRadius: 8,
-                                            overflow: "hidden",
-                                            background: "#f5f5f5",
-                                          }}
-                                        >
-                                          <img
-                                            src={img}
-                                            alt={name}
-                                            className="w-100 h-100 object-fit-cover"
-                                            loading="lazy"
-                                          />
+                                        <div style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", background: "#f5f5f5" }}>
+                                          <img src={img} alt={name} className="w-100 h-100 object-fit-cover" loading="lazy" />
                                         </div>
                                       ) : null}
                                       <div style={{ minWidth: 0 }}>
-                                        <div
-                                          className="fw-semibold text-truncate"
-                                          title={name}
-                                        >
+                                        <div className="fw-semibold text-truncate" title={name}>
                                           {name}
                                         </div>
                                         <div className="small text-muted">
-                                          {mad(unit)}{" "}
-                                          <span className="text-muted">
-                                            ×{qty}
-                                          </span>
+                                          {mad(unit)} <span className="text-muted">×{qty}</span>
                                         </div>
                                       </div>
                                     </div>
-                                    <span className="fw-semibold ms-2">
-                                      {mad(lineTotal)}
-                                    </span>
+                                    <span className="fw-semibold ms-2">{mad(lineTotal)}</span>
                                   </li>
                                 );
                               })}
 
                               {deliveryFeeDetail > 0 && (
                                 <li className="list-group-item d-flex justify-content-between align-items-center">
-                                  <span className="text-muted">Livraison</span>
-                                  <span className="fw-semibold">
-                                    {mad(deliveryFeeDetail)}
-                                  </span>
+                                  <span className="text-muted">Frais</span>
+                                  <span className="fw-semibold">{mad(deliveryFeeDetail)}</span>
                                 </li>
                               )}
                             </ul>
@@ -1747,27 +1566,18 @@ export default function OrdersAdminPage() {
                           <div className="card-body">
                             <div className="d-flex justify-content-between align-items-center">
                               <div className="text-muted">Sous-total</div>
-                              <div className="fw-semibold">
-                                {mad(itemsAmountDetail)}
-                              </div>
+                              <div className="fw-semibold">{mad(itemsAmountDetail)}</div>
                             </div>
                             <div className="d-flex justify-content-between align-items-center">
                               <div className="text-muted">Total</div>
-                              <div className="h6 m-0">
-                                {mad(totalAmountDetail)}
-                              </div>
+                              <div className="h6 m-0">{mad(totalAmountDetail)}</div>
                             </div>
                           </div>
                         </div>
 
-                        {(detail as AnyObj)?.status !== "CANCELLED" &&
-                        (detail as AnyObj)?.status !== "DONE" ? (
+                        {(detail as AnyObj)?.status !== "CANCELLED" && (detail as AnyObj)?.status !== "DONE" ? (
                           <div className="d-flex justify-content-end mt-3">
-                            <button
-                              className="btn btn-outline-danger"
-                              onClick={() => onCancel(viewId)}
-                              disabled={viewSaving}
-                            >
+                            <button className="btn btn-outline-danger" onClick={() => onCancel(viewId)} disabled={viewSaving}>
                               Annuler la commande
                             </button>
                           </div>
@@ -1779,10 +1589,7 @@ export default function OrdersAdminPage() {
               </div>
 
               <div className="modal-footer">
-                <button
-                  className="btn btn-outline-dark"
-                  onClick={() => setViewId(null)}
-                >
+                <button className="btn btn-outline-dark" onClick={() => setViewId(null)}>
                   Fermer
                 </button>
               </div>
@@ -1792,77 +1599,45 @@ export default function OrdersAdminPage() {
       )}
 
       {/* ===========================
-          MODAL: Vente sur place (✅ scroll fixé)
+          MODAL: Vente sur place (scroll fixé)
          =========================== */}
       {openCreate && (
-        <div
-          className="modal d-block"
-          tabIndex={-1}
-          role="dialog"
-          style={{ background: "rgba(0,0,0,.35)" }}
-        >
+        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
           <div className="modal-dialog modal-xl" role="document">
             <div className="modal-content pos-modal">
-              {/* ✅ Header sticky */}
               <div className="modal-header pos-sticky-header">
                 <h5 className="modal-title">Vente sur place</h5>
-                <button
-                  className="btn-close"
-                  onClick={() => setOpenCreate(false)}
-                />
+                <button className="btn-close" onClick={() => setOpenCreate(false)} />
               </div>
 
-              {/* ✅ Body scrollable (le footer reste visible) */}
               <div className="modal-body pos-body">
                 <div className="row g-3 pos-grid">
-                  {/* Catalogue */}
                   <div className="col-12 col-lg-7 pos-col">
                     <div className="card border-0 shadow-sm h-100">
                       <div className="card-body d-flex flex-column">
                         <div className="d-flex align-items-center justify-content-between gap-2">
                           <div>
                             <h6 className="mb-0">Catalogue</h6>
-                            <div className="text-muted small">
-                              Ajoute des produits au panier
-                            </div>
+                            <div className="text-muted small">Ajoute des produits au panier</div>
                           </div>
-                          <button
-                            className="btn btn-sm btn-outline-dark"
-                            onClick={loadAllProducts}
-                            disabled={searchLoading}
-                          >
+                          <button className="btn btn-sm btn-outline-dark" onClick={loadAllProducts} disabled={searchLoading}>
                             Rafraîchir
                           </button>
                         </div>
 
                         <div className="row g-2 mt-2">
                           <div className="col-12 col-md-6">
-                            <input
-                              className="form-control"
-                              placeholder="Rechercher (nom, sku)…"
-                              value={search}
-                              onChange={(e) => setSearch(e.target.value)}
-                            />
+                            <input className="form-control" placeholder="Rechercher (nom, sku)…" value={search} onChange={(e) => setSearch(e.target.value)} />
                           </div>
                           <div className="col-12 col-md-3">
-                            <select
-                              className="form-select"
-                              value={promoFilter}
-                              onChange={(e) =>
-                                setPromoFilter(e.target.value as any)
-                              }
-                            >
+                            <select className="form-select" value={promoFilter} onChange={(e) => setPromoFilter(e.target.value as any)}>
                               <option value="ALL">Tous</option>
                               <option value="PROMO">Promos</option>
                               <option value="NO_PROMO">Sans promo</option>
                             </select>
                           </div>
                           <div className="col-12 col-md-3">
-                            <select
-                              className="form-select"
-                              value={sortBy}
-                              onChange={(e) => setSortBy(e.target.value as any)}
-                            >
+                            <select className="form-select" value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}>
                               <option value="NAME">Nom</option>
                               <option value="PRICE_ASC">Prix ↑</option>
                               <option value="PRICE_DESC">Prix ↓</option>
@@ -1870,198 +1645,112 @@ export default function OrdersAdminPage() {
                           </div>
                         </div>
 
-                        {searchErr && (
-                          <div className="alert alert-danger mt-2 mb-0">
-                            {searchErr}
-                          </div>
-                        )}
+                        {searchErr && <div className="alert alert-danger mt-2 mb-0">{searchErr}</div>}
 
-                        {/* ✅ Liste produits scrollable indépendante */}
                         <div className="mt-2 pos-scroll">
                           {searchLoading ? (
-                            <div className="text-muted">
-                              Chargement de tous les produits…
-                            </div>
+                            <div className="text-muted">Chargement de tous les produits…</div>
                           ) : (
                             <div className="vstack gap-2">
                               {filteredResults.map((p) => {
                                 const unit = getProductUnitPrice(p);
                                 const promo = hasPromo(p);
-                                const base = Number(
-                                  (p as AnyObj)?.price ?? unit,
-                                );
+                                const base = Number((p as AnyObj)?.price ?? unit);
 
                                 return (
-                                  <div
-                                    key={p.id}
-                                    className="d-flex justify-content-between align-items-center border rounded p-2"
-                                  >
-                                    <div
-                                      className="text-truncate"
-                                      style={{ maxWidth: 420 }}
-                                    >
+                                  <div key={p.id} className="d-flex justify-content-between align-items-center border rounded p-2">
+                                    <div className="text-truncate" style={{ maxWidth: 420 }}>
                                       <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
-                                        <span className="text-truncate">
-                                          {p.name}
-                                        </span>
-                                        {promo ? (
-                                          <span className="badge bg-danger">
-                                            Promo
-                                          </span>
-                                        ) : null}
+                                        <span className="text-truncate">{p.name}</span>
+                                        {promo ? <span className="badge bg-danger">Promo</span> : null}
                                       </div>
 
                                       <div className="text-muted small">
                                         {promo ? (
                                           <>
-                                            <span className="text-decoration-line-through me-2">
-                                              {mad(base)}
-                                            </span>
-                                            <span className="fw-semibold text-dark">
-                                              {mad(unit)}
-                                            </span>
+                                            <span className="text-decoration-line-through me-2">{mad(base)}</span>
+                                            <span className="fw-semibold text-dark">{mad(unit)}</span>
                                           </>
                                         ) : (
-                                          <span className="fw-semibold text-dark">
-                                            {mad(unit)}
-                                          </span>
+                                          <span className="fw-semibold text-dark">{mad(unit)}</span>
                                         )}
                                       </div>
                                     </div>
 
-                                    <button
-                                      className="btn btn-sm btn-duu"
-                                      onClick={() => addToBasket(p)}
-                                    >
+                                    <button className="btn btn-sm btn-duu" onClick={() => addToBasket(p)}>
                                       Ajouter
                                     </button>
                                   </div>
                                 );
                               })}
 
-                              {filteredResults.length === 0 && (
-                                <div className="text-muted small">
-                                  Aucun produit.
-                                </div>
-                              )}
+                              {filteredResults.length === 0 && <div className="text-muted small">Aucun produit.</div>}
                             </div>
                           )}
 
-                          <div className="small text-muted mt-2">
-                            {results.length} produits chargés
-                          </div>
+                          <div className="small text-muted mt-2">{results.length} produits chargés</div>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Panier + paiement */}
                   <div className="col-12 col-lg-5 pos-col">
                     <div className="card border-0 shadow-sm h-100">
                       <div className="card-body d-flex flex-column">
-                        {/* ✅ Résumé + actions en haut */}
                         <div className="d-flex align-items-start justify-content-between gap-2">
                           <div>
                             <h6 className="mb-0">Panier & Paiement</h6>
-                            <div className="text-muted small">
-                              Tout est ici, sans scroller jusqu’en bas
-                            </div>
+                            <div className="text-muted small">Tout est ici, sans scroller jusqu’en bas</div>
                           </div>
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={clearBasket}
-                            disabled={!basket.length}
-                          >
+                          <button className="btn btn-sm btn-outline-danger" onClick={clearBasket} disabled={!basket.length}>
                             Vider
                           </button>
                         </div>
 
-                        {/* ✅ Total + reste sticky dans la colonne droite */}
                         <div className="pos-summary mt-2">
                           <div className="d-flex justify-content-between align-items-center">
                             <span className="text-muted">Total</span>
-                            <span className="fw-semibold">
-                              {mad(basketTotal)}
-                            </span>
+                            <span className="fw-semibold">{mad(basketTotal)}</span>
                           </div>
                           <div className="d-flex justify-content-between align-items-center">
                             <span className="text-muted">Payé</span>
-                            <span className="fw-semibold">
-                              {mad(posPaidClamped)}
-                            </span>
+                            <span className="fw-semibold">{mad(posPaidClamped)}</span>
                           </div>
                           <div className="d-flex justify-content-between align-items-center">
                             <span className="text-muted">Reste</span>
-                            <span className="fw-semibold">
-                              {mad(posRemaining)}
-                            </span>
+                            <span className="fw-semibold">{mad(posRemaining)}</span>
                           </div>
                           <div className="mt-2">
-                            <span
-                              className={`badge ${
-                                posStatus === "PAID"
-                                  ? "bg-success"
-                                  : posStatus === "PARTIAL"
-                                    ? "bg-warning text-dark"
-                                    : "bg-secondary"
-                              }`}
-                            >
-                              {posStatus === "PAID"
-                                ? "PAYÉ"
-                                : posStatus === "PARTIAL"
-                                  ? "PARTIEL"
-                                  : "NON PAYÉ"}
+                            <span className={`badge ${posStatus === "PAID" ? "bg-success" : posStatus === "PARTIAL" ? "bg-warning text-dark" : "bg-secondary"}`}>
+                              {posStatus === "PAID" ? "PAYÉ" : posStatus === "PARTIAL" ? "PARTIEL" : "NON PAYÉ"}
                             </span>
                           </div>
                         </div>
 
-                        {/* ✅ Panier scrollable */}
                         <div className="vstack gap-2 mt-2 pos-scroll">
                           {basket.length === 0 ? (
-                            <div className="text-muted small">
-                              Aucun article.
-                            </div>
+                            <div className="text-muted small">Aucun article.</div>
                           ) : (
                             basket.map((ln) => {
                               const unit = getProductUnitPrice(ln.product);
                               const promo = hasPromo(ln.product);
-                              const base = Number(
-                                (ln.product as AnyObj)?.price ?? unit,
-                              );
+                              const base = Number((ln.product as AnyObj)?.price ?? unit);
 
                               return (
-                                <div
-                                  key={ln.product.id}
-                                  className="d-flex align-items-center justify-content-between border rounded p-2"
-                                >
-                                  <div
-                                    className="text-truncate"
-                                    style={{ maxWidth: 220 }}
-                                  >
+                                <div key={ln.product.id} className="d-flex align-items-center justify-content-between border rounded p-2">
+                                  <div className="text-truncate" style={{ maxWidth: 220 }}>
                                     <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
-                                      <span className="text-truncate">
-                                        {ln.product.name}
-                                      </span>
-                                      {promo ? (
-                                        <span className="badge bg-danger">
-                                          Promo
-                                        </span>
-                                      ) : null}
+                                      <span className="text-truncate">{ln.product.name}</span>
+                                      {promo ? <span className="badge bg-danger">Promo</span> : null}
                                     </div>
                                     <div className="text-muted small">
                                       {promo ? (
                                         <>
-                                          <span className="text-decoration-line-through me-2">
-                                            {mad(base)}
-                                          </span>
-                                          <span className="fw-semibold text-dark">
-                                            {mad(unit)}
-                                          </span>
+                                          <span className="text-decoration-line-through me-2">{mad(base)}</span>
+                                          <span className="fw-semibold text-dark">{mad(unit)}</span>
                                         </>
                                       ) : (
-                                        <span className="fw-semibold text-dark">
-                                          {mad(unit)}
-                                        </span>
+                                        <span className="fw-semibold text-dark">{mad(unit)}</span>
                                       )}
                                     </div>
                                   </div>
@@ -2073,20 +1762,9 @@ export default function OrdersAdminPage() {
                                       style={{ width: 80 }}
                                       min={1}
                                       value={ln.qty}
-                                      onChange={(e) =>
-                                        setQty(
-                                          ln.product.id,
-                                          Math.max(
-                                            1,
-                                            Number(e.target.value || 1),
-                                          ),
-                                        )
-                                      }
+                                      onChange={(e) => setQty(ln.product.id, Math.max(1, Number(e.target.value || 1)))}
                                     />
-                                    <button
-                                      className="btn btn-sm btn-outline-danger"
-                                      onClick={() => removeLine(ln.product.id)}
-                                    >
+                                    <button className="btn btn-sm btn-outline-danger" onClick={() => removeLine(ln.product.id)}>
                                       ✕
                                     </button>
                                   </div>
@@ -2105,9 +1783,7 @@ export default function OrdersAdminPage() {
                           step="1"
                           className="form-control"
                           value={toInputNumberValue(amountPaid)}
-                          onChange={(e) =>
-                            setAmountPaid(fromInputNumberValue(e.target.value))
-                          }
+                          onChange={(e) => setAmountPaid(fromInputNumberValue(e.target.value))}
                         />
 
                         <hr className="my-3" />
@@ -2115,45 +1791,20 @@ export default function OrdersAdminPage() {
                         <h6 className="mb-2">Client (facultatif)</h6>
                         <div className="row g-2">
                           <div className="col-12 col-sm-6">
-                            <input
-                              className="form-control"
-                              placeholder="Prénom"
-                              value={cFirst}
-                              onChange={(e) => setCFirst(e.target.value)}
-                            />
+                            <input className="form-control" placeholder="Prénom" value={cFirst} onChange={(e) => setCFirst(e.target.value)} />
                           </div>
                           <div className="col-12 col-sm-6">
-                            <input
-                              className="form-control"
-                              placeholder="Nom"
-                              value={cLast}
-                              onChange={(e) => setCLast(e.target.value)}
-                            />
+                            <input className="form-control" placeholder="Nom" value={cLast} onChange={(e) => setCLast(e.target.value)} />
                           </div>
                           <div className="col-12">
-                            <input
-                              className="form-control"
-                              placeholder="Téléphone (+212…)"
-                              value={cPhone}
-                              onChange={(e) => setCPhone(e.target.value)}
-                            />
+                            <input className="form-control" placeholder="Téléphone (+212…)" value={cPhone} onChange={(e) => setCPhone(e.target.value)} />
                           </div>
                         </div>
 
                         <div className="form-check mt-3">
-                          <input
-                            className="form-check-input"
-                            type="checkbox"
-                            id="markDone"
-                            checked={markDone}
-                            onChange={(e) => setMarkDone(e.target.checked)}
-                          />
-                          <label
-                            className="form-check-label"
-                            htmlFor="markDone"
-                          >
-                            Marquer comme <strong>livrée (DONE)</strong> après
-                            création
+                          <input className="form-check-input" type="checkbox" id="markDone" checked={markDone} onChange={(e) => setMarkDone(e.target.checked)} />
+                          <label className="form-check-label" htmlFor="markDone">
+                            Marquer comme <strong>livrée (DONE)</strong> après création
                           </label>
                         </div>
                       </div>
@@ -2162,20 +1813,11 @@ export default function OrdersAdminPage() {
                 </div>
               </div>
 
-              {/* ✅ Footer sticky: toujours visible => plus besoin de scroller pour confirmer */}
               <div className="modal-footer pos-sticky-footer">
-                <button
-                  className="btn btn-outline-dark"
-                  onClick={() => setOpenCreate(false)}
-                  disabled={saving}
-                >
+                <button className="btn btn-outline-dark" onClick={() => setOpenCreate(false)} disabled={saving}>
                   Fermer
                 </button>
-                <button
-                  className="btn btn-dark"
-                  onClick={submitCreate}
-                  disabled={saving || basket.length === 0}
-                >
+                <button className="btn btn-dark" onClick={submitCreate} disabled={saving || basket.length === 0}>
                   {saving ? "Enregistrement…" : "Créer la vente"}
                 </button>
               </div>
@@ -2192,7 +1834,6 @@ export default function OrdersAdminPage() {
         }
         .btn-duu:hover{ filter: brightness(0.95); }
 
-        /* ✅ POS modal: on fixe le souci de scroll */
         .pos-modal{
           max-height: calc(100vh - 2rem);
           display: flex;
@@ -2206,7 +1847,7 @@ export default function OrdersAdminPage() {
           border-bottom: 1px solid rgba(0,0,0,.06);
         }
         .pos-body{
-          overflow: auto;  /* ✅ le scroll est ici */
+          overflow: auto;
           flex: 1 1 auto;
         }
         .pos-sticky-footer{
