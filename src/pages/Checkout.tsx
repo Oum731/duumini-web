@@ -155,7 +155,7 @@ function isFoodLike(p: any) {
 const DELIVERY_RULES = {
   CASABLANCA_FEE: 25,
   DEFAULT_FEE_OUTSIDE_CASA: 60,
-  EXPEDITION_DROP_FEE: 25, // ✅ frais Duumini pour déposer le colis (gare/point d’expédition)
+  EXPEDITION_DROP_FEE: 0, // ✅ EXPEDITION = GRATUIT (annule les 25dh)
 };
 
 const BANK_RIB = {
@@ -274,7 +274,7 @@ export default function CheckoutPage() {
   // ✅ Frais selon le mode:
   const deliveryFee = useMemo(() => {
     if (fulfillment === "PICKUP") return 0;
-    if (fulfillment === "EXPEDITION") return DELIVERY_RULES.EXPEDITION_DROP_FEE;
+    if (fulfillment === "EXPEDITION") return DELIVERY_RULES.EXPEDITION_DROP_FEE; // ✅ 0
     return computeDeliveryFeeByCity(cityText);
   }, [cityText, fulfillment]);
 
@@ -589,11 +589,12 @@ export default function CheckoutPage() {
           ? ("CASABLANCA" as any)
           : ("CITY" as any);
 
+      // ✅ EXPEDITION: plus de 25 DH
       const deliveryNote =
         fulfillment === "PICKUP"
           ? "Retrait sur place (gratuit)."
           : fulfillment === "EXPEDITION"
-          ? "Expédition: Duumini dépose le colis (25 DH). Le client paie les frais du transporteur à la récupération du colis."
+          ? "Expédition: dépôt Duumini gratuit. Le client paie les frais du transporteur à la récupération du colis."
           : "Livraison à domicile.";
 
       const paymentNote =
@@ -621,8 +622,6 @@ export default function CheckoutPage() {
           } as any;
         }),
 
-        // ✅ Important pour ton CA Duumini (hors livraison):
-        // items_amount = CA articles / delivery_fee séparé
         totals: {
           items_count: totalItems,
           items_amount: Number(totalAmount || 0),
@@ -655,7 +654,9 @@ export default function CheckoutPage() {
       const createdAt = new Date(createdAtStr);
 
       const numericId = typeof orderId === "number" ? orderId : Number(orderId) || 0;
-      const displayCode = numericId ? numericId.toString(36).toUpperCase() : String(orderId ?? "").toUpperCase();
+      const displayCode = numericId
+        ? numericId.toString(36).toUpperCase()
+        : String(orderId ?? "").toUpperCase();
 
       try {
         trackPurchase({
@@ -824,7 +825,7 @@ export default function CheckoutPage() {
     fulfillment === "PICKUP"
       ? "Retrait sur place (gratuit)"
       : fulfillment === "EXPEDITION"
-      ? "Expédition (dépôt Duumini 25 DH)"
+      ? "Expédition (dépôt Duumini gratuit)"
       : isCasablanca(cityText)
       ? "Livraison Casablanca 25 DH"
       : "Hors Casablanca dès 60 DH (selon la ville)";
@@ -1314,8 +1315,7 @@ export default function CheckoutPage() {
 
                 {fulfillment === "EXPEDITION" && (
                   <div className="small text-muted mt-1">
-                    Vous payez <strong>{mad(DELIVERY_RULES.EXPEDITION_DROP_FEE)}</strong> pour que le livreur Duumini
-                    dépose votre colis à la gare / point d’expédition. <br />
+                    Expédition : <strong>dépôt Duumini gratuit</strong>. <br />
                     <strong>Les frais du transporteur</strong> sont payés par le client{" "}
                     <strong>directement au transporteur</strong> au moment de récupérer son colis.
                   </div>
@@ -1436,7 +1436,7 @@ export default function CheckoutPage() {
                     {fulfillment === "PICKUP"
                       ? "Frais"
                       : fulfillment === "EXPEDITION"
-                      ? "Dépôt (expédition)"
+                      ? "Expédition"
                       : "Livraison"}
                   </span>
                   <span className="fw-semibold">{mad(deliveryFee)}</span>
@@ -1466,7 +1466,7 @@ export default function CheckoutPage() {
             <div className="alert alert-warning mt-3 mb-0">
               <div className="fw-semibold">📦 Expédition</div>
               <div className="small text-muted">
-                Vous payez <strong>{mad(DELIVERY_RULES.EXPEDITION_DROP_FEE)}</strong> pour le dépôt.
+                Dépôt Duumini : <strong>gratuit</strong>.
                 <br />
                 Le client paie les frais du transporteur au moment de récupérer son colis.
               </div>
