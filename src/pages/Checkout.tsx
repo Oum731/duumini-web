@@ -257,7 +257,7 @@ export default function CheckoutPage() {
   const hasToken = !!getAccessToken?.();
   const [showGuestSuccess, setShowGuestSuccess] = useState(false);
 
-  // ✅ Nouveau: mode de livraison/retait/expédition + paiement
+  // ✅ Mode + paiement (dropdown)
   const [fulfillment, setFulfillment] = useState<FulfillmentMode>("DELIVERY");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
 
@@ -271,7 +271,7 @@ export default function CheckoutPage() {
     });
   }, [lines]);
 
-  // ✅ Frais selon le mode:
+  // ✅ Frais selon le mode
   const deliveryFee = useMemo(() => {
     if (fulfillment === "PICKUP") return 0;
     if (fulfillment === "EXPEDITION") return DELIVERY_RULES.EXPEDITION_DROP_FEE; // ✅ 0
@@ -305,10 +305,8 @@ export default function CheckoutPage() {
   const addressOk = useMemo(() => {
     if (!cityText) return false;
 
-    // Retrait / Expédition: pas d’adresse demandée au client ici
     if (fulfillment === "PICKUP" || fulfillment === "EXPEDITION") return true;
 
-    // Livraison classique: adresse (ou GPS)
     if (hasToken) {
       return useGps ? !!coords : communeVal.length > 0 && quartier.trim().length > 0;
     }
@@ -441,7 +439,6 @@ export default function CheckoutPage() {
     const v = debouncedCityText;
     if (!v) return;
 
-    // si pas en "DELIVERY", on ne force pas les champs d’adresse
     if (fulfillment !== "DELIVERY") return;
 
     setQuartier("");
@@ -542,7 +539,6 @@ export default function CheckoutPage() {
       const normalizedPhone = normalizePhoneInput(phone.trim());
       const finalCity = String(cityText || "").trim();
 
-      // ✅ Adresse: uniquement utile pour DELIVERY (sinon on envoie minimal)
       const address: CreateOrderPayload["address"] =
         fulfillment === "DELIVERY"
           ? hasToken
@@ -589,7 +585,6 @@ export default function CheckoutPage() {
           ? ("CASABLANCA" as any)
           : ("CITY" as any);
 
-      // ✅ EXPEDITION: plus de 25 DH
       const deliveryNote =
         fulfillment === "PICKUP"
           ? "Retrait sur place (gratuit)."
@@ -600,7 +595,7 @@ export default function CheckoutPage() {
       const paymentNote =
         paymentMethod === "BANK_TRANSFER"
           ? `Virement bancaire (paiement en attente). Merci d’envoyer votre reçu pour confirmation.\nRIB: ${BANK_RIB.rib}\nIBAN: ${BANK_RIB.iban}\nBIC: ${BANK_RIB.bic}\nCompte: ${BANK_RIB.account_name}`
-          : "Paiement à la livraison (espèces).";
+          : "Paiement cash à la livraison.";
 
       const payload: CreateOrderPayload = {
         contact,
@@ -687,7 +682,6 @@ export default function CheckoutPage() {
         });
       } catch {}
 
-      // ETA uniquement pour DELIVERY (sinon pas d’estimation)
       const isCasa = isCasablanca(finalCity);
       const minStart = isCasa ? 25 : 60;
       const minEnd = isCasa ? 90 : 180;
@@ -721,7 +715,6 @@ export default function CheckoutPage() {
         if (!hasToken) window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
       } catch {}
 
-      // Track quartier seulement si DELIVERY et pas GPS
       if (fulfillment === "DELIVERY" && !useGps) {
         trackLocationSuggestion("QUARTIER", {
           ville: finalCity,
@@ -788,7 +781,7 @@ export default function CheckoutPage() {
         <div className="small text-muted">Total à payer</div>
         <div className="h5 m-0">{mad(grandTotalUi)}</div>
         <div className="small text-muted">
-          CA articles: {mad(totalAmount)}{" "}
+          Articles: {mad(totalAmount)}{" "}
           {fulfillment !== "PICKUP" && (
             <>
               • Frais: {mad(deliveryFee)}
@@ -949,7 +942,11 @@ export default function CheckoutPage() {
                   >
                     {loadingRefill ? (
                       <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                        <span
+                          className="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"
+                        />
                         Rechargement…<span className="visually-hidden">en cours</span>
                       </>
                     ) : (
@@ -963,18 +960,30 @@ export default function CheckoutPage() {
                 <div className="row g-3">
                   <div className="col-12 col-md-6">
                     <label className="form-label">Prénom</label>
-                    <input className="form-control" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="Prénom" />
+                    <input
+                      className="form-control"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Prénom"
+                    />
                   </div>
                   <div className="col-12 col-md-6">
                     <label className="form-label">Nom</label>
-                    <input className="form-control" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="Nom" />
+                    <input
+                      className="form-control"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Nom"
+                    />
                   </div>
 
                   <div className="col-12 col-md-6">
                     <label className="form-label">Téléphone</label>
                     <input
                       type="tel"
-                      className={`form-control ${phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""}`}
+                      className={`form-control ${
+                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
+                      }`}
                       placeholder="+212..."
                       value={phone}
                       onChange={handlePhoneChange}
@@ -984,7 +993,9 @@ export default function CheckoutPage() {
                         Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
-                    <div className="form-text">🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.</div>
+                    <div className="form-text">
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                    </div>
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -1014,11 +1025,15 @@ export default function CheckoutPage() {
                               {cityText || "—"}
                               {communeVal ? `, ${communeVal}` : ""}
                               {quartier ? ` — ${quartier}` : ""}
-                              {useGps && coords ? ` (GPS ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}
+                              {useGps && coords ? " (GPS activé)" : ""}
                             </div>
                           </div>
                           <div className="d-flex gap-2">
-                            <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => setEditingAddress(true)}>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => setEditingAddress(true)}
+                            >
                               Changer d’adresse
                             </button>
                           </div>
@@ -1066,7 +1081,9 @@ export default function CheckoutPage() {
                             )}
 
                             <div className="form-text">
-                              {loadingSuggest ? "Chargement suggestions…" : "Choisissez une commune ou saisissez-la."}
+                              {loadingSuggest
+                                ? "Chargement suggestions…"
+                                : "Choisissez une commune ou saisissez-la."}
                             </div>
                           </div>
 
@@ -1086,14 +1103,13 @@ export default function CheckoutPage() {
                                     <option key={s.value} value={s.value} />
                                   ))}
                                 </datalist>
-                                <div className="form-text">Astuce : commence à taper pour voir des suggestions.</div>
+                                <div className="form-text">
+                                  Astuce : commence à taper pour voir des suggestions.
+                                </div>
                               </>
                             ) : (
                               <div className="alert alert-info d-flex justify-content-between align-items-center">
-                                <span>
-                                  Localisation GPS activée{" "}
-                                  {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
-                                </span>
+                                <span>Localisation GPS activée.</span>
                                 <button
                                   className="btn btn-sm btn-outline-dark"
                                   type="button"
@@ -1130,7 +1146,9 @@ export default function CheckoutPage() {
                                 checked={saveAddressToProfile}
                                 onChange={(e) => setSaveAddressToProfile(e.target.checked)}
                               />
-                              <span className="form-check-label ms-2">Enregistrer cette adresse dans mon profil</span>
+                              <span className="form-check-label ms-2">
+                                Enregistrer cette adresse dans mon profil
+                              </span>
                             </label>
 
                             <button
@@ -1165,7 +1183,9 @@ export default function CheckoutPage() {
                     <label className="form-label">Téléphone</label>
                     <input
                       type="tel"
-                      className={`form-control ${phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""}`}
+                      className={`form-control ${
+                        phone && !isValidPhoneIntl(phone) ? "is-invalid" : ""
+                      }`}
                       placeholder="+212..., +225..., +223..., +1..."
                       value={phone}
                       onChange={handlePhoneChange}
@@ -1175,7 +1195,9 @@ export default function CheckoutPage() {
                         Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
                       </div>
                     )}
-                    <div className="form-text">🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.</div>
+                    <div className="form-text">
+                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                    </div>
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -1201,9 +1223,7 @@ export default function CheckoutPage() {
                         <span>Adresse complète / Localisation</span>
                         <span className="small">
                           {useGps && coords ? (
-                            <span className="text-success">
-                              GPS: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
-                            </span>
+                            <span className="text-success">GPS activé</span>
                           ) : (
                             <button
                               type="button"
@@ -1233,10 +1253,7 @@ export default function CheckoutPage() {
                       ) : (
                         <>
                           <div className="alert alert-info d-flex justify-content-between align-items-center">
-                            <span>
-                              Localisation GPS activée{" "}
-                              {coords ? `(${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})` : ""}.
-                            </span>
+                            <span>Localisation GPS activée.</span>
                             <button
                               className="btn btn-sm btn-outline-dark"
                               type="button"
@@ -1300,7 +1317,9 @@ export default function CheckoutPage() {
 
                 {fulfillment === "DELIVERY" && (
                   <>
-                    <div className="small text-muted">La livraison est calculée automatiquement selon votre ville.</div>
+                    <div className="small text-muted">
+                      La livraison est calculée automatiquement selon votre ville.
+                    </div>
                     <div className="small mt-2">
                       Ville : <strong>{cityText || "—"}</strong> • Frais : <strong>{mad(deliveryFee)}</strong>
                     </div>
@@ -1330,51 +1349,53 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Paiement */}
+          {/* Paiement (dropdown) */}
           <div className="card border-0 shadow-sm mt-3">
             <div className="card-body">
               <h2 className="h6 mb-2">Paiement</h2>
 
-              <div className="seg mb-3">
-                <button
-                  type="button"
-                  className={`btn ${paymentMethod === "COD" ? "btn-dark" : "btn-outline-dark"}`}
-                  onClick={() => setPaymentMethod("COD")}
-                >
-                  💵 À la livraison
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${paymentMethod === "BANK_TRANSFER" ? "btn-dark" : "btn-outline-dark"}`}
-                  onClick={() => setPaymentMethod("BANK_TRANSFER")}
-                >
-                  🏦 Virement bancaire
-                </button>
-              </div>
+              <div className="row g-3">
+                <div className="col-12 col-md-6">
+                  <label className="form-label">Mode de paiement</label>
+                  <select
+                    className="form-select"
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                  >
+                    <option value="COD">Cash (à la livraison)</option>
+                    <option value="BANK_TRANSFER">Virement bancaire</option>
+                  </select>
+                  <div className="form-text">Choisissez comment vous souhaitez payer votre commande.</div>
+                </div>
 
-              {paymentMethod === "COD" ? (
-                <div className="alert alert-secondary mb-0">
-                  <div className="fw-semibold mb-1">Paiement à la livraison</div>
-                  <small className="d-block text-muted">
-                    Vous réglez <strong>à la réception</strong> — en <strong>espèces</strong>. Aucun acompte requis.
-                  </small>
+                <div className="col-12">
+                  {paymentMethod === "COD" ? (
+                    <div className="alert alert-secondary mb-0">
+                      <div className="fw-semibold mb-1">Paiement cash</div>
+                      <small className="d-block text-muted">
+                        Vous payez <strong>à la réception</strong> en <strong>espèces</strong>.
+                      </small>
+                    </div>
+                  ) : (
+                    <div className="alert alert-warning mb-0">
+                      <div className="fw-semibold mb-2">Virement bancaire (paiement en attente)</div>
+
+                      <div className="rib-box">
+                        <div className="small"><strong>Compte:</strong> {BANK_RIB.account_name}</div>
+                        <div className="small"><strong>RIB:</strong> {BANK_RIB.rib}</div>
+                        <div className="small"><strong>IBAN:</strong> {BANK_RIB.iban}</div>
+                        <div className="small"><strong>BIC:</strong> {BANK_RIB.bic}</div>
+                      </div>
+
+                      <div className="small text-muted mt-2">
+                        Après le virement, merci d’envoyer le <strong>reçu</strong> (capture) pour confirmation.
+                        <br />
+                        Statut : <strong>Paiement en attente</strong>.
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="alert alert-warning mb-0">
-                  <div className="fw-semibold mb-2">Virement bancaire (paiement en attente)</div>
-                  <div className="rib-box">
-                    <div className="small"><strong>Compte:</strong> {BANK_RIB.account_name}</div>
-                    <div className="small"><strong>RIB:</strong> {BANK_RIB.rib}</div>
-                    <div className="small"><strong>IBAN:</strong> {BANK_RIB.iban}</div>
-                    <div className="small"><strong>BIC:</strong> {BANK_RIB.bic}</div>
-                  </div>
-                  <div className="small text-muted mt-2">
-                    Après le virement, merci d’envoyer le <strong>reçu</strong> (capture) pour que l’équipe confirme le paiement.
-                    <br />
-                    Statut côté admin et dans l’historique client : <strong>Paiement en attente</strong>.
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </div>
 
@@ -1392,7 +1413,11 @@ export default function CheckoutPage() {
             >
               {submitting ? (
                 <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  <span
+                    className="spinner-border spinner-border-sm me-2"
+                    role="status"
+                    aria-hidden="true"
+                  />
                   Confirmation…<span className="visually-hidden">de la commande</span>
                 </>
               ) : (
@@ -1423,7 +1448,9 @@ export default function CheckoutPage() {
                           {l.name} <span className="text-muted">×{l.qty}</span>
                         </div>
                         {vLabel && (
-                          <div className="small text-muted text-truncate">Variante : {vLabel}</div>
+                          <div className="small text-muted text-truncate">
+                            Variante : {vLabel}
+                          </div>
                         )}
                       </div>
                       <span className="fw-semibold">{mad((l.qty || 0) * (l.price || 0))}</span>
@@ -1453,12 +1480,7 @@ export default function CheckoutPage() {
                 <div className="h5 m-0">{mad(grandTotalUi)}</div>
               </div>
 
-              <div className="alert alert-light border mt-3 mb-0">
-                <div className="fw-semibold mb-1">CA Duumini (hors livraison)</div>
-                <small className="d-block text-muted">
-                  Le CA (articles) est calculé sur <strong>{mad(totalAmount)}</strong>. Les frais sont séparés.
-                </small>
-              </div>
+              
             </div>
           </div>
 
