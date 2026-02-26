@@ -4,10 +4,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import CategoriesMenu from "../components/CategoriesMenu";
-import { listProducts, type Product } from "../services/products";
+import { listManageProducts, listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
 import { useLocationCity } from "../context/LocationContext";
+import { useViewer } from "../hooks/useViewer";
 
 function GridSkeleton() {
   return (
@@ -106,6 +107,7 @@ export default function AfricanFood() {
   const { city } = useLocationCity();
   const navigate = useNavigate();
   const params = useParams();
+  const viewer = useViewer();
 
   const categorySlugParam = (params as any)?.categorySlug
     ? String((params as any).categorySlug).trim().toLowerCase()
@@ -119,7 +121,6 @@ export default function AfricanFood() {
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [allSubCategories, setAllSubCategories] = useState<SubCategory[]>([]);
 
-  // ✅ loading séparé: meta (cats/subs) + produits
   const [loading, setLoading] = useState(true);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +129,6 @@ export default function AfricanFood() {
   const [pageSize] = useState(24);
   const [total, setTotal] = useState(0);
 
-  // Recherche (debounce)
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   useEffect(() => {
@@ -141,11 +141,9 @@ export default function AfricanFood() {
     if (page > pages) setPage(pages);
   }, [pages, page]);
 
-  // ✅ abort séparés
   const abortProductsRef = useRef<AbortController | null>(null);
   const abortMetaRef = useRef<AbortController | null>(null);
 
-  /** ✅ charge Categories + SubCategories UNE seule fois */
   const loadMeta = useCallback(async () => {
     abortMetaRef.current?.abort();
     const ac = new AbortController();
@@ -177,7 +175,6 @@ export default function AfricanFood() {
     return () => abortMetaRef.current?.abort();
   }, [loadMeta]);
 
-  /** ✅ charge Produits seulement quand page/ville/route change */
   const loadProducts = useCallback(async () => {
     abortProductsRef.current?.abort();
     const ac = new AbortController();
@@ -187,12 +184,45 @@ export default function AfricanFood() {
     setError(null);
 
     try {
-      const resProducts = await listProducts({
-        page,
-        pageSize,
-        channel: "african-food" as Channel,
-        onlyActive: true,
-      } as any);
+      if (viewer.loading) return;
+
+      const isAdmin = viewer.role === "ADMIN";
+      const isPro =
+        viewer.role === "VENDEUR" || viewer.role === "RESTAURANT" || viewer.role === "FOURNISSEUR";
+
+      let resProducts: any;
+
+      if (isAdmin) {
+        resProducts = await listManageProducts({
+          page,
+          pageSize,
+          onlyActive: true,
+          vertical: "FOOD",
+        } as any);
+      } else if (isPro) {
+        const shopId = Number(viewer.actingShopId || 0) || null;
+        if (!shopId) {
+          setItems([]);
+          setTotal(0);
+          setError("Aucune boutique active. Sélectionne une boutique avant de voir tes produits.");
+          return;
+        }
+
+        resProducts = await listManageProducts({
+          page,
+          pageSize,
+          onlyActive: true,
+          vertical: "FOOD",
+          shop_id: shopId,
+        } as any);
+      } else {
+        resProducts = await listProducts({
+          page,
+          pageSize,
+          channel: "african-food" as Channel,
+          onlyActive: true,
+        } as any);
+      }
 
       if (ac.signal.aborted) return;
 
@@ -206,6 +236,8 @@ export default function AfricanFood() {
         `page:${page}`,
         `cat:${categorySlugParam || "all"}`,
         `sub:${subSlugParam || "all"}`,
+        `role:${String(viewer.role || "guest")}`,
+        `shop:${String(viewer.actingShopId || "none")}`,
       ].join("|");
 
       setItems(seededShuffle(rawItems, seedStr));
@@ -216,22 +248,27 @@ export default function AfricanFood() {
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }, [page, pageSize, city, categorySlugParam, subSlugParam]);
+  }, [
+    page,
+    pageSize,
+    city,
+    categorySlugParam,
+    subSlugParam,
+    viewer.loading,
+    viewer.role,
+    viewer.actingShopId,
+  ]);
 
   useEffect(() => {
     loadProducts();
     return () => abortProductsRef.current?.abort();
   }, [loadProducts]);
 
-  /** ✅ bouton retry: refetch produits (et meta si vide) */
   const refresh = useCallback(() => {
     loadProducts();
     if (!allCategories.length || !allSubCategories.length) loadMeta();
   }, [loadProducts, loadMeta, allCategories.length, allSubCategories.length]);
 
-  /** ✅ IMPORTANT: on ne filtre plus les catégories côté page
-   *  => c’est CategoriesMenu qui filtre selon la page (scope="african-food")
-   */
   const categoriesAll = useMemo(() => {
     const out = [...allCategories];
     out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
@@ -244,7 +281,6 @@ export default function AfricanFood() {
     return out;
   }, [allSubCategories]);
 
-  // maps (sur tout le catalogue)
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
     for (const c of categoriesAll) map[c.id] = c;
@@ -285,25 +321,23 @@ export default function AfricanFood() {
   const selectedSubCategory = useMemo(() => {
     if (!subSlugParam || !selectedCategory) return null;
     const list = subsByCatId[(selectedCategory as any).id] || [];
-    return list.find((s) => String((s as any).slug || "").toLowerCase() === subSlugParam) || null;
+    return (
+      list.find((s) => String((s as any).slug || "").toLowerCase() === subSlugParam) || null
+    );
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
-  // URL invalide → redirect
   useEffect(() => {
     if (!categoriesAll.length) return;
     if (categorySlugParam && !selectedCategory) {
       navigate("/african-food", { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoriesAll.length, categorySlugParam, selectedCategory]);
+  }, [categoriesAll.length, categorySlugParam, selectedCategory, navigate]);
 
-  // filtre search d’abord
   const filteredBySearch = useMemo(() => {
     if (!qDebounced) return items;
     return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
   }, [items, qDebounced]);
 
-  // filtre category/subcategory (front)
   const filtered = useMemo(() => {
     let out = filteredBySearch;
 
@@ -336,7 +370,6 @@ export default function AfricanFood() {
     return out;
   }, [filteredBySearch, selectedCategory, selectedSubCategory, categoriesById, subById]);
 
-  /** ✅ PROMO + NON-PROMO (sans duplication) */
   const promoItems = useMemo(() => uniqById(filtered.filter(isPromoProduct)), [filtered]);
 
   const promoIds = useMemo(() => {
@@ -350,7 +383,6 @@ export default function AfricanFood() {
     return filtered.filter((p) => !promoIds.has(Number((p as any).id || 0)));
   }, [filtered, promoItems.length, promoIds]);
 
-  // ✅ titre simple
   const title = useMemo(() => {
     if (selectedSubCategory) return (selectedSubCategory as any).name || "Produits";
     if (selectedCategory) return (selectedCategory as any).name || "Produits";
@@ -361,7 +393,7 @@ export default function AfricanFood() {
   const activeSubCategoryId = (selectedSubCategory as any)?.id ?? null;
 
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
-  const loadingAny = loading || loadingMeta;
+  const loadingAny = loading || loadingMeta || viewer.loading;
 
   return (
     <section className="container-xxl py-4">
@@ -461,10 +493,22 @@ export default function AfricanFood() {
             <h1 className="h4 mb-0" style={{ color: "var(--duu-black)" }}>
               {title}
             </h1>
+
+            {(viewer.role === "ADMIN" ||
+              viewer.role === "VENDEUR" ||
+              viewer.role === "RESTAURANT" ||
+              viewer.role === "FOURNISSEUR") && (
+              <div className="small text-muted mt-1">
+                {viewer.role === "ADMIN"
+                  ? "Mode admin : catalogue FOOD (manage)."
+                  : viewer.actingShopId
+                  ? `Mode pro : produits FOOD de la boutique #${viewer.actingShopId}.`
+                  : "Mode pro : aucune boutique active."}
+              </div>
+            )}
           </div>
 
           <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
-            {/* Filtrer */}
             <div className="d-flex align-items-center gap-2 flex-shrink-0 duu-filter-btn">
               <span
                 className="d-inline-flex align-items-center justify-content-center"
@@ -480,7 +524,6 @@ export default function AfricanFood() {
                 <SlidersHorizontal size={18} />
               </span>
 
-              {/* ✅ le menu se filtre tout seul pour AfricanFood */}
               <CategoriesMenu
                 scope="african-food"
                 title="Filtrer"
@@ -494,15 +537,13 @@ export default function AfricanFood() {
                 onSelectSubCategory={(s) => {
                   setPage(1);
                   const cat = categoriesById[Number((s as any).category_id || 0)];
-                  const catSlug =
-                    (cat as any)?.slug || (selectedCategory as any)?.slug || "";
+                  const catSlug = (cat as any)?.slug || (selectedCategory as any)?.slug || "";
                   if (!catSlug) return;
                   navigate(`/african-food/${catSlug}/${(s as any).slug}`);
                 }}
               />
             </div>
 
-            {/* Search */}
             <div className="input-group" style={{ maxWidth: 420 }}>
               <input
                 className="form-control"
@@ -602,12 +643,11 @@ export default function AfricanFood() {
         <GridSkeleton />
       ) : (
         <>
-          {/* ✅ PROMOS (sans duplication) */}
           {promoItems.length > 0 && (
             <div className="promo-wrap mb-3">
               <div className="promo-head">
                 <span>Promos du moment</span>
-                <span className="promo-badge">🔥 {promoItems.length}</span>
+                <span className="promo-badge">🔥 Promo</span>
               </div>
 
               <div className="p-3">
@@ -622,7 +662,6 @@ export default function AfricanFood() {
             </div>
           )}
 
-          {/* ✅ LISTE NORMALE (on exclut les promos => pas de doublons) */}
           {normalItems.length === 0 ? (
             <div className="text-center text-muted py-5">Aucun produit trouvé.</div>
           ) : (

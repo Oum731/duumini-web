@@ -5,7 +5,10 @@ import {
   updateProduct,
   type Product,
   type PromoDiscountType,
+  listManageProducts, // ✅ si présent dans services/products
 } from "../../services/products";
+import { me } from "../../services/auth";
+import { api } from "../../services/http";
 
 /* ===== Utils ===== */
 function mad(n?: number | null) {
@@ -15,6 +18,11 @@ function mad(n?: number | null) {
     currency: "MAD",
     maximumFractionDigits: 0,
   }).format(v);
+}
+
+function isVendorRole(role?: string | null) {
+  const r = String(role || "").toUpperCase();
+  return r === "VENDOR" || r === "VENDEUR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
 }
 
 /**
@@ -35,16 +43,12 @@ function promoLabel(p: any) {
 /**
  * ✅ Prix base à afficher (admin) :
  * - si variants => on affiche min_price (sinon price)
- *   (comme ça l'admin comprend d'où vient le "à partir de ...")
  */
 function basePriceForAdmin(p: any): number {
   const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
 
-  const minp: number | null =
-    p?.min_price == null || p?.min_price === "" ? null : Number(p.min_price);
-
-  const price: number =
-    p?.price == null || p?.price === "" ? 0 : Number(p.price);
+  const minp: number | null = p?.min_price == null || p?.min_price === "" ? null : Number(p.min_price);
+  const price: number = p?.price == null || p?.price === "" ? 0 : Number(p.price);
 
   if (hasVariants && minp != null && Number.isFinite(minp) && minp >= 0) return minp;
   return Number.isFinite(price) ? price : 0;
@@ -53,7 +57,7 @@ function basePriceForAdmin(p: any): number {
 /**
  * ✅ Prix promo à afficher (admin) :
  * - si variants => min_promo_price (sinon promo_price)
- * - sinon => calc fallback local (au cas où l'API n'est pas encore à jour)
+ * - sinon => calc fallback local
  */
 function computePromoPriceLocal(base: number, eligible: number, type: any, value: any) {
   if (Number(eligible) !== 1) return null;
@@ -77,20 +81,22 @@ function promoPriceForAdmin(p: any): number | null {
   const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
 
   const apiPromo = hasVariants ? p?.min_promo_price : p?.promo_price;
-
-  const apiPromoN: number | null =
-    apiPromo == null || apiPromo === "" ? null : Number(apiPromo);
+  const apiPromoN: number | null = apiPromo == null || apiPromo === "" ? null : Number(apiPromo);
 
   if (apiPromoN != null && Number.isFinite(apiPromoN)) return apiPromoN;
 
-  // fallback local si l'API ne renvoie pas encore promo_price
-  const base = basePriceForAdmin(p); // ✅ number garanti
+  const base = basePriceForAdmin(p);
   return computePromoPriceLocal(
     base,
     Number(p?.promo_eligible || 0),
     p?.promo_discount_type,
     p?.promo_discount_value
   );
+}
+
+function unwrap<T>(res: any): T {
+  if (res && typeof res === "object" && "data" in res) return res.data as T;
+  return res as T;
 }
 
 /* ========================= */
@@ -103,6 +109,10 @@ export default function PromotionsAdminPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [all, setAll] = useState<Product[]>([]);
+
+  // ✅ rôle
+  const [role, setRole] = useState<string | null>(null);
+  const isVendor = isVendorRole(role);
 
   const promoItems = useMemo(() => all.filter((p: any) => isPromo(p)), [all]);
 
@@ -151,11 +161,63 @@ export default function PromotionsAdminPage() {
     });
   }, [promoItems, qPromo]);
 
+  const refreshRole = useCallback(async () => {
+    try {
+      const u: any = await me();
+      const r = String(u?.role || u?.user?.role || "").toUpperCase();
+      setRole(r || null);
+    } catch {
+      setRole(null);
+    }
+  }, []);
+
+  /**
+   * ✅ LOAD:
+   * - VENDEUR => on charge uniquement SES produits via /api/products/manage (ou endpoint équivalent)
+   * - ADMIN => on garde listProducts (tous)
+   */
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await listProducts({ page: 1, pageSize: 500 } as any);
+      // s'assurer d'avoir le rôle
+      let r = role;
+      if (!r) {
+        try {
+          const u: any = await me();
+          r = String(u?.role || u?.user?.role || "").toUpperCase();
+          setRole(r || null);
+        } catch {
+          r = null;
+          setRole(null);
+        }
+      }
+
+      const vendor = isVendorRole(r);
+
+      // ✅ VENDEUR: liste manage => backend filtre automatiquement par vendeur
+      if (vendor) {
+        // 1) si le service listManageProducts existe, on l’utilise
+        if (typeof listManageProducts === "function") {
+          const res = await listManageProducts({
+            page: 1,
+            pageSize: 1000,
+            onlyActive: false,
+          } as any);
+          setAll(Array.isArray(res?.items) ? (res.items as Product[]) : []);
+          return;
+        }
+
+        // 2) fallback direct API (si ton service n'est pas exposé)
+        const resRaw = await api.get<any>("/api/products/manage", { query: { page: 1, pageSize: 1000 } as any });
+        const body = unwrap<any>(resRaw);
+        const items = Array.isArray(body?.items) ? body.items : Array.isArray(body?.data?.items) ? body.data.items : [];
+        setAll(items as Product[]);
+        return;
+      }
+
+      // ✅ ADMIN: tous les produits
+      const res = await listProducts({ page: 1, pageSize: 1000 } as any);
       const items = Array.isArray(res?.items) ? (res.items as Product[]) : [];
       setAll(items);
     } catch (e: any) {
@@ -163,11 +225,15 @@ export default function PromotionsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [role]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    (async () => {
+      await refreshRole();
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleAllAdd = (on: boolean) => {
     const next: Record<number, boolean> = {};
@@ -228,9 +294,7 @@ export default function PromotionsAdminPage() {
       );
 
       const failed = results.filter((r) => r.status === "rejected").length;
-      if (failed) {
-        setError(`${failed} produit(s) n’ont pas pu être mis en promotion.`);
-      }
+      if (failed) setError(`${failed} produit(s) n’ont pas pu être mis en promotion.`);
 
       setSelectedAdd({});
       setModalOpen(false);
@@ -263,9 +327,7 @@ export default function PromotionsAdminPage() {
       );
 
       const failed = results.filter((r) => r.status === "rejected").length;
-      if (failed) {
-        setError(`${failed} produit(s) n’ont pas pu être retirés de la promo.`);
-      }
+      if (failed) setError(`${failed} produit(s) n’ont pas pu être retirés de la promo.`);
 
       setSelectedRemove({});
       await load();
@@ -276,6 +338,12 @@ export default function PromotionsAdminPage() {
 
   return (
     <div className="container-xxl py-3 px-2 px-sm-3">
+      <style>{`
+        .btn-duu{ background: var(--duu-yellow, #fddc00); color:#1f1f1f; border:none; font-weight:900; }
+        .btn-duu:hover{ filter: brightness(.96); }
+        .badge-duu{ background: var(--duu-red, #e53935); }
+      `}</style>
+
       <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
         <div>
           <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
@@ -290,6 +358,12 @@ export default function PromotionsAdminPage() {
           </button>
         </div>
       </div>
+
+      {isVendor ? (
+        <div className="alert alert-info py-2 mb-2">
+          Mode vendeur : tu vois uniquement <b>tes produits</b>.
+        </div>
+      ) : null}
 
       {error ? <div className="alert alert-danger py-2 mb-2">{error}</div> : null}
 
@@ -321,7 +395,11 @@ export default function PromotionsAdminPage() {
                   >
                     Tout cocher
                   </button>
-                  <button className="btn btn-sm btn-outline-dark" onClick={() => toggleAllAdd(false)} disabled={busy || loading}>
+                  <button
+                    className="btn btn-sm btn-outline-dark"
+                    onClick={() => toggleAllAdd(false)}
+                    disabled={busy || loading}
+                  >
                     Tout décocher
                   </button>
                   <button
@@ -341,7 +419,11 @@ export default function PromotionsAdminPage() {
                   >
                     Tout cocher
                   </button>
-                  <button className="btn btn-sm btn-outline-dark" onClick={() => toggleAllRemove(false)} disabled={busy || loading}>
+                  <button
+                    className="btn btn-sm btn-outline-dark"
+                    onClick={() => toggleAllRemove(false)}
+                    disabled={busy || loading}
+                  >
                     Tout décocher
                   </button>
                   <button

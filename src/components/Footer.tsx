@@ -109,7 +109,6 @@ export default function Footer() {
                 </li>
               )}
 
-              {/* ✅ Duumini Food → visible SEULEMENT après ouverture 
               {isOpen && (
                 <li>
                   <TopLink
@@ -120,7 +119,6 @@ export default function Footer() {
                   </TopLink>
                 </li>
               )}
-*/}
               {/* ✅ Fashion → visible SEULEMENT après ouverture */}
               {isOpen && (
                 <li>

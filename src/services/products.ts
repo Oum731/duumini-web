@@ -11,12 +11,12 @@ export type ProductVariant = {
   id: number;
   product_id: number;
 
-  size?: string | null; // S, M, L, XL, 42...
-  color?: string | null; // Noir, Blanc...
+  size?: string | null;
+  color?: string | null;
   sku?: string | null;
 
-  stock: number; // stock de la variante
-  price_override?: number | null; // ✅ backend: price_override
+  stock: number;
+  price_override?: number | null;
 
   is_active?: 0 | 1 | null;
 
@@ -24,42 +24,84 @@ export type ProductVariant = {
   updated_at?: string | null;
 };
 
-export type Product = {
+/**
+ * ✅ FOOD options (accompagnements / boissons chaud-froid / custom)
+ * - facultatif: si le backend ne renvoie pas ces champs, ça casse pas
+ */
+export type ProductOptionChoice = {
+  id: number;
+  group_id: number;
+
+  label: string;
+  price_delta?: number | null; // supplément
+  is_default?: 0 | 1 | null;
+  is_active?: 0 | 1 | null;
+
+  sort_order?: number | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type ProductOptionGroup = {
+  id: number;
+  product_id: number;
+
+  type: "ACCOMPANIMENT" | "DRINK_TEMP" | "CUSTOM";
+  title: string;
+
+  required?: 0 | 1 | null; // obligé ?
+  max_select?: number | null; // 1 = radio, >1 = multi
+  is_active?: 0 | 1 | null;
+
+  sort_order?: number | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+
+  choices?: ProductOptionChoice[];
+};
+
+/**
+ * ✅ Supplier aggregates (optional)
+ * - returned only if supplier_* tables exist on backend
+ * - null otherwise (safe)
+ */
+export type SupplierAgg = {
+  supplier_stock?: number | null;
+  supplier_cost?: number | null;
+  supplier_last_supply_at?: string | null;
+};
+
+export type Product = SupplierAgg & {
   id: number;
   shop_id: number | null;
 
   category_id?: number | null;
-
-  // ✅ FK vers sub_categories
   sub_category_id?: number | null;
 
-  // ✅ infos joinées (retournées par l'API)
   category_name?: string | null;
   category_slug?: string | null;
 
-  sub_category_slug?: string | null; // "food" | "market" | "fashion"...
+  sub_category_slug?: string | null;
   sub_category_name?: string | null;
 
-  // ✅ backend: products.vertical
   vertical?: "FOOD" | "MARKET" | "FASHION" | null;
 
   name: string;
   slug: string;
 
-  /** Prix client (retourné par l'API) */
   price: number;
 
-  /** ✅ calculé backend (stripDuuminiRateFromProduct) */
   vendor_price?: number | null;
 
-  /** ✅ NEW (backend list/read): */
   has_variants?: boolean;
   min_price?: number | null;
+  variants_count?: number | null;
 
   currency?: string | null;
   description?: string | null;
 
-  /** stock global (si pas de variantes) */
   stock?: number | null;
 
   is_featured?: 0 | 1 | null;
@@ -68,6 +110,11 @@ export type Product = {
   promo_discount_type?: PromoDiscountType | null;
   promo_discount_value?: number | null;
   promo_free_delivery?: 0 | 1 | null;
+
+  // computed by backend
+  promo_price?: number | null;
+  min_promo_price?: number | null;
+  has_promo?: boolean;
 
   created_at?: string | null;
   updated_at?: string | null;
@@ -90,10 +137,11 @@ export type Product = {
   avg_rating?: number | null;
   rating_count?: number | null;
 
-  /** ✅ Variantes (si backend les renvoie via ?variants=1 ou /variants) */
   variants?: ProductVariant[];
 
-  // ✅ Anti-bug : si quelqu’un tente product.sub_category => TS hurle
+  /** options (FOOD) */
+  option_groups?: ProductOptionGroup[];
+
   sub_category?: never;
 };
 
@@ -188,29 +236,29 @@ function normalizeVertical(v: any): Vertical | null {
   return null;
 }
 
-/** ✅ helper: produit actif (compat active/is_active) */
+/** produit actif (compat active/is_active) */
 export function isProductActive(p: any): boolean {
   return !!(p?.active ?? p?.is_active ?? 1);
 }
 
-/** ✅ helper: variante active */
+/** variante active */
 export function isVariantActive(v: any): boolean {
   return !!(v?.is_active ?? 1);
 }
 
-/** ✅ helper: un produit a des variantes actives ? */
+/** un produit a des variantes actives ? */
 export function hasActiveVariants(p: any): boolean {
   const vs: any[] = Array.isArray(p?.variants) ? p.variants : [];
   return vs.some((x) => isVariantActive(x));
 }
 
-/** ✅ filtre de sécurité: enlève les produits inactifs */
+/** filtre de sécurité: enlève les produits inactifs */
 function filterActive<T extends any>(arr: T[]): T[] {
   return (arr || []).filter((p: any) => isProductActive(p));
 }
 
 /* ======================================================================
- * Normalizers (anti-bug: e.map is not a function)
+ * Normalizers
  * ===================================================================== */
 
 function asArray<T = any>(x: any): T[] {
@@ -218,13 +266,11 @@ function asArray<T = any>(x: any): T[] {
 
   if (Array.isArray(body)) return body;
 
-  // formats fréquents: { items: [...] } ou { data: [...] }
   if (body && Array.isArray(body.items)) return body.items;
   if (body && Array.isArray(body.data)) return body.data;
   if (body && Array.isArray(body.rows)) return body.rows;
   if (body && Array.isArray(body.results)) return body.results;
 
-  // formats imbriqués: { data: { items: [...] } }
   if (body?.data && Array.isArray(body.data.items)) return body.data.items;
 
   return [];
@@ -247,27 +293,125 @@ function asPaginated<T = any>(x: any): Paginated<T> {
 }
 
 /* ======================================================================
- * Products
+ * Shared query helper (compat pagination)
  * ===================================================================== */
 
-/* ---------- List ---------- */
-/**
- * ✅ Par défaut : onlyActive = true
- * ✅ Aligné backend:
- * - category_id / sub_category_id / shop_id / q
- * - vertical (FOOD|MARKET|FASHION) ✅ (prioritaire côté backend)
- */
+function withPageCompat(query: Record<string, any>, page: number, pageSize: number) {
+  query.page = page;
+  query.pageSize = pageSize;
+  query.page_size = pageSize;
+  return query;
+}
+
+/* ======================================================================
+ * Products (MANAGE)
+ * ===================================================================== */
+
+export async function listManageProducts(
+  opts: {
+    page?: number;
+    pageSize?: number;
+    onlyActive?: boolean;
+    category_id?: number;
+    sub_category_id?: number;
+    shop_id?: number; // admin only (backend ignore for vendor)
+    q?: string;
+    vertical?: Vertical;
+    includeVariants?: boolean;
+    onlyWithVariants?: boolean;
+    includeOptions?: boolean; // backend may ignore (safe)
+  } = {}
+) {
+  const page = opts.page ?? 1;
+  const pageSize = opts.pageSize ?? 20;
+  const onlyActive = opts.onlyActive ?? true;
+
+  const query: Record<string, any> = {};
+  withPageCompat(query, page, pageSize);
+
+  if (onlyActive) query.onlyActive = 1;
+
+  const vert = normalizeVertical(opts.vertical);
+  if (vert) {
+    query.vertical = vert;
+    query.v = vert;
+  }
+
+  if (typeof opts.category_id === "number") {
+    query.category_id = opts.category_id;
+    query.categoryId = opts.category_id;
+  }
+  if (typeof opts.sub_category_id === "number") {
+    query.sub_category_id = opts.sub_category_id;
+    query.subCategoryId = opts.sub_category_id;
+  }
+  if (typeof opts.shop_id === "number") {
+    query.shop_id = opts.shop_id;
+    query.shopId = opts.shop_id;
+  }
+
+  if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
+
+  if (opts.includeVariants) query.includeVariants = 1;
+  if (opts.onlyWithVariants) query.onlyWithVariants = 1;
+
+  // ✅ safe: backend peut ignorer
+  if (opts.includeOptions) query.includeOptions = 1;
+
+  const raw = await api.get<any>("/api/products/manage", { query });
+  const res = asPaginated<Product>(raw);
+
+  if (onlyActive) return { ...res, items: filterActive(res.items) };
+  return res;
+}
+
+export async function getManageProductById(
+  id: number,
+  opts?: { variants?: boolean; options?: boolean } // options safe (backend may ignore)
+): Promise<Product> {
+  const query: Record<string, any> = {};
+  if (opts?.variants) query.variants = 1;
+
+  // ✅ safe: si backend ignore, no impact
+  if (opts?.options) query.options = 1;
+
+  const raw = await api.get<any>(`/api/products/manage/${id}`, { query });
+  return unwrap<Product>(raw);
+}
+
+export async function getManageProductBySlug(
+  slug: string,
+  opts?: { variants?: boolean; options?: boolean }
+): Promise<Product> {
+  const s = String(slug || "").trim();
+  if (!s) throw new Error("slug requis");
+
+  const query: Record<string, any> = {};
+  if (opts?.variants) query.variants = 1;
+  if (opts?.options) query.options = 1;
+
+  const raw = await api.get<any>(`/api/products/manage/slug/${encodeURIComponent(s)}`, { query });
+  return unwrap<Product>(raw);
+}
+
+/* ======================================================================
+ * Products (PUBLIC)
+ * ===================================================================== */
+
 export async function listProducts(
   opts: {
     page?: number;
     pageSize?: number;
-    channel?: Channel; // compat
-    onlyActive?: boolean; // default true
+    channel?: Channel;
+    onlyActive?: boolean;
     category_id?: number;
     sub_category_id?: number;
     shop_id?: number;
     q?: string;
-    vertical?: Vertical; // ✅ NEW
+    vertical?: Vertical;
+    includeVariants?: boolean;
+    onlyWithVariants?: boolean;
+    includeOptions?: boolean; // safe (ignored if backend not supporting)
   } = {}
 ) {
   const page = opts.page ?? 1;
@@ -282,13 +426,15 @@ export async function listProducts(
 
   const onlyActive = opts.onlyActive ?? true;
 
-  const query: Record<string, any> = { page, pageSize };
+  const query: Record<string, any> = {};
+  withPageCompat(query, page, pageSize);
+
   if (onlyActive) query.onlyActive = 1;
 
   const vert = normalizeVertical(opts.vertical);
   if (vert) {
     query.vertical = vert;
-    query.v = vert; // compat
+    query.v = vert;
   }
 
   if (typeof opts.category_id === "number") {
@@ -305,6 +451,12 @@ export async function listProducts(
   }
   if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
 
+  if (opts.includeVariants) query.includeVariants = 1;
+  if (opts.onlyWithVariants) query.onlyWithVariants = 1;
+
+  // safe
+  if (opts.includeOptions) query.includeOptions = 1;
+
   const raw = await api.get<any>(base, { query });
   const res = asPaginated<Product>(raw);
 
@@ -312,21 +464,18 @@ export async function listProducts(
   return res;
 }
 
-/* ---------- Promotions ---------- */
-/**
- * ✅ backend: GET /api/products/promotions
- * - limit, onlyActive, channel, categoryId/category_id, subCategoryId/sub_category_id, shopId/shop_id, q, vertical
- */
 export async function listPromotions(
   opts: {
     limit?: number;
     channel?: "all" | Channel;
-    onlyActive?: boolean; // default true
+    onlyActive?: boolean;
     category_id?: number;
     sub_category_id?: number;
     shop_id?: number;
     q?: string;
-    vertical?: Vertical; // ✅ NEW
+    vertical?: Vertical;
+    includeVariants?: boolean;
+    includeOptions?: boolean; // safe
   } = {}
 ) {
   const limit = opts.limit ?? 12;
@@ -356,33 +505,60 @@ export async function listPromotions(
   }
   if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
 
+  if (opts.includeVariants) query.includeVariants = 1;
+  if (opts.includeOptions) query.includeOptions = 1;
+
   const raw = await api.get<any>("/api/products/promotions", { query });
   const arr = asArray<Product>(raw);
 
   return onlyActive ? filterActive(arr) : arr;
 }
 
-/* ---------- Read ---------- */
-/**
- * ✅ backend: GET /api/products/:id
- * - option: ?variants=1 pour inclure variants
- * ✅ IMPORTANT: renvoie toujours l'objet Product (pas {data})
- */
-export async function getProduct(id: number, opts?: { variants?: boolean }): Promise<Product> {
+export async function getProduct(
+  id: number,
+  opts?: { variants?: boolean; options?: boolean } // options safe
+): Promise<Product> {
   const query: Record<string, any> = {};
   if (opts?.variants) query.variants = 1;
+  if (opts?.options) query.options = 1;
 
   const raw = await api.get<any>(`/api/products/${id}`, { query });
   return unwrap<Product>(raw);
 }
 
 /* ======================================================================
- * Variants (aligné backend actuel)
- * ✅ backend:
- * - GET    /api/products/:id/variants
- * - POST   /api/products/:id/variants   (bulk upsert)  { variants: [...] } + ?replace=1
- * - PUT    /api/products/variants/:variantId
- * - DELETE /api/products/variants/:variantId
+ * Drinks (PUBLIC) — endpoint exist in backend
+ * ===================================================================== */
+
+export async function listShopDrinks(opts: {
+  shop_id?: number;
+  shopId?: number;
+  q?: string;
+  onlyActive?: boolean;
+  page?: number;
+  pageSize?: number;
+}): Promise<Paginated<Product>> {
+  const page = opts.page ?? 1;
+  const pageSize = opts.pageSize ?? 40;
+  const onlyActive = opts.onlyActive ?? true;
+
+  const shopId = Number(opts.shopId ?? opts.shop_id ?? 0);
+  if (!shopId) throw new Error("shopId requis");
+
+  const query: Record<string, any> = { shopId };
+  withPageCompat(query, page, pageSize);
+
+  if (onlyActive) query.onlyActive = 1;
+  if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
+
+  const raw = await api.get<any>("/api/products/drinks", { query });
+  const res = asPaginated<Product>(raw);
+
+  return onlyActive ? { ...res, items: filterActive(res.items) } : res;
+}
+
+/* ======================================================================
+ * Variants
  * ===================================================================== */
 
 export async function listProductVariants(productId: number): Promise<ProductVariant[]> {
@@ -390,12 +566,6 @@ export async function listProductVariants(productId: number): Promise<ProductVar
   return asArray<ProductVariant>(raw);
 }
 
-/**
- * ✅ bulk upsert
- * payload:
- *  { variants: [{size,color,sku,stock,price_override,is_active}, ...] }
- * opts.replace=true => ?replace=1
- */
 export async function upsertProductVariants(
   productId: number,
   payload: { variants: Array<Partial<ProductVariant> & { stock?: number }> },
@@ -408,7 +578,6 @@ export async function upsertProductVariants(
   return unwrap<{ ok: true; items: ProductVariant[] }>(raw);
 }
 
-/** ✅ update 1 variante */
 export async function updateProductVariant(
   variantId: number,
   payload: Partial<{
@@ -424,25 +593,215 @@ export async function updateProductVariant(
   return unwrap<{ ok: true }>(raw);
 }
 
-/** ✅ delete 1 variante */
 export async function removeProductVariant(variantId: number): Promise<{ ok: true }> {
   const raw = await api.delete<any>(`/api/products/variants/${variantId}`);
   return unwrap<{ ok: true }>(raw);
 }
 
-/* ---------- Create ---------- */
+/* ======================================================================
+ * Options (FOOD) — ✅ SAFE WRAPPERS (backend peut ne pas les avoir)
+ * ===================================================================== */
+
+const OPTIONS_BASE = "/api/products";
+
 /**
- * ✅ backend: POST /api/products (multipart)
- * Champs acceptés côté backend:
- * - name, price, currency, description, stock
- * - category_id, sub_category_id
- * - is_featured, promo_*, is_active
- * - shop_id (admin), cities
- * - vertical ✅
- * - variants ✅ (JSON) + replace_variants
- *
- * ✅ IMPORTANT: renvoie toujours l'objet (pas {data})
+ * IMPORTANT:
+ * Ton backend products.js collé ne contient pas /:id/options.
+ * Donc ces fonctions doivent être "safe" (si 404 -> fallback).
  */
+
+function isNotFoundError(e: any): boolean {
+  const msg = String(e?.message || "").toLowerCase();
+  return msg.includes("404") || msg.includes("not found");
+}
+
+export async function listProductOptionGroups(productId: number): Promise<ProductOptionGroup[]> {
+  try {
+    const raw = await api.get<any>(`${OPTIONS_BASE}/${productId}/options`);
+    return asArray<ProductOptionGroup>(raw);
+  } catch (e) {
+    // fallback si route inexistante
+    if (isNotFoundError(e)) return [];
+    throw e;
+  }
+}
+
+export async function upsertProductOptionGroups(
+  productId: number,
+  payload: {
+    groups: Array<
+      Partial<Omit<ProductOptionGroup, "choices">> & {
+        choices?: Array<Partial<ProductOptionChoice>>;
+      }
+    >;
+    replace?: boolean;
+  }
+): Promise<{ ok: true }> {
+  try {
+    const query: Record<string, any> = {};
+    if (payload?.replace) query.replace = 1;
+    const raw = await api.post<any>(`${OPTIONS_BASE}/${productId}/options`, payload, { query });
+    return unwrap<{ ok: true }>(raw);
+  } catch (e) {
+    if (isNotFoundError(e)) {
+      // backend pas encore prêt => on ne casse pas le flow front
+      return { ok: true };
+    }
+    throw e;
+  }
+}
+
+export async function removeProductOptionGroup(groupId: number): Promise<{ ok: true }> {
+  try {
+    const raw = await api.delete<any>(`${OPTIONS_BASE}/options/groups/${groupId}`);
+    return unwrap<{ ok: true }>(raw);
+  } catch (e) {
+    if (isNotFoundError(e)) return { ok: true };
+    throw e;
+  }
+}
+
+/* ======================================================================
+ * Supplier (optional)
+ * ===================================================================== */
+
+const SUPPLIER_BASE = "/api/suppliers";
+
+export type SupplierProduct = {
+  id: number;
+  product_id: number;
+  supplier_id?: number | null;
+
+  cost_price?: number | null;
+  stock?: number | null;
+  note?: string | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type SupplierOrderStatus = "OPEN" | "RECEIVED" | "CANCELLED";
+
+export type SupplierOrder = {
+  id: number;
+  supplier_id?: number | null;
+  status: SupplierOrderStatus;
+
+  total_cost?: number | null;
+  note?: string | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type SupplierOrderItem = {
+  id: number;
+  supplier_order_id: number;
+  supplier_product_id?: number | null;
+  product_id?: number | null;
+
+  qty: number;
+  unit_cost?: number | null;
+
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+function pickSupplierAggFromProduct(p: any): SupplierAgg {
+  return {
+    supplier_stock: p?.supplier_stock == null ? null : Number(p.supplier_stock),
+    supplier_cost: p?.supplier_cost == null ? null : Number(p.supplier_cost),
+    supplier_last_supply_at: p?.supplier_last_supply_at ?? null,
+  };
+}
+
+export async function getSupplierAggForProduct(productId: number): Promise<SupplierAgg> {
+  const p = await getManageProductById(productId);
+  return pickSupplierAggFromProduct(p);
+}
+
+export async function listSupplierProducts(opts: { product_id?: number; supplier_id?: number } = {}) {
+  const query: Record<string, any> = {};
+  if (typeof opts.product_id === "number") query.product_id = opts.product_id;
+  if (typeof opts.supplier_id === "number") query.supplier_id = opts.supplier_id;
+
+  const raw = await api.get<any>(`${SUPPLIER_BASE}/products`, { query });
+  return asArray<SupplierProduct>(raw);
+}
+
+export async function createSupplierProduct(payload: Partial<SupplierProduct>) {
+  const raw = await api.post<any>(`${SUPPLIER_BASE}/products`, payload);
+  return unwrap<{ ok: true; id: number }>(raw);
+}
+
+export async function updateSupplierProduct(id: number, payload: Partial<SupplierProduct>) {
+  const raw = await api.put<any>(`${SUPPLIER_BASE}/products/${id}`, payload);
+  return unwrap<{ ok: true }>(raw);
+}
+
+export async function removeSupplierProduct(id: number) {
+  const raw = await api.delete<any>(`${SUPPLIER_BASE}/products/${id}`);
+  return unwrap<{ ok: true }>(raw);
+}
+
+export async function listSupplierOrders(
+  opts: {
+    page?: number;
+    pageSize?: number;
+    supplier_id?: number;
+    status?: SupplierOrderStatus;
+  } = {}
+) {
+  const page = opts.page ?? 1;
+  const pageSize = opts.pageSize ?? 20;
+
+  const query: Record<string, any> = {};
+  withPageCompat(query, page, pageSize);
+
+  if (typeof opts.supplier_id === "number") query.supplier_id = opts.supplier_id;
+  if (opts.status) query.status = opts.status;
+
+  const raw = await api.get<any>(`${SUPPLIER_BASE}/orders`, { query });
+  return asPaginated<SupplierOrder>(raw);
+}
+
+export async function getSupplierOrder(id: number) {
+  const raw = await api.get<any>(`${SUPPLIER_BASE}/orders/${id}`);
+  return unwrap<SupplierOrder>(raw);
+}
+
+export async function createSupplierOrder(
+  payload: Partial<SupplierOrder> & {
+    items?: Array<Partial<SupplierOrderItem> & { qty: number }>;
+  }
+) {
+  const raw = await api.post<any>(`${SUPPLIER_BASE}/orders`, payload);
+  return unwrap<{ ok: true; id: number }>(raw);
+}
+
+export async function updateSupplierOrderStatus(id: number, status: SupplierOrderStatus) {
+  const raw = await api.put<any>(`${SUPPLIER_BASE}/orders/${id}/status`, { status });
+  return unwrap<{ ok: true }>(raw);
+}
+
+export async function listSupplierOrderItems(orderId: number) {
+  const raw = await api.get<any>(`${SUPPLIER_BASE}/orders/${orderId}/items`);
+  return asArray<SupplierOrderItem>(raw);
+}
+
+export async function addSupplierOrderItems(
+  orderId: number,
+  items: Array<Partial<SupplierOrderItem> & { qty: number }>
+) {
+  const raw = await api.post<any>(`${SUPPLIER_BASE}/orders/${orderId}/items`, { items });
+  return unwrap<{ ok: true }>(raw);
+}
+
+/* ======================================================================
+ * Create / Update / Delete (multipart)
+ * ===================================================================== */
+
+/* ---------- Create ---------- */
 export async function createProduct(
   draft: Partial<Product> & {
     variants?: Array<{
@@ -454,6 +813,14 @@ export async function createProduct(
       is_active?: 0 | 1 | null;
     }>;
     replace_variants?: boolean;
+
+    // ✅ safe: backend peut ignorer si non implémenté
+    option_groups?: Array<
+      Partial<Omit<ProductOptionGroup, "choices">> & {
+        choices?: Array<Partial<ProductOptionChoice>>;
+      }
+    >;
+    replace_options?: boolean;
   },
   files: File[]
 ): Promise<{ id: number; channel?: Channel; vertical?: Vertical }> {
@@ -498,6 +865,7 @@ export async function createProduct(
     if (v != null) fd.append("is_active", String(v));
   }
 
+  // admin only (backend check role)
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
   const cities = uniqCities(draft.cities);
@@ -508,26 +876,29 @@ export async function createProduct(
   }
   if ((draft as any).replace_variants) fd.append("replace_variants", "1");
 
+  // ✅ safe: backend peut ignorer si pas implémenté
+  if (Array.isArray((draft as any).option_groups) && (draft as any).option_groups.length) {
+    fd.append("option_groups", JSON.stringify((draft as any).option_groups));
+  }
+  if ((draft as any).replace_options) fd.append("replace_options", "1");
+
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
-  const raw = await api.post<any>("/api/products", fd as any);
+  const raw = await api.post<any>("/api/products", fd);
   return unwrap<{ id: number; channel?: Channel; vertical?: Vertical }>(raw);
 }
 
 /* ---------- Update ---------- */
-/**
- * ✅ backend: PUT /api/products/:id (multipart)
- * Champs acceptés:
- * - name, price, currency, description, stock
- * - is_featured, promo_*, is_active, category_id, sub_category_id, shop_id, vertical
- * - replace_images, cities
- * (variants bulk via endpoint dédié /:id/variants)
- *
- * ✅ IMPORTANT: renvoie toujours {ok:true} (pas {data})
- */
 export async function updateProduct(
   id: number,
-  draft: Partial<Product>,
+  draft: Partial<Product> & {
+    option_groups?: Array<
+      Partial<Omit<ProductOptionGroup, "choices">> & {
+        choices?: Array<Partial<ProductOptionChoice>>;
+      }
+    >;
+    replace_options?: boolean;
+  },
   files: File[],
   replaceImages = false
 ): Promise<{ ok: true }> {
@@ -572,16 +943,23 @@ export async function updateProduct(
   const vert = normalizeVertical(draft.vertical);
   if (vert) fd.append("vertical", vert);
 
+  // admin only
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
   const cities = uniqCities(draft.cities);
   if (cities != null) fd.append("cities", JSON.stringify(cities));
 
-  if (replaceImages) fd.append("replace_images", "true");
+  fd.append("replace_images", replaceImages ? "true" : "false");
+
+  // safe: backend peut ignorer
+  if (Array.isArray((draft as any).option_groups) && (draft as any).option_groups.length) {
+    fd.append("option_groups", JSON.stringify((draft as any).option_groups));
+  }
+  if ((draft as any).replace_options) fd.append("replace_options", "1");
 
   files.slice(0, 8).forEach((f) => fd.append("images[]", f));
 
-  const raw = await api.put<any>(`/api/products/${id}`, fd as any);
+  const raw = await api.put<any>(`/api/products/${id}`, fd);
   return unwrap<{ ok: true }>(raw);
 }
 
@@ -591,7 +969,10 @@ export async function removeProduct(id: number): Promise<{ ok: true }> {
   return unwrap<{ ok: true }>(raw);
 }
 
-/* ---------- Top produits : les plus commandés ---------- */
+/* ======================================================================
+ * Top / Ratings
+ * ===================================================================== */
+
 export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
 export async function listTopOrderedProducts(opts: { limit?: number; onlyActive?: boolean }): Promise<Product[]>;
 export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: number; onlyActive?: boolean }) {
@@ -605,32 +986,30 @@ export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: nu
     if (typeof limitOrOpts.onlyActive === "boolean") onlyActive = limitOrOpts.onlyActive;
   }
 
-  const raw = await api.get<any>("/api/products/top-ordered", {
-    query: { limit, ...(onlyActive ? { onlyActive: 1 } : {}) },
-  });
+  const query: Record<string, any> = { limit };
+  if (onlyActive) query.onlyActive = 1;
 
+  const raw = await api.get<any>("/api/products/top-ordered", { query });
   const arr = asArray<Product>(raw);
   return onlyActive ? filterActive(arr) : arr;
 }
 
-/* ---------- Top produits : les mieux notés ---------- */
-export async function listTopRatedProducts(opts?: { limit?: number; minCount?: number; onlyActive?: boolean }): Promise<Product[]>;
+export async function listTopRatedProducts(
+  opts?: { limit?: number; minCount?: number; onlyActive?: boolean }
+): Promise<Product[]>;
 export async function listTopRatedProducts(opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
   const onlyActive = opts.onlyActive ?? true;
 
-  const raw = await api.get<any>("/api/products/top-rated", {
-    query: { limit, minCount, ...(onlyActive ? { onlyActive: 1 } : {}) },
-  });
+  const query: Record<string, any> = { limit, minCount };
+  if (onlyActive) query.onlyActive = 1;
+
+  const raw = await api.get<any>("/api/products/top-rated", { query });
 
   const arr = asArray<Product>(raw);
   return onlyActive ? filterActive(arr) : arr;
 }
-
-/* ======================================================================
- * Ratings / Avis
- * ===================================================================== */
 
 export type ProductRatingSummary = {
   average: number;

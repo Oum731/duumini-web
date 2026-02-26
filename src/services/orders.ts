@@ -10,16 +10,15 @@ export type Paginated<T> = {
 /* ===== Types ===== */
 export type OrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCELLED";
 
-/** ✅ NEW: paiement */
 /** DB status (orders.payment_status) */
 export type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
 
 /** UI status (affichage) : inclut PENDING (virement en attente) */
 export type PayStatus = PaymentStatus | "PENDING";
 
-
+/** ✅ Payment object renvoyé par le backend (status peut être PENDING) */
 export type OrderPayment = {
-  status: PaymentStatus;
+  status: PayStatus;
   paid_amount: number;
   remaining_amount: number;
   currency: string;
@@ -73,11 +72,11 @@ export type CreateOrderPayload = {
 
   /** ✅ align backend: buildPaymentFromPayload() accepte paid_amount/amount */
   payment?: {
-    paid_amount?: number; // ✅ NEW (optionnel) pour paiement partiel à la création
+    paid_amount?: number; // (optionnel)
     amount?: number; // alias compat
-    method?: "CASH" | "COD" | string;
+    method?: "CASH" | "COD" | "BANK_TRANSFER" | "BANK" | "TRANSFER" | "VIREMENT" | string;
     note?: string | null;
-    status?: PaymentStatus; // optionnel, backend recalcule de toute façon
+    status?: PaymentStatus; // optionnel, backend recalcule
   };
 
   // compat (si certains endpoints attendent encore ces champs plats)
@@ -96,7 +95,7 @@ export type CreateOrderResult = {
   currency?: string;
   geo_link?: string | null;
 
-  /** ✅ backend renvoie payment dans POST (si tu l’as gardé) */
+  /** ✅ backend renvoie payment dans POST */
   payment?: OrderPayment | null;
 };
 
@@ -139,13 +138,14 @@ export type Order = {
     delivery_fee?: number;
     amount?: number;
     currency?: string;
+    duumini_amount?: number | null;
   } | null;
 
-  /** ✅ NEW: paiement (peut être null/absent si colonnes pas encore là) */
+  /** ✅ paiement (peut être null) */
   payment?: OrderPayment | null;
 
-  /** ✅ NEW: colonnes plates si tu les ajoutes en DB */
-  payment_status?: PaymentStatus | string | null;
+  /** ✅ colonnes plates (peuvent contenir PENDING si ton backend le renvoie) */
+  payment_status?: PayStatus | string | null;
   paid_amount?: number | null;
   remaining_amount?: number | null;
 };
@@ -211,9 +211,9 @@ export type OrderDetail = Order & {
     delivery_fee: number;
     amount: number;
     currency: string;
+    duumini_amount?: number | null;
   };
 
-  /** ✅ NEW */
   payment?: OrderPayment | null;
 };
 
@@ -225,9 +225,9 @@ export type ListOrdersOptions = {
   mineOnly?: boolean;
   q?: string;
 
-  /** ✅ NEW: filtre paiement (backend: /api/orders?payment_status=PAID|UNPAID|PARTIAL) */
-  payment_status?: PaymentStatus | "ALL";
-  pay?: PaymentStatus | "ALL"; // alias
+  /** ✅ filtre paiement */
+  payment_status?: PayStatus | "ALL";
+  pay?: PayStatus | "ALL"; // alias
 };
 
 /* ===== Types pour update payment ===== */
@@ -306,7 +306,6 @@ function normalizeCreatePayload(payload: CreateOrderPayload): CreateOrderPayload
     payment: payload.payment
       ? {
           ...payload.payment,
-          // ✅ si payé fourni, le backend calculera status/remaining
           ...(paidAmount != null ? { paid_amount: toNumOrNull(paidAmount) ?? 0 } : {}),
         }
       : undefined,
@@ -324,12 +323,15 @@ export async function listOrders(opts: ListOrdersOptions = {}) {
   if (opts.mineOnly) query.mine = 1;
   if (opts.q && cleanString(opts.q)) query.q = cleanString(opts.q);
 
-  // ✅ payment filter
-  const pay = (opts.payment_status && opts.payment_status !== "ALL")
-    ? opts.payment_status
-    : (opts.pay && opts.pay !== "ALL" ? opts.pay : null);
+  // ✅ payment filter (inclut PENDING)
+  const pay =
+    opts.payment_status && opts.payment_status !== "ALL"
+      ? opts.payment_status
+      : opts.pay && opts.pay !== "ALL"
+        ? opts.pay
+        : null;
 
-  if (pay) query.payment_status = pay; // backend accepte payment_status / pay / etc.
+  if (pay) query.payment_status = pay;
 
   return api.get<Paginated<Order>>("/api/orders", { query });
 }
@@ -354,7 +356,7 @@ export async function createGuestOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>("/api/orders/guest", normalizeCreatePayload(payload));
 }
 
-/** ✅ NEW: update payment */
+/** ✅ update payment */
 export async function updateOrderPayment(id: number, payload: UpdateOrderPaymentPayload) {
   return api.put<UpdateOrderPaymentResult>(`/api/orders/${id}/payment`, payload);
 }

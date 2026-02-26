@@ -14,6 +14,7 @@ import { listProducts, type Product } from "../../services/products";
 import { Link } from "react-router-dom";
 import { subscribeSSE, type ServerEvent } from "../../services/events";
 import { API_BASE } from "../../services/http";
+import { me } from "../../services/auth";
 
 const STATUSES: OrderStatus[] = ["OPEN", "PREPARATION", "DELIVERY", "DONE", "CANCELLED"];
 
@@ -116,9 +117,6 @@ function numSafe(v: any) {
 
 /* =========================
  * ✅ Fulfillment (Delivery / Pickup / Expedition)
- * - DELIVERY (domicile): adresse utile
- * - PICKUP: retrait sur place (pas d’adresse client)
- * - EXPEDITION: dépôt Duumini 25DH (client paie transporteur au retrait)
  * =======================*/
 type Fulfillment = "DELIVERY" | "PICKUP" | "EXPEDITION";
 
@@ -139,7 +137,6 @@ function normFulfillment(o: AnyObj): Fulfillment {
   if (modeRaw === "PICKUP") return "PICKUP";
   if (modeRaw === "EXPEDITION") return "EXPEDITION";
 
-  // vieux modes backend: CASABLANCA/CITY/SIMPLE/DELIVERY => DELIVERY
   if (modeRaw) return "DELIVERY";
   return "DELIVERY";
 }
@@ -209,12 +206,13 @@ function computeOrderAmounts(order: AnyObj) {
   let duuShareRaw = Number(direct != null ? direct : totalsShare != null ? totalsShare : 0);
   if (!Number.isFinite(duuShareRaw) || duuShareRaw < 0) duuShareRaw = 0;
 
+  // ✅ Commission Duumini: uniquement DONE
   const duuShare = status === "DONE" ? duuShareRaw : 0;
 
   return { total, deliveryFee, itemsAmount, duuShare };
 }
 
-/* ===== Payment helpers (robuste + virement en attente) ===== */
+/* ===== Payment helpers ===== */
 type PayStatus = "PAID" | "UNPAID" | "PARTIAL" | "PENDING";
 
 function normPayStatus(s: any): PayStatus | null {
@@ -238,17 +236,12 @@ function fromInputNumberValue(v: string) {
 function getPaymentFromOrder(o: AnyObj) {
   const payment = o?.payment && typeof o.payment === "object" ? o.payment : null;
 
-  const status: PayStatus | null =
-    normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
+  const status: PayStatus | null = normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
 
   const paid_amount =
-    numSafe(o?.paid_amount) ||
-    numSafe(payment?.paid_amount) ||
-    numSafe(payment?.paidAmount) ||
-    0;
+    numSafe(o?.paid_amount) || numSafe(payment?.paid_amount) || numSafe(payment?.paidAmount) || 0;
 
-  const remaining_amount_raw =
-    o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
+  const remaining_amount_raw = o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
   const remaining_amount = remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
 
   const method = String(payment?.method || o?.payment_method || "").trim() || null;
@@ -273,8 +266,8 @@ function computePayStatus(total: number, paid: number): PayStatus {
 }
 
 /**
- * ✅ Dans le tableau => "Reste" ne doit PAS s'afficher pour les commandes annulées.
- * ✅ Virement: si method=BANK_TRANSFER et status=PENDING => badge "EN ATTENTE"
+ * ✅ Paiement badge
+ * ✅ Virement: si method=BANK_TRANSFER => badge "EN ATTENTE" (même si status absent)
  */
 function getPaymentLabelForRow(o: AnyObj) {
   const oStatus = String(o?.status || "").toUpperCase();
@@ -284,39 +277,42 @@ function getPaymentLabelForRow(o: AnyObj) {
   const pay = getPaymentFromOrder(o);
 
   const method = String(pay.method || "").toUpperCase();
-  const isBank =
-    method === "BANK_TRANSFER" ||
-    method === "BANK" ||
-    method === "TRANSFER" ||
-    method === "VIREMENT";
+  const isBank = method === "BANK_TRANSFER" || method === "BANK" || method === "TRANSFER" || method === "VIREMENT";
 
   const paid = numSafe(pay.paid_amount);
   const remain = computeRemaining(total, paid);
 
-  // status explicite (si présent)
-  const explicit = pay.status; // PayStatus | null
+  const explicit = pay.status;
 
-  // 1) PAYÉ prioritaire
   if (explicit === "PAID") return { text: "PAYÉ", cls: "bg-success" };
 
-  // 2) Virement: EN ATTENTE si:
-  // - explicit=PENDING
-  // - OU méthode virement et pas payé (UNPAID/PARTIAL/null)
-  if (explicit === "PENDING") {
+  if (explicit === "PENDING") return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
+  if (isBank && (explicit === "UNPAID" || explicit === "PARTIAL" || explicit == null))
     return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
-  }
-  if (isBank && (explicit === "UNPAID" || explicit === "PARTIAL" || explicit == null)) {
-    return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
-  }
 
-  // 3) Sinon: afficher PARTIEL / NON PAYÉ selon payé/reste (dérivé)
   if (paid > 0 && remain > 0) return { text: "PARTIEL", cls: "bg-warning text-dark" };
   if (paid >= total && total > 0) return { text: "PAYÉ", cls: "bg-success" };
 
   return { text: "NON PAYÉ", cls: "bg-secondary" };
 }
 
+/**
+ * ✅ Montant restant (colonne "Reste" = chiffre)
+ * ✅ Ne s'affiche PAS si commande annulée
+ */
+function getRemainingAmountForRow(o: AnyObj): number | null {
+  const st = String(o?.status || "").toUpperCase();
+  if (st === "CANCELLED") return null;
 
+  const { total } = computeOrderAmounts(o);
+  const pay = getPaymentFromOrder(o);
+
+  // si backend donne remaining_amount, on le respecte
+  if (pay?.remaining_amount != null) return Math.max(0, numSafe(pay.remaining_amount));
+
+  const paid = numSafe(pay?.paid_amount);
+  return computeRemaining(total, paid);
+}
 
 /* ===== Message WhatsApp (texte + liens produits) ===== */
 function buildAdminWhatsappMessage(order: AnyObj) {
@@ -461,14 +457,75 @@ function hasPromo(p: Product): boolean {
   return Number.isFinite(promoNum) && promoNum > 0 && promoNum < base;
 }
 
+/* =========================
+ * ✅ Visibilité vendeur
+ * =======================*/
+type CurrentUser = {
+  id?: number;
+  role?: string;
+  shop_id?: number | null;
+  vendor_id?: number | null;
+} & AnyObj;
+
+function isVendorRole(role?: string) {
+  const r = String(role || "").toUpperCase();
+  return r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
+}
+
+function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
+  if (!user) return false;
+
+  // admin voit tout
+  if (!isVendorRole(user.role)) return true;
+
+  const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;
+  const myShop = user.shop_id != null ? Number(user.shop_id) : null;
+
+  // champs possibles sur order
+  const oVendor = order?.vendor_id ?? order?.vendorId ?? order?.seller_id ?? order?.sellerId ?? null;
+  const oShop = order?.shop_id ?? order?.shopId ?? order?.store_id ?? order?.storeId ?? null;
+
+  if (oVendor != null && uid && Number(oVendor) === uid) return true;
+  if (myShop != null && oShop != null && Number(oShop) === Number(myShop)) return true;
+
+  // parfois c’est par items
+  const items: AnyObj[] = Array.isArray(order?.items)
+    ? order.items
+    : Array.isArray(order?.order_items)
+      ? order.order_items
+      : Array.isArray(order?.lines)
+        ? order.lines
+        : [];
+
+  if (items.length) {
+    for (const it of items) {
+      const itShop = it?.shop_id ?? it?.shopId ?? it?.store_id ?? it?.storeId ?? null;
+      const itVendor = it?.vendor_id ?? it?.vendorId ?? it?.seller_id ?? it?.sellerId ?? null;
+
+      if (itVendor != null && uid && Number(itVendor) === uid) return true;
+      if (myShop != null && itShop != null && Number(itShop) === Number(myShop)) return true;
+    }
+  }
+
+  return false;
+}
+
 /* ===================== Page ===================== */
 export default function OrdersAdminPage() {
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const isVendor = useMemo(() => isVendorRole(user?.role), [user?.role]);
+
+  // ✅ source brute (admin) ou collection vendeur (on charge large puis paginate local)
   const [items, setItems] = useState<Order[]>([]);
+  const [vendorAll, setVendorAll] = useState<Order[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [total, setTotal] = useState(0);
+
   const [q, setQ] = useState("");
 
   // ✅ filtres backend (status + payment_status)
@@ -516,11 +573,47 @@ export default function OrdersAdminPage() {
   const [markDone, setMarkDone] = useState(true);
   const searchAbort = useRef<AbortController | null>(null);
 
-  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+  // ✅ charge user (role, shop_id, id…)
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const u = await me();
+        if (!mounted) return;
+        setUser((u as any) || null);
+      } catch {
+        if (!mounted) return;
+        setUser(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      // ✅ Mode vendeur: on charge "large" puis on filtre côté client (robuste même si backend ne filtre pas)
+      if (isVendor) {
+        const res = await listOrders({
+          page: 1,
+          pageSize: 500, // charge large
+          ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+          ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
+        } as any);
+
+        const all = (res.items || []) as Order[];
+        const mine = all.filter((o) => orderBelongsToUser(o as AnyObj, user));
+
+        setVendorAll(mine);
+        setTotal(mine.length);
+        setItems([]); // pas utilisé en mode vendeur
+        setError(null);
+        return;
+      }
+
+      // ✅ Admin: pagination backend classique
       const res = await listOrders({
         page,
         pageSize,
@@ -530,13 +623,20 @@ export default function OrdersAdminPage() {
 
       setItems(res.items);
       setTotal(res.pageInfo.total);
+      setVendorAll([]);
       setError(null);
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, payFilter]);
+  }, [page, pageSize, statusFilter, payFilter, isVendor, user]);
+
+  // ✅ reset page si on change de mode/filters en vendeur
+  useEffect(() => {
+    if (isVendor) setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVendor, statusFilter, payFilter]);
 
   useEffect(() => {
     refresh();
@@ -548,7 +648,9 @@ export default function OrdersAdminPage() {
         refresh();
         // @ts-ignore
         window?.duuminiToast?.({
-          title: evt.payload?.title || (evt.type === "ORDER_CREATED" ? "Nouvelle commande" : "Commande mise à jour"),
+          title:
+            evt.payload?.title ||
+            (evt.type === "ORDER_CREATED" ? "Nouvelle commande" : "Commande mise à jour"),
           message: evt.payload?.body || "",
         });
       }
@@ -558,38 +660,70 @@ export default function OrdersAdminPage() {
 
   const dateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString("fr-FR") : "");
 
-  const filtered = items.filter((o) => {
-    if (!q.trim()) return true;
-    const txt = q.toLowerCase();
-    const contact = (o as any)?.contact || (o as any)?.user || {};
-    const contactName = `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
-    return (
-      String(o.id).includes(txt) ||
-      (o.status?.toLowerCase() || "").includes(txt) ||
-      contactName.toLowerCase().includes(txt) ||
-      (contact?.phone || "").toLowerCase().includes(txt)
-    );
-  });
+  // ✅ dataset courant
+  const dataset = useMemo(() => (isVendor ? vendorAll : items), [isVendor, vendorAll, items]);
 
-  // ✅ CA Duumini: uniquement DONE (computeOrderAmounts applique la règle)
+  // ✅ filtre recherche
+  const searched = useMemo(() => {
+    return dataset.filter((o) => {
+      if (!q.trim()) return true;
+      const txt = q.toLowerCase();
+      const contact = (o as any)?.contact || (o as any)?.user || {};
+      const contactName = `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
+      return (
+        String(o.id).toLowerCase().includes(txt) ||
+        (o.status?.toLowerCase() || "").includes(txt) ||
+        contactName.toLowerCase().includes(txt) ||
+        (contact?.phone || "").toLowerCase().includes(txt)
+      );
+    });
+  }, [dataset, q]);
+
+  // ✅ pagination (admin: déjà paginé backend, vendeur: paginate local)
+  const displayed = useMemo(() => {
+    if (!isVendor) return searched;
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    return searched.slice(start, end);
+  }, [searched, isVendor, page, pageSize]);
+
+  // ✅ recompute total/pages pour vendeur après recherche
+  const effectiveTotal = useMemo(() => {
+    if (!isVendor) return total;
+    return searched.length;
+  }, [isVendor, searched.length, total]);
+
+  const effectivePages = useMemo(() => Math.max(1, Math.ceil(effectiveTotal / pageSize)), [
+    effectiveTotal,
+    pageSize,
+  ]);
+
+  // ✅ Stats: exclure CANCELLED des CA (net + frais), Commission déjà DONE-only
   const globalStats = useMemo(() => {
     let caNet = 0;
     let caDelivery = 0;
     let caDuumini = 0;
 
-    items.forEach((o) => {
+    displayed.forEach((o) => {
+      const st = String((o as AnyObj)?.status || "").toUpperCase();
       const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(o as AnyObj);
-      caNet += itemsAmount;
-      caDelivery += deliveryFee;
+      if (st !== "CANCELLED") {
+        caNet += itemsAmount;
+        caDelivery += deliveryFee;
+      }
       caDuumini += duuShare;
     });
 
     return { caNet, caDelivery, caDuumini };
-  }, [items]);
+  }, [displayed]);
 
   async function onEdit(id: number) {
     try {
       const full = await getOrder(id);
+      if (!orderBelongsToUser(full as AnyObj, user)) {
+        setError("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       setEditId(full.id);
       setEditStatus(full.status);
     } catch (e: any) {
@@ -614,6 +748,11 @@ export default function OrdersAdminPage() {
   async function onCancel(id: number) {
     if (!window.confirm("Annuler cette commande ?")) return;
     try {
+      const full = await getOrder(id);
+      if (!orderBelongsToUser(full as AnyObj, user)) {
+        setError("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       await cancelOrder(id);
       await refresh();
       if (viewId === id) {
@@ -628,6 +767,10 @@ export default function OrdersAdminPage() {
   async function onWhatsappClick(id: number) {
     try {
       const full = await getOrder(id);
+      if (!orderBelongsToUser(full as AnyObj, user)) {
+        alert("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       const url = waHref(full as AnyObj);
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {
@@ -648,6 +791,10 @@ export default function OrdersAdminPage() {
 
     try {
       const d = await getOrder(id);
+      if (!orderBelongsToUser(d as AnyObj, user)) {
+        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       setDetail(d as any);
       setViewStatus((d as any)?.status || "OPEN");
 
@@ -665,9 +812,17 @@ export default function OrdersAdminPage() {
     if (!viewId) return;
     setViewSaving(true);
     try {
+      if (detail && !orderBelongsToUser(detail as AnyObj, user)) {
+        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       await updateOrderStatus(viewId, viewStatus);
       await refresh();
       const d = await getOrder(viewId);
+      if (!orderBelongsToUser(d as AnyObj, user)) {
+        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       setDetail(d as any);
       setViewStatus((d as any)?.status || viewStatus);
     } catch (e: any) {
@@ -681,11 +836,19 @@ export default function OrdersAdminPage() {
     if (!viewId) return;
     setViewSaving(true);
     try {
+      if (detail && !orderBelongsToUser(detail as AnyObj, user)) {
+        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       await updateOrderStatus(viewId, status);
       await refresh();
       const d = await getOrder(viewId);
+      if (!orderBelongsToUser(d as AnyObj, user)) {
+        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       setDetail(d as any);
-      setViewStatus((d as any)?.status || status);
+      setViewStatus((d as AnyObj)?.status || status);
     } catch (e: any) {
       setViewErr(e?.message || String(e));
     } finally {
@@ -696,6 +859,11 @@ export default function OrdersAdminPage() {
   async function onSavePayment() {
     if (!viewId || !detail) return;
     if (typeof updateOrderPayment !== "function") return;
+
+    if (!orderBelongsToUser(detail as AnyObj, user)) {
+      setViewErr("Accès refusé : cette commande ne vous concerne pas.");
+      return;
+    }
 
     const { total } = computeOrderAmounts(detail as AnyObj);
     const curPay = getPaymentFromOrder(detail as AnyObj);
@@ -726,6 +894,10 @@ export default function OrdersAdminPage() {
       await updateOrderPayment(viewId, payload as any);
 
       const d = await getOrder(viewId);
+      if (!orderBelongsToUser(d as AnyObj, user)) {
+        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
+        return;
+      }
       setDetail(d as any);
       await refresh();
 
@@ -756,17 +928,25 @@ export default function OrdersAdminPage() {
   );
 
   const totalAmountDetail: number =
-    typeof detail?.total === "number" ? (detail as any).total : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
+    typeof detail?.total === "number"
+      ? (detail as any).total
+      : Number((detail as any)?.totals?.amount ?? itemsAmountDetail);
 
   const deliveryFeeDetail =
-    (detail as AnyObj)?.totals?.delivery_fee ?? Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
+    (detail as AnyObj)?.totals?.delivery_fee ??
+    Math.max(0, Number(totalAmountDetail) - Number(itemsAmountDetail));
 
   const viewPay = useMemo(() => {
     if (!detail) return null;
     const pay = getPaymentFromOrder(detail);
     const { total } = computeOrderAmounts(detail);
     const remaining =
-      pay?.remaining_amount != null ? Number(pay.remaining_amount) : computeRemaining(total, pay.paid_amount);
+      String(detail?.status || "").toUpperCase() === "CANCELLED"
+        ? null
+        : pay?.remaining_amount != null
+          ? Number(pay.remaining_amount)
+          : computeRemaining(total, pay.paid_amount);
+
     const derived = computePayStatus(total, pay.paid_amount);
     const status = pay?.status || derived;
 
@@ -959,14 +1139,21 @@ export default function OrdersAdminPage() {
   return (
     <div className="container-xxl py-4">
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <h1 className="h5 m-0">Commandes</h1>
+        <h1 className="h5 m-0">{isVendor ? "Mes commandes" : "Commandes"}</h1>
+
         <div className="d-flex gap-2">
-          <button className="btn btn-duu" onClick={() => setOpenCreate(true)}>
-            + Vente sur place
-          </button>
-          <Link to="/admin" className="btn btn-outline-dark">
-            Accueil admin
-          </Link>
+          {/* ✅ vendeur ne crée pas de ventes sur place depuis l’admin */}
+          {!isVendor && (
+            <button className="btn btn-duu" onClick={() => setOpenCreate(true)}>
+              + Vente sur place
+            </button>
+          )}
+
+          {!isVendor && (
+            <Link to="/admin" className="btn btn-outline-dark">
+              Accueil admin
+            </Link>
+          )}
         </div>
       </div>
 
@@ -1007,7 +1194,10 @@ export default function OrdersAdminPage() {
               className="form-control"
               placeholder="Recherche (#, statut, client, téléphone...)"
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => {
+                setPage(1);
+                setQ(e.target.value);
+              }}
               style={{ maxWidth: 420 }}
             />
 
@@ -1019,7 +1209,7 @@ export default function OrdersAdminPage() {
                 setPage(1);
                 setStatusFilter(e.target.value as any);
               }}
-              title="Filtrer par statut (backend)"
+              title="Filtrer par statut"
             >
               <option value="ALL">Tous les statuts</option>
               {STATUSES.map((s) => (
@@ -1037,7 +1227,7 @@ export default function OrdersAdminPage() {
                 setPage(1);
                 setPayFilter(e.target.value as any);
               }}
-              title="Filtrer par paiement (backend)"
+              title="Filtrer par paiement"
             >
               <option value="ALL">Tous les paiements</option>
               <option value="PAID">PAYÉ</option>
@@ -1052,7 +1242,7 @@ export default function OrdersAdminPage() {
           </div>
 
           <div className="text-muted small">
-            Page {page}/{pages} • {total} commandes
+            Page {page}/{effectivePages} • {effectiveTotal} commande(s)
           </div>
         </div>
       </div>
@@ -1063,7 +1253,7 @@ export default function OrdersAdminPage() {
         <div className="card-body">
           {loading ? (
             <div className="text-muted">Chargement…</div>
-          ) : filtered.length === 0 ? (
+          ) : displayed.length === 0 ? (
             <div className="text-muted">Aucune commande.</div>
           ) : (
             <div className="table-responsive">
@@ -1077,14 +1267,15 @@ export default function OrdersAdminPage() {
                     <th>Contact</th>
                     <th>Statut</th>
                     <th>Réception</th>
-                    <th>Reste</th>
+                    <th>Paiement</th>
+                    <th className="text-end">Reste</th>
                     <th className="text-end">Total</th>
                     <th className="text-end">Commission (DONE)</th>
                     <th className="text-end">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((o) => {
+                  {displayed.map((o) => {
                     const c = (o as any)?.contact || (o as any)?.user || {};
                     const fn = (c?.first_name || "").trim();
                     const ln = (c?.last_name || "").trim();
@@ -1096,6 +1287,7 @@ export default function OrdersAdminPage() {
 
                     const { total: totalAligned, duuShare: duuCommission } = computeOrderAmounts(o as AnyObj);
                     const payBadge = getPaymentLabelForRow(o as AnyObj);
+                    const remaining = getRemainingAmountForRow(o as AnyObj);
                     const st = String(o.status || "").toUpperCase();
 
                     const f = normFulfillment(o as AnyObj);
@@ -1175,6 +1367,10 @@ export default function OrdersAdminPage() {
                           <span className={`badge ${payBadge.cls}`}>{payBadge.text}</span>
                         </td>
 
+                        <td className="text-end">
+                          {remaining == null ? <span className="text-muted">—</span> : <span className="fw-semibold">{mad(remaining)}</span>}
+                        </td>
+
                         <td className="text-end">{mad(totalAligned)}</td>
 
                         <td className="text-end">
@@ -1189,6 +1385,7 @@ export default function OrdersAdminPage() {
                             <button className="btn btn-sm btn-outline-dark" onClick={() => onEdit(o.id)}>
                               Modifier
                             </button>
+
                             {o.status !== "CANCELLED" && o.status !== "DONE" && (
                               <button className="btn btn-sm btn-outline-danger" onClick={() => onCancel(o.id)}>
                                 Annuler
@@ -1205,15 +1402,19 @@ export default function OrdersAdminPage() {
           )}
 
           <div className="d-flex justify-content-between align-items-center mt-2">
-            <div className="text-muted small">{total} éléments</div>
+            <div className="text-muted small">{effectiveTotal} élément(s)</div>
             <div className="btn-group">
               <button className="btn btn-sm btn-outline-dark" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
                 Préc.
               </button>
               <span className="btn btn-sm btn-outline-dark disabled">
-                {page} / {pages}
+                {page} / {effectivePages}
               </span>
-              <button className="btn btn-sm btn-outline-dark" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+              <button
+                className="btn btn-sm btn-outline-dark"
+                disabled={page >= effectivePages}
+                onClick={() => setPage((p) => p + 1)}
+              >
                 Suiv.
               </button>
             </div>
@@ -1310,7 +1511,11 @@ export default function OrdersAdminPage() {
                           </button>
                           <button
                             className="btn btn-sm btn-outline-success"
-                            disabled={viewSaving || (detail as AnyObj).status === "DONE" || (detail as AnyObj).status === "CANCELLED"}
+                            disabled={
+                              viewSaving ||
+                              (detail as AnyObj).status === "DONE" ||
+                              (detail as AnyObj).status === "CANCELLED"
+                            }
                             onClick={() => onConfirmQuick("DONE")}
                             title="Marquer comme livrée"
                           >
@@ -1348,7 +1553,12 @@ export default function OrdersAdminPage() {
                                 <div className="text-muted small">{client.phone || "—"}</div>
                               </div>
                               <div className="d-flex gap-2">
-                                <a className="btn btn-sm btn-success" href={waHref(detail as AnyObj)} target="_blank" rel="noopener noreferrer">
+                                <a
+                                  className="btn btn-sm btn-success"
+                                  href={waHref(detail as AnyObj)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
                                   WhatsApp
                                 </a>
                                 {client.phone ? (
@@ -1381,7 +1591,12 @@ export default function OrdersAdminPage() {
                               </div>
                               {(detail as AnyObj)?.geo_link ? (
                                 <div className="mt-2">
-                                  <a className="btn btn-sm btn-outline-secondary" href={(detail as AnyObj).geo_link} target="_blank" rel="noopener noreferrer">
+                                  <a
+                                    className="btn btn-sm btn-outline-secondary"
+                                    href={(detail as AnyObj).geo_link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
                                     Ouvrir dans Google Maps
                                   </a>
                                 </div>
@@ -1393,9 +1608,7 @@ export default function OrdersAdminPage() {
                             <div className="card-body">
                               <h6 className="mb-2">Réception</h6>
                               {viewFulfillment === "PICKUP" ? (
-                                <div className="text-muted small">
-                                  Récupération sur place (aucune adresse client).
-                                </div>
+                                <div className="text-muted small">Récupération sur place (aucune adresse client).</div>
                               ) : (
                                 <div className="text-muted small">
                                   Expédition : Duumini dépose le colis (frais dépôt). Le client paie le transporteur au retrait.
@@ -1447,7 +1660,9 @@ export default function OrdersAdminPage() {
                                 </div>
                                 <div className="d-flex justify-content-between small mb-2">
                                   <span className="text-muted">Reste</span>
-                                  <span className="fw-semibold">{mad(viewPay.remaining)}</span>
+                                  <span className="fw-semibold">
+                                    {viewPay.remaining == null ? <span className="text-muted">—</span> : mad(viewPay.remaining)}
+                                  </span>
                                 </div>
 
                                 {(viewPay.method || viewPay.note) && (
@@ -1531,11 +1746,27 @@ export default function OrdersAdminPage() {
                                 const lineTotal = unit * qty;
 
                                 return (
-                                  <li key={i} className="list-group-item d-flex justify-content-between align-items-center gap-2">
+                                  <li
+                                    key={i}
+                                    className="list-group-item d-flex justify-content-between align-items-center gap-2"
+                                  >
                                     <div className="d-flex align-items-center gap-2 flex-grow-1">
                                       {img ? (
-                                        <div style={{ width: 48, height: 48, borderRadius: 8, overflow: "hidden", background: "#f5f5f5" }}>
-                                          <img src={img} alt={name} className="w-100 h-100 object-fit-cover" loading="lazy" />
+                                        <div
+                                          style={{
+                                            width: 48,
+                                            height: 48,
+                                            borderRadius: 8,
+                                            overflow: "hidden",
+                                            background: "#f5f5f5",
+                                          }}
+                                        >
+                                          <img
+                                            src={img}
+                                            alt={name}
+                                            className="w-100 h-100 object-fit-cover"
+                                            loading="lazy"
+                                          />
                                         </div>
                                       ) : null}
                                       <div style={{ minWidth: 0 }}>
@@ -1600,8 +1831,9 @@ export default function OrdersAdminPage() {
 
       {/* ===========================
           MODAL: Vente sur place (scroll fixé)
+          ✅ admin seulement
          =========================== */}
-      {openCreate && (
+      {!isVendor && openCreate && (
         <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.35)" }}>
           <div className="modal-dialog modal-xl" role="document">
             <div className="modal-content pos-modal">
@@ -1627,7 +1859,12 @@ export default function OrdersAdminPage() {
 
                         <div className="row g-2 mt-2">
                           <div className="col-12 col-md-6">
-                            <input className="form-control" placeholder="Rechercher (nom, sku)…" value={search} onChange={(e) => setSearch(e.target.value)} />
+                            <input
+                              className="form-control"
+                              placeholder="Rechercher (nom, sku)…"
+                              value={search}
+                              onChange={(e) => setSearch(e.target.value)}
+                            />
                           </div>
                           <div className="col-12 col-md-3">
                             <select className="form-select" value={promoFilter} onChange={(e) => setPromoFilter(e.target.value as any)}>
@@ -1721,7 +1958,15 @@ export default function OrdersAdminPage() {
                             <span className="fw-semibold">{mad(posRemaining)}</span>
                           </div>
                           <div className="mt-2">
-                            <span className={`badge ${posStatus === "PAID" ? "bg-success" : posStatus === "PARTIAL" ? "bg-warning text-dark" : "bg-secondary"}`}>
+                            <span
+                              className={`badge ${
+                                posStatus === "PAID"
+                                  ? "bg-success"
+                                  : posStatus === "PARTIAL"
+                                    ? "bg-warning text-dark"
+                                    : "bg-secondary"
+                              }`}
+                            >
                               {posStatus === "PAID" ? "PAYÉ" : posStatus === "PARTIAL" ? "PARTIEL" : "NON PAYÉ"}
                             </span>
                           </div>
@@ -1737,7 +1982,10 @@ export default function OrdersAdminPage() {
                               const base = Number((ln.product as AnyObj)?.price ?? unit);
 
                               return (
-                                <div key={ln.product.id} className="d-flex align-items-center justify-content-between border rounded p-2">
+                                <div
+                                  key={ln.product.id}
+                                  className="d-flex align-items-center justify-content-between border rounded p-2"
+                                >
                                   <div className="text-truncate" style={{ maxWidth: 220 }}>
                                     <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
                                       <span className="text-truncate">{ln.product.name}</span>

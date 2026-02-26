@@ -1,6 +1,7 @@
 // src/App.tsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Outlet, useLocation, Navigate } from "react-router-dom";
+
 import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
 import ProfilePage from "./pages/Profile";
@@ -11,21 +12,15 @@ import ProtectedAdmin from "./components/ProtectedAdmin";
 
 import AdminHome from "./pages/AdminHome";
 import OrdersAdminPage from "./pages/admin/OrdersAdminPage";
-import ProductsAdminPage from "./pages/admin/ProductsAdminPage";
 import ShopsAdminPage from "./pages/admin/ShopsAdminPage";
 import UsersAdminPage from "./pages/admin/UsersAdminPage";
 
-// ✅ Nouvelle page IA (Admin)
 import AiToolsAdminPage from "./pages/admin/AiToolsAdminPage";
-
-// ✅ Nouvelle page Contenu IA (SEO)
 import ContentAiPage from "./pages/admin/ContentAiPage";
 
-// ✅ Vitrine
 import AfricanFood from "./pages/AfricanFood";
 import AfricanMarket from "./pages/AfricanMarket";
 
-// ✅ Panier
 import CartPage from "./pages/Cart";
 import { CartProvider, useCart } from "./store/cart";
 import FloatingCartButton from "./components/FloatingCartButton";
@@ -39,7 +34,6 @@ import Terms from "./pages/legal/Terms";
 import Footer from "./components/Footer";
 import ScrollTopButton from "./components/ScrollTopButton";
 
-import { getCurrentUser } from "./services/auth";
 import ProductView from "./pages/ProductView";
 
 import { useAuth } from "./context/AuthContext";
@@ -51,16 +45,10 @@ import {
 import TopProductsPage from "./pages/TopProductsPage";
 import GuestOrderWidget from "./components/GuestOrderWidget";
 
-// ✅ LocationGate silencieux (listener modal ville)
 import LocationGate from "./components/LocationGate";
-
-// 🔔 Bulle de notification temps réel (socket/SSE)
 import NotificationBubble from "./components/NotificationBubble";
 
-// ✅ Analytics (Meta Pixel via GTM / dataLayer)
 import { trackPageView } from "./lib/analytics";
-
-// ✅ Metricool (page view SPA)
 import { trackMetricoolPageView } from "./lib/metricool";
 
 import PromotionsPage from "./pages/PromotionsPage";
@@ -68,6 +56,18 @@ import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
 import CanKickLottie from "./components/CanKickLottie";
 import AiCopyPage from "./pages/admin/AiCopyPage";
 import Fashion from "./pages/Fashion";
+
+import VendorHome from "./pages/vendor/VendorHome";
+import MyShopPage from "./pages/vendor/MyShopPage";
+
+// ✅ NEW: page gestion produits
+import ManageProductsPage from "./pages/products/ManageProductsPage";
+
+// ✅ NEW GUARDS (à créer)
+// - src/hooks/useViewer.ts
+// - src/components/RequireAuth.tsx
+import RequireAuth from "./components/RequireCaps";
+import { useViewer } from "./hooks/useViewer";
 
 function Page({ title }: { title: string }) {
   return (
@@ -78,32 +78,26 @@ function Page({ title }: { title: string }) {
   );
 }
 
-/** 🔝 Remonte en haut à chaque navigation */
 function ScrollToTop() {
   const { pathname, search } = useLocation();
   useEffect(() => {
-    if ("scrollRestoration" in window.history) {
+    if ("scrollRestoration" in window.history)
       window.history.scrollRestoration = "manual";
-    }
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname, search]);
   return null;
 }
 
-/** 📊 Envoie un event page_view à chaque changement de route (SPA) */
 function PageViewTracker() {
   const { pathname, search } = useLocation();
-
   useEffect(() => {
     const path = `${pathname}${search || ""}`;
     trackPageView(path);
     trackMetricoolPageView();
   }, [pathname, search]);
-
   return null;
 }
 
-// Layout admin
 function AdminShell() {
   return (
     <div className="container-xxl py-4">
@@ -115,34 +109,29 @@ function AdminShell() {
   );
 }
 
-// ✅ Garde vendeur locale
-function ProtectedVendor() {
-  const u = getCurrentUser();
-  if (!u) return <Navigate to="/profile?tab=login" replace />;
-  if ((u.role || "").toString().trim().toUpperCase() !== "VENDEUR") {
-    return <Navigate to="/" replace />;
-  }
-  return <Outlet />;
-}
-
-// Navbar branchée au panier
 function NavbarWithCount() {
   const { totalItems } = useCart();
   return <Navbar cartCount={totalItems} />;
 }
 
-// ✅ Masque le bouton flottant sur /cart et /checkout
 function FloatingCartGuard() {
   const { pathname } = useLocation();
-  const hide = pathname.startsWith("/cart") || pathname.startsWith("/checkout");
-  if (hide) return null;
+  const { loading, isLogged, caps } = useViewer();
+
+  const hideByRoute =
+    pathname.startsWith("/cart") ||
+    pathname.startsWith("/checkout") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/vendeur") ||
+    pathname.startsWith("/ma-boutique");
+
+  const hideForPro =
+    !loading && isLogged && (caps.canAccessAdmin || caps.canAccessPro);
+
+  if (hideByRoute || hideForPro) return null;
   return <FloatingCartButton />;
 }
 
-/**
- * Modal global qui s'affiche 24h après la livraison
- * pour demander une note sur un produit d'une commande.
- */
 function GlobalRatingModal(props: {
   pending: PendingProductRating;
   onClose: () => void;
@@ -158,7 +147,6 @@ function GlobalRatingModal(props: {
   function renderStar(idx: number) {
     const activeValue = hover ?? rating ?? 0;
     const isActive = idx <= activeValue;
-
     return (
       <button
         key={idx}
@@ -187,21 +175,21 @@ function GlobalRatingModal(props: {
   }
 
   async function handleSubmit() {
-    if (!rating) {
-      alert("Choisissez d'abord le nombre d'étoiles.");
-      return;
-    }
+    if (!rating) return alert("Choisissez d'abord le nombre d'étoiles.");
     if (saving) return;
 
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
+      await rateProduct(
+        pending.product_id,
+        rating,
+        comment.trim() || undefined
+      );
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
-    } catch (e) {
-      console.error("Erreur enregistrement avis commande:", e);
+    } catch {
       setError("Impossible d'enregistrer votre avis.");
     } finally {
       setSaving(false);
@@ -210,9 +198,7 @@ function GlobalRatingModal(props: {
 
   useEffect(() => {
     document.body.classList.add("modal-open");
-    return () => {
-      document.body.classList.remove("modal-open");
-    };
+    return () => document.body.classList.remove("modal-open");
   }, []);
 
   return (
@@ -235,6 +221,7 @@ function GlobalRatingModal(props: {
                 onClick={onClose}
               />
             </div>
+
             <div className="modal-body">
               <p className="small text-muted mb-2">
                 Vous avez reçu votre commande contenant :<br />
@@ -251,7 +238,9 @@ function GlobalRatingModal(props: {
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">Votre avis (optionnel)</label>
+                <label className="form-label small">
+                  Votre avis (optionnel)
+                </label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -262,13 +251,12 @@ function GlobalRatingModal(props: {
                 />
               </div>
 
-              {error && (
-                <div className="alert alert-danger py-1 small">{error}</div>
-              )}
+              {error && <div className="alert alert-danger py-1 small">{error}</div>}
               {success && (
                 <div className="alert alert-success py-1 small">{success}</div>
               )}
             </div>
+
             <div className="modal-footer">
               <button
                 type="button"
@@ -300,25 +288,20 @@ export default function App() {
     useState<PendingProductRating | null>(null);
 
   useEffect(() => {
-    if (!user) {
-      setPendingRating(null);
-      return;
-    }
+    if (!user) return void setPendingRating(null);
 
     let cancelled = false;
 
-    async function checkPending() {
+    (async () => {
       try {
         const res = await getPendingProductRating();
-        if (cancelled) return;
-        setPendingRating((res as PendingProductRating | null) ?? null);
-      } catch (e) {
-        console.error("Erreur pending rating:", e);
+        if (!cancelled)
+          setPendingRating((res as PendingProductRating | null) ?? null);
+      } catch {
         if (!cancelled) setPendingRating(null);
       }
-    }
+    })();
 
-    checkPending();
     return () => {
       cancelled = true;
     };
@@ -376,10 +359,7 @@ export default function App() {
                   element={<Fashion />}
                 />
 
-                <Route
-                  path="/share/product/:idOrSlug"
-                  element={<ProductView />}
-                />
+                <Route path="/share/product/:idOrSlug" element={<ProductView />} />
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
 
                 <Route path="/top-products" element={<TopProductsPage />} />
@@ -390,28 +370,72 @@ export default function App() {
                 <Route path="/legal/terms" element={<Terms />} />
                 <Route path="/legal/returns" element={<ReturnsPolicy />} />
 
+                {/* ✅ ADMIN (gardé tel quel) */}
                 <Route path="/admin" element={<ProtectedAdmin />}>
                   <Route element={<AdminShell />}>
                     <Route index element={<AdminHome />} />
                     <Route path="orders" element={<OrdersAdminPage />} />
-                    <Route path="products" element={<ProductsAdminPage />} />
+                    <Route
+                      path="products"
+                      element={<ManageProductsPage scope="admin" />}
+                    />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
-                    <Route
-                      path="promotions"
-                      element={<PromotionsAdminPage />}
-                    />
+                    <Route path="promotions" element={<PromotionsAdminPage />} />
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
-
-                    {/* ✅ NOUVELLE PAGE: Contenu IA (SEO) */}
                     <Route path="content-ai" element={<ContentAiPage />} />
+
+                    {/* Aliases FR */}
+                    <Route
+                      path="produits"
+                      element={<Navigate to="/admin/products" replace />}
+                    />
+                    <Route
+                      path="commandes"
+                      element={<Navigate to="/admin/orders" replace />}
+                    />
+                    <Route
+                      path="boutiques"
+                      element={<Navigate to="/admin/shops" replace />}
+                    />
+                    <Route
+                      path="utilisateurs"
+                      element={<Navigate to="/admin/users" replace />}
+                    />
+                    <Route
+                      path="promos"
+                      element={<Navigate to="/admin/promotions" replace />}
+                    />
                   </Route>
                 </Route>
 
-                <Route path="/ma-boutique" element={<ProtectedVendor />}>
-                  <Route index element={<ShopsAdminPage />} />
+                {/* ✅ PRO (VENDEUR / RESTO / FOURNISSEUR) + ADMIN */}
+                <Route
+                  element={
+                    <RequireAuth
+                      allow={(v: { caps: { canAccessPro: any; canAccessAdmin: any; }; }) => v.caps.canAccessPro || v.caps.canAccessAdmin}
+                      redirectTo="/"
+                    />
+                  }
+                >
+                  <Route path="/vendeur" element={<Navigate to="/ma-boutique" replace />} />
+
+                  <Route path="/ma-boutique" element={<Outlet />}>
+                    <Route index element={<VendorHome />} />
+                    <Route path="infos" element={<MyShopPage />} />
+                  </Route>
+
+                  <Route
+                    path="/vendeur/produits"
+                    element={<ManageProductsPage scope="vendor" />}
+                  />
+                  <Route path="/vendeur/commandes" element={<OrdersAdminPage />} />
+                  <Route
+                    path="/vendeur/promotions"
+                    element={<PromotionsAdminPage />}
+                  />
                 </Route>
 
                 <Route path="*" element={<Page title="Page introuvable" />} />

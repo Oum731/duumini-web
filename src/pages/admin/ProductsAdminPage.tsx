@@ -1,2105 +1,573 @@
 // src/pages/admin/ProductsAdminPage.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import {
-  getProduct,
-  type Product,
-  type ProductVariant,
-  createProduct,
-  updateProduct,
-  removeProduct,
-  listProductVariants,
-  upsertProductVariants,
-  removeProductVariant,
-} from "../../services/products";
-import {
-  listCategories,
-  type Category,
-  createCategory,
-} from "../../services/categories";
-import { listSubCategories, createSubCategory } from "../../services/subCategories";
-import { API_BASE, api } from "../../services/http";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "../../services/http";
+import { me } from "../../services/auth";
+import { listCategories, createCategory, type Category } from "../../services/categories";
+import { listSubCategories, type SubCategory as SvcSubCategory } from "../../services/subCategories";
 
-type ProductImage = { id: number; url: string; sort_order: number };
-type FullProduct = Product &
-  { images?: ProductImage[] } & {
-    shop_name?: string | null;
-    sub_category_name?: string | null;
-  };
+// ✅ ProductForm est une "page" au même niveau que ManageProductsPage
+import ProductForm, {
+  type Draft,
+  type FullProduct,
+  type ProductImage,
+  type ProductStyle,
+  type Shop,
+  type SubCategory,
+  type VariantDraft,
+  cleanVariantsForApi,
+  imgUrl,
+  moneyMAD,
+  isActive,
+  hasRealPromo,
+  promoLabel,
+  basePriceForAdmin,
+  promoPriceForAdmin,
+} from "../products/ProductForm";
 
-type Shop = {
-  id: number;
-  name: string;
-  logo?: string | null;
-  cover?: string | null;
+/* ================= Helpers (page only) ================= */
+
+type AnyObj = Record<string, any>;
+
+type PageInfo = {
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
 };
 
-type PromoDiscountType = "PERCENT" | "AMOUNT";
-
-type SubCategory = {
-  id: number;
-  category_id: number;
-  name: string;
-  slug: string;
-  category_name?: string | null;
-  category_slug?: string | null;
-};
-
-type ProductStyle = "food" | "market" | "fashion";
-
-type Draft = {
-  style?: ProductStyle | "";
-  name: string;
-  price?: number | null;
-  currency?: string | null;
-  description?: string | null;
-  stock?: number | null;
-
-  is_featured?: 0 | 1 | null;
-  promo_eligible?: 0 | 1 | null;
-
-  category_id?: number | null;
-  sub_category_id?: number | null;
-
-  shop_id?: number | null;
-
-  promo_discount_type?: PromoDiscountType | null;
-  promo_discount_value?: number | null;
-  promo_free_delivery?: 0 | 1 | null;
-
-  is_active?: 0 | 1 | null;
-};
-
-type Mode = "default" | "top-ordered" | "top-rated";
-type Channel = "all" | "african-food" | "african-market" | "fashion";
-
-/* ================= Helpers ================= */
-
-/** ✅ Anti-bug float: tout calcul promo en centimes */
-const MAD_SCALE = 100;
-
-function toCents(n: any): number {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round(x * MAD_SCALE);
-}
-function fromCents(c: any): number {
-  const x = Number(c);
-  if (!Number.isFinite(x)) return 0;
-  return x / MAD_SCALE;
-}
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
+function unwrap<T = any>(r: any): T {
+  return (r?.data ?? r) as T;
 }
 
-function moneyMAD(n?: number | null, digits: 0 | 2 = 0) {
-  const v = Number(n ?? 0);
-  const safe = Number.isFinite(v) ? v : 0;
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "MAD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(safe);
+function toInt(x: any, fallback = 0) {
+  const n = Number(x);
+  return Number.isFinite(n) ? Math.floor(n) : fallback;
 }
 
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
-}
+function Modal({
+  open,
+  title,
+  children,
+  onClose,
+  footer,
+  size = "lg",
+}: {
+  open: boolean;
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  footer?: React.ReactNode;
+  size?: "sm" | "md" | "lg" | "xl";
+}) {
+  if (!open) return null;
+  const maxW = size === "sm" ? 520 : size === "md" ? 760 : size === "xl" ? 1180 : 980;
 
-function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
-  const priceC = toCents(price);
-  const v = Number(value);
-  if (priceC <= 0 || !Number.isFinite(v) || v <= 0) return fromCents(priceC);
+  return (
+    <div
+      className="position-fixed top-0 start-0 w-100 h-100"
+      style={{ zIndex: 1055, background: "rgba(0,0,0,.55)" }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="h-100 d-flex align-items-center justify-content-center p-3">
+        <div
+          className="bg-white rounded-4 shadow w-100"
+          style={{ maxWidth: maxW, maxHeight: "92vh", overflow: "hidden" }}
+        >
+          <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
+            <div className="fw-bold">{title}</div>
+            <button className="btn btn-sm btn-outline-secondary" onClick={onClose}>
+              ×
+            </button>
+          </div>
 
-  if (type === "PERCENT") {
-    const pct = clamp(v, 0, 100);
-    const discountC = Math.round((priceC * pct) / 100);
-    const outC = Math.max(0, priceC - discountC);
-    return fromCents(outC);
-  }
+          <div style={{ overflow: "auto", maxHeight: "calc(92vh - 110px)" }}>
+            <div className="p-3">{children}</div>
+          </div>
 
-  const discountC = toCents(v);
-  const outC = Math.max(0, priceC - discountC);
-  return fromCents(outC);
-}
-
-function isActive(p: any) {
-  return p?.active ?? p?.is_active ?? 1 ? 1 : 0;
-}
-
-function hasRealPromo(p: any) {
-  const active = isActive(p);
-  if (!active) return false;
-  return Number(p?.promo_eligible || 0) === 1 && Number(p?.promo_discount_value ?? 0) > 0;
-}
-
-function promoLabel(p: any) {
-  if (!hasRealPromo(p)) return "—";
-  const t = String(p?.promo_discount_type || "").toUpperCase();
-  const v = Number(p?.promo_discount_value || 0);
-  if (t === "AMOUNT") return `-${moneyMAD(v)}`;
-  return `-${Math.round(v)}%`;
-}
-
-/**
- * ✅ Prix base admin:
- * - si variants => min_price (sinon price)
- * ✅ Retourne TOUJOURS un number (jamais null)
- */
-function basePriceForAdmin(p: any): number {
-  const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
-
-  const minp: number | null =
-    p?.min_price == null || p?.min_price === ""
-      ? null
-      : Number(p.min_price);
-
-  const price: number =
-    p?.price == null || p?.price === ""
-      ? 0
-      : Number(p.price);
-
-  if (hasVariants && minp != null && Number.isFinite(minp) && minp >= 0) {
-    return minp;
-  }
-
-  return Number.isFinite(price) ? price : 0;
-}
-
-/** ✅ Fallback local promo (en centimes => pas de 100.86) */
-function computePromoPriceLocal(base: number, eligible: any, type: any, value: any) {
-  if (Number(eligible) !== 1) return null;
-
-  const baseC = toCents(base);
-  const v = Number(value);
-  if (baseC <= 0 || !Number.isFinite(v) || v <= 0) return null;
-
-  const t = String(type || "").toUpperCase();
-
-  if (t === "AMOUNT") {
-    const outC = Math.max(0, baseC - toCents(v));
-    return fromCents(outC);
-  }
-
-  const pct = clamp(v, 0, 100);
-  const discountC = Math.round((baseC * pct) / 100);
-  const outC = Math.max(0, baseC - discountC);
-  return fromCents(outC);
-}
-
-/**
- * ✅ Prix promo admin:
- * - si variants => min_promo_price (sinon promo_price)
- * - fallback local si l’API ne renvoie pas encore promo_price
- */
-function promoPriceForAdmin(p: any) {
-  if (!hasRealPromo(p)) return null;
-
-  const hasVariants = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
-  const apiPromo = hasVariants ? p?.min_promo_price : p?.promo_price;
-  const apiN = apiPromo == null || apiPromo === "" ? null : Number(apiPromo);
-  if (Number.isFinite(apiN as any)) return apiN as number;
-
-  const base = basePriceForAdmin(p);
-  return computePromoPriceLocal(
-    base,
-    p?.promo_eligible,
-    p?.promo_discount_type,
-    p?.promo_discount_value
+          {footer ? (
+            <div className="px-3 py-2 border-top d-flex justify-content-end gap-2">{footer}</div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function splitNames(raw: string) {
-  return String(raw || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 30);
-}
+/* ================= Page ================= */
 
-function unwrap<T>(res: any): T {
-  if (res && typeof res === "object" && "data" in res) return res.data as T;
-  return res as T;
-}
+export default function ProductsAdminPage() {
+  const [booting, setBooting] = useState(true);
+  const [user, setUser] = useState<AnyObj | null>(null);
 
-function getPaginated(res: any): { items: Product[]; pageInfo?: any } {
-  const body = unwrap<any>(res);
+  const isVendor = String(user?.role || "").toUpperCase() === "VENDOR" || String(user?.role || "").toUpperCase() === "VENDEUR";
 
-  const items = Array.isArray(body?.items)
-    ? (body.items as Product[])
-    : Array.isArray(body?.data?.items)
-      ? (body.data.items as Product[])
-      : [];
+  // data sources
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
 
-  const pageInfo = body?.pageInfo ?? body?.data?.pageInfo ?? undefined;
-
-  return { items, pageInfo };
-}
-
-function inferStyleFromProduct(p: any): ProductStyle | "" {
-  const v = String(p?.vertical || "").toUpperCase();
-  if (v === "FOOD") return "food";
-  if (v === "MARKET") return "market";
-  if (v === "FASHION") return "fashion";
-  return "";
-}
-
-/* ========= Variants helpers (API + UI) ========= */
-type VariantDraft = {
-  id?: number;
-  size?: string | null;
-  color?: string | null;
-  sku?: string | null;
-  stock?: number;
-  price_override?: number | null;
-  is_active?: 0 | 1 | null;
-};
-
-function normStr(x: any, max = 60): string | null {
-  const s = String(x ?? "").trim();
-  if (!s) return null;
-  return s.slice(0, max);
-}
-function normStock(x: any): number {
-  const n = Number(x);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.floor(n);
-}
-function normPriceOverride(x: any): number | null {
-  if (x === "" || x == null) return null;
-  const n = Number(x);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
-}
-function cleanVariantsForApi(list: VariantDraft[]): Array<Partial<ProductVariant> & { stock?: number }> {
-  const out: Array<Partial<ProductVariant> & { stock?: number }> = [];
-  for (const v of list || []) {
-    const size = normStr(v.size, 20);
-    const color = normStr(v.color, 40);
-    const sku = normStr(v.sku, 80);
-
-    // on exige taille + couleur en prod (évite variantes “vides”)
-    if (!size || !color) continue;
-
-    out.push({
-      size,
-      color,
-      sku,
-      stock: normStock(v.stock),
-      price_override: normPriceOverride(v.price_override),
-      is_active: (v.is_active ?? 1) as any,
-    });
-  }
-  return out;
-}
-
-function toUpperSku(s?: string | null) {
-  const x = String(s ?? "").trim();
-  if (!x) return "";
-  return x.toUpperCase().replace(/\s+/g, "-").slice(0, 80);
-}
-
-function buildSkuAuto(name: string, size?: string | null, color?: string | null) {
-  const n = String(name || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 18);
-  const s = String(size || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 8);
-  const c = String(color || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 10);
-
-  const parts = [n || "DUU", s || "X", c || "X"].filter(Boolean);
-  return parts.join("-").slice(0, 80);
-}
-
-// UI keys
-function normKeyPart(x: any) {
-  return String(x ?? "").trim().toLowerCase();
-}
-function vKey(size?: string | null, color?: string | null) {
-  return `${normKeyPart(size)}|${normKeyPart(color)}`;
-}
-function uniq(list: string[]) {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const x of list) {
-    const t = String(x ?? "").trim();
-    if (!t) continue;
-    const k = t.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(t);
-  }
-  return out;
-}
-
-/* ========= Formulaire Produit ========= */
-function ProductForm({
-  initial,
-  categories,
-  subCategories,
-  shops,
-  onCreateCategory,
-  onCreateSubCategory,
-  onSubmit,
-  onCancel,
-}: {
-  initial?: (Partial<FullProduct> & { images?: ProductImage[] }) | undefined;
-  categories: Category[];
-  subCategories: SubCategory[];
-  shops: Shop[];
-  onCreateCategory: (name: string) => Promise<Category>;
-  onCreateSubCategory: (categoryId: number, name: string) => Promise<SubCategory>;
-  onSubmit: (draft: Draft, files: File[], replaceImages: boolean, variants: VariantDraft[]) => Promise<void> | void;
-  onCancel: () => void;
-}) {
-  const [draft, setDraft] = useState<Draft>(() => {
-    const anyInit: any = initial || {};
-
-    return {
-      style: "",
-
-      name: anyInit?.name || "",
-      price: anyInit?.price ?? null,
-      description: anyInit?.description || "",
-      stock: anyInit?.stock ?? null,
-      currency: anyInit?.currency || "MAD",
-
-      is_featured: anyInit?.is_featured != null ? (Number(anyInit.is_featured) as 0 | 1) : 0,
-      promo_eligible: anyInit?.promo_eligible != null ? (Number(anyInit.promo_eligible) as 0 | 1) : 0,
-
-      category_id: anyInit?.category_id != null && anyInit?.category_id !== "" ? Number(anyInit.category_id) : null,
-      sub_category_id: anyInit?.sub_category_id != null && anyInit?.sub_category_id !== "" ? Number(anyInit.sub_category_id) : null,
-
-      shop_id: anyInit?.shop_id != null ? Number(anyInit.shop_id) : null,
-
-      promo_discount_type: anyInit?.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT",
-      promo_discount_value: typeof anyInit?.promo_discount_value === "number" ? anyInit.promo_discount_value : null,
-
-      promo_free_delivery: anyInit?.promo_free_delivery != null ? (Number(anyInit.promo_free_delivery) as 0 | 1) : 0,
-
-      is_active:
-        anyInit?.is_active != null
-          ? (Number(anyInit.is_active) as 0 | 1)
-          : anyInit?.active != null
-            ? (Number(anyInit.active) as 0 | 1)
-            : null,
-    };
+  // list products
+  const [items, setItems] = useState<FullProduct[]>([]);
+  const [pageInfo, setPageInfo] = useState<PageInfo>({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    pages: 1,
   });
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!initial) return;
-    setDraft((d) => {
-      if (d.style) return d;
-      const style = inferStyleFromProduct(initial as any);
-      return style ? { ...d, style } : d;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial]);
+  // filters
+  const [q, setQ] = useState("");
+  const [style, setStyle] = useState<ProductStyle | "">("");
+  const [shopId, setShopId] = useState<number | "">("");
+  const [active, setActive] = useState<"" | "1" | "0">("");
+  const [promo, setPromo] = useState<"" | "1">("");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
-  const [files, setFiles] = useState<File[]>([]);
-  const [replaceImages, setReplaceImages] = useState<boolean>(false);
-  const [submitting, setSubmitting] = useState(false);
+  // modal create/edit
+  const [openForm, setOpenForm] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formErr, setFormErr] = useState<string | null>(null);
+  const [editing, setEditing] = useState<FullProduct | undefined>(undefined);
 
-  const [isCustomCategory, setIsCustomCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
+  const title = useMemo(() => {
+    if (!openForm) return "Produits";
+    return editing?.id ? `Modifier produit #${editing.id}` : "Ajouter un produit";
+  }, [openForm, editing?.id]);
 
-  const [isCustomSubCategory, setIsCustomSubCategory] = useState(false);
-  const [newSubCategoryName, setNewSubCategoryName] = useState("");
+  /* ================= Load bootstrap (me + catalogs) ================= */
 
-  const [newSubCatsRaw, setNewSubCatsRaw] = useState("");
-  const [createdSubCatsPreview, setCreatedSubCatsPreview] = useState<string[]>([]);
-
-  const [galleryInput, setGalleryInput] = useState<HTMLInputElement | null>(null);
-  const [cameraInput, setCameraInput] = useState<HTMLInputElement | null>(null);
-
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const [variantsLoading, setVariantsLoading] = useState(false);
-  const [variantsErr, setVariantsErr] = useState<string | null>(null);
-  const [variantsOk, setVariantsOk] = useState<string | null>(null);
-  const [variants, setVariants] = useState<VariantDraft[]>([]);
-  const [variantsTouched, setVariantsTouched] = useState(false);
-
-  // UI selection (no generator)
-  const sizesPreset = ["XS", "S", "M", "L", "XL", "XXL", "36", "38", "40", "42", "44"];
-  const colorsPreset = ["Noir", "Blanc", "Rouge", "Bleu", "Vert", "Jaune", "Beige", "Gris", "Marron", "Rose"];
-
-  const [activeSize, setActiveSize] = useState<string>(sizesPreset[0]);
-  const [customSize, setCustomSize] = useState("");
-  const [customColor, setCustomColor] = useState("");
-  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
-
-  const productId = Number((initial as any)?.id || 0);
-  const isFashion = String(draft.style || "").toLowerCase() === "fashion";
-  const isEdit = !!productId;
-
-  function addFiles(list: FileList | null) {
-    if (!list || !list.length) return;
-    const current = [...files];
-    for (const f of Array.from(list)) {
-      if (current.length >= 8) break;
-      current.push(f);
-    }
-    setFiles(current.slice(0, 8));
-  }
-
-  function removeAt(i: number) {
-    const arr = [...files];
-    arr.splice(i, 1);
-    setFiles(arr);
-  }
-
-  // ✅ preview URLs (revoke)
-  const previews = useMemo(() => {
-    return files.map((f) => ({ f, url: URL.createObjectURL(f) }));
-  }, [files]);
-
-  useEffect(() => {
-    return () => {
-      for (const p of previews) URL.revokeObjectURL(p.url);
-    };
-  }, [previews]);
-
-  const hasExistingImages = (initial as any)?.images?.length > 0;
-  const selectedShop = shops.find((s) => s.id === (draft.shop_id ?? undefined));
-
-  const promoEnabled = !!draft.promo_eligible;
-  const promoType: PromoDiscountType = draft.promo_discount_type === "AMOUNT" ? "AMOUNT" : "PERCENT";
-
-  const promoValueNum = Number(draft.promo_discount_value ?? 0);
-  const priceNum = Number(draft.price ?? 0);
-
-  const promoPricePreview = useMemo(() => {
-    if (!promoEnabled) return null;
-    if (!priceNum || !promoValueNum) return null;
-    return computePromoPrice(priceNum, promoType, promoValueNum);
-  }, [promoEnabled, promoType, promoValueNum, priceNum]);
-
-  const categoriesByStyle = useMemo(() => {
-    const style = String(draft.style || "").toLowerCase();
-    if (!style) return categories;
-
-    const wanted = new Set<number>();
-    for (const sc of subCategories || []) {
-      const s = String(sc.slug || "").toLowerCase();
-      if (s === style) wanted.add(Number(sc.category_id));
-    }
-    if (!wanted.size) return categories;
-    return categories.filter((c) => wanted.has(c.id));
-  }, [categories, subCategories, draft.style]);
-
-  const filteredSubCats = useMemo(() => {
-    const cid = Number(draft.category_id || 0);
-    if (!cid) return [];
-
-    let list = (subCategories || []).filter((sc) => Number(sc.category_id) === cid);
-
-    const style = String(draft.style || "").toLowerCase();
-    if (style) {
-      const byStyle = list.filter((sc) => String(sc.slug || "").toLowerCase() === style);
-      if (byStyle.length) list = byStyle;
+  const loadShops = useCallback(async (vendorMode: boolean) => {
+    // ✅ vendeur: essayer /api/shops/mine, sinon fallback /api/shops
+    try {
+      if (vendorMode) {
+        const rMine = await api.get("/api/shops/mine");
+        const rows = unwrap<Shop[]>(rMine) || [];
+        if (Array.isArray(rows) && rows.length) return rows;
+      }
+    } catch {
+      // ignore
     }
 
-    return list;
-  }, [subCategories, draft.category_id, draft.style]);
+    const r = await api.get("/api/shops");
+    const rows = unwrap<Shop[]>(r) || [];
+    return Array.isArray(rows) ? rows : [];
+  }, []);
 
-  useEffect(() => {
-    setIsCustomCategory(false);
-    setIsCustomSubCategory(false);
-    setNewCategoryName("");
-    setNewSubCategoryName("");
-    setNewSubCatsRaw("");
-    setCreatedSubCatsPreview([]);
-    setDraft((d) => ({ ...d, category_id: null, sub_category_id: null }));
+  const loadCatalogs = useCallback(
+    async (vendorMode: boolean) => {
+      const [cats, subs, sh] = await Promise.all([
+        listCategories(),
+        listSubCategories(),
+        loadShops(vendorMode),
+      ]);
 
-    setVariantsErr(null);
-    setVariantsOk(null);
-    setVariantsTouched(false);
-    setVariants([]);
-    setActiveSize(sizesPreset[0]);
-    setCustomSize("");
-    setCustomColor("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft.style]);
+      setCategories((unwrap<Category[]>(cats) || []) as Category[]);
 
-  useEffect(() => {
-    const cid = Number(draft.category_id || 0);
-    const sid = Number(draft.sub_category_id || 0);
-    if (!cid || !sid) return;
+      const subsRaw = (unwrap<SvcSubCategory[]>(subs) || []) as any[];
+      const mappedSubs: SubCategory[] = (subsRaw || []).map((x) => ({
+        id: Number(x.id),
+        category_id: Number(x.category_id),
+        name: String(x.name ?? ""),
+        slug: String(x.slug ?? ""),
+        category_name: x.category_name ?? null,
+        category_slug: x.category_slug ?? null,
+      }));
+      setSubCategories(mappedSubs);
 
-    const ok = subCategories.some((sc) => sc.id === sid && Number(sc.category_id) === cid);
-    if (!ok) setDraft((d) => ({ ...d, sub_category_id: null }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft.category_id]);
+      const mappedShops = (sh || []).map((s) => ({ ...s, id: Number(s.id) }));
+      setShops(mappedShops);
 
-  useEffect(() => {
-    if (!isCustomCategory) {
-      setCreatedSubCatsPreview([]);
-      return;
-    }
-    const names = splitNames(newSubCatsRaw);
-    setCreatedSubCatsPreview(names);
-  }, [newSubCatsRaw, isCustomCategory]);
+      // ✅ vendeur: si 1 seule boutique => filtre auto
+      if (vendorMode && mappedShops.length === 1) setShopId(Number(mappedShops[0].id));
+    },
+    [loadShops]
+  );
 
-  // load variants when editing fashion
   useEffect(() => {
     const run = async () => {
-      setVariantsErr(null);
-      setVariantsOk(null);
+      setBooting(true);
+      setErr(null);
 
-      if (!isFashion) return;
-
-      if (!isEdit) return;
-      if (variantsTouched) return;
-
-      setVariantsLoading(true);
       try {
-        const rows = await listProductVariants(productId);
-        const mapped: VariantDraft[] = (rows || []).map((v) => ({
-          id: v.id,
-          size: v.size ?? null,
-          color: v.color ?? null,
-          sku: v.sku ?? null,
-          stock: Number(v.stock ?? 0),
-          price_override: v.price_override ?? null,
-          is_active: (v.is_active ?? 1) as any,
-        }));
-        setVariants(mapped);
+        const u = unwrap(await me());
+        setUser(u || null);
+
+        const vendorMode =
+          String(u?.role || "").toUpperCase() === "VENDOR" || String(u?.role || "").toUpperCase() === "VENDEUR";
+        await loadCatalogs(vendorMode);
       } catch (e: any) {
-        setVariantsErr(e?.message || String(e));
+        setErr(e?.message || String(e));
       } finally {
-        setVariantsLoading(false);
+        setBooting(false);
       }
     };
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFashion, productId, isEdit]);
+  }, [loadCatalogs]);
 
-  function validatePromo(): string | null {
-    if (!promoEnabled) return null;
+  /* ================= Load products list ================= */
 
-    if (!draft.price || Number(draft.price) <= 0) {
-      return "Renseigne d’abord un prix valide avant d’appliquer une promo.";
-    }
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
 
-    const v = Number(draft.promo_discount_value);
-    if (!Number.isFinite(v) || v <= 0) {
-      return "Renseigne une réduction valide (nombre > 0).";
-    }
-
-    if (promoType === "PERCENT") {
-      if (v <= 0 || v > 95) return "Le pourcentage doit être entre 1 et 95.";
-    } else {
-      if (v >= Number(draft.price)) return "Le montant de réduction doit être inférieur au prix.";
-    }
-
-    return null;
-  }
-
-  // ===== Variants UI logic (radio size + checkbox colors) =====
-  function hasVariant(size: string, color: string) {
-    const k = vKey(size, color);
-    return (variants || []).some((v) => vKey(v.size, v.color) === k);
-  }
-
-  function upsertVariant(size: string, color: string, patch?: Partial<VariantDraft>) {
-    const k = vKey(size, color);
-    setVariantsTouched(true);
-    setVariants((prev) => {
-      const arr = [...(prev || [])];
-      const idx = arr.findIndex((v) => vKey(v.size, v.color) === k);
-      if (idx >= 0) {
-        arr[idx] = { ...arr[idx], ...patch, size, color };
-        return arr;
-      }
-      const created: VariantDraft = {
-        size,
-        color,
-        sku: null,
-        stock: 0,
-        price_override: null,
-        is_active: 1,
-        ...(patch || {}),
-      };
-      return [...arr, created];
-    });
-    setLastAddedKey(k);
-    window.setTimeout(() => setLastAddedKey(null), 900);
-  }
-
-  function removeVariant(size: string, color: string) {
-    const k = vKey(size, color);
-    setVariantsTouched(true);
-    setVariants((prev) => (prev || []).filter((v) => vKey(v.size, v.color) !== k));
-  }
-
-  function patchVariantByKey(size: string, color: string, patch: Partial<VariantDraft>) {
-    const k = vKey(size, color);
-    setVariantsTouched(true);
-    setVariants((prev) =>
-      (prev || []).map((v) => (vKey(v.size, v.color) === k ? { ...v, ...patch } : v))
-    );
-  }
-
-  const variantsBySize = useMemo(() => {
-    const map = new Map<string, VariantDraft[]>();
-    for (const v of variants || []) {
-      const s = String(v.size ?? "").trim();
-      const c = String(v.color ?? "").trim();
-      if (!s || !c) continue;
-      if (!map.has(s)) map.set(s, []);
-      map.get(s)!.push(v);
-    }
-    for (const [, arr] of map.entries()) {
-      arr.sort((a, b) =>
-        String(a.color || "").localeCompare(String(b.color || ""), "fr", { sensitivity: "base" })
-      );
-    }
-    return Array.from(map.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0], "fr", { sensitivity: "base" })
-    );
-  }, [variants]);
-
-  const allSizesUI = useMemo(() => {
-    const fromVariants = variantsBySize.map(([s]) => s);
-    return uniq([...sizesPreset, ...fromVariants]);
-  }, [variantsBySize]);
-
-  const allColorsUI = useMemo(() => {
-    const fromVariants: string[] = [];
-    for (const [, arr] of variantsBySize) for (const v of arr) fromVariants.push(String(v.color || ""));
-    return uniq([...colorsPreset, ...fromVariants]);
-  }, [variantsBySize]);
-
-  async function cleanAllVariants() {
-    if (!isEdit || !isFashion) return;
-    if (!confirm("Supprimer TOUTES les variantes de ce produit ?")) return;
-
-    setVariantsErr(null);
-    setVariantsOk(null);
-    setVariantsLoading(true);
     try {
-      const rows = await listProductVariants(productId);
-      for (const v of rows || []) await removeProductVariant(v.id);
-      setVariants([]);
-      setVariantsTouched(true);
-      setVariantsOk("Toutes les variantes ont été supprimées.");
-      window.setTimeout(() => setVariantsOk(null), 1600);
+      const params: AnyObj = { page, page_size: pageSize };
+
+      const qs = String(q || "").trim();
+      if (qs) params.q = qs;
+      if (style) params.vertical = String(style).toUpperCase(); // FOOD/MARKET/FASHION
+      if (shopId !== "") params.shop_id = Number(shopId);
+      if (active !== "") params.is_active = Number(active);
+      if (promo === "1") params.promo = 1;
+
+      // ✅ BACKEND ROUTE: /api/products/manage
+      const r = await api.get("/api/products/manage", { params });
+      const data = unwrap<any>(r);
+
+      const rows = (data?.items || data?.rows || data?.data || data || []) as any[];
+
+      const info: PageInfo =
+        data?.pageInfo ||
+        data?.page_info ||
+        ({
+          page: toInt(data?.page, page),
+          pageSize: toInt(data?.page_size, pageSize),
+          total: toInt(data?.total, rows?.length || 0),
+          pages: toInt(data?.pages, 1),
+        } as PageInfo);
+
+      const mapped: FullProduct[] = (rows || []).map((p: any) => ({
+        ...(p || {}),
+        id: Number(p.id),
+        shop_id: p.shop_id != null ? Number(p.shop_id) : null,
+        category_id: p.category_id != null ? Number(p.category_id) : null,
+        sub_category_id: p.sub_category_id != null ? Number(p.sub_category_id) : null,
+        price: p.price != null ? Number(p.price) : null,
+        stock: p.stock != null ? Number(p.stock) : null,
+        promo_discount_value: p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
+        images: Array.isArray(p.images) ? (p.images as ProductImage[]) : undefined,
+      }));
+
+      setItems(mapped);
+      setPageInfo({
+        page: toInt(info.page, page),
+        pageSize: toInt(info.pageSize, pageSize),
+        total: toInt(info.total, mapped.length),
+        pages: Math.max(1, toInt(info.pages, 1)),
+      });
     } catch (e: any) {
-      setVariantsErr(e?.message || String(e));
+      const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+      setErr(msg);
     } finally {
-      setVariantsLoading(false);
+      setLoading(false);
     }
+  }, [page, pageSize, q, style, shopId, active, promo]);
+
+  useEffect(() => {
+    if (booting) return;
+    fetchProducts();
+  }, [booting, fetchProducts]);
+
+  /* ================= CRUD helpers ================= */
+
+  const loadProductById = useCallback(async (id: number) => {
+    // ✅ BACKEND ROUTE: /api/products/manage/:id
+    const r = await api.get(`/api/products/manage/${id}`);
+    const p = unwrap<any>(r);
+
+    const mapped: FullProduct = {
+      ...(p || {}),
+      id: Number(p.id),
+      shop_id: p.shop_id != null ? Number(p.shop_id) : null,
+      category_id: p.category_id != null ? Number(p.category_id) : null,
+      sub_category_id: p.sub_category_id != null ? Number(p.sub_category_id) : null,
+      price: p.price != null ? Number(p.price) : null,
+      stock: p.stock != null ? Number(p.stock) : null,
+      promo_discount_value: p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
+      images: Array.isArray(p.images) ? (p.images as ProductImage[]) : [],
+    };
+
+    return mapped;
+  }, []);
+
+  const openCreate = useCallback(() => {
+    setFormErr(null);
+    setEditing(undefined);
+    setOpenForm(true);
+  }, []);
+
+  const openEdit = useCallback(
+    async (id: number) => {
+      setFormErr(null);
+      setFormLoading(true);
+      setOpenForm(true);
+      try {
+        const full = await loadProductById(id);
+        setEditing(full);
+      } catch (e: any) {
+        const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+        setFormErr(msg);
+      } finally {
+        setFormLoading(false);
+      }
+    },
+    [loadProductById]
+  );
+
+  const closeForm = useCallback(() => {
+    setOpenForm(false);
+    setEditing(undefined);
+    setFormErr(null);
+    setFormLoading(false);
+  }, []);
+
+  const deleteProduct = useCallback(
+    async (p: FullProduct) => {
+      if (!confirm(`Supprimer le produit "${p.name}" ?`)) return;
+
+      try {
+        // ✅ BACKEND ROUTE: DELETE /api/products/:id
+        await api.delete(`/api/products/${p.id}`);
+        await fetchProducts();
+      } catch (e: any) {
+        const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+        alert(msg);
+      }
+    },
+    [fetchProducts]
+  );
+
+  const createOrUpdate = useCallback(
+    async (draft: Draft, files: File[], replaceImages: boolean, variants: VariantDraft[]) => {
+      setFormErr(null);
+
+      const fd = new FormData();
+
+      const put = (k: string, v: any) => {
+        if (v === undefined || v === null || v === "") return;
+        fd.append(k, String(v));
+      };
+
+      const vertical = String(draft.style || "").toUpperCase();
+      put("vertical", vertical);
+
+      put("name", draft.name);
+      put("price", draft.price);
+      put("currency", draft.currency || "MAD");
+      put("description", draft.description);
+      put("stock", draft.stock);
+
+      put("is_featured", draft.is_featured);
+      put("promo_eligible", draft.promo_eligible);
+
+      put("category_id", draft.category_id);
+      put("sub_category_id", draft.sub_category_id);
+
+      if (!isVendor) put("shop_id", draft.shop_id);
+
+      put("promo_discount_type", draft.promo_discount_type || "PERCENT");
+      put("promo_discount_value", draft.promo_discount_value);
+      put("promo_free_delivery", draft.promo_free_delivery);
+
+      if (draft.is_active != null) put("is_active", draft.is_active);
+
+      put("replace_images", replaceImages ? 1 : 0);
+
+      // ✅ IMPORTANT: backend attend images[]
+      for (const f of files || []) fd.append("images[]", f);
+
+      const cleaned = cleanVariantsForApi(variants || []);
+      fd.append("variants", JSON.stringify(cleaned));
+
+      const editingId = Number(editing?.id || 0);
+
+      try {
+        if (editingId) {
+          // ✅ BACKEND ROUTE: PUT /api/products/:id
+          await api.put(`/api/products/${editingId}`, fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        } else {
+          // ✅ BACKEND ROUTE: POST /api/products
+          await api.post(`/api/products`, fd, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+        }
+
+        closeForm();
+        await fetchProducts();
+      } catch (e: any) {
+        const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+        setFormErr(msg);
+        throw e;
+      }
+    },
+    [closeForm, editing?.id, fetchProducts, isVendor]
+  );
+
+  /* ================= Category creation ================= */
+
+  const onCreateCategory = useCallback(async (name: string) => {
+    const r = await createCategory(name);
+    const created = unwrap<Category>(r);
+    setCategories((prev) => [...prev, created]);
+    return created;
+  }, []);
+
+  const onCreateSubCategory = useCallback(async (categoryId: number, name: string) => {
+    const r = await api.post("/api/sub-categories", { category_id: categoryId, name });
+    const created = unwrap<any>(r);
+
+    const sc: SubCategory = {
+      id: Number(created.id),
+      category_id: Number(created.category_id ?? categoryId),
+      name: String(created.name ?? name),
+      slug: String(created.slug ?? ""),
+      category_name: created.category_name ?? null,
+      category_slug: created.category_slug ?? null,
+    };
+
+    setSubCategories((prev) => [...prev, sc]);
+    return sc;
+  }, []);
+
+  /* ================= Derived UI ================= */
+
+  const totalLabel = useMemo(() => {
+    if (loading) return "Chargement…";
+    return `${pageInfo.total} produit(s)`;
+  }, [loading, pageInfo.total]);
+
+  const pageCanPrev = page > 1;
+  const pageCanNext = page < (pageInfo.pages || 1);
+
+  const shopOptions = useMemo(() => {
+    return [...shops].sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" })
+    );
+  }, [shops]);
+
+  if (booting) {
+    return (
+      <main className="container py-4">
+        <div className="text-muted">Chargement…</div>
+      </main>
+    );
   }
-
-  async function submit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setFormError(null);
-
-    const style = String(draft.style || "").toLowerCase();
-    if (style !== "food" && style !== "market" && style !== "fashion") {
-      setFormError("Choisis d’abord le type : Food / Market / Fashion.");
-      return;
-    }
-
-    const promoErr = validatePromo();
-    if (promoErr) {
-      setFormError(promoErr);
-      return;
-    }
-
-    if (isCustomCategory) {
-      if (!newCategoryName.trim()) {
-        setFormError("Renseigne le nom de la nouvelle catégorie.");
-        return;
-      }
-      const scNames = splitNames(newSubCatsRaw);
-      if (!scNames.length) {
-        setFormError("Ajoute au moins une sous-catégorie pour la nouvelle catégorie (séparées par des virgules).");
-        return;
-      }
-    } else if (!draft.category_id) {
-      setFormError("Sélectionne une catégorie.");
-      return;
-    }
-
-    if (!isCustomCategory) {
-      if (isCustomSubCategory) {
-        if (!newSubCategoryName.trim()) {
-          setFormError("Renseigne le nom de la nouvelle sous-catégorie.");
-          return;
-        }
-      } else if (!draft.sub_category_id) {
-        setFormError("Sélectionne une sous-catégorie (liée à la catégorie).");
-        return;
-      }
-    }
-
-    // ✅ validation variantes fashion (prod)
-    if (style === "fashion") {
-      const cleaned = cleanVariantsForApi(variants);
-      if (cleaned.length === 0) {
-        setFormError("Ajoute au moins une variante (taille + couleur) pour un produit Fashion.");
-        return;
-      }
-    }
-
-    setSubmitting(true);
-    try {
-      let categoryId: number | null | undefined = draft.category_id;
-      let subCatId: number | null | undefined = draft.sub_category_id;
-
-      if (isCustomCategory) {
-        const createdCat = await onCreateCategory(newCategoryName.trim());
-        categoryId = createdCat.id;
-
-        const cid = Number(categoryId || 0);
-        if (!cid) throw new Error("category_id manquant après création.");
-
-        const names = splitNames(newSubCatsRaw);
-        let firstCreated: SubCategory | null = null;
-
-        for (let i = 0; i < names.length; i++) {
-          const created = await onCreateSubCategory(cid, names[i]);
-          if (!firstCreated) firstCreated = created;
-        }
-
-        subCatId = firstCreated?.id ?? null;
-
-        setIsCustomCategory(false);
-        setNewCategoryName("");
-        setNewSubCatsRaw("");
-        setCreatedSubCatsPreview([]);
-        setDraft((d) => ({ ...d, category_id: categoryId ?? null, sub_category_id: subCatId ?? null }));
-      } else {
-        const cid = Number(categoryId || 0);
-        if (!cid) throw new Error("Sélectionne une catégorie d’abord.");
-
-        if (isCustomSubCategory) {
-          const createdSub = await onCreateSubCategory(cid, newSubCategoryName.trim());
-          subCatId = createdSub.id;
-
-          setIsCustomSubCategory(false);
-          setNewSubCategoryName("");
-        }
-      }
-
-      const finalDraft: Draft = { ...draft, category_id: categoryId ?? null, sub_category_id: subCatId ?? null };
-      await onSubmit(finalDraft, files, replaceImages, variants);
-    } catch (err: any) {
-      setFormError(err?.message || String(err));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const basePrice = Number(draft.price ?? 0);
-  const safeBasePrice = basePrice > 0 ? basePrice : 0;
 
   return (
-    <form onSubmit={submit}>
+    <main className="container py-4">
       <style>{`
-        .duu-admin-soft{ background: rgba(0,0,0,.03); border: 1px solid rgba(0,0,0,.06); border-radius: 16px; }
-        .duu-admin-card{ border-radius: 16px; overflow:hidden; }
-        .duu-pill{
-          display:inline-flex; align-items:center; gap:8px;
-          padding: 6px 10px; border-radius: 999px;
-          background:#fff; border:1px solid rgba(0,0,0,.08);
-          box-shadow: 0 6px 18px rgba(0,0,0,.06);
-          font-weight:800;
-        }
-        .duu-pill small{ font-weight:700; color: rgba(0,0,0,.55); }
         .duu-focus:focus, .duu-focus:focus-visible, .form-control:focus, .form-select:focus{
           outline:none !important;
           box-shadow: 0 0 0 .22rem rgba(253,220,0,.35) !important;
           border-color: rgba(229,57,53,.35) !important;
         }
-        .btn-duu{ background: var(--duu-yellow, #fddc00); color:#1f1f1f; border: none; font-weight: 900; }
-        .btn-duu:hover{ filter: brightness(.96); }
-
-        .duu-chip{
-          display:inline-flex; align-items:center; gap:8px;
-          padding: 6px 10px; border-radius: 999px;
-          border: 1px solid rgba(0,0,0,.10);
-          background:#fff;
-          font-weight: 800;
-          cursor:pointer;
-          user-select:none;
-        }
-        .duu-chip.flash{
-          box-shadow: 0 0 0 .22rem rgba(253,220,0,.35);
-          border-color: rgba(229,57,53,.35);
-        }
-        .duu-variant-mini{
-          background:#fff;
-          border:1px solid rgba(0,0,0,.08);
-          border-radius: 14px;
-          padding: 10px 12px;
-          box-shadow: 0 10px 22px rgba(0,0,0,.06);
-        }
-        .duu-variant-mini .lbl{ font-size:.82rem; color: rgba(0,0,0,.55); font-weight:800; }
-        .duu-muted{ color: rgba(0,0,0,.58); }
+        .duu-card{ border-radius: 16px; }
+        .duu-thumb{ width:44px; height:44px; object-fit:cover; border-radius: 12px; border:1px solid rgba(0,0,0,.10); }
       `}</style>
 
-      <div className="row g-2">
-        <div className="col-12 col-md-8">
-          <div className="row g-2">
-            <div className="col-8">
-              <label className="form-label">Nom</label>
+      <div className="d-flex align-items-start justify-content-between gap-2 flex-wrap">
+        <div>
+          <h4 className="mb-1">Produits</h4>
+          <div className="text-muted small">{totalLabel}</div>
+        </div>
+
+        <div className="d-flex gap-2 flex-wrap">
+          <button className="btn btn-dark" onClick={openCreate}>
+            + Ajouter
+          </button>
+          <button className="btn btn-outline-secondary" onClick={fetchProducts} disabled={loading}>
+            Rafraîchir
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="card duu-card border-0 bg-light mt-3">
+        <div className="card-body p-3">
+          <div className="row g-2 align-items-end">
+            <div className="col-12 col-md-4">
+              <label className="form-label">Recherche</label>
               <input
                 className="form-control duu-focus"
-                value={draft.name || ""}
-                onChange={(ev) => setDraft((d) => ({ ...d, name: ev.target.value }))}
-                required
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Nom, SKU, etc."
               />
             </div>
 
-            <div className="col-4">
-              <label className="form-label">Actif</label>
+            <div className="col-6 col-md-2">
+              <label className="form-label">Type</label>
               <select
                 className="form-select duu-focus"
-                value={draft.is_active == null ? "" : String(Number(draft.is_active))}
-                onChange={(ev) =>
-                  setDraft((d) => ({
-                    ...d,
-                    is_active: ev.target.value === "" ? null : (Number(ev.target.value) as 0 | 1),
-                  }))
-                }
+                value={style}
+                onChange={(e) => {
+                  setStyle((e.target.value as any) || "");
+                  setPage(1);
+                }}
               >
-                <option value="">(ne pas changer)</option>
-                <option value="1">Actif</option>
-                <option value="0">Désactivé</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="row g-2 mt-2">
-            <div className="col-12 col-md-6">
-              <label className="form-label">Type (Food / Market / Fashion)</label>
-              <select
-                className="form-select duu-focus"
-                value={draft.style || ""}
-                onChange={(ev) => setDraft((d) => ({ ...d, style: (ev.target.value as any) || "" }))}
-                required
-              >
-                <option value="">(Choisir le type)</option>
+                <option value="">Tous</option>
                 <option value="food">Food</option>
                 <option value="market">Market</option>
                 <option value="fashion">Fashion</option>
               </select>
-              <small className="text-muted">
-                Choisis le type d’abord, ensuite tu sélectionnes (ou crées) catégorie et sous-catégorie.
-              </small>
             </div>
-          </div>
 
-          <div className="row g-2 mt-1">
-            <div className="col-12">
-              <label className="form-label">Boutique</label>
-              <div className="d-flex align-items-center gap-2">
-                <select
-                  className="form-select duu-focus"
-                  value={draft.shop_id != null ? String(draft.shop_id) : ""}
-                  onChange={(ev) => {
-                    const v = ev.target.value;
-                    setDraft((d) => ({ ...d, shop_id: v ? Number(v) : null }));
-                  }}
-                >
-                  <option value="">(Sélectionner une boutique)</option>
-                  {shops.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-
-                {selectedShop?.logo && (
-                  <img
-                    src={imgUrl(selectedShop.logo)}
-                    alt={selectedShop.name}
-                    className="rounded-circle border d-none d-md-inline-block"
-                    style={{ width: 40, height: 40, objectFit: "cover" }}
-                  />
-                )}
-              </div>
-
-              <small className="text-muted">
-                Admin : boutique obligatoire. Vendeur : sa boutique est déduite côté API.
-              </small>
-            </div>
-          </div>
-
-          <div className="row g-2 mt-2">
-            <div className="col-6">
-              <label className="form-label">Catégorie</label>
+            <div className="col-6 col-md-2">
+              <label className="form-label">Actif</label>
               <select
                 className="form-select duu-focus"
-                disabled={!draft.style}
-                value={isCustomCategory ? "__other__" : draft.category_id ? String(draft.category_id) : ""}
-                onChange={(ev) => {
-                  const val = ev.target.value;
-                  if (val === "__other__") {
-                    setIsCustomCategory(true);
-                    setIsCustomSubCategory(false);
-                    setDraft((d) => ({ ...d, category_id: null, sub_category_id: null }));
-                  } else {
-                    setIsCustomCategory(false);
-                    setNewCategoryName("");
-                    setNewSubCatsRaw("");
-                    setCreatedSubCatsPreview([]);
-                    const cid = val ? Number(val) : null;
-                    setDraft((d) => ({ ...d, category_id: cid, sub_category_id: null }));
-                  }
+                value={active}
+                onChange={(e) => {
+                  setActive((e.target.value as any) || "");
+                  setPage(1);
                 }}
               >
-                <option value="">{!draft.style ? "(Choisir le type d’abord)" : "(Sélectionner)"}</option>
-                {categoriesByStyle.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-                {draft.style ? <option value="__other__">Autre…</option> : null}
+                <option value="">Tous</option>
+                <option value="1">Actifs</option>
+                <option value="0">Désactivés</option>
               </select>
             </div>
 
-            {isCustomCategory && (
-              <div className="col-6">
-                <label className="form-label">Nouvelle catégorie</label>
-                <input
-                  className="form-control duu-focus"
-                  placeholder="Ex: Épicerie, Boissons, Hygiène…"
-                  value={newCategoryName}
-                  onChange={(ev) => setNewCategoryName(ev.target.value)}
-                  disabled={!draft.style}
-                />
-              </div>
-            )}
-          </div>
-
-          {isCustomCategory ? (
-            <div className="row g-2 mt-1">
-              <div className="col-12">
-                <label className="form-label">Sous-catégories de départ</label>
-                <input
-                  className="form-control duu-focus"
-                  placeholder="Ex: Épices, Riz, Huiles (séparées par des virgules)"
-                  value={newSubCatsRaw}
-                  onChange={(ev) => setNewSubCatsRaw(ev.target.value)}
-                  disabled={!draft.style}
-                />
-
-                {createdSubCatsPreview.length ? (
-                  <div className="d-flex flex-wrap gap-2 mt-2">
-                    {createdSubCatsPreview.map((x) => (
-                      <span key={x} className="badge bg-light text-dark border">
-                        {x}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ) : (
-            <div className="row g-2 mt-1">
-              <div className="col-6">
-                <label className="form-label">Sous-catégorie (liée)</label>
-                <select
-                  className="form-select duu-focus"
-                  disabled={!draft.style || !draft.category_id}
-                  value={isCustomSubCategory ? "__other__" : draft.sub_category_id ? String(draft.sub_category_id) : ""}
-                  onChange={(ev) => {
-                    const val = ev.target.value;
-                    if (val === "__other__") {
-                      setIsCustomSubCategory(true);
-                      setDraft((d) => ({ ...d, sub_category_id: null }));
-                    } else {
-                      setIsCustomSubCategory(false);
-                      setNewSubCategoryName("");
-                      setDraft((d) => ({ ...d, sub_category_id: val ? Number(val) : null }));
-                    }
-                  }}
-                >
-                  <option value="">
-                    {!draft.style
-                      ? "(Choisir le type d’abord)"
-                      : !draft.category_id
-                        ? "(Choisir une catégorie d’abord)"
-                        : filteredSubCats.length
-                          ? "(Sélectionner)"
-                          : "(Aucune sous-catégorie)"}
-                  </option>
-
-                  {filteredSubCats.map((sc) => (
-                    <option key={sc.id} value={sc.id}>
-                      {sc.name}
-                    </option>
-                  ))}
-
-                  {draft.category_id ? <option value="__other__">Autre…</option> : null}
-                </select>
-
-                <small className="text-muted">La liste dépend du type + catégorie sélectionnés.</small>
-              </div>
-
-              {isCustomSubCategory && (
-                <div className="col-6">
-                  <label className="form-label">Nouvelle sous-catégorie</label>
-                  <input
-                    className="form-control duu-focus"
-                    placeholder="Ex: Épices, Conserves, Snacks…"
-                    value={newSubCategoryName}
-                    onChange={(ev) => setNewSubCategoryName(ev.target.value)}
-                    disabled={!draft.style || !draft.category_id}
-                  />
-                  <small className="text-muted">Elle sera créée et liée automatiquement à cette catégorie.</small>
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="row g-2 mt-2">
-            <div className="col-4">
-              <label className="form-label">Prix</label>
-              <input
-                type="number"
-                step="0.01"
-                className="form-control duu-focus"
-                value={draft.price ?? ""}
-                onChange={(ev) =>
-                  setDraft((d) => ({ ...d, price: ev.target.value === "" ? null : Number(ev.target.value) }))
-                }
-                required
-              />
-            </div>
-            <div className="col-4">
-              <label className="form-label">Devise</label>
-              <input
-                className="form-control duu-focus"
-                value={draft.currency || "MAD"}
-                onChange={(ev) => setDraft((d) => ({ ...d, currency: ev.target.value }))}
-              />
-            </div>
-            <div className="col-4">
-              <label className="form-label">Stock</label>
-              <input
-                type="number"
-                className="form-control duu-focus"
-                value={draft.stock ?? ""}
-                onChange={(ev) =>
-                  setDraft((d) => ({ ...d, stock: ev.target.value === "" ? null : Number(ev.target.value) }))
-                }
-              />
-            </div>
-          </div>
-
-          {/* ✅ Variants block (Fashion only) — RADIO tailles + CHECKBOX couleurs, affichage groupé */}
-          {isFashion && (
-            <div className="duu-admin-soft mt-3 p-3">
-              <div className="d-flex align-items-start justify-content-between gap-2 flex-wrap">
-                <div>
-                  <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <div className="fw-semibold">Variantes (Fashion)</div>
-                    <span className="duu-pill">
-                      <small>Total</small> {variants.length}
-                    </span>
-                    <span className="duu-pill">
-                      <small>Actives</small> {variants.filter((v) => (v.is_active ?? 1) === 1).length}
-                    </span>
-                  </div>
-                  <div className="small text-muted mt-1">
-                    Choisis une <b>taille</b>, puis coche une ou plusieurs <b>couleurs</b>.
-                    Chaque couleur cochée crée la variante <b>(taille + couleur)</b>.
-                  </div>
-                  <div className="small duu-muted mt-1">
-                    Prix produit: <b>{safeBasePrice > 0 ? moneyMAD(safeBasePrice) : "—"}</b> •
-                    Prix variante (optionnel) remplace le prix produit.
-                  </div>
-                </div>
-
-                <div className="d-flex gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-dark"
-                    onClick={() => {
-                      setVariantsTouched(true);
-                      setVariants((prev) =>
-                        (prev || []).map((v) => ({
-                          ...v,
-                          sku: v.sku && String(v.sku).trim() ? toUpperSku(v.sku) : v.sku,
-                        }))
-                      );
-                      setVariantsOk("SKU normalisés.");
-                      window.setTimeout(() => setVariantsOk(null), 1400);
-                    }}
-                    disabled={variantsLoading || !variants.length}
-                    title="Met en MAJ et remplace espaces par -"
-                  >
-                    Nettoyer SKU
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary"
-                    onClick={() => {
-                      if (!draft.name.trim()) {
-                        setVariantsErr("Renseigne le nom du produit avant de générer des SKU.");
-                        return;
-                      }
-                      setVariantsErr(null);
-                      setVariantsTouched(true);
-                      setVariants((prev) =>
-                        (prev || []).map((v) => ({
-                          ...v,
-                          sku:
-                            v.sku && String(v.sku).trim()
-                              ? toUpperSku(v.sku)
-                              : buildSkuAuto(draft.name, v.size ?? null, v.color ?? null),
-                        }))
-                      );
-                      setVariantsOk("SKU générés.");
-                      window.setTimeout(() => setVariantsOk(null), 1400);
-                    }}
-                    disabled={variantsLoading || !variants.length}
-                  >
-                    Générer SKU
-                  </button>
-
-                  {isEdit ? (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={cleanAllVariants}
-                      disabled={variantsLoading}
-                    >
-                      Supprimer tout
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {variantsLoading ? <div className="text-muted small mt-2">Chargement variantes…</div> : null}
-              {variantsOk ? <div className="alert alert-success py-2 mt-2 mb-0">{variantsOk}</div> : null}
-              {variantsErr ? <div className="alert alert-danger py-2 mt-2 mb-0">{variantsErr}</div> : null}
-
-              {/* 1) Tailles */}
-              <div className="mt-3">
-                <div className="fw-semibold mb-2">1) Taille</div>
-
-                <div className="d-flex flex-wrap gap-2">
-                  {allSizesUI.map((s) => {
-                    const checked = String(activeSize) === String(s);
-                    return (
-                      <label
-                        key={s}
-                        className="duu-chip"
-                        style={{
-                          borderColor: checked ? "rgba(229,57,53,.35)" : "rgba(0,0,0,.10)",
-                          boxShadow: checked ? "0 0 0 .18rem rgba(253,220,0,.28)" : "none",
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="sizeRadio"
-                          checked={checked}
-                          onChange={() => setActiveSize(s)}
-                          style={{ marginRight: 6 }}
-                        />
-                        {s}
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-2 d-flex gap-2 flex-wrap">
-                  <input
-                    className="form-control duu-focus"
-                    style={{ maxWidth: 260 }}
-                    placeholder="Ajouter une taille (ex: 46)"
-                    value={customSize}
-                    onChange={(e) => setCustomSize(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-outline-dark"
-                    onClick={() => {
-                      const s = String(customSize || "").trim();
-                      if (!s) return;
-                      setActiveSize(s);
-                      setCustomSize("");
-                    }}
-                  >
-                    Ajouter taille
-                  </button>
-                </div>
-              </div>
-
-              {/* 2) Couleurs */}
-              <div className="mt-3">
-                <div className="fw-semibold mb-2">
-                  2) Couleurs pour : <span className="badge text-bg-dark">{activeSize}</span>
-                </div>
-
-                <div className="d-flex flex-wrap gap-2">
-                  {allColorsUI.map((c) => {
-                    const checked = hasVariant(activeSize, c);
-                    const k = vKey(activeSize, c);
-                    return (
-                      <label key={k} className={`duu-chip ${lastAddedKey === k ? "flash" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            if (e.target.checked) upsertVariant(activeSize, c);
-                            else removeVariant(activeSize, c);
-                          }}
-                          style={{ marginRight: 6 }}
-                        />
-                        {c}
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-2 d-flex gap-2 flex-wrap">
-                  <input
-                    className="form-control duu-focus"
-                    style={{ maxWidth: 260 }}
-                    placeholder="Ajouter une couleur (ex: Orange)"
-                    value={customColor}
-                    onChange={(e) => setCustomColor(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-outline-dark"
-                    onClick={() => {
-                      const c = String(customColor || "").trim();
-                      if (!c) return;
-                      if (hasVariant(activeSize, c)) {
-                        setCustomColor("");
-                        return;
-                      }
-                      upsertVariant(activeSize, c);
-                      setCustomColor("");
-                    }}
-                  >
-                    Ajouter couleur
-                  </button>
-                </div>
-              </div>
-
-              {/* Affichage groupé */}
-              <div className="mt-4">
-                <div className="fw-semibold mb-2">Variantes ajoutées</div>
-
-                {variantsBySize.length === 0 ? (
-                  <div className="text-muted small">
-                    Aucune variante. Choisis une taille, puis coche une ou plusieurs couleurs.
-                  </div>
-                ) : (
-                  <div className="d-flex flex-column gap-3">
-                    {variantsBySize.map(([size, arr]) => (
-                      <div key={size} className="p-2 rounded" style={{ background: "rgba(0,0,0,.03)" }}>
-                        <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-2">
-                          <div className="fw-semibold">
-                            Taille : <span className="badge text-bg-dark">{size}</span>
-                            <span className="ms-2 small text-muted">({arr.length} couleur(s))</span>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() => {
-                              if (!confirm(`Supprimer toutes les couleurs pour la taille "${size}" ?`)) return;
-                              setVariantsTouched(true);
-                              setVariants((prev) =>
-                                (prev || []).filter((v) => String(v.size || "").trim() !== String(size).trim())
-                              );
-                            }}
-                          >
-                            Tout supprimer (taille)
-                          </button>
-                        </div>
-
-                        <div className="row g-2">
-                          {arr.map((v) => {
-                            const color = String(v.color || "");
-                            const isOn = (v.is_active ?? 1) === 1;
-                            const stock = normStock(v.stock ?? 0);
-                            const override = v.price_override != null ? Number(v.price_override) : null;
-                            const priceFinal = override != null && override > 0 ? override : safeBasePrice;
-
-                            return (
-                              <div className="col-12 col-md-6" key={vKey(size, color)}>
-                                <div className="duu-variant-mini">
-                                  <div className="d-flex align-items-center justify-content-between gap-2">
-                                    <div className="fw-semibold">
-                                      <span className="badge bg-light text-dark border">{color}</span>
-                                      {!isOn ? (
-                                        <span className="ms-2 badge bg-secondary">Off</span>
-                                      ) : stock <= 0 ? (
-                                        <span className="ms-2 badge bg-danger">Rupture</span>
-                                      ) : (
-                                        <span className="ms-2 badge bg-success">OK</span>
-                                      )}
-                                    </div>
-
-                                    <div className="d-flex gap-2">
-                                      <button
-                                        type="button"
-                                        className={`btn btn-sm ${isOn ? "btn-outline-dark" : "btn-dark"}`}
-                                        onClick={() => patchVariantByKey(size, color, { is_active: isOn ? 0 : 1 })}
-                                      >
-                                        {isOn ? "Désactiver" : "Activer"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="btn btn-sm btn-outline-danger"
-                                        onClick={() => removeVariant(size, color)}
-                                        title="Supprimer cette variante"
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <div className="row g-2 mt-2">
-                                    <div className="col-6">
-                                      <div className="lbl mb-1">Stock</div>
-                                      <input
-                                        type="number"
-                                        className="form-control duu-focus"
-                                        value={stock}
-                                        min={0}
-                                        onChange={(e) => patchVariantByKey(size, color, { stock: Number(e.target.value || 0) })}
-                                      />
-                                    </div>
-
-                                    <div className="col-6">
-                                      <div className="lbl mb-1">Prix var. (opt)</div>
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        className="form-control duu-focus"
-                                        value={v.price_override ?? ""}
-                                        placeholder="= prix produit"
-                                        onChange={(e) =>
-                                          patchVariantByKey(size, color, {
-                                            price_override: e.target.value === "" ? null : Number(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-
-                                    <div className="col-12">
-                                      <div className="lbl mb-1">SKU (opt)</div>
-                                      <div className="input-group">
-                                        <input
-                                          className="form-control duu-focus"
-                                          value={v.sku ?? ""}
-                                          onChange={(e) => patchVariantByKey(size, color, { sku: e.target.value })}
-                                          placeholder="Optionnel"
-                                        />
-                                        <button
-                                          type="button"
-                                          className="btn btn-outline-secondary"
-                                          onClick={() => {
-                                            const next = buildSkuAuto(draft.name, size, color);
-                                            patchVariantByKey(size, color, { sku: next });
-                                          }}
-                                          title="Auto"
-                                        >
-                                          Auto
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="small text-muted mt-2">
-                                    Aperçu : <b>{moneyMAD(priceFinal)}</b> • Stock <b>{stock}</b>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="small text-muted mt-3">
-                  Important : à l’enregistrement, seules les variantes avec <strong>taille + couleur</strong> seront envoyées à l’API.
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="row g-2 mt-1">
-            <div className="col-6">
-              <div className="form-check mt-4">
-                <input
-                  id="feat"
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={!!draft.is_featured}
-                  onChange={(ev) => setDraft((d) => ({ ...d, is_featured: ev.target.checked ? 1 : 0 }))}
-                />
-                <label htmlFor="feat" className="form-check-label">
-                  Mis en avant
-                </label>
-              </div>
-            </div>
-
-            <div className="col-6">
-              <div className="form-check mt-4">
-                <input
-                  id="promo"
-                  className="form-check-input"
-                  type="checkbox"
-                  checked={!!draft.promo_eligible}
-                  onChange={(ev) => {
-                    const checked = ev.target.checked;
-                    setDraft((d) => ({
-                      ...d,
-                      promo_eligible: checked ? 1 : 0,
-                      ...(checked ? {} : { promo_discount_value: null, promo_discount_type: "PERCENT" }),
-                    }));
-                  }}
-                />
-                <label htmlFor="promo" className="form-check-label">
-                  Éligible promo
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {promoEnabled && (
-            <div className="card border-0 bg-light mt-2 duu-admin-card">
-              <div className="card-body p-3">
-                <div className="fw-semibold mb-2">Réduction</div>
-
-                <div className="row g-2 align-items-end">
-                  <div className="col-6 col-md-4">
-                    <label className="form-label">Type</label>
-                    <select
-                      className="form-select duu-focus"
-                      value={promoType}
-                      onChange={(ev) =>
-                        setDraft((d) => ({
-                          ...d,
-                          promo_discount_type: (ev.target.value as PromoDiscountType) || "PERCENT",
-                        }))
-                      }
-                    >
-                      <option value="PERCENT">Pourcentage (%)</option>
-                      <option value="AMOUNT">Montant (MAD)</option>
-                    </select>
-                  </div>
-
-                  <div className="col-6 col-md-4">
-                    <label className="form-label">Valeur {promoType === "PERCENT" ? "(%)" : "(MAD)"}</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="form-control duu-focus"
-                      value={draft.promo_discount_value ?? ""}
-                      onChange={(ev) =>
-                        setDraft((d) => ({
-                          ...d,
-                          promo_discount_value: ev.target.value === "" ? null : Number(ev.target.value),
-                        }))
-                      }
-                      placeholder={promoType === "PERCENT" ? "Ex: 10" : "Ex: 20"}
-                    />
-                  </div>
-
-                  <div className="col-12 col-md-4">
-                    <div className="small text-muted">Aperçu</div>
-                    <div className="fw-semibold">
-                      {promoPricePreview == null ? "—" : moneyMAD(promoPricePreview)}
-                      {promoPricePreview != null && draft.price != null ? (
-                        <span className="ms-2 small text-muted">(au lieu de {moneyMAD(Number(draft.price))})</span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-
-                <small className="text-muted d-block mt-2">
-                  Cette réduction sera utilisée pour afficher le prix promo côté client.
-                </small>
-              </div>
-            </div>
-          )}
-
-          {formError && <div className="alert alert-danger py-2 mt-2">{formError}</div>}
-
-          <div className="mt-2">
-            <label className="form-label">Description</label>
-            <textarea
-              className="form-control duu-focus"
-              rows={3}
-              value={draft.description || ""}
-              onChange={(ev) => setDraft((d) => ({ ...d, description: ev.target.value }))}
-            />
-          </div>
-        </div>
-
-        <div className="col-12 col-md-4">
-          <label className="form-label d-flex align-items-center justify-content-between">
-            Images <small className="text-muted">Galerie / Caméra</small>
-          </label>
-
-          {hasExistingImages && !files.length && !replaceImages ? (
-            <div className="mb-2">
-              <div className="small text-muted mb-1">Images existantes :</div>
-              <div className="row g-2">
-                {(initial as any).images.map((img: ProductImage) => (
-                  <div className="col-4" key={img.id}>
-                    <img
-                      src={imgUrl(img.url)}
-                      alt="existing"
-                      className="w-100 rounded border"
-                      style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="d-flex flex-wrap gap-2 mb-2">
-            <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => galleryInput?.click()}>
-              Depuis la galerie
-            </button>
-            <button type="button" className="btn btn-dark btn-sm" onClick={() => cameraInput?.click()}>
-              Ouvrir la caméra
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline-secondary btn-sm"
-              onClick={() => setFiles([])}
-              disabled={!files.length}
-            >
-              Vider
-            </button>
-          </div>
-
-          <input
-            ref={(el) => setGalleryInput(el)}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(ev) => addFiles(ev.target.files)}
-          />
-          <input
-            ref={(el) => setCameraInput(el)}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-            onChange={(ev) => addFiles(ev.target.files)}
-          />
-
-          <div className="form-check mb-2">
-            <input
-              id="replace_images"
-              className="form-check-input"
-              type="checkbox"
-              checked={replaceImages}
-              onChange={(ev) => setReplaceImages(ev.target.checked)}
-            />
-            <label htmlFor="replace_images" className="form-check-label">
-              Remplacer la galerie existante
-            </label>
-          </div>
-
-          {files.length > 0 ? (
-            <div className="row g-2">
-              {previews.map((p, i) => (
-                <div className="col-4" key={i}>
-                  <div className="position-relative border rounded overflow-hidden">
-                    <img
-                      src={p.url}
-                      alt={`img-${i}`}
-                      className="w-100"
-                      style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger position-absolute"
-                      style={{ top: 6, right: 6 }}
-                      onClick={() => removeAt(i)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : !hasExistingImages ? (
-            <div className="text-muted small">Aucune image sélectionnée.</div>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="d-flex justify-content-between align-items-center mt-3">
-        <button type="button" className="btn btn-outline-secondary" onClick={onCancel} disabled={submitting}>
-          Annuler
-        </button>
-        <button type="submit" className="btn btn-dark" disabled={submitting}>
-          {submitting ? "Enregistrement…" : "Enregistrer"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-/* ========= Page ========= */
-export default function ProductsAdminPage() {
-  const [items, setItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
-
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
-  const [total, setTotal] = useState(0);
-
-  const [q, setQ] = useState("");
-
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
-  const [shops, setShops] = useState<Shop[]>([]);
-
-  const [showForm, setShowForm] = useState(false);
-  const [edit, setEdit] = useState<FullProduct | null>(null);
-  const [preview, setPreview] = useState<FullProduct | null>(null);
-
-  const [mode, setMode] = useState<Mode>("default");
-  const [channel, setChannel] = useState<Channel>("all");
-
-  const [onlyActive, setOnlyActive] = useState<boolean>(false);
-  const [filterShopId, setFilterShopId] = useState<number | "">("");
-  const [filterCategoryId, setFilterCategoryId] = useState<number | "">("");
-
-  const pages = useMemo(
-    () => (mode === "default" ? Math.max(1, Math.ceil(total / pageSize)) : 1),
-    [total, pageSize, mode]
-  );
-
-  async function refresh() {
-    setLoading(true);
-    setError(null);
-    try {
-      if (mode === "top-ordered" || mode === "top-rated") {
-        const endpoint = mode === "top-ordered" ? "/api/products/top-ordered" : "/api/products/top-rated";
-
-        const resRaw = await api.get<any>(endpoint, { query: { limit: 100, minCount: 2, onlyActive: 1 } });
-        const body = unwrap<any>(resRaw);
-
-        const list = Array.isArray(body) ? body : Array.isArray(body?.items) ? body.items : [];
-        const activeOnly = list.filter((p: any) => isActive(p));
-        setItems(activeOnly);
-        setTotal(activeOnly.length);
-        return;
-      }
-
-      const base =
-        channel === "african-food"
-          ? "/api/products/african-food"
-          : channel === "african-market"
-            ? "/api/products/african-market"
-            : channel === "fashion"
-              ? "/api/products/fashion"
-              : "/api/products";
-
-      const query: Record<string, any> = { page, pageSize };
-      if (onlyActive) query.onlyActive = 1;
-      if (filterCategoryId !== "") {
-        query.category_id = filterCategoryId;
-        query.categoryId = filterCategoryId;
-      }
-      if (filterShopId !== "") {
-        query.shop_id = filterShopId;
-        query.shopId = filterShopId;
-      }
-
-      const resRaw = await api.get<any>(base, { query });
-      const { items: gotItems, pageInfo } = getPaginated(resRaw);
-
-      setItems(gotItems);
-      setTotal(Number(pageInfo?.total ?? gotItems.length ?? 0));
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function refreshCategories() {
-    try {
-      const res = await listCategories({ page: 1, pageSize: 500 });
-      setCategories(res.items || []);
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    }
-  }
-
-  async function refreshSubCategories() {
-    try {
-      const res = await listSubCategories({ page: 1, pageSize: 1000 } as any);
-      setSubCategories((res as any).items || []);
-    } catch {
-      try {
-        const resRaw = await api.get<{ items: SubCategory[] }>("/api/sub-categories", {
-          query: { page: 1, pageSize: 1000 },
-        });
-        const res = unwrap<{ items: SubCategory[] }>(resRaw);
-        setSubCategories(res.items || []);
-      } catch (e2: any) {
-        setError(e2?.message || String(e2));
-      }
-    }
-  }
-
-  async function refreshShops() {
-    try {
-      const resRaw = await api.get<{ items: Shop[] }>(`/api/shops`, { query: { page: 1, pageSize: 500 } });
-      const res = unwrap<{ items: Shop[] }>(resRaw);
-      setShops(res.items || []);
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    }
-  }
-
-  useEffect(() => {
-    refreshCategories();
-    refreshSubCategories();
-    refreshShops();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, channel, onlyActive, mode, filterShopId, filterCategoryId]);
-
-  function openCreate() {
-    setEdit(null);
-    setShowForm(true);
-    setOk(null);
-    setError(null);
-  }
-
-  async function openEdit(id: number) {
-    setBusy(true);
-    setError(null);
-    try {
-      const p = await getProduct(id);
-      setEdit({ ...(p as any) } as FullProduct);
-      setShowForm(true);
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function openPreview(id: number) {
-    setBusy(true);
-    setError(null);
-    try {
-      const p = await getProduct(id);
-      setPreview({ ...(p as any) } as FullProduct);
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function closeForm() {
-    setShowForm(false);
-    setEdit(null);
-  }
-
-  async function onCreateCategory(name: string) {
-    const created = await createCategory(name);
-    await refreshCategories();
-    return created as any;
-  }
-
-  async function onCreateSubCategory(categoryId: number, name: string) {
-    const created = await createSubCategory({ category_id: categoryId, name });
-    await refreshSubCategories();
-    return created as any;
-  }
-
-  async function onSave(draft: Draft, files: File[], replaceImages: boolean, variants: VariantDraft[]) {
-    setBusy(true);
-    setError(null);
-    setOk(null);
-    try {
-      const payload: any = { ...draft };
-
-      const style = String(payload.style || "").toLowerCase();
-      delete payload.style;
-      if (style === "food") payload.vertical = "FOOD";
-      else if (style === "market") payload.vertical = "MARKET";
-      else if (style === "fashion") payload.vertical = "FASHION";
-
-      if (!payload.promo_eligible) {
-        delete payload.promo_discount_type;
-        delete payload.promo_discount_value;
-      }
-
-      Object.keys(payload).forEach((k) => {
-        if (payload[k] === null || payload[k] === undefined) delete payload[k];
-      });
-
-      if (edit == null) {
-        if (!draft.category_id) throw new Error("category_id requis.");
-        if (!draft.sub_category_id) throw new Error("sub_category_id requis.");
-        if (payload.is_active == null) payload.is_active = 1;
-
-        const cleaned = style === "fashion" ? cleanVariantsForApi(variants) : [];
-        if (style === "fashion" && cleaned.length === 0) {
-          throw new Error("Ajoute au moins une variante (taille + couleur) pour un produit Fashion.");
-        }
-        if (cleaned.length) payload.variants = cleaned;
-
-        await createProduct(payload, files);
-        setOk("Produit créé avec succès.");
-      } else {
-        await updateProduct(edit.id, payload, files, replaceImages);
-
-        if (style === "fashion") {
-          const cleaned = cleanVariantsForApi(variants);
-          if (cleaned.length === 0) {
-            throw new Error("Ajoute au moins une variante (taille + couleur) pour un produit Fashion.");
-          }
-          await upsertProductVariants(edit.id, { variants: cleaned as any }, { replace: true });
-        }
-
-        setOk("Produit mis à jour.");
-      }
-
-      setShowForm(false);
-      setEdit(null);
-      await refresh();
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onDelete(id: number) {
-    if (!confirm("Supprimer ce produit ?")) return;
-    setBusy(true);
-    setError(null);
-    setOk(null);
-    try {
-      await removeProduct(id);
-      setOk("Produit supprimé.");
-      const after = items.length - 1;
-      if (after === 0 && page > 1) setPage((p) => p - 1);
-      else await refresh();
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onToggleActive(p: Product) {
-    const current = isActive(p);
-    const next = current ? 0 : 1;
-
-    if (
-      !confirm(
-        next
-          ? "Activer ce produit ? Il sera de nouveau visible sur Duumini."
-          : "Désactiver ce produit ? Il ne sera plus visible sur Duumini (promo incluse)."
-      )
-    ) return;
-
-    setBusy(true);
-    setError(null);
-    setOk(null);
-    try {
-      await updateProduct((p as any).id, { is_active: next } as any, [], false);
-      setOk(next ? "Produit activé." : "Produit désactivé.");
-
-      setItems((prev) =>
-        prev.map((it) => ((it as any).id === (p as any).id ? ({ ...it, is_active: next } as any) : it))
-      );
-      setPreview((prev) => (prev && prev.id === (p as any).id ? ({ ...prev, is_active: next } as any) : prev));
-    } catch (e: any) {
-      setError(e?.message || String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const filtered = useMemo(() => {
-    const text = q.trim().toLowerCase();
-    const shopId = filterShopId === "" ? null : Number(filterShopId);
-    const catId = filterCategoryId === "" ? null : Number(filterCategoryId);
-
-    return (items || []).filter((p: any) => {
-      if (onlyActive && !isActive(p)) return false;
-
-      if (shopId != null) {
-        const pid = Number(p.shop_id ?? p.shopId ?? 0);
-        if (pid !== shopId) return false;
-      }
-
-      if (catId != null) {
-        const cid = Number(p.category_id ?? 0);
-        if (cid !== catId) return false;
-      }
-
-      if (!text) return true;
-      return (
-        String(p.name || "").toLowerCase().includes(text) ||
-        String(p.id || "").includes(text) ||
-        String(p.shop_name || "").toLowerCase().includes(text)
-      );
-    });
-  }, [items, q, filterShopId, filterCategoryId, onlyActive]);
-
-  function resetSearch() {
-    setQ("");
-    setPage(1);
-  }
-  function changeMode(newMode: Mode) {
-    setMode(newMode);
-    setPage(1);
-  }
-  function changeChannel(newChannel: Channel) {
-    setChannel(newChannel);
-    setMode("default");
-    setPage(1);
-  }
-  function toggleOnlyActive() {
-    setOnlyActive((prev) => !prev);
-    setMode("default");
-    setPage(1);
-  }
-  function clearFilters() {
-    setFilterShopId("");
-    setFilterCategoryId("");
-    setQ("");
-    setPage(1);
-  }
-
-  return (
-    <div className="container-xxl py-4">
-      <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
-        <h1 className="h4 mb-0">Produits</h1>
-        <div className="d-flex gap-2">
-          <button className="btn btn-outline-secondary" onClick={refresh} disabled={loading || busy}>
-            Actualiser
-          </button>
-          <button className="btn btn-dark" onClick={openCreate} disabled={busy}>
-            + Nouveau produit
-          </button>
-        </div>
-      </div>
-
-      {ok && <div className="alert alert-success py-2">{ok}</div>}
-      {error && <div className="alert alert-danger py-2">{error}</div>}
-
-      <div className="card border-0 shadow-sm mb-3">
-        <div className="card-body p-3">
-          <div className="d-flex flex-wrap gap-2 align-items-center justify-content-between">
-            <div className="d-flex flex-wrap gap-2 align-items-center">
-              <div className="btn-group">
-                <button className={`btn ${channel === "all" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("all")} disabled={busy}>
-                  Tous
-                </button>
-                <button className={`btn ${channel === "african-food" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("african-food")} disabled={busy}>
-                  African Food
-                </button>
-                <button className={`btn ${channel === "african-market" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("african-market")} disabled={busy}>
-                  African Market
-                </button>
-                <button className={`btn ${channel === "fashion" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeChannel("fashion")} disabled={busy}>
-                  Fashion
-                </button>
-              </div>
-
-              <div className="btn-group">
-                <button className={`btn ${mode === "default" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeMode("default")} disabled={busy}>
-                  Normal
-                </button>
-                <button className={`btn ${mode === "top-ordered" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeMode("top-ordered")} disabled={busy}>
-                  Top commandés
-                </button>
-                <button className={`btn ${mode === "top-rated" ? "btn-dark" : "btn-outline-dark"}`} onClick={() => changeMode("top-rated")} disabled={busy}>
-                  Top notés
-                </button>
-              </div>
-
-              <button className={`btn ${onlyActive ? "btn-dark" : "btn-outline-dark"}`} onClick={toggleOnlyActive} disabled={busy}>
-                {onlyActive ? "Actifs ✅" : "Actifs seulement"}
-              </button>
-            </div>
-
-            <div className="d-flex flex-wrap gap-2 align-items-center">
-              <input
-                className="form-control"
-                style={{ width: 320, maxWidth: "100%" }}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Rechercher (nom, id, boutique)…"
-              />
-              <button className="btn btn-outline-secondary" onClick={resetSearch} disabled={busy && !q}>
-                Reset recherche
-              </button>
-              <button className="btn btn-outline-danger" onClick={clearFilters} disabled={busy}>
-                Effacer filtres
-              </button>
-            </div>
-          </div>
-
-          <div className="row g-2 mt-2">
-            <div className="col-12 col-md-6">
-              <label className="form-label small text-muted mb-1">Filtrer par boutique</label>
+            <div className="col-6 col-md-2">
+              <label className="form-label">Promo</label>
               <select
-                className="form-select"
-                value={filterShopId === "" ? "" : String(filterShopId)}
+                className="form-select duu-focus"
+                value={promo}
                 onChange={(e) => {
-                  const v = e.target.value;
-                  setFilterShopId(v ? Number(v) : "");
+                  setPromo((e.target.value as any) || "");
                   setPage(1);
                 }}
-                disabled={busy}
               >
                 <option value="">Toutes</option>
-                {shops.map((s) => (
+                <option value="1">En promo</option>
+              </select>
+            </div>
+
+            <div className="col-6 col-md-2">
+              <label className="form-label">Boutique</label>
+              <select
+                className="form-select duu-focus"
+                value={shopId === "" ? "" : String(shopId)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setShopId(v ? Number(v) : "");
+                  setPage(1);
+                }}
+                disabled={isVendor && shops.length <= 1}
+              >
+                <option value="">Toutes</option>
+                {shopOptions.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
@@ -2107,302 +575,215 @@ export default function ProductsAdminPage() {
               </select>
             </div>
 
-            <div className="col-12 col-md-6">
-              <label className="form-label small text-muted mb-1">Filtrer par catégorie</label>
-              <select
-                className="form-select"
-                value={filterCategoryId === "" ? "" : String(filterCategoryId)}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setFilterCategoryId(v ? Number(v) : "");
+            <div className="col-12 d-flex gap-2 flex-wrap mt-2">
+              <button
+                className="btn btn-outline-dark"
+                onClick={() => {
+                  setQ("");
+                  setStyle("");
+                  setActive("");
+                  setPromo("");
+                  setShopId("");
                   setPage(1);
                 }}
-                disabled={busy}
               >
-                <option value="">Toutes</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                Réinitialiser
+              </button>
             </div>
-          </div>
-
-          <div className="small text-muted mt-2">
-            Résultats: <strong>{filtered.length}</strong>
-            {mode === "default" ? (
-              <>
-                {" "}
-                / total: <strong>{total}</strong>
-              </>
-            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="card border-0 shadow-sm">
-        <div className="table-responsive">
-          <table className="table align-middle mb-0">
-            <thead>
-              <tr>
-                <th style={{ width: 70 }}>ID</th>
-                <th>Produit</th>
-                <th style={{ width: 160 }}>Boutique</th>
-                <th style={{ width: 160 }}>Prix</th>
-                <th style={{ width: 120 }}>Statut</th>
-                <th style={{ width: 220 }} className="text-end">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="text-muted">
-                    Chargement…
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-muted">
-                    Aucun produit.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((p: any) => {
-                  const base = basePriceForAdmin(p);
-                  const promoP = promoPriceForAdmin(p);
-                  const hasVar = !!p?.has_variants || Number(p?.variants_count || 0) > 0;
+      {err ? <div className="alert alert-danger mt-3 mb-0">{err}</div> : null}
 
-                  return (
-                    <tr key={p.id}>
-                      <td className="text-muted">{p.id}</td>
-                      <td>
-                        <div className="d-flex align-items-center gap-2">
-                          {p.cover || p.image_url ? (
-                            <img
-                              src={imgUrl(p.cover || p.image_url)}
-                              alt={p.name}
-                              className="rounded border"
-                              style={{ width: 46, height: 46, objectFit: "cover" }}
-                            />
+      {/* Table */}
+      <div className="card duu-card mt-3">
+        <div className="card-body p-0">
+          <div className="table-responsive">
+            <table className="table table-hover mb-0 align-middle">
+              <thead className="table-light">
+                <tr>
+                  <th style={{ width: 70 }}>Image</th>
+                  <th>Produit</th>
+                  <th style={{ width: 140 }}>Type</th>
+                  <th style={{ width: 180 }}>Prix</th>
+                  <th style={{ width: 140 }}>Promo</th>
+                  <th style={{ width: 120 }}>Statut</th>
+                  <th style={{ width: 220 }} className="text-end">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="text-muted p-3">
+                      Chargement…
+                    </td>
+                  </tr>
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-muted p-3">
+                      Aucun produit.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((p) => {
+                    const base = basePriceForAdmin(p);
+                    const promoPrice = promoPriceForAdmin(p);
+                    const activeFlag = isActive(p) === 1;
+
+                    const vertical = String((p as any)?.vertical || "").toUpperCase().trim();
+
+                    const img =
+                      (p as any)?.cover ||
+                      (p as any)?.image ||
+                      (p as any)?.image_url ||
+                      (p as any)?.images?.[0]?.url ||
+                      null;
+
+                    return (
+                      <tr key={p.id}>
+                        <td className="p-2">
+                          {img ? (
+                            <img src={imgUrl(img)} alt={p.name} className="duu-thumb" />
                           ) : (
-                            <div className="rounded border bg-light" style={{ width: 46, height: 46 }} />
-                          )}
-
-                          <div>
-                            <div className="fw-semibold">{p.name}</div>
-                            <div className="small text-muted">
-                              Cat: {p.category_id ?? "—"} • Sub: {p.sub_category_name ?? p.sub_category_id ?? "—"}
-                              {hasRealPromo(p) ? <span className="ms-2 badge bg-danger-subtle text-danger border">Promo {promoLabel(p)}</span> : null}
-                              {hasVar ? <span className="ms-2 badge bg-light text-dark border">Variants</span> : null}
+                            <div
+                              className="duu-thumb d-flex align-items-center justify-content-center text-muted"
+                              style={{ background: "rgba(0,0,0,.04)" }}
+                            >
+                              —
                             </div>
-                          </div>
-                        </div>
-                      </td>
+                          )}
+                        </td>
 
-                      <td className="text-muted">{p.shop_name || p.shop_id || "—"}</td>
-
-                      <td>
-                        <div className="fw-semibold">
-                          {moneyMAD(base)}
-                          {hasVar ? <span className="ms-1 small text-muted">(min)</span> : null}
-                        </div>
-                        {promoP != null ? (
+                        <td className="p-2">
+                          <div className="fw-semibold">{p.name}</div>
                           <div className="small text-muted">
-                            Promo : <b>{moneyMAD(promoP)}</b>
+                            #{p.id}
+                            {(p as any)?.shop_name ? (
+                              <>
+                                {" "}
+                                • <span className="badge text-bg-light border">{(p as any).shop_name}</span>
+                              </>
+                            ) : null}
+                            {(p as any)?.sub_category_name ? (
+                              <>
+                                {" "}
+                                •{" "}
+                                <span className="badge text-bg-light border">
+                                  {(p as any).sub_category_name}
+                                </span>
+                              </>
+                            ) : null}
                           </div>
-                        ) : null}
-                      </td>
+                        </td>
 
-                      <td>{isActive(p) ? <span className="badge bg-success">Actif</span> : <span className="badge bg-secondary">Off</span>}</td>
+                        <td className="p-2">
+                          <span className="badge text-bg-dark">{vertical || "—"}</span>
+                        </td>
 
-                      <td className="text-end">
-                        <div className="d-inline-flex gap-2">
-                          <button className="btn btn-sm btn-outline-secondary" onClick={() => openPreview(p.id)} disabled={busy}>
-                            Aperçu
-                          </button>
-                          <button className="btn btn-sm btn-outline-dark" onClick={() => openEdit(p.id)} disabled={busy}>
-                            Modifier
-                          </button>
-                          <button className="btn btn-sm btn-outline-warning" onClick={() => onToggleActive(p)} disabled={busy}>
-                            {isActive(p) ? "Désactiver" : "Activer"}
-                          </button>
-                          <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(p.id)} disabled={busy}>
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        <td className="p-2">
+                          <div className="fw-semibold">{moneyMAD(base)}</div>
+                          {promoPrice != null ? (
+                            <div className="small text-muted">
+                              Promo: <b>{moneyMAD(promoPrice)}</b>
+                            </div>
+                          ) : (
+                            <div className="small text-muted">—</div>
+                          )}
+                        </td>
+
+                        <td className="p-2">
+                          {hasRealPromo(p) ? (
+                            <span className="badge bg-warning text-dark">{promoLabel(p)}</span>
+                          ) : (
+                            <span className="text-muted">—</span>
+                          )}
+                        </td>
+
+                        <td className="p-2">
+                          {activeFlag ? (
+                            <span className="badge bg-success">Actif</span>
+                          ) : (
+                            <span className="badge bg-secondary">Off</span>
+                          )}
+                        </td>
+
+                        <td className="p-2 text-end">
+                          <div className="d-flex justify-content-end gap-2 flex-wrap">
+                            <button className="btn btn-sm btn-outline-dark" onClick={() => openEdit(Number(p.id))}>
+                              Modifier
+                            </button>
+                            <button className="btn btn-sm btn-outline-danger" onClick={() => deleteProduct(p)}>
+                              Supprimer
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {mode === "default" && pages > 1 ? (
-          <div className="card-body p-3 border-top d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <div className="small text-muted">
-              Page <strong>{page}</strong> / <strong>{pages}</strong>
-            </div>
-
-            <div className="btn-group">
-              <button className="btn btn-outline-dark" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={busy || page <= 1}>
-                ← Précédent
-              </button>
-              <button className="btn btn-outline-dark" onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={busy || page >= pages}>
-                Suivant →
-              </button>
-            </div>
+        {/* Pagination */}
+        <div className="card-footer bg-white d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div className="small text-muted">
+            Page <b>{page}</b> / <b>{pageInfo.pages}</b> • {pageInfo.total} total
           </div>
-        ) : null}
+
+          <div className="d-flex gap-2">
+            <button
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={!pageCanPrev || loading}
+            >
+              ← Précédent
+            </button>
+            <button
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!pageCanNext || loading}
+            >
+              Suivant →
+            </button>
+          </div>
+        </div>
       </div>
 
-      {showForm && (
-        <div className="modal d-block" tabIndex={-1} style={{ background: "rgba(0,0,0,.2)" }}>
-          <div className="modal-dialog modal-lg modal-dialog-scrollable">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">{edit == null ? "Nouveau produit" : "Modifier produit"}</h5>
-                <button type="button" className="btn-close" onClick={closeForm} disabled={busy} />
-              </div>
-              <div className="modal-body">
-                <ProductForm
-                  initial={(edit as any) || undefined}
-                  categories={categories}
-                  subCategories={subCategories}
-                  shops={shops}
-                  onCreateCategory={onCreateCategory}
-                  onCreateSubCategory={onCreateSubCategory}
-                  onSubmit={onSave}
-                  onCancel={closeForm}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {preview && (
-        <div className="modal d-block" tabIndex={-1} style={{ background: "rgba(0,0,0,.4)" }}>
-          <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Aperçu — {preview.name}</h5>
-                <button type="button" className="btn-close" onClick={() => setPreview(null)} />
-              </div>
-
-              <div className="modal-body">
-                <div className="row g-3">
-                  <div className="col-12 col-md-6">
-                    {preview.images?.length ? (
-                      <img
-                        src={imgUrl(preview.images[0].url)}
-                        alt={preview.name}
-                        className="img-fluid rounded border"
-                        style={{ width: "100%", height: "auto", objectFit: "cover" }}
-                      />
-                    ) : (preview as any).cover ? (
-                      <img
-                        src={imgUrl((preview as any).cover)}
-                        alt={preview.name}
-                        className="img-fluid rounded border"
-                        style={{ width: "100%", height: "auto", objectFit: "cover" }}
-                      />
-                    ) : (
-                      <div className="border rounded p-3 text-muted">Pas d'image.</div>
-                    )}
-
-                    {preview.images && preview.images.length > 1 ? (
-                      <div className="row g-2 mt-2">
-                        {preview.images.slice(1, 7).map((im) => (
-                          <div className="col-4" key={im.id}>
-                            <img src={imgUrl(im.url)} alt="mini" className="w-100 rounded border" style={{ aspectRatio: "1 / 1", objectFit: "cover" }} />
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="col-12 col-md-6">
-                    {(() => {
-                      const anyP: any = preview as any;
-                      const base = basePriceForAdmin(anyP);
-                      const promoP = promoPriceForAdmin(anyP);
-                      const hasVar = !!anyP?.has_variants || Number(anyP?.variants_count || 0) > 0;
-
-                      return (
-                        <>
-                          <ul className="list-unstyled mb-2">
-                            <li>
-                              <strong>ID :</strong> {preview.id}
-                            </li>
-                            <li>
-                              <strong>Boutique :</strong> {preview.shop_name || (preview as any).shop_id}
-                            </li>
-
-                            <li>
-                              <strong>Prix :</strong> {moneyMAD(base)} {hasVar ? <span className="small text-muted">(min)</span> : null}
-                              {promoP != null ? (
-                                <div className="small text-muted">
-                                  Promo : <b>{moneyMAD(promoP)}</b> <span className="ms-2">({promoLabel(anyP)})</span>
-                                </div>
-                              ) : null}
-                            </li>
-
-                            <li>
-                              <strong>Promo :</strong>{" "}
-                              {hasRealPromo(anyP) ? (
-                                <span className="badge bg-danger-subtle text-danger border border-danger-subtle">Oui</span>
-                              ) : (
-                                "Non"
-                              )}
-                            </li>
-
-                            <li>
-                              <strong>Catégorie :</strong> {(preview as any).category_id ?? "—"}
-                            </li>
-
-                            <li>
-                              <strong>Sous-catégorie :</strong>{" "}
-                              {(preview as any).sub_category_name ? (preview as any).sub_category_name : (preview as any).sub_category_id ?? "—"}
-                            </li>
-
-                            <li>
-                              <strong>Statut :</strong> {isActive(anyP) ? "Actif" : "Désactivé"}
-                            </li>
-                          </ul>
-
-                          <div className="small text-muted">{(preview as any).description || "—"}</div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-footer">
-                <button type="button" className="btn btn-outline-secondary" onClick={() => setPreview(null)}>
-                  Fermer
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-dark"
-                  onClick={() => {
-                    const id = preview.id;
-                    setPreview(null);
-                    openEdit(id);
-                  }}
-                >
-                  Modifier ce produit
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      {/* Create/Edit modal */}
+      <Modal
+        open={openForm}
+        title={title}
+        onClose={closeForm}
+        size="xl"
+        footer={
+          <button className="btn btn-outline-secondary" onClick={closeForm} disabled={formLoading}>
+            Fermer
+          </button>
+        }
+      >
+        {formErr ? <div className="alert alert-danger py-2">{formErr}</div> : null}
+        {formLoading ? (
+          <div className="text-muted">Chargement du produit…</div>
+        ) : (
+          <ProductForm
+            initial={editing}
+            categories={categories}
+            subCategories={subCategories}
+            shops={shops}
+            isVendor={isVendor}
+            onCreateCategory={onCreateCategory}
+            onCreateSubCategory={onCreateSubCategory}
+            onSubmit={createOrUpdate}
+            onCancel={closeForm}
+          />
+        )}
+      </Modal>
+    </main>
   );
 }

@@ -2,11 +2,17 @@
 import { api } from "./http";
 import type { Paginated } from "./types";
 
+export type ShopType = "VENDOR" | "SUPPLIER" | "RESTAURANT" | string;
+
 export type Shop = {
   id: number;
   owner_id: number;
   name: string;
   slug: string;
+
+  // ✅ NEW: type d’acteur
+  shop_type?: ShopType | null;
+
   description?: string | null;
   category_id?: number | null;
   address?: string | null;
@@ -17,6 +23,10 @@ export type Shop = {
   lat?: number | null;
   lng?: number | null;
   is_active?: boolean;
+
+  // Optionnel (si tu ajoutes une table de positions/zones)
+  position_id?: number | null;
+
   category_name?: string | null;
   category_slug?: string | null;
   created_at?: string;
@@ -29,50 +39,100 @@ export type ShopFiles = {
 };
 
 /* ====== Stats d'une boutique (admin ou vendeur propriétaire) ====== */
-/**
- * Structure renvoyée par GET /api/shops/:id/stats
- *
- * 🔹 Côté backend (voir api/routes/shops.js) :
- * - order_items.unit_price = prix CLIENT payé (snapshot au moment de la commande)
- * - turnover = CA basé sur le prix CLIENT (unit_price), hors frais de livraison
- * - duumini  = commission Duumini calculée comme pourcentage du prix client,
- *              selon la sous-catégorie du produit (18% food, 11% market/other)
- * - top_products.total_amount = CA 30j pour ce produit (toujours sur le prix client,
- *                               hors frais de livraison)
- */
 export type ShopStats = {
-  turnover: {
-    day: number;   // CA client du jour (somme qty * unit_price), hors livraison
-    month: number; // CA client du mois
-    year: number;  // CA client de l'année
-  };
-  duumini: {
-    day: number;   // Commission Duumini du jour (sur prix client, hors livraison)
-    month: number; // Commission Duumini du mois
-    year: number;  // Commission Duumini de l'année
-  };
+  turnover: { day: number; month: number; year: number };
+  duumini: { day: number; month: number; year: number };
   top_products: {
     product_id: number;
     name: string;
     total_qty: number;
-    total_amount: number; // CA 30j pour ce produit (prix client, hors livraison)
+    total_amount: number;
     cover?: string | null;
   }[];
 };
 
+/* =========================
+ * Limite boutiques (front)
+ * ========================= */
+export type ShopLimitError = {
+  error: "SHOP_LIMIT_REACHED";
+  message?: string;
+  limit?: number;
+};
+
+function extractApiErrorData(err: any): any | null {
+  return err?.payload ?? err?.data ?? err?.response?.data ?? err?.body ?? err?.error ?? null;
+}
+
+export function isShopLimitError(err: any): err is ShopLimitError {
+  const d = extractApiErrorData(err);
+  return d?.error === "SHOP_LIMIT_REACHED";
+}
+
+/* =========================
+ * Helpers query
+ * =======================*/
+function normalizeShopTypeList(v?: ShopType | ShopType[] | null): string | undefined {
+  if (!v) return undefined;
+  const arr = Array.isArray(v) ? v : [v];
+  const clean = arr
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  if (!clean.length) return undefined;
+  // on envoie "VENDOR,SUPPLIER" pour query
+  return clean.join(",");
+}
+
 /** ======= Public / Vendor / Admin ======= */
 
-/** Liste paginée publique (avec recherche optionnelle q) */
-export async function listShops(opts: { page?: number; pageSize?: number; q?: string } = {}) {
+/**
+ * Liste paginée publique/admin
+ * Supports:
+ * - q
+ * - shopType: "VENDOR" | "SUPPLIER" | "RESTAURANT" | ["VENDOR","RESTAURANT"]
+ * - city
+ * - onlyActive
+ *
+ * ⚠️ nécessite que ton backend /api/shops accepte ces filtres:
+ * req.query.shopType / req.query.city / req.query.onlyActive
+ */
+export async function listShops(
+  opts: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    city?: string;
+    onlyActive?: 0 | 1;
+    shopType?: ShopType | ShopType[];
+  } = {}
+) {
   const page = opts.page ?? 1;
   const pageSize = opts.pageSize ?? 20;
-  const q = opts.q;
+
   return api.get<Paginated<Shop>>("/api/shops", {
-    query: { page, pageSize, ...(q ? { q } : {}) },
+    query: {
+      page,
+      pageSize,
+      ...(opts.q ? { q: opts.q } : {}),
+      ...(opts.city ? { city: opts.city } : {}),
+      ...(opts.onlyActive != null ? { onlyActive: opts.onlyActive } : {}),
+      ...(opts.shopType ? { shopType: normalizeShopTypeList(opts.shopType) } : {}),
+    },
   });
 }
 
-/** Mes boutiques (vendor / admin) */
+/** Raccourcis utiles */
+export async function listSuppliers(opts: { page?: number; pageSize?: number; q?: string; city?: string } = {}) {
+  return listShops({ ...opts, shopType: "SUPPLIER", onlyActive: 1 });
+}
+export async function listVendors(opts: { page?: number; pageSize?: number; q?: string; city?: string } = {}) {
+  return listShops({ ...opts, shopType: "VENDOR", onlyActive: 1 });
+}
+export async function listRestaurants(opts: { page?: number; pageSize?: number; q?: string; city?: string } = {}) {
+  return listShops({ ...opts, shopType: "RESTAURANT", onlyActive: 1 });
+}
+
+/** Mes boutiques (vendor/supplier/restaurant/admin) */
 export async function listMyShops() {
   return api.get<Shop[]>("/api/shops/mine");
 }
@@ -82,49 +142,40 @@ export async function getShop(id: number) {
   return api.get<Shop>(`/api/shops/${id}`);
 }
 
-/** Stats complètes d'une boutique (admin ou vendeur propriétaire) */
+/** Stats complètes d'une boutique (admin ou owner) */
 export async function getShopStats(id: number) {
-  // Backend: GET /api/shops/:id/stats (ADMIN ou VENDEUR)
   return api.get<ShopStats>(`/api/shops/${id}/stats`);
 }
 
-/** ======= "Admin" (même endpoints, mais usage côté dashboard) ======= */
-
-export async function listShopsAdmin(opts: { page?: number; pageSize?: number; q?: string } = {}) {
-  const page = opts.page ?? 1;
-  const pageSize = opts.pageSize ?? 20;
-  const q = opts.q;
-  return api.get<Paginated<Shop>>("/api/shops", {
-    query: { page, pageSize, ...(q ? { q } : {}) },
-  });
+/** ======= Admin (mêmes endpoints) ======= */
+export async function listShopsAdmin(opts: { page?: number; pageSize?: number; q?: string; city?: string; shopType?: ShopType | ShopType[] } = {}) {
+  return listShops(opts);
 }
 
 export async function getShopAdmin(id: number) {
-  return api.get<Shop>(`/api/shops/${id}`);
+  return getShop(id);
 }
 
-/** 🔹 Helper pour construire le FormData à partir du draft + fichiers */
+/** 🔹 Helper FormData */
 function buildShopFormData(
   payload: Partial<Shop> & { description?: string | null },
   files?: ShopFiles
 ) {
   const fd = new FormData();
 
-  // 🔴 Nom OBLIGATOIRE pour la création (le backend refuse si vide)
   if (payload.name !== undefined) {
     const cleanName = String(payload.name ?? "").trim();
-    if (!cleanName) {
-      throw new Error("Le nom de la boutique est obligatoire.");
-    }
+    if (!cleanName) throw new Error("Le nom de la boutique est obligatoire.");
     fd.append("name", cleanName);
   }
 
-  // Description
+  // ✅ NEW: shop_type
+  if (payload.shop_type != null) fd.append("shop_type", String(payload.shop_type));
+
   if (payload.description !== undefined && payload.description !== null) {
     fd.append("description", String(payload.description));
   }
 
-  // Champs texte optionnels
   if (payload.category_id != null) fd.append("category_id", String(payload.category_id));
   if (payload.address != null) fd.append("address", String(payload.address));
   if (payload.city != null) fd.append("city", String(payload.city));
@@ -132,26 +183,19 @@ function buildShopFormData(
   if (payload.lat != null) fd.append("lat", String(payload.lat));
   if (payload.lng != null) fd.append("lng", String(payload.lng));
 
-  // Support logo/cover URL texte si pas de fichier
-  if (payload.logo != null && !files?.logo) {
-    fd.append("logo", String(payload.logo));
-  }
-  if (payload.cover != null && !files?.cover) {
-    fd.append("cover", String(payload.cover));
-  }
+  // optionnel
+  if (payload.position_id != null) fd.append("position_id", String(payload.position_id));
 
-  // Fichiers
-  if (files?.logo) {
-    fd.append("logo_file", files.logo);
-  }
-  if (files?.cover) {
-    fd.append("cover_file", files.cover);
-  }
+  if (payload.logo != null && !files?.logo) fd.append("logo", String(payload.logo));
+  if (payload.cover != null && !files?.cover) fd.append("cover", String(payload.cover));
+
+  if (files?.logo) fd.append("logo_file", files.logo);
+  if (files?.cover) fd.append("cover_file", files.cover);
 
   return fd;
 }
 
-/** Création (vendor ou admin) → multipart/form-data */
+/** Création (vendor/supplier/restaurant/admin) → multipart */
 export async function createShop(
   payload: Partial<Shop> & { description?: string | null },
   files: ShopFiles = {}
@@ -162,12 +206,30 @@ export async function createShop(
   };
 
   const formData = buildShopFormData(cleanPayload, files);
-
-  // ✅ On passe directement le FormData en 2ᵉ argument (body)
   return api.post<Shop>("/api/shops", formData);
 }
 
-/** Mise à jour (vendor propriétaire ou admin) → multipart/form-data */
+export async function createShopSafe(
+  payload: Partial<Shop> & { description?: string | null },
+  files: ShopFiles = {}
+) {
+  try {
+    return await createShop(payload, files);
+  } catch (err: any) {
+    if (isShopLimitError(err)) {
+      const d = extractApiErrorData(err) as ShopLimitError;
+      const limit = d?.limit ?? 2;
+      const message = d?.message ?? `Limite atteinte : maximum ${limit} boutiques.`;
+      const e = new Error(message);
+      (e as any).code = "SHOP_LIMIT_REACHED";
+      (e as any).limit = limit;
+      throw e;
+    }
+    throw err;
+  }
+}
+
+/** Mise à jour (owner/admin) → multipart */
 export async function updateShop(
   id: number,
   payload: Partial<Shop> & { description?: string | null },
@@ -175,19 +237,21 @@ export async function updateShop(
 ) {
   const cleanPayload: Partial<Shop> & { description?: string | null } = {
     ...payload,
-    ...(payload.name !== undefined
-      ? { name: String(payload.name).trim() }
-      : {}),
+    ...(payload.name !== undefined ? { name: String(payload.name).trim() } : {}),
     description: payload.description ?? null,
   };
 
   const formData = buildShopFormData(cleanPayload, files);
-
-  // ✅ Là aussi on passe le FormData directement
   return api.put<Shop>(`/api/shops/${id}`, formData);
 }
 
-/** Suppression (vendor propriétaire ou admin) */
+/** Suppression (owner/admin) */
 export async function removeShop(id: number) {
   return api.delete<{ ok: true }>(`/api/shops/${id}`);
+}
+
+/** Helper UI : savoir si on peut encore créer (VENDEUR max 2) */
+export async function canCreateShop(max = 2) {
+  const shops = await listMyShops();
+  return (shops?.length ?? 0) < max;
 }

@@ -1,9 +1,32 @@
 // src/services/auth.ts
 const API = (import.meta as any).env?.VITE_API_BASE || "";
 
-export type Role = "MEMBER" | "VENDEUR" | "LIVREUR" | "ADMIN";
+export type Role =
+  | "MEMBER"
+  | "VENDEUR"
+  | "FOURNISSEUR"
+  | "RESTAURANT"
+  | "LIVREUR"
+  | "ADMIN";
+
 export type Sexe = "M" | "F" | "AUTRE";
 export type CityCode = "CASABLANCA" | "MARRAKECH";
+
+export type ShopType = "VENDOR" | "SUPPLIER" | "RESTAURANT" | string;
+
+export type ShopLite = {
+  id: number;
+  name?: string | null;
+  slug?: string | null;
+  city?: string | null;
+  owner_id?: number | null;
+  shop_type?: ShopType | null;
+};
+
+export type ImpersonationInfo = {
+  actor_admin_id: number | null;
+  impersonate_shop_id: number;
+};
 
 export type User = {
   data?: any;
@@ -17,6 +40,10 @@ export type User = {
   commune?: string | null;
   quartier?: string | null;
   sexe?: Sexe | null;
+
+  // si /api/user/me les renvoie
+  shops?: ShopLite[];
+  impersonation?: ImpersonationInfo | null;
 };
 
 type LoginRes = {
@@ -29,14 +56,43 @@ export const STORAGE_KEYS = {
   access: "duumini_access",
   refresh: "duumini_refresh",
   user: "duumini_user",
+
+  // impersonation
+  imp_access: "duumini_imp_access",
+  imp_meta: "duumini_imp_meta", // JSON { actor_admin_id, impersonate_shop_id }
 };
 
-/* ===== Normalisation stricte (DB source of truth) ===== */
+/* =========================
+ * Normalisation (align backend)
+ * =======================*/
 function normalizeRole(r: any): Role {
   const v = (r ?? "").toString().trim().toUpperCase();
+
+  // ADMIN
   if (v === "ADMIN") return "ADMIN";
-  if (v === "VENDEUR") return "VENDEUR";
-  if (v === "LIVREUR") return "LIVREUR";
+
+  // VENDEUR (backend peut renvoyer VENDOR/SELLER/etc.)
+  if (
+    v === "VENDEUR" ||
+    v === "VENDOR" ||
+    v === "SELLER" ||
+    v === "SHOP" ||
+    v === "BOUTIQUE" ||
+    v === "STORE"
+  ) {
+    return "VENDEUR";
+  }
+
+  // FOURNISSEUR
+  if (v === "FOURNISSEUR" || v === "SUPPLIER" || v === "FOURNISSEUR_PARTNER") return "FOURNISSEUR";
+
+  // RESTAURANT
+  if (v === "RESTAURANT") return "RESTAURANT";
+
+  // LIVREUR
+  if (v === "LIVREUR" || v === "DELIVERY" || v === "RIDER" || v === "COURIER") return "LIVREUR";
+
+  // fallback
   return "MEMBER";
 }
 
@@ -49,6 +105,16 @@ function normalizeSexe(s: any): Sexe | null {
   return null;
 }
 
+function normalizeUser(u: any): User {
+  if (!u) return u;
+  return {
+    ...u,
+    role: normalizeRole(u.role),
+    sexe: normalizeSexe(u.sexe),
+    impersonation: getImpersonationMeta() || u.impersonation || null,
+  };
+}
+
 /* ===== Helper front: code ville → libellé DB ===== */
 export function mapCityCodeToVille(code?: string | null): string | null {
   if (!code) return null;
@@ -58,57 +124,79 @@ export function mapCityCodeToVille(code?: string | null): string | null {
   return null;
 }
 
-export function getAccessToken(): string | null {
-  return localStorage.getItem(STORAGE_KEYS.access);
+/* =========================
+ * Impersonation helpers
+ * =======================*/
+export function isImpersonating(): boolean {
+  return !!localStorage.getItem(STORAGE_KEYS.imp_access);
 }
+
+export function getImpersonationMeta(): ImpersonationInfo | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.imp_meta);
+    return raw ? (JSON.parse(raw) as ImpersonationInfo) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function startImpersonation(access_token: string, meta: ImpersonationInfo) {
+  localStorage.setItem(STORAGE_KEYS.imp_access, access_token);
+  localStorage.setItem(STORAGE_KEYS.imp_meta, JSON.stringify(meta || null));
+}
+
+export function stopImpersonation() {
+  localStorage.removeItem(STORAGE_KEYS.imp_access);
+  localStorage.removeItem(STORAGE_KEYS.imp_meta);
+}
+
+/* =========================
+ * Session helpers
+ * =======================*/
+export function getAccessToken(): string | null {
+  // priorité impersonation
+  return localStorage.getItem(STORAGE_KEYS.imp_access) || localStorage.getItem(STORAGE_KEYS.access);
+}
+
 export function getRefreshToken(): string | null {
   return localStorage.getItem(STORAGE_KEYS.refresh);
 }
+
 export function getCurrentUser(): User | null {
   const raw = localStorage.getItem(STORAGE_KEYS.user);
   try {
     const parsed = raw ? (JSON.parse(raw) as User) : null;
     if (!parsed) return null;
-    return {
-      ...parsed,
-      role: normalizeRole(parsed.role),
-      sexe: normalizeSexe((parsed as any).sexe),
-    };
+    return normalizeUser(parsed);
   } catch {
     return null;
   }
 }
 
 export function saveSession(data: LoginRes) {
-  const normalizedUser: User = {
-    ...data.user,
-    role: normalizeRole(data.user.role),
-    sexe: normalizeSexe((data.user as any).sexe),
-  };
+  // quand on login normal, on sort de l’impersonation
+  stopImpersonation();
+
   localStorage.setItem(STORAGE_KEYS.access, data.access_token);
   localStorage.setItem(STORAGE_KEYS.refresh, data.refresh_token);
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalizedUser));
+  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalizeUser(data.user)));
 }
 
 export function clearSession() {
   localStorage.removeItem(STORAGE_KEYS.access);
   localStorage.removeItem(STORAGE_KEYS.refresh);
   localStorage.removeItem(STORAGE_KEYS.user);
+  stopImpersonation();
 }
 
 function setUserInStorage(user: User) {
-  const normalized: User = {
-    ...user,
-    role: normalizeRole(user.role),
-    sexe: normalizeSexe((user as any).sexe),
-  };
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalized));
+  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalizeUser(user)));
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error || res.statusText);
+    throw new Error((err as any)?.error || (err as any)?.message || res.statusText);
   }
   return res.json() as Promise<T>;
 }
@@ -124,6 +212,8 @@ export async function authFetch(
   const hdrs = new Headers(initHeaders);
 
   if (at) hdrs.set("Authorization", `Bearer ${at}`);
+
+  // ne force Content-Type que si body string
   if (!hdrs.has("Content-Type") && init.body && typeof init.body === "string") {
     hdrs.set("Content-Type", "application/json");
   }
@@ -138,13 +228,13 @@ export async function authFetch(
       clearSession();
     }
   }
+
   return res;
 }
 
 /* =========================
  * API calls
- * ========================= */
-
+ * =======================*/
 export async function register(payload: {
   phone: string;
   password: string;
@@ -169,15 +259,9 @@ export async function login(phone: string, password: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, password }),
   });
+
   const data = await parseJson<LoginRes>(res);
-  saveSession({
-    ...data,
-    user: {
-      ...data.user,
-      role: normalizeRole(data.user.role),
-      sexe: normalizeSexe((data.user as any).sexe),
-    },
-  });
+  saveSession(data);
   return getCurrentUser() as User;
 }
 
@@ -192,12 +276,17 @@ export async function logout() {
 export async function refresh() {
   const token = getRefreshToken();
   if (!token) throw new Error("No refresh token");
+
+  // si impersonation active, on refresh le token principal uniquement
   const res = await fetch(`${API}/api/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: token }),
   });
+
   const data = await parseJson<{ access_token: string }>(res);
+
+  // on met à jour le token principal, sans toucher imp_access
   localStorage.setItem(STORAGE_KEYS.access, data.access_token);
   return data.access_token;
 }
@@ -209,18 +298,19 @@ export async function me(): Promise<User | null> {
   const res = await authFetch(`${API}/api/user/me`);
   const u = await parseJson<User | null>(res);
   if (!u) return null;
-  const normalized: User = {
-    ...u,
-    role: normalizeRole(u.role),
-    sexe: normalizeSexe((u as any).sexe),
-  };
+
+  const normalized = normalizeUser(u);
   setUserInStorage(normalized);
   return normalized;
 }
 
 export async function updateProfile(payload: Partial<User>) {
   const cleanPayload: any = { ...payload };
-  if ("role" in cleanPayload) delete cleanPayload.role; // sécurité : role ne doit pas être updatable ici
+
+  // sécurité: le front ne doit pas envoyer role
+  if ("role" in cleanPayload) delete cleanPayload.role;
+  if ("impersonation" in cleanPayload) delete cleanPayload.impersonation;
+  if ("shops" in cleanPayload) delete cleanPayload.shops;
 
   const res = await authFetch(`${API}/api/user/me`, {
     method: "PUT",
@@ -229,11 +319,7 @@ export async function updateProfile(payload: Partial<User>) {
   });
 
   const user = await parseJson<User>(res);
-  const normalized: User = {
-    ...user,
-    role: normalizeRole(user.role),
-    sexe: normalizeSexe((user as any).sexe),
-  };
+  const normalized = normalizeUser(user);
   setUserInStorage(normalized);
   return normalized;
 }

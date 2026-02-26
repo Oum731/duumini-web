@@ -7,6 +7,7 @@ import { API_BASE } from "../services/http";
 import ProductRating from "../components/ProductRating";
 import { useCart } from "../store/cart";
 import { trackAddToCart } from "../lib/analytics";
+import { getAccessToken, getCurrentUser, me, type Role as AuthRole } from "../services/auth";
 
 /* =========================
  * Helpers
@@ -266,6 +267,40 @@ async function fetchJSON(url: string, ms = 12000, init?: RequestInit) {
   }
 }
 
+/* =========================
+ * Viewer Role (based on your backend roles)
+ * =======================*/
+type ViewerRole = "GUEST" | "MEMBER" | "VENDEUR" | "FOURNISSEUR" | "RESTAURANT" | "LIVREUR" | "ADMIN";
+
+function normalizeViewerRole(role?: AuthRole | null): ViewerRole {
+  const r = String(role || "").trim().toUpperCase();
+  if (r === "ADMIN") return "ADMIN";
+  if (r === "VENDEUR") return "VENDEUR";
+  if (r === "FOURNISSEUR") return "FOURNISSEUR";
+  if (r === "RESTAURANT") return "RESTAURANT";
+  if (r === "LIVREUR") return "LIVREUR";
+  if (r === "MEMBER") return "MEMBER";
+  return "GUEST";
+}
+
+function canSeeVendorPanel(vr: ViewerRole) {
+  return vr === "VENDEUR" || vr === "RESTAURANT" || vr === "ADMIN";
+}
+function canSeeSupplierPanel(vr: ViewerRole) {
+  return vr === "FOURNISSEUR" || vr === "ADMIN";
+}
+function canOrder(vr: ViewerRole) {
+  // ✅ toi tu veux généralement: tout le monde peut commander (même guest)
+  // si tu veux interdire aux fournisseurs/livreurs => modifie ici.
+  return vr !== "FOURNISSEUR" && vr !== "LIVREUR";
+}
+
+function nnum(x: any): number | null {
+  if (x == null || x === "") return null;
+  const n = Number(x);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function ProductView() {
   const { idOrSlug: rawParam } = useParams<{ idOrSlug: string }>();
   const nav = useNavigate();
@@ -281,6 +316,45 @@ export default function ProductView() {
   const [relatedTitle, setRelatedTitle] = useState<string>("Vous aimerez aussi");
 
   const [infoOpen, setInfoOpen] = useState(false);
+
+  // ✅ viewer / role
+  const [viewerRole, setViewerRole] = useState<ViewerRole>("GUEST");
+  const [viewerUser, setViewerUser] = useState<any>(null);
+
+  // ===== init viewer (supports impersonation via getAccessToken)
+  useEffect(() => {
+    let stop = false;
+
+    (async () => {
+      try {
+        // 1) fast from storage
+        const local = getCurrentUser?.();
+        if (!stop && local?.role) {
+          setViewerUser(local);
+          setViewerRole(normalizeViewerRole(local.role));
+        }
+
+        // 2) if token, refresh from DB
+        const token = getAccessToken?.();
+        if (!token) {
+          if (!stop) setViewerRole((prev) => prev || "GUEST");
+          return;
+        }
+
+        const u = await me();
+        if (!stop && u) {
+          setViewerUser(u);
+          setViewerRole(normalizeViewerRole(u.role));
+        }
+      } catch {
+        if (!stop) setViewerRole((prev) => prev || "GUEST");
+      }
+    })();
+
+    return () => {
+      stop = true;
+    };
+  }, []);
 
   const anyP = product as any;
 
@@ -482,11 +556,27 @@ export default function ProductView() {
   }, [product, origin]);
 
   // ===== base price / stock =====
-  const basePrice = useMemo(() => Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0), [
-    anyP?.price_client,
-    anyP?.client_price,
-    anyP?.price,
-  ]);
+  const basePriceClient = useMemo(() => {
+    // ✅ prix “client” robuste
+    return Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0);
+  }, [anyP?.price_client, anyP?.client_price, anyP?.price]);
+
+  const vendorPrice = useMemo(() => {
+    // ✅ prix “vendeur” (si dispo)
+    const v = nnum(anyP?.vendor_price);
+    return v == null ? null : v;
+  }, [anyP?.vendor_price]);
+
+  const supplierCost = useMemo(() => {
+    // ✅ coût fournisseur/wholesale (si dispo)
+    const v = nnum(anyP?.supplier_cost ?? anyP?.price_wholesale ?? anyP?.cost_price);
+    return v == null ? null : v;
+  }, [anyP?.supplier_cost, anyP?.price_wholesale, anyP?.cost_price]);
+
+  const supplierStock = useMemo(() => {
+    const v = nnum(anyP?.supplier_stock ?? anyP?.stock_qty ?? anyP?.supplier_qty);
+    return v == null ? null : v;
+  }, [anyP?.supplier_stock, anyP?.stock_qty, anyP?.supplier_qty]);
 
   const stock = useMemo(() => {
     const s = anyP?.stock;
@@ -521,8 +611,8 @@ export default function ProductView() {
   // ✅ prix "normal"
   const regularPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
-    return basePrice;
-  }, [basePrice, selectedVariant]);
+    return basePriceClient;
+  }, [basePriceClient, selectedVariant]);
 
   // ===== promo computed =====
   const promoActive = useMemo(() => hasRealPromo(anyP), [anyP]);
@@ -550,6 +640,7 @@ export default function ProductView() {
     return String(anyP?.sub_category_slug || "").toLowerCase() === "food" ? "Food" : "Market";
   }, [anyP?.sub_category_slug, anyP?.vertical]);
 
+  // ===== qty in cart =====
   const qtySelected = useMemo(() => {
     if (!product) return 0;
     const pid = Number((product as any).id);
@@ -559,8 +650,31 @@ export default function ProductView() {
   }, [product, hasVariants, qtyForProduct, qtyForProductVariant, selectedVariant]);
 
   const canAddNow =
-    !isOutOfStock && (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
+    canOrder(viewerRole) &&
+    !isOutOfStock &&
+    (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
+  // ===== pro panels & margins =====
+  const showVendorPanel = useMemo(() => canSeeVendorPanel(viewerRole), [viewerRole]);
+  const showSupplierPanel = useMemo(() => canSeeSupplierPanel(viewerRole), [viewerRole]);
+
+  const marginVsVendor = useMemo(() => {
+    if (!showVendorPanel) return null;
+    if (vendorPrice == null) return null;
+    const m = Number(displayPrice || 0) - Number(vendorPrice || 0);
+    if (!Number.isFinite(m)) return null;
+    return m;
+  }, [displayPrice, showVendorPanel, vendorPrice]);
+
+  const marginVsSupplier = useMemo(() => {
+    if (!showSupplierPanel) return null;
+    if (supplierCost == null) return null;
+    const m = Number(displayPrice || 0) - Number(supplierCost || 0);
+    if (!Number.isFinite(m)) return null;
+    return m;
+  }, [displayPrice, showSupplierPanel, supplierCost]);
+
+  // ===== actions =====
   const handleAdd = useCallback(() => {
     if (!product) return;
     if (!canAddNow) return;
@@ -656,13 +770,25 @@ export default function ProductView() {
 
   return (
     <div className="container-xxl py-4">
-      <div className="d-flex flex-wrap gap-2 mb-3">
-        <button className="btn btn-outline-dark" onClick={handleBack} type="button">
-          ← Retour
-        </button>
-        <Link to={backPath} className="btn btn-dark">
-          Explorer
-        </Link>
+      <div className="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
+        <div className="d-flex flex-wrap gap-2">
+          <button className="btn btn-outline-dark" onClick={handleBack} type="button">
+            ← Retour
+          </button>
+          <Link to={backPath} className="btn btn-dark">
+            Explorer
+          </Link>
+        </div>
+
+        {/* ✅ Badge rôle (debug soft, utile en impersonation) */}
+        <span className="badge text-bg-light border">
+          Rôle: <strong className="ms-1">{viewerRole}</strong>
+          {viewerUser?.impersonation?.impersonate_shop_id ? (
+            <span className="ms-2 text-muted">
+              (impersonation shop #{viewerUser.impersonation.impersonate_shop_id})
+            </span>
+          ) : null}
+        </span>
       </div>
 
       <h1 className="h4 mb-3">{title}</h1>
@@ -735,7 +861,9 @@ export default function ProductView() {
               )}
             </div>
 
-            <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{badge}</span>
+            <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
+              {badge}
+            </span>
             {hasVariants && <span className="badge text-bg-light border">Variantes</span>}
 
             {promoActive && (
@@ -807,6 +935,53 @@ export default function ProductView() {
             </div>
           )}
 
+          {/* ✅ PANELS PRO: vendeur/restaurant/fournisseur/admin */}
+          {(showVendorPanel || showSupplierPanel) && (
+            <div className="alert alert-light border mb-3 py-2">
+              <div className="fw-bold small mb-2">Infos Pro</div>
+
+              {showVendorPanel && (
+                <div className="small text-muted">
+                  <div>
+                    Prix vendeur : <strong>{moneyMAD(vendorPrice ?? 0)}</strong>
+                    {vendorPrice == null && <span className="ms-2">(non défini)</span>}
+                  </div>
+
+                  {marginVsVendor != null && vendorPrice != null && (
+                    <div>
+                      Marge (client − vendeur) :{" "}
+                      <strong style={{ color: marginVsVendor >= 0 ? "inherit" : "var(--duu-red,#E53935)" }}>
+                        {moneyMAD(marginVsVendor)}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showSupplierPanel && (
+                <div className="small text-muted mt-2">
+                  <div>
+                    Stock fournisseur : <strong>{supplierStock ?? 0}</strong>
+                    {supplierStock == null && <span className="ms-2">(non défini)</span>}
+                  </div>
+                  <div>
+                    Coût wholesale : <strong>{moneyMAD(supplierCost ?? 0)}</strong>
+                    {supplierCost == null && <span className="ms-2">(non défini)</span>}
+                  </div>
+
+                  {marginVsSupplier != null && supplierCost != null && (
+                    <div>
+                      Marge (client − wholesale) :{" "}
+                      <strong style={{ color: marginVsSupplier >= 0 ? "inherit" : "var(--duu-red,#E53935)" }}>
+                        {moneyMAD(marginVsSupplier)}
+                      </strong>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="d-flex gap-2 mb-3">
             {qtySelected > 0 ? (
               <div className="btn-group" role="group" aria-label="Quantité panier">
@@ -827,6 +1002,10 @@ export default function ProductView() {
             )}
 
             {isOutOfStock && <span className="badge text-bg-danger align-self-center">En rupture</span>}
+
+            {!canOrder(viewerRole) && (
+              <span className="badge text-bg-warning align-self-center">Commande désactivée pour ce rôle</span>
+            )}
           </div>
 
           {desc ? (

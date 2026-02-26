@@ -1,16 +1,26 @@
 // src/pages/admin/ShopsAdminPage.tsx
-import { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   listShops,
+  listMyShops,
   type Shop,
   type ShopStats,
-  createShop,
+  createShopSafe,
   updateShop,
   removeShop,
   getShopStats,
+  isShopLimitError,
 } from "../../services/shops";
-import { listProducts, type Product } from "../../services/products";
+
+// ✅ IMPORTANT: vendeur doit lister uniquement SES produits -> route /api/products/manage
+import {
+  listProducts,
+  listManageProducts, // ✅ NEW (ajouté dans services/products.ts)
+  type Product,
+} from "../../services/products";
+
 import { API_BASE } from "../../services/http";
+import { me } from "../../services/auth";
 
 type Draft = Partial<Shop> & { description?: string | null };
 
@@ -61,7 +71,6 @@ const mad = (n?: number | null) =>
   }).format(Number(n || 0));
 
 /* ======= Formulaire boutique ======= */
-
 function ShopForm({
   initial,
   onSubmit,
@@ -132,9 +141,7 @@ function ShopForm({
         <input
           className="form-control"
           value={draft.name || ""}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, name: e.target.value }))
-          }
+          onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           required
         />
       </div>
@@ -142,15 +149,8 @@ function ShopForm({
       {initial?.slug && (
         <div className="mb-2">
           <label className="form-label">Slug (auto)</label>
-          <input
-            className="form-control"
-            value={initial.slug}
-            disabled
-            readOnly
-          />
-          <small className="text-muted">
-            Généré automatiquement à partir du nom.
-          </small>
+          <input className="form-control" value={initial.slug} disabled readOnly />
+          <small className="text-muted">Généré automatiquement à partir du nom.</small>
         </div>
       )}
 
@@ -160,24 +160,18 @@ function ShopForm({
           className="form-control"
           placeholder="Ex : Casablanca"
           value={draft.city || ""}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, city: e.target.value }))
-          }
+          onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value }))}
         />
       </div>
 
       <div className="mb-2">
-        <label className="form-label">
-          Adresse / localisation (Google Maps, quartier…)
-        </label>
+        <label className="form-label">Adresse / localisation (Google Maps, quartier…)</label>
         <textarea
           className="form-control"
           rows={2}
           placeholder="Ex : Maârif, Boulevard Ghandi… ou collez un lien Google Maps"
           value={draft.address || ""}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, address: e.target.value }))
-          }
+          onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
         />
       </div>
 
@@ -205,26 +199,15 @@ function ShopForm({
                 style={{ width: 60, height: 60, objectFit: "cover" }}
               />
             ) : (
-              <div
-                className="rounded-circle border bg-light"
-                style={{ width: 60, height: 60 }}
-              />
+              <div className="rounded-circle border bg-light" style={{ width: 60, height: 60 }} />
             )}
           </div>
 
           <div className="d-flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-outline-dark btn-sm"
-              onClick={onPickLogo}
-            >
+            <button type="button" className="btn btn-outline-dark btn-sm" onClick={onPickLogo}>
               Choisir une image
             </button>
-            <button
-              type="button"
-              className="btn btn-dark btn-sm"
-              onClick={onPickLogo}
-            >
+            <button type="button" className="btn btn-dark btn-sm" onClick={onPickLogo}>
               Prendre une photo
             </button>
             {logoFile && (
@@ -273,26 +256,15 @@ function ShopForm({
                 style={{ width: 96, height: 60, objectFit: "cover" }}
               />
             ) : (
-              <div
-                className="rounded border bg-light"
-                style={{ width: 96, height: 60 }}
-              />
+              <div className="rounded border bg-light" style={{ width: 96, height: 60 }} />
             )}
           </div>
 
           <div className="d-flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="btn btn-outline-dark btn-sm"
-              onClick={onPickCover}
-            >
+            <button type="button" className="btn btn-outline-dark btn-sm" onClick={onPickCover}>
               Choisir une image
             </button>
-            <button
-              type="button"
-              className="btn btn-dark btn-sm"
-              onClick={onPickCover}
-            >
+            <button type="button" className="btn btn-dark btn-sm" onClick={onPickCover}>
               Prendre une photo
             </button>
             {coverFile && (
@@ -323,9 +295,7 @@ function ShopForm({
           className="form-control"
           rows={3}
           value={(draft as any).description || ""}
-          onChange={(e) =>
-            setDraft((d) => ({ ...d, description: e.target.value }))
-          }
+          onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
         />
       </div>
 
@@ -339,14 +309,16 @@ function ShopForm({
 }
 
 /* ======= Page admin boutiques ======= */
-
 export default function ShopsAdminPage() {
   const [items, setItems] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // pagination (admin uniquement)
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
   const [total, setTotal] = useState(0);
+
   const [q, setQ] = useState("");
 
   const [showForm, setShowForm] = useState(false);
@@ -365,25 +337,61 @@ export default function ShopsAdminPage() {
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
-  const [productFilter, setProductFilter] =
-    useState<ProductFilter>("ALL");
+  const [productFilter, setProductFilter] = useState<ProductFilter>("ALL");
 
-  const pages = useMemo(
-    () => Math.max(1, Math.ceil(total / pageSize)),
-    [total, pageSize]
-  );
+  // ✅ rôles / vendeur
+  const SHOP_LIMIT = 2;
+  const [role, setRole] = useState<string | null>(null);
+  const [myCount, setMyCount] = useState<number>(0);
+
+  const isVendor = role === "VENDEUR";
+  const canCreate = !isVendor || myCount < SHOP_LIMIT;
+
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+
+  async function refreshMyCount() {
+    try {
+      const u = await me();
+      const r = String((u as any)?.role || (u as any)?.user?.role || "").toUpperCase();
+      setRole(r || null);
+
+      if (r === "VENDEUR") {
+        const mine = await listMyShops();
+        setMyCount(mine?.length ?? 0);
+      } else {
+        setMyCount(0);
+      }
+    } catch {
+      setRole(null);
+      setMyCount(0);
+    }
+  }
 
   async function refresh() {
     setLoading(true);
     try {
+      // ✅ vendeur => ses boutiques uniquement
+      if (isVendor) {
+        const mine = await listMyShops();
+        const list = mine || [];
+        setItems(list);
+        setTotal(list.length);
+        setError(null);
+
+        if (!selected && list.length > 0) setSelected(list[0]);
+        if (selected && !list.some((x) => x.id === selected.id)) setSelected(list[0] || null);
+        return;
+      }
+
+      // ✅ admin => pagination
       const res = await listShops({ page, pageSize });
-      setItems(res.items);
-      setTotal(res.pageInfo.total);
+      const list = res.items || [];
+      setItems(list);
+      setTotal(res.pageInfo?.total ?? list.length);
       setError(null);
 
-      if (!selected && res.items.length > 0) {
-        setSelected(res.items[0]);
-      }
+      if (!selected && list.length > 0) setSelected(list[0]);
+      if (selected && !list.some((x) => x.id === selected.id)) setSelected(list[0] || null);
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -391,12 +399,16 @@ export default function ShopsAdminPage() {
     }
   }
 
+  // ✅ Important : charger rôle d’abord, puis refresh (sinon vendeur démarre en admin)
   useEffect(() => {
-    refresh();
+    (async () => {
+      await refreshMyCount();
+      await refresh();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, pageSize]);
 
-  // Stats par boutique (basées sur orders + produits de cette boutique)
+  // Stats par boutique
   useEffect(() => {
     if (!selected) {
       setStats(null);
@@ -417,7 +429,9 @@ export default function ShopsAdminPage() {
     })();
   }, [selected]);
 
-  // Produits de la boutique (filtrés par shop_id, PAS par user)
+  // ✅ Produits de la boutique sélectionnée
+  // - ADMIN: listProducts({ shop_id })
+  // - VENDEUR: listManageProducts({ shop_id }) (backend ignore shop_id si besoin, mais on le met pour cohérence UI)
   useEffect(() => {
     if (!selected) {
       setProducts([]);
@@ -427,23 +441,24 @@ export default function ShopsAdminPage() {
       setProductsLoading(true);
       setProductsError(null);
       try {
-        const res = await listProducts({
-          page: 1,
-          pageSize: 500,
-          // IMPORTANT : filtre par id de boutique
-          // ton backend doit accepter ce paramètre (shop_id ou équivalent)
-          // @ts-ignore
-          shop_id: selected.id,
-        } as any);
+        const res = isVendor
+          ? await listManageProducts({
+              page: 1,
+              pageSize: 500,
+              shop_id: selected.id,
+            } as any)
+          : await listProducts({
+              page: 1,
+              pageSize: 500,
+              // @ts-ignore
+              shop_id: selected.id,
+            } as any);
 
         const base: Product[] = (res as any).items || [];
 
         // Merge avec top_products (commandes sur 30j)
-        const mapTop = new Map<
-          number,
-          { total_qty: number; total_amount: number; cover?: string | null }
-        >();
-        stats?.top_products.forEach((tp: any) => {
+        const mapTop = new Map<number, { total_qty: number; total_amount: number; cover?: string | null }>();
+        (stats as any)?.top_products?.forEach((tp: any) => {
           mapTop.set(tp.product_id, {
             total_qty: tp.total_qty,
             total_amount: tp.total_amount,
@@ -460,7 +475,7 @@ export default function ShopsAdminPage() {
           return {
             ...(p as any),
             total_qty: extra.total_qty,
-            total_amount: extra.total_amount, // CA 30j basé sur prix normal, hors livraison
+            total_amount: extra.total_amount,
             cover: extra.cover ?? (p as any).cover ?? null,
           };
         });
@@ -468,18 +483,20 @@ export default function ShopsAdminPage() {
         setProducts(merged);
       } catch (e: any) {
         console.error("Erreur chargement produits boutique", e);
-        setProductsError(
-          e?.message ||
-            "Impossible de charger les produits de cette boutique."
-        );
+        setProductsError(e?.message || "Impossible de charger les produits de cette boutique.");
         setProducts([]);
       } finally {
         setProductsLoading(false);
       }
     })();
-  }, [selected, stats]);
+    // ✅ on dépend de isVendor pour que le hook recharge si le rôle arrive après
+  }, [selected, stats, isVendor]);
 
   function openCreate() {
+    if (!canCreate) {
+      alert(`Limite atteinte : maximum ${SHOP_LIMIT} boutiques par vendeur.`);
+      return;
+    }
     setEdit(null);
     setShowForm(true);
   }
@@ -508,16 +525,23 @@ export default function ShopsAdminPage() {
 
     try {
       let saved: Shop;
-      if (edit == null) {
-        saved = await createShop(payload, files);
-      } else {
-        saved = await updateShop(edit.id, payload, files);
-      }
+      if (edit == null) saved = await createShopSafe(payload, files);
+      else saved = await updateShop(edit.id, payload, files);
+
       setShowForm(false);
+      await refreshMyCount();
       await refresh();
       setSelected(saved);
     } catch (e: any) {
       console.error("Erreur create/update shop", e);
+
+      if (isShopLimitError(e) || e?.code === "SHOP_LIMIT_REACHED") {
+        const limit = Number(e?.limit || SHOP_LIMIT);
+        alert(`Limite atteinte : maximum ${limit} boutiques par vendeur.`);
+        await refreshMyCount();
+        return;
+      }
+
       const msg =
         (e?.response?.data?.error as string | undefined) ||
         e?.message ||
@@ -529,6 +553,7 @@ export default function ShopsAdminPage() {
   async function onDelete(id: number) {
     if (!confirm("Supprimer cette boutique ?")) return;
     await removeShop?.(id);
+    await refreshMyCount();
     await refresh();
     if (selected?.id === id) {
       setSelected(null);
@@ -537,20 +562,22 @@ export default function ShopsAdminPage() {
     }
   }
 
-  const filtered = items.filter((s) => {
-    if (!q.trim()) return true;
-    const t = q.toLowerCase();
-    return (
-      (s.name || "").toLowerCase().includes(t) ||
-      (s.slug || "").toLowerCase().includes(t) ||
-      (s.city || "").toLowerCase().includes(t) ||
-      String(s.id).includes(t)
-    );
-  });
+  const filtered = useMemo(() => {
+    return (items || []).filter((s) => {
+      if (!q.trim()) return true;
+      const t = q.toLowerCase();
+      return (
+        (s.name || "").toLowerCase().includes(t) ||
+        (s.slug || "").toLowerCase().includes(t) ||
+        (s.city || "").toLowerCase().includes(t) ||
+        String(s.id).includes(t)
+      );
+    });
+  }, [items, q]);
 
   // 💰 CA (turnover) basé sur le prix normal vendeur, et commission Duumini (duu)
-  const turnover = stats?.turnover || { day: 0, month: 0, year: 0 };
-  const duu = stats?.duumini || { day: 0, month: 0, year: 0 };
+  const turnover = (stats as any)?.turnover || { day: 0, month: 0, year: 0 };
+  const duu = (stats as any)?.duumini || { day: 0, month: 0, year: 0 };
 
   // Part vendeur = CA (prix normal), on NE DÉDUIT PAS la commission
   const vendor = {
@@ -563,9 +590,9 @@ export default function ShopsAdminPage() {
     if (caFilter === "DAY") {
       return {
         label: "Aujourd'hui",
-        turnover: turnover.day, // CA (prix normal), hors livraison
-        duu: duu.day,           // commission Duumini
-        vendor: vendor.day,     // part vendeur = CA
+        turnover: turnover.day,
+        duu: duu.day,
+        vendor: vendor.day,
       };
     }
     if (caFilter === "MONTH") {
@@ -588,12 +615,9 @@ export default function ShopsAdminPage() {
   const displayedProducts = useMemo(() => {
     const arr = [...products];
 
-    if (productFilter === "ALL") {
-      return arr;
-    }
+    if (productFilter === "ALL") return arr;
 
     if (productFilter === "MOST_ORDERED") {
-      // On garde uniquement les produits qui ont été commandés (total_qty > 0)
       return arr
         .filter((p) => Number(p.total_qty || 0) > 0)
         .sort((a, b) => {
@@ -607,20 +631,11 @@ export default function ShopsAdminPage() {
     }
 
     if (productFilter === "BEST_RATED") {
-      // On garde uniquement les produits qui ont une note > 0
       return arr
         .map((p) => {
           const anyP = p as any;
-          const rating =
-            Number(
-              anyP.avg_rating ??
-                anyP.average_rating ??
-                anyP.rating ??
-                0
-            ) || 0;
-          const ratingCount = Number(
-            anyP.rating_count ?? anyP.ratings_count ?? 0
-          );
+          const rating = Number(anyP.avg_rating ?? anyP.average_rating ?? anyP.rating ?? 0) || 0;
+          const ratingCount = Number(anyP.rating_count ?? anyP.ratings_count ?? 0);
           return { p, rating, ratingCount };
         })
         .filter((x) => x.rating > 0)
@@ -639,9 +654,23 @@ export default function ShopsAdminPage() {
       {/* Header */}
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h5 m-0">Boutiques & performances</h1>
-        <button className="btn btn-dark" onClick={openCreate}>
-          + Nouvelle boutique
-        </button>
+
+        <div className="d-flex flex-column align-items-end gap-1">
+          <button
+            className="btn btn-dark"
+            onClick={openCreate}
+            disabled={!canCreate}
+            title={!canCreate ? `Limite atteinte (${SHOP_LIMIT})` : "Créer une boutique"}
+          >
+            + Nouvelle boutique
+          </button>
+
+          {isVendor && (
+            <div className="text-muted small">
+              {myCount}/{SHOP_LIMIT} boutiques
+            </div>
+          )}
+        </div>
       </div>
 
       {error && <div className="alert alert-danger">{error}</div>}
@@ -664,18 +693,14 @@ export default function ShopsAdminPage() {
               {loading ? (
                 <div className="text-muted">Chargement des boutiques…</div>
               ) : filtered.length === 0 ? (
-                <div className="text-muted small">
-                  Aucune boutique trouvée.
-                </div>
+                <div className="text-muted small">Aucune boutique trouvée.</div>
               ) : (
-                <div
-                  className="list-group flex-grow-1"
-                  style={{ maxHeight: "60vh", overflowY: "auto" }}
-                >
+                <div className="list-group flex-grow-1" style={{ maxHeight: "60vh", overflowY: "auto" }}>
                   {filtered.map((s) => {
                     const logo = (s as any).logo as string | null | undefined;
                     const logoSrc = shopLogoUrl(logo);
                     const active = selected?.id === s.id;
+
                     return (
                       <button
                         key={s.id}
@@ -692,25 +717,14 @@ export default function ShopsAdminPage() {
                               src={logoSrc}
                               alt={s.name}
                               className="rounded-circle border"
-                              style={{
-                                width: 32,
-                                height: 32,
-                                objectFit: "cover",
-                              }}
+                              style={{ width: 32, height: 32, objectFit: "cover" }}
                             />
                           ) : (
-                            <div
-                              className="rounded-circle border bg-light"
-                              style={{ width: 32, height: 32 }}
-                            />
+                            <div className="rounded-circle border bg-light" style={{ width: 32, height: 32 }} />
                           )}
                           <div className="text-start">
-                            <div className="small fw-semibold text-truncate">
-                              {s.name}
-                            </div>
-                            <div className="text-muted small text-truncate">
-                              {s.city || "Ville inconnue"}
-                            </div>
+                            <div className="small fw-semibold text-truncate">{s.name}</div>
+                            <div className="text-muted small text-truncate">{s.city || "Ville inconnue"}</div>
                           </div>
                         </div>
 
@@ -718,13 +732,13 @@ export default function ShopsAdminPage() {
                           <button
                             type="button"
                             className={
-                              "btn btn-xs btn-outline-light border-0 px-2 py-0 " +
-                              (active ? "" : "text-muted")
+                              "btn btn-xs btn-outline-light border-0 px-2 py-0 " + (active ? "" : "text-muted")
                             }
                             onClick={(e) => {
                               e.stopPropagation();
                               openEdit(s);
                             }}
+                            title="Modifier"
                           >
                             ✏️
                           </button>
@@ -735,6 +749,7 @@ export default function ShopsAdminPage() {
                               e.stopPropagation();
                               onDelete(s.id);
                             }}
+                            title="Supprimer"
                           >
                             🗑
                           </button>
@@ -745,28 +760,34 @@ export default function ShopsAdminPage() {
                 </div>
               )}
 
-              <div className="d-flex justify-content-between align-items-center mt-3">
-                <div className="text-muted small">{total} boutiques</div>
-                <div className="btn-group btn-group-sm">
-                  <button
-                    className="btn btn-outline-dark"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    Préc.
-                  </button>
-                  <span className="btn btn-outline-dark disabled">
-                    {page} / {pages}
-                  </span>
-                  <button
-                    className="btn btn-outline-dark"
-                    disabled={page >= pages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    Suiv.
-                  </button>
+              {/* Pagination (admin seulement) */}
+              {!isVendor && (
+                <div className="d-flex justify-content-between align-items-center mt-3">
+                  <div className="text-muted small">{total} boutiques</div>
+                  <div className="btn-group btn-group-sm">
+                    <button className="btn btn-outline-dark" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                      Préc.
+                    </button>
+                    <span className="btn btn-outline-dark disabled">
+                      {page} / {pages}
+                    </span>
+                    <button
+                      className="btn btn-outline-dark"
+                      disabled={page >= pages}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Suiv.
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Vendeur : info simple */}
+              {isVendor && (
+                <div className="d-flex justify-content-between align-items-center mt-3">
+                  <div className="text-muted small">{items.length} boutique(s)</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -777,44 +798,37 @@ export default function ShopsAdminPage() {
             <div className="card-body">
               {!selected ? (
                 <div className="text-muted">
-                  Sélectionnez une boutique dans le menu de gauche pour voir
-                  son chiffre d'affaires et ses produits.
+                  Sélectionnez une boutique dans le menu de gauche pour voir son chiffre d'affaires et ses produits.
                 </div>
               ) : (
                 <>
                   {/* En-tête boutique */}
                   <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
                     <div className="d-flex align-items-center gap-2">
-                      {selected.logo ? (
+                      {(selected as any).logo ? (
                         <img
-                          src={shopLogoUrl(selected.logo as any)}
+                          src={shopLogoUrl((selected as any).logo)}
                           alt={selected.name}
                           className="rounded-circle border"
                           style={{ width: 40, height: 40, objectFit: "cover" }}
                         />
                       ) : (
-                        <div
-                          className="rounded-circle border bg-light"
-                          style={{ width: 40, height: 40 }}
-                        />
+                        <div className="rounded-circle border bg-light" style={{ width: 40, height: 40 }} />
                       )}
                       <div>
                         <h2 className="h6 m-0">{selected.name}</h2>
                         <div className="text-muted small">
                           {selected.city || "Ville inconnue"}
-                          {selected.address
-                            ? ` — ${selected.address.slice(0, 40)}${
-                                selected.address.length > 40 ? "…" : ""
+                          {(selected as any).address
+                            ? ` — ${String((selected as any).address).slice(0, 40)}${
+                                String((selected as any).address).length > 40 ? "…" : ""
                               }`
                             : ""}
                         </div>
                       </div>
                     </div>
 
-                    <button
-                      className="btn btn-outline-dark btn-sm"
-                      onClick={() => openEdit(selected)}
-                    >
+                    <button className="btn btn-outline-dark btn-sm" onClick={() => openEdit(selected)}>
                       Modifier la boutique
                     </button>
                   </div>
@@ -825,42 +839,29 @@ export default function ShopsAdminPage() {
                   ) : statsError ? (
                     <div className="alert alert-danger">{statsError}</div>
                   ) : !stats ? (
-                    <div className="text-muted">
-                      Aucune donnée de chiffre d'affaires pour cette boutique.
-                    </div>
+                    <div className="text-muted">Aucune donnée de chiffre d'affaires pour cette boutique.</div>
                   ) : (
                     <>
                       <div className="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
-                        <h6 className="m-0">
-                          Chiffre d'affaires (prix normal, hors frais de livraison)
-                        </h6>
+                        <h6 className="m-0">Chiffre d'affaires (prix normal, hors frais de livraison)</h6>
                         <div className="btn-group btn-group-sm">
                           <button
                             type="button"
-                            className={
-                              "btn btn-outline-dark " +
-                              (caFilter === "DAY" ? "active" : "")
-                            }
+                            className={"btn btn-outline-dark " + (caFilter === "DAY" ? "active" : "")}
                             onClick={() => setCaFilter("DAY")}
                           >
                             Aujourd'hui
                           </button>
                           <button
                             type="button"
-                            className={
-                              "btn btn-outline-dark " +
-                              (caFilter === "MONTH" ? "active" : "")
-                            }
+                            className={"btn btn-outline-dark " + (caFilter === "MONTH" ? "active" : "")}
                             onClick={() => setCaFilter("MONTH")}
                           >
                             Ce mois-ci
                           </button>
                           <button
                             type="button"
-                            className={
-                              "btn btn-outline-dark " +
-                              (caFilter === "YEAR" ? "active" : "")
-                            }
+                            className={"btn btn-outline-dark " + (caFilter === "YEAR" ? "active" : "")}
                             onClick={() => setCaFilter("YEAR")}
                           >
                             Cette année
@@ -872,23 +873,13 @@ export default function ShopsAdminPage() {
                         <div className="col-12 col-md-6 col-lg-4">
                           <div className="card border-0 shadow-sm h-100">
                             <div className="card-body">
-                              <div className="text-muted small mb-1">
-                                {caCurrent.label}
-                              </div>
-                              <div className="h5 mb-2">
-                                {mad(caCurrent.turnover)} {/* CA (prix normal) */}
+                              <div className="text-muted small mb-1">{caCurrent.label}</div>
+                              <div className="h5 mb-2">{mad(caCurrent.turnover)}</div>
+                              <div className="small text-muted">
+                                Duumini : <span className="fw-semibold">{mad(caCurrent.duu)}</span>
                               </div>
                               <div className="small text-muted">
-                                Duumini :{" "}
-                                <span className="fw-semibold">
-                                  {mad(caCurrent.duu)} {/* commission */}
-                                </span>
-                              </div>
-                              <div className="small text-muted">
-                                Vendeur :{" "}
-                                <span className="fw-semibold">
-                                  {mad(caCurrent.vendor)} {/* part vendeur = CA */}
-                                </span>
+                                Vendeur : <span className="fw-semibold">{mad(caCurrent.vendor)}</span>
                               </div>
                               <div className="text-muted small mt-1">
                                 <em>Montants hors frais de livraison</em>
@@ -906,12 +897,7 @@ export default function ShopsAdminPage() {
                             <div className="btn-group btn-group-sm">
                               <button
                                 type="button"
-                                className={
-                                  "btn btn-outline-dark " +
-                                  (productFilter === "ALL"
-                                    ? "active"
-                                    : "")
-                                }
+                                className={"btn btn-outline-dark " + (productFilter === "ALL" ? "active" : "")}
                                 onClick={() => setProductFilter("ALL")}
                               >
                                 Tous
@@ -919,28 +905,16 @@ export default function ShopsAdminPage() {
                               <button
                                 type="button"
                                 className={
-                                  "btn btn-outline-dark " +
-                                  (productFilter === "MOST_ORDERED"
-                                    ? "active"
-                                    : "")
+                                  "btn btn-outline-dark " + (productFilter === "MOST_ORDERED" ? "active" : "")
                                 }
-                                onClick={() =>
-                                  setProductFilter("MOST_ORDERED")
-                                }
+                                onClick={() => setProductFilter("MOST_ORDERED")}
                               >
                                 Plus commandés
                               </button>
                               <button
                                 type="button"
-                                className={
-                                  "btn btn-outline-dark " +
-                                  (productFilter === "BEST_RATED"
-                                    ? "active"
-                                    : "")
-                                }
-                                onClick={() =>
-                                  setProductFilter("BEST_RATED")
-                                }
+                                className={"btn btn-outline-dark " + (productFilter === "BEST_RATED" ? "active" : "")}
+                                onClick={() => setProductFilter("BEST_RATED")}
                               >
                                 Mieux notés
                               </button>
@@ -948,58 +922,38 @@ export default function ShopsAdminPage() {
                           </div>
 
                           {productsLoading ? (
-                            <div className="text-muted small">
-                              Chargement des produits…
-                            </div>
+                            <div className="text-muted small">Chargement des produits…</div>
                           ) : productsError ? (
-                            <div className="alert alert-warning mb-0">
-                              {productsError}
-                            </div>
+                            <div className="alert alert-warning mb-0">{productsError}</div>
                           ) : displayedProducts.length === 0 ? (
-                            <div className="text-muted small">
-                              Aucun produit ne correspond à ce filtre.
-                            </div>
+                            <div className="text-muted small">Aucun produit ne correspond à ce filtre.</div>
                           ) : (
                             <div className="table-responsive">
                               <table className="table align-middle mb-0">
                                 <thead>
                                   <tr>
                                     <th>Produit</th>
-                                    <th className="text-center">
-                                      Qté totale (30j)
-                                    </th>
-                                    <th className="text-end">
-                                      CA généré (30j, prix normal, hors livraison)
-                                    </th>
-                                    <th className="text-center">
-                                      Note
-                                    </th>
+                                    <th className="text-center">Qté totale (30j)</th>
+                                    <th className="text-end">CA généré (30j, prix normal, hors livraison)</th>
+                                    <th className="text-center">Note</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {displayedProducts.map((p) => {
                                     const anyP = p as any;
                                     const rating =
-                                      Number(
-                                        anyP.avg_rating ??
-                                          anyP.average_rating ??
-                                          anyP.rating ??
-                                          0
-                                      ) || 0;
-                                    const ratingCount = Number(
-                                      anyP.rating_count ??
-                                        anyP.ratings_count ??
-                                        0
-                                    );
+                                      Number(anyP.avg_rating ?? anyP.average_rating ?? anyP.rating ?? 0) || 0;
+                                    const ratingCount = Number(anyP.rating_count ?? anyP.ratings_count ?? 0);
                                     const img = productImgUrl(p);
+
                                     return (
-                                      <tr key={p.id}>
+                                      <tr key={(p as any).id}>
                                         <td>
                                           <div className="d-flex align-items-center gap-2">
                                             {img ? (
                                               <img
                                                 src={img}
-                                                alt={p.name}
+                                                alt={(p as any).name}
                                                 style={{
                                                   width: 40,
                                                   height: 40,
@@ -1008,45 +962,27 @@ export default function ShopsAdminPage() {
                                                 }}
                                               />
                                             ) : (
-                                              <div
-                                                className="bg-light border rounded"
-                                                style={{
-                                                  width: 40,
-                                                  height: 40,
-                                                }}
-                                              />
+                                              <div className="bg-light border rounded" style={{ width: 40, height: 40 }} />
                                             )}
                                             <div className="text-truncate">
-                                              <div className="fw-semibold text-truncate">
-                                                {p.name}
-                                              </div>
-                                              <div className="text-muted small">
-                                                Prix normal :{" "}
-                                                {mad((p as any).price)}
-                                              </div>
+                                              <div className="fw-semibold text-truncate">{(p as any).name}</div>
+                                              <div className="text-muted small">Prix normal : {mad((p as any).price)}</div>
                                             </div>
                                           </div>
                                         </td>
-                                        <td className="text-center">
-                                          {p.total_qty ?? 0}
-                                        </td>
-                                        <td className="text-end">
-                                          {mad(p.total_amount ?? 0)}
-                                        </td>
+
+                                        <td className="text-center">{p.total_qty ?? 0}</td>
+
+                                        <td className="text-end">{mad(p.total_amount ?? 0)}</td>
+
                                         <td className="text-center">
                                           {rating > 0 ? (
                                             <span className="small">
                                               ⭐ {rating.toFixed(1)}{" "}
-                                              {ratingCount > 0 && (
-                                                <span className="text-muted">
-                                                  ({ratingCount})
-                                                </span>
-                                              )}
+                                              {ratingCount > 0 && <span className="text-muted">({ratingCount})</span>}
                                             </span>
                                           ) : (
-                                            <span className="text-muted small">
-                                              -
-                                            </span>
+                                            <span className="text-muted small">-</span>
                                           )}
                                         </td>
                                       </tr>
@@ -1069,21 +1005,12 @@ export default function ShopsAdminPage() {
 
       {/* Modal Form */}
       {showForm && (
-        <div
-          className="modal d-block"
-          tabIndex={-1}
-          style={{ background: "rgba(0,0,0,.2)" }}
-        >
+        <div className="modal d-block" tabIndex={-1} style={{ background: "rgba(0,0,0,.2)" }}>
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">
-                  {edit == null ? "Nouvelle boutique" : "Modifier boutique"}
-                </h5>
-                <button
-                  className="btn-close"
-                  onClick={() => setShowForm(false)}
-                />
+                <h5 className="modal-title">{edit == null ? "Nouvelle boutique" : "Modifier boutique"}</h5>
+                <button className="btn-close" onClick={() => setShowForm(false)} />
               </div>
               <div className="modal-body">
                 <ShopForm initial={edit || undefined} onSubmit={onSave} />

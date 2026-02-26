@@ -4,10 +4,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import CategoriesMenu from "../components/CategoriesMenu";
-import { listProducts, type Product } from "../services/products";
+import { listManageProducts, listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
 import { useLocationCity } from "../context/LocationContext";
+import { useViewer } from "../hooks/useViewer";
 
 function GridSkeleton() {
   return (
@@ -105,6 +106,7 @@ export default function AfricanMarket() {
   const { city } = useLocationCity();
   const navigate = useNavigate();
   const params = useParams();
+  const viewer = useViewer();
 
   const categorySlugParam = (params as any)?.categorySlug
     ? String((params as any).categorySlug).trim().toLowerCase()
@@ -118,7 +120,6 @@ export default function AfricanMarket() {
   const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [allSubCategories, setAllSubCategories] = useState<SubCategory[]>([]);
 
-  // ✅ loading séparé: meta (cats/subs) + produits
   const [loading, setLoading] = useState(true);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,7 +128,6 @@ export default function AfricanMarket() {
   const [pageSize] = useState(24);
   const [total, setTotal] = useState(0);
 
-  // search debounce
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   useEffect(() => {
@@ -135,7 +135,6 @@ export default function AfricanMarket() {
     return () => window.clearTimeout(t);
   }, [q]);
 
-  // ✅ abort séparés
   const abortProductsRef = useRef<AbortController | null>(null);
   const abortMetaRef = useRef<AbortController | null>(null);
 
@@ -144,7 +143,6 @@ export default function AfricanMarket() {
     if (page > pages) setPage(pages);
   }, [pages, page]);
 
-  /** ✅ charge Categories + SubCategories UNE seule fois */
   const loadMeta = useCallback(async () => {
     abortMetaRef.current?.abort();
     const ac = new AbortController();
@@ -176,7 +174,6 @@ export default function AfricanMarket() {
     return () => abortMetaRef.current?.abort();
   }, [loadMeta]);
 
-  /** ✅ charge Produits seulement quand page/ville/route change */
   const loadProducts = useCallback(async () => {
     abortProductsRef.current?.abort();
     const ac = new AbortController();
@@ -186,12 +183,45 @@ export default function AfricanMarket() {
     setError(null);
 
     try {
-      const resProducts = await listProducts({
-        page,
-        pageSize,
-        channel: "african-market" as Channel,
-        onlyActive: true,
-      } as any);
+      if (viewer.loading) return;
+
+      const isAdmin = viewer.role === "ADMIN";
+      const isPro =
+        viewer.role === "VENDEUR" || viewer.role === "RESTAURANT" || viewer.role === "FOURNISSEUR";
+
+      let resProducts: any;
+
+      if (isAdmin) {
+        resProducts = await listManageProducts({
+          page,
+          pageSize,
+          onlyActive: true,
+          vertical: "MARKET",
+        } as any);
+      } else if (isPro) {
+        const shopId = Number(viewer.actingShopId || 0) || null;
+        if (!shopId) {
+          setItems([]);
+          setTotal(0);
+          setError("Aucune boutique active. Sélectionne une boutique avant de voir tes produits.");
+          return;
+        }
+
+        resProducts = await listManageProducts({
+          page,
+          pageSize,
+          onlyActive: true,
+          vertical: "MARKET",
+          shop_id: shopId,
+        } as any);
+      } else {
+        resProducts = await listProducts({
+          page,
+          pageSize,
+          channel: "african-market" as Channel,
+          onlyActive: true,
+        } as any);
+      }
 
       if (ac.signal.aborted) return;
 
@@ -205,6 +235,8 @@ export default function AfricanMarket() {
         `page:${page}`,
         `cat:${categorySlugParam || "all"}`,
         `sub:${subSlugParam || "all"}`,
+        `role:${String(viewer.role || "guest")}`,
+        `shop:${String(viewer.actingShopId || "none")}`,
       ].join("|");
 
       setItems(seededShuffle(rawItems, seedStr));
@@ -215,22 +247,27 @@ export default function AfricanMarket() {
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }, [page, pageSize, city, categorySlugParam, subSlugParam]);
+  }, [
+    page,
+    pageSize,
+    city,
+    categorySlugParam,
+    subSlugParam,
+    viewer.loading,
+    viewer.role,
+    viewer.actingShopId,
+  ]);
 
   useEffect(() => {
     loadProducts();
     return () => abortProductsRef.current?.abort();
   }, [loadProducts]);
 
-  /** ✅ bouton retry: refetch produits (et meta si vide) */
   const refresh = useCallback(() => {
     loadProducts();
     if (!allCategories.length || !allSubCategories.length) loadMeta();
   }, [loadProducts, loadMeta, allCategories.length, allSubCategories.length]);
 
-  /** ✅ IMPORTANT: on ne filtre plus les catégories côté page
-   *  => c’est CategoriesMenu qui filtre selon la page (scope="african-market")
-   */
   const categoriesAll = useMemo(() => {
     const out = [...allCategories];
     out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
@@ -243,7 +280,6 @@ export default function AfricanMarket() {
     return out;
   }, [allSubCategories]);
 
-  // maps (sur tout le catalogue)
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
     for (const c of categoriesAll) map[c.id] = c;
@@ -287,22 +323,18 @@ export default function AfricanMarket() {
     return list.find((s) => String((s as any).slug || "").toLowerCase() === subSlugParam) || null;
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
-  // URL invalide → redirect
   useEffect(() => {
     if (!categoriesAll.length) return;
     if (categorySlugParam && !selectedCategory) {
       navigate("/african-market", { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [categoriesAll.length, categorySlugParam, selectedCategory]);
+  }, [categoriesAll.length, categorySlugParam, selectedCategory, navigate]);
 
-  // search filter
   const filteredBySearch = useMemo(() => {
     if (!qDebounced) return items;
     return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
   }, [items, qDebounced]);
 
-  // category/subcategory filter (front)
   const filtered = useMemo(() => {
     let out = filteredBySearch;
 
@@ -335,7 +367,6 @@ export default function AfricanMarket() {
     return out;
   }, [filteredBySearch, selectedCategory, selectedSubCategory, categoriesById, subById]);
 
-  /** ✅ PROMO + NON-PROMO (sans duplication) */
   const promoItems = useMemo(() => uniqById(filtered.filter(isPromoProduct)), [filtered]);
 
   const promoIds = useMemo(() => {
@@ -349,7 +380,6 @@ export default function AfricanMarket() {
     return filtered.filter((p) => !promoIds.has(Number((p as any).id || 0)));
   }, [filtered, promoItems.length, promoIds]);
 
-  // titre
   const title = useMemo(() => {
     if (selectedSubCategory) return (selectedSubCategory as any).name || "Produits";
     if (selectedCategory) return (selectedCategory as any).name || "Produits";
@@ -360,7 +390,7 @@ export default function AfricanMarket() {
   const activeSubCategoryId = (selectedSubCategory as any)?.id ?? null;
 
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
-  const loadingAny = loading || loadingMeta;
+  const loadingAny = loading || loadingMeta || viewer.loading;
 
   return (
     <section className="container-xxl py-4">
@@ -461,6 +491,19 @@ export default function AfricanMarket() {
             <h1 className="h4 mb-0" style={{ color: "var(--duu-black)" }}>
               {title}
             </h1>
+
+            {(viewer.role === "ADMIN" ||
+              viewer.role === "VENDEUR" ||
+              viewer.role === "RESTAURANT" ||
+              viewer.role === "FOURNISSEUR") && (
+              <div className="small text-muted mt-1">
+                {viewer.role === "ADMIN"
+                  ? "Mode admin : catalogue MARKET (manage)."
+                  : viewer.actingShopId
+                  ? `Mode pro : produits MARKET de la boutique #${viewer.actingShopId}.`
+                  : "Mode pro : aucune boutique active."}
+              </div>
+            )}
           </div>
 
           <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
@@ -479,7 +522,6 @@ export default function AfricanMarket() {
                 <SlidersHorizontal size={18} />
               </span>
 
-              {/* ✅ le menu se filtre tout seul pour AfricanMarket */}
               <CategoriesMenu
                 scope="african-market"
                 title="Filtrer"
@@ -493,8 +535,7 @@ export default function AfricanMarket() {
                 onSelectSubCategory={(s) => {
                   setPage(1);
                   const cat = categoriesById[Number((s as any).category_id || 0)];
-                  const catSlug =
-                    (cat as any)?.slug || (selectedCategory as any)?.slug || "";
+                  const catSlug = (cat as any)?.slug || (selectedCategory as any)?.slug || "";
                   if (!catSlug) return;
                   navigate(`/african-market/${catSlug}/${(s as any).slug}`);
                 }}
@@ -604,7 +645,7 @@ export default function AfricanMarket() {
             <div className="promo-wrap mb-3">
               <div className="promo-head">
                 <span>Promos du moment</span>
-                <span className="promo-badge">🔥 {promoItems.length}</span>
+                <span className="promo-badge">🔥 Promo</span>
               </div>
 
               <div className="p-3">

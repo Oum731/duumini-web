@@ -17,15 +17,9 @@ import {
   Bar,
 } from "recharts";
 import { subscribeSSE, type ServerEvent } from "../services/events";
-import { getAccessToken } from "../services/auth";
+import { getAccessToken, me } from "../services/auth";
 
-/* 🚫 SNAPSHOTS — désactivé
-import {
-  listSnapshots,
-  createMonthlySnapshot,
-  type SalesSnapshot,
-} from "../services/snapshots";
-*/
+type AnyObj = Record<string, any>;
 
 export type SalesPoint = { date: string; revenue: number; orders: number };
 
@@ -126,7 +120,6 @@ function useIsMobile(breakpoint = 576) {
 }
 
 /* ======= Outils dates TZ (Africa/Casablanca) ======= */
-// "YYYY-MM-DD" local TZ
 function dateKeyTZ(d: Date, timeZone = "Africa/Casablanca") {
   const fmt = new Intl.DateTimeFormat("fr-MA", {
     timeZone,
@@ -175,17 +168,71 @@ function doneKey(o: any, tz = "Africa/Casablanca"): string | null {
   return d ? dateKeyTZ(d, tz) : null;
 }
 
-/* 🚫 SNAPSHOTS — désactivé
-function monthKeyOfNowTZ(tz = "Africa/Casablanca") {
-  const now = new Date();
-  const k = dateKeyTZ(now, tz);
-  return k.slice(0, 7);
-}
-function isSameKey(a?: string | null, b?: string | null) {
-  return String(a || "") === String(b || "");
-}
-*/
+/* =========================
+ * ✅ Rôles + Filtrage vendeur
+ * =======================*/
+type CurrentUser = {
+  id?: number;
+  role?: string;
+  shop_id?: number | null;
+  vendor_id?: number | null;
+} & AnyObj;
 
+function isVendorRole(role?: string) {
+  const r = String(role || "").toUpperCase();
+  return r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
+}
+
+function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
+  if (!user) return false;
+
+  // admin voit tout
+  if (!isVendorRole(user.role)) return true;
+
+  const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;
+  const myShop = user.shop_id != null ? Number(user.shop_id) : null;
+
+  const oVendor =
+    order?.vendor_id ?? order?.vendorId ?? order?.seller_id ?? order?.sellerId ?? null;
+  const oShop = order?.shop_id ?? order?.shopId ?? order?.store_id ?? order?.storeId ?? null;
+
+  if (oVendor != null && uid && Number(oVendor) === uid) return true;
+  if (myShop != null && oShop != null && Number(oShop) === Number(myShop)) return true;
+
+  const items: AnyObj[] = Array.isArray(order?.items)
+    ? order.items
+    : Array.isArray(order?.order_items)
+      ? order.order_items
+      : Array.isArray(order?.lines)
+        ? order.lines
+        : [];
+
+  if (items.length) {
+    for (const it of items) {
+      const itShop = it?.shop_id ?? it?.shopId ?? it?.store_id ?? it?.storeId ?? null;
+      const itVendor = it?.vendor_id ?? it?.vendorId ?? it?.seller_id ?? it?.sellerId ?? null;
+
+      if (itVendor != null && uid && Number(itVendor) === uid) return true;
+      if (myShop != null && itShop != null && Number(itShop) === Number(myShop)) return true;
+    }
+  }
+
+  return false;
+}
+
+/* ======= Badge color ======= */
+function statusClass(s: string) {
+  const st = String(s || "").toUpperCase();
+  if (st === "DONE") return "bg-success";
+  if (st === "CANCELLED") return "bg-danger";
+  if (st === "DELIVERY") return "bg-primary";
+  if (st === "PREPARATION") return "bg-warning text-dark";
+  return "bg-secondary";
+}
+
+/* =========================
+ * ✅ Summary
+ * =======================*/
 type Summary = {
   revenue_today: number;
   revenue_week: number;
@@ -198,6 +245,8 @@ type Summary = {
   duumini_commission_year: number;
 
   orders_pending: number;
+
+  // admin-only KPI (peuvent rester 0 côté vendeur)
   products_active: number;
   shops_total: number;
   users_total: number;
@@ -205,12 +254,10 @@ type Summary = {
   sales_series: SalesPoint[];
 };
 
-async function fetchOrdersPaginatedForAggregation() {
-  const maxPages = 20;
-  const pageSize = 200;
+async function fetchOrdersByStatusPaginated(status: string, maxPages = 20, pageSize = 200) {
   const all: Order[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    const res = await listOrders({ page, pageSize, status: "DONE" } as any);
+    const res = await listOrders({ page, pageSize, status } as any);
     const items: Order[] = Array.isArray(res?.items) ? res.items : [];
     if (!items.length) break;
     all.push(...items);
@@ -219,15 +266,7 @@ async function fetchOrdersPaginatedForAggregation() {
   return all;
 }
 
-async function buildSummary(): Promise<Summary> {
-  const [productsRes, shopsRes, usersRes] = await Promise.all([
-    listProducts({ page: 1, pageSize: 1 }),
-    listShops({ page: 1, pageSize: 1 }),
-    listUsers({ page: 1, pageSize: 1 }),
-  ]);
-
-  const ordersAll: Order[] = await fetchOrdersPaginatedForAggregation();
-
+function computeSummaryFromDoneOrders(ordersDone: Order[]) {
   const TZ = "Africa/Casablanca";
   const today = new Date();
   const todayKey = dateKeyTZ(today, TZ);
@@ -264,14 +303,13 @@ async function buildSummary(): Promise<Summary> {
   let duu_month = 0;
   let duu_year = 0;
 
-  for (const o of ordersAll) {
+  for (const o of ordersDone) {
     if (normStatus((o as any)?.status) !== "DONE") continue;
 
     const key = doneKey(o, TZ);
     if (!key) continue;
 
     const amount = itemsAmount(o as any);
-
     const commissionRaw =
       (o as any).commission_duumini ?? (o as any).duumini_commission ?? (o as any).commission ?? 0;
     const commission = Number(commissionRaw) || 0;
@@ -294,16 +332,7 @@ async function buildSummary(): Promise<Summary> {
     }
   }
 
-  const [openRes, prepRes] = await Promise.all([
-    listOrders({ page: 1, pageSize: 1, status: "OPEN" } as any),
-    listOrders({ page: 1, pageSize: 1, status: "PREPARATION" } as any),
-  ]);
-  const orders_pending = readTotalFromPaged(openRes) + readTotalFromPaged(prepRes);
-
-  const products_active = readTotalFromPaged(productsRes);
-  const shops_total = readTotalFromPaged(shopsRes);
-  const users_total = readTotalFromPaged(usersRes);
-
+  // series 30 jours
   const days = 30;
   const map = new Map<string, { revenue: number; orders: number }>();
   for (let i = days - 1; i >= 0; i--) {
@@ -311,7 +340,7 @@ async function buildSummary(): Promise<Summary> {
     d.setDate(d.getDate() - i);
     map.set(dateKeyTZ(d, TZ), { revenue: 0, orders: 0 });
   }
-  for (const o of ordersAll) {
+  for (const o of ordersDone) {
     if (normStatus((o as any)?.status) !== "DONE") continue;
     const key = doneKey(o, TZ);
     if (!key) continue;
@@ -336,29 +365,62 @@ async function buildSummary(): Promise<Summary> {
     duumini_commission_week: duu_week,
     duumini_commission_month: duu_month,
     duumini_commission_year: duu_year,
-    orders_pending,
-    products_active,
-    shops_total,
-    users_total,
     sales_series,
   };
 }
 
-/* ======= Badge color ======= */
-function statusClass(s: string) {
-  const st = String(s || "").toUpperCase();
-  if (st === "DONE") return "bg-success";
-  if (st === "CANCELLED") return "bg-danger";
-  if (st === "DELIVERY") return "bg-primary";
-  if (st === "PREPARATION") return "bg-warning text-dark";
-  return "bg-secondary";
+async function buildSummaryAdmin(): Promise<Summary> {
+  const [productsRes, shopsRes, usersRes] = await Promise.all([
+    listProducts({ page: 1, pageSize: 1 }),
+    listShops({ page: 1, pageSize: 1 }),
+    listUsers({ page: 1, pageSize: 1 }),
+  ]);
+
+  const ordersDone = await fetchOrdersByStatusPaginated("DONE", 20, 200);
+  const core = computeSummaryFromDoneOrders(ordersDone);
+
+  const [openRes, prepRes] = await Promise.all([
+    listOrders({ page: 1, pageSize: 1, status: "OPEN" } as any),
+    listOrders({ page: 1, pageSize: 1, status: "PREPARATION" } as any),
+  ]);
+
+  return {
+    ...core,
+    orders_pending: readTotalFromPaged(openRes) + readTotalFromPaged(prepRes),
+    products_active: readTotalFromPaged(productsRes),
+    shops_total: readTotalFromPaged(shopsRes),
+    users_total: readTotalFromPaged(usersRes),
+  };
 }
 
-/* 🚫 SNAPSHOTS UI — désactivé
-function SnapshotCard({ snapshot, active }: { snapshot: SalesSnapshot; active?: boolean; }) { ... }
-*/
+async function buildSummaryVendor(user: CurrentUser): Promise<Summary> {
+  // DONE pour stats/charts
+  const ordersDoneAll = await fetchOrdersByStatusPaginated("DONE", 20, 200);
+  const ordersDone = ordersDoneAll.filter((o) => orderBelongsToUser(o as AnyObj, user));
+  const core = computeSummaryFromDoneOrders(ordersDone);
+
+  // pending (OPEN + PREPARATION) => on pagine puis filtre
+  const [openAll, prepAll] = await Promise.all([
+    fetchOrdersByStatusPaginated("OPEN", 10, 200),
+    fetchOrdersByStatusPaginated("PREPARATION", 10, 200),
+  ]);
+  const pending =
+    openAll.filter((o) => orderBelongsToUser(o as AnyObj, user)).length +
+    prepAll.filter((o) => orderBelongsToUser(o as AnyObj, user)).length;
+
+  return {
+    ...core,
+    orders_pending: pending,
+    products_active: 0,
+    shops_total: 0,
+    users_total: 0,
+  };
+}
 
 export default function AdminHome() {
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const isVendor = useMemo(() => isVendorRole(user?.role), [user?.role]);
+
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [shops, setShops] = useState<Shop[] | null>(null);
   const [users, setUsers] = useState<User[] | null>(null);
@@ -369,9 +431,7 @@ export default function AdminHome() {
   const [kpi, setKpi] = useState<Summary | null>(null);
   const [, setLastUpdate] = useState<Date | null>(null);
 
-  const [commissionFilter, setCommissionFilter] = useState<"today" | "week" | "month" | "year">(
-    "today"
-  );
+  const [commissionFilter, setCommissionFilter] = useState<"today" | "week" | "month" | "year">("today");
 
   const chartHeight = useChartHeight();
   const isMobile = useIsMobile(576);
@@ -380,60 +440,73 @@ export default function AdminHome() {
   const visibleRef = useRef<boolean>(true);
   const sseRef = useRef<{ close(): void } | null>(null);
 
-  /* 🚫 SNAPSHOTS state — désactivé
-  const [snapshots, setSnapshots] = useState<SalesSnapshot[] | null>(null);
-  const [snapLoading, setSnapLoading] = useState(false);
-  const [snapError, setSnapError] = useState<string | null>(null);
-  const [creatingSnap, setCreatingSnap] = useState(false);
-
-  const TZ = "Africa/Casablanca";
-  const monthKey = useMemo(() => monthKeyOfNowTZ(TZ), [TZ]);
-  const hasCurrentMonthSnapshot = useMemo(() => {
-    if (!snapshots) return false;
-    return snapshots.some((s) => isSameKey(s.period_key, monthKey) && s.period_type === "MONTH");
-  }, [snapshots, monthKey]);
-
-  const refreshSnapshots = useCallback(async () => {
-    setSnapLoading(true);
-    setSnapError(null);
-    try {
-      const res = await listSnapshots(12);
-      setSnapshots(Array.isArray(res?.items) ? res.items : []);
-    } catch (e: any) {
-      setSnapError(e?.message || "Erreur snapshots");
-      setSnapshots([]);
-    } finally {
-      setSnapLoading(false);
-    }
+  // charge user
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const u = await me();
+        if (!mounted) return;
+        setUser((u as any) || null);
+      } catch {
+        if (!mounted) return;
+        setUser(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
-
-  const createThisMonthSnapshot = useCallback(async () => {
-    if (creatingSnap) return;
-    setCreatingSnap(true);
-    setSnapError(null);
-    try {
-      await createMonthlySnapshot(monthKey);
-      await refreshSnapshots();
-    } catch (e: any) {
-      setSnapError(e?.message || "Impossible de créer le snapshot");
-    } finally {
-      setCreatingSnap(false);
-    }
-  }, [creatingSnap, monthKey, refreshSnapshots]);
-  */
 
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setLoading(true);
+
     try {
+      // si user pas encore chargé, on fait un refresh minimal
+      const curUser = user;
+
+      if (curUser && isVendorRole(curUser.role)) {
+        // ===== VENDEUR =====
+        const [sum, lastOrdersOpen, lastOrdersPrep, lastOrdersDeliv] = await Promise.all([
+          buildSummaryVendor(curUser),
+          listOrders({ page: 1, pageSize: 6, status: "OPEN" } as any).catch(() => ({ items: [] })),
+          listOrders({ page: 1, pageSize: 6, status: "PREPARATION" } as any).catch(() => ({ items: [] })),
+          listOrders({ page: 1, pageSize: 6, status: "DELIVERY" } as any).catch(() => ({ items: [] })),
+        ]);
+
+        // pour “Dernières commandes” côté vendeur : on combine & filtre & trie
+        const combined = [
+          ...((lastOrdersOpen as any)?.items || []),
+          ...((lastOrdersPrep as any)?.items || []),
+          ...((lastOrdersDeliv as any)?.items || []),
+        ] as Order[];
+
+        const mine = combined
+          .filter((o) => orderBelongsToUser(o as AnyObj, curUser))
+          .sort((a: any, b: any) => {
+            const ta = new Date(a?.created_at || 0).getTime();
+            const tb = new Date(b?.created_at || 0).getTime();
+            return tb - ta;
+          })
+          .slice(0, 6);
+
+        setKpi(sum);
+        setOrders(mine);
+        setShops([]); // hidden
+        setUsers([]); // hidden
+        setError(null);
+        setLastUpdate(new Date());
+        return;
+      }
+
+      // ===== ADMIN =====
       const results = await Promise.allSettled([
-        (async () => ({ kind: "sum" as const, val: await buildSummary() }))(),
+        (async () => ({ kind: "sum" as const, val: await buildSummaryAdmin() }))(),
         (async () => ({ kind: "orders" as const, val: await listOrders({ page: 1, pageSize: 6 }) }))(),
         (async () => ({ kind: "shops" as const, val: await listShops({ page: 1, pageSize: 6 }) }))(),
         (async () => ({ kind: "users" as const, val: await listUsers({ page: 1, pageSize: 6 }) }))(),
-        // 🚫 snapshot call — désactivé
-        // (async () => ({ kind: "snap" as const, val: await listSnapshots(12) }))(),
       ]);
 
       let sum: Summary = {
@@ -456,9 +529,6 @@ export default function AdminHome() {
       let sItems: Shop[] | null = null;
       let uItems: User[] | null = null;
 
-      // 🚫 snapshots — désactivé
-      // let snItems: SalesSnapshot[] | null = null;
-
       let firstErr: string | null = null;
 
       for (const r of results) {
@@ -468,8 +538,6 @@ export default function AdminHome() {
           if (kind === "orders") oItems = Array.isArray(val?.items) ? val.items : [];
           if (kind === "shops") sItems = Array.isArray(val?.items) ? val.items : [];
           if (kind === "users") uItems = Array.isArray(val?.items) ? val.items : [];
-          // 🚫 snapshots — désactivé
-          // if (kind === "snap") snItems = Array.isArray(val?.items) ? val.items : [];
         } else {
           firstErr ||= (r as any).reason?.message || String((r as any).reason) || null;
         }
@@ -479,17 +547,13 @@ export default function AdminHome() {
       setOrders(oItems);
       setShops(sItems);
       setUsers(uItems);
-
-      // 🚫 snapshots — désactivé
-      // setSnapshots(snItems);
-
       setError(firstErr);
       setLastUpdate(new Date());
     } finally {
       setLoading(false);
       refreshingRef.current = false;
     }
-  }, []);
+  }, [user]);
 
   // Initial load
   useEffect(() => {
@@ -567,16 +631,9 @@ export default function AdminHome() {
     }
   }, [commissionFilter]);
 
-  // 🚫 currentMonthSnap — désactivé
-  // const TZ = "Africa/Casablanca";
-  // const monthKey = useMemo(() => monthKeyOfNowTZ(TZ), [TZ]);
-  // const currentMonthSnap = useMemo(() => { ... }, [snapshots, monthKey]);
-
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
-      {/* 🚫 Snapshots strip — désactivé (UI + boutons + cards) */}
-
-      {/* KPI Cards */}
+      {/* ===== KPI Cards ===== */}
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
@@ -662,47 +719,49 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* Produits */}
-        <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">Produits actifs</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {kpi?.products_active ?? 0}
+        {/* ADMIN-ONLY KPIs */}
+        {!isVendor && (
+          <>
+            <div className="col-12 col-sm-6 col-xl-2">
+              <div className="card h-100 shadow-sm">
+                <div className="card-body py-3 py-sm-3">
+                  <div className="text-muted small">Produits actifs</div>
+                  <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
+                    {kpi?.products_active ?? 0}
+                  </div>
+                  <div className="text-muted small">Total catalogue</div>
+                </div>
               </div>
-              <div className="text-muted small">Total catalogue</div>
             </div>
-          </div>
-        </div>
 
-        {/* Boutiques */}
-        <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">Boutiques</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {kpi?.shops_total ?? 0}
+            <div className="col-12 col-sm-6 col-xl-2">
+              <div className="card h-100 shadow-sm">
+                <div className="card-body py-3 py-sm-3">
+                  <div className="text-muted small">Boutiques</div>
+                  <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
+                    {kpi?.shops_total ?? 0}
+                  </div>
+                  <div className="text-muted small">Enregistrées</div>
+                </div>
               </div>
-              <div className="text-muted small">Enregistrées</div>
             </div>
-          </div>
-        </div>
 
-        {/* Utilisateurs */}
-        <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">Utilisateurs</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {kpi?.users_total ?? 0}
+            <div className="col-12 col-sm-6 col-xl-2">
+              <div className="card h-100 shadow-sm">
+                <div className="card-body py-3 py-sm-3">
+                  <div className="text-muted small">Utilisateurs</div>
+                  <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
+                    {kpi?.users_total ?? 0}
+                  </div>
+                  <div className="text-muted small">Inscrits</div>
+                </div>
               </div>
-              <div className="text-muted small">Inscrits</div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
-      {/* Charts */}
+      {/* ===== Charts ===== */}
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
         <div className="col-12 col-lg-8">
           <div className="card h-100 shadow-sm">
@@ -783,15 +842,15 @@ export default function AdminHome() {
         </div>
       </div>
 
-      {/* Tables */}
+      {/* ===== Tables ===== */}
       <div className="row g-2 g-sm-3">
         {/* Commandes */}
-        <div className="col-12 col-xxl-6">
+        <div className={`col-12 ${isVendor ? "" : "col-xxl-6"}`}>
           <div className="card h-100 shadow-sm">
             <div className="card-body">
               <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
                 <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
-                  Dernières commandes
+                  {isVendor ? "Mes dernières commandes" : "Dernières commandes"}
                 </h2>
                 <Link to="/admin/orders" className="btn btn-sm btn-duu w-100 w-sm-auto">
                   Tout voir
@@ -836,9 +895,7 @@ export default function AdminHome() {
               )}
 
               <div className="d-flex align-items-center justify-content-between mt-2">
-                <div className="text-muted small">
-                  {loading ? "Mise à jour…" : "Actualisé automatiquement (polling + SSE)"}
-                </div>
+                <div className="text-muted small">{loading ? "Mise à jour…" : "Actualisé automatiquement (polling + SSE)"}</div>
                 <button className="btn btn-sm btn-outline-dark" onClick={refresh} disabled={loading}>
                   Rafraîchir
                 </button>
@@ -847,105 +904,110 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* Boutiques */}
-        <div className="col-12 col-xxl-6">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body">
-              <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
-                  Boutiques récentes
-                </h2>
-                <Link to="/admin/shops" className="btn btn-sm btn-duu w-100 w-sm-auto">
-                  Gérer
-                </Link>
-              </div>
+        {/* ADMIN ONLY: Boutiques + Utilisateurs */}
+        {!isVendor && (
+          <>
+            {/* Boutiques */}
+            <div className="col-12 col-xxl-6">
+              <div className="card h-100 shadow-sm">
+                <div className="card-body">
+                  <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
+                    <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
+                      Boutiques récentes
+                    </h2>
+                    <Link to="/admin/shops" className="btn btn-sm btn-duu w-100 w-sm-auto">
+                      Gérer
+                    </Link>
+                  </div>
 
-              {!shops ? (
-                <div className="text-muted small">Chargement…</div>
-              ) : shops.length === 0 ? (
-                <div className="text-muted small">Aucune boutique.</div>
-              ) : (
-                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
-                  <table className="table table-sm align-middle mb-0">
-                    <thead className="sticky-top bg-white">
-                      <tr>
-                        <th>Boutique</th>
-                        <th className="d-none d-sm-table-cell">Créée le</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {shops.map((s) => (
-                        <tr key={(s as any).id}>
-                          <td className="text-truncate" style={{ maxWidth: 240 }}>
-                            <Link to={`/admin/shops/${(s as any).id}`} className="link-dark">
-                              {(s as any).name}
-                            </Link>
-                          </td>
-                          <td className="d-none d-sm-table-cell">{shortDate((s as any).created_at)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {!shops ? (
+                    <div className="text-muted small">Chargement…</div>
+                  ) : shops.length === 0 ? (
+                    <div className="text-muted small">Aucune boutique.</div>
+                  ) : (
+                    <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
+                      <table className="table table-sm align-middle mb-0">
+                        <thead className="sticky-top bg-white">
+                          <tr>
+                            <th>Boutique</th>
+                            <th className="d-none d-sm-table-cell">Créée le</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {shops.map((s) => (
+                            <tr key={(s as any).id}>
+                              <td className="text-truncate" style={{ maxWidth: 240 }}>
+                                <Link to={`/admin/shops/${(s as any).id}`} className="link-dark">
+                                  {(s as any).name}
+                                </Link>
+                              </td>
+                              <td className="d-none d-sm-table-cell">{shortDate((s as any).created_at)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Utilisateurs */}
-        <div className="col-12">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body">
-              <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
-                  Derniers utilisateurs inscrits
-                </h2>
-                <Link to="/admin/users" className="btn btn-sm btn-duu w-100 w-sm-auto">
-                  Gérer
-                </Link>
               </div>
-
-              {!users ? (
-                <div className="text-muted small">Chargement…</div>
-              ) : users.length === 0 ? (
-                <div className="text-muted small">Aucun utilisateur.</div>
-              ) : (
-                <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
-                  <table className="table table-sm align-middle mb-0">
-                    <thead className="sticky-top bg-white">
-                      <tr>
-                        <th>Utilisateur</th>
-                        <th className="d-none d-md-table-cell">Téléphone</th>
-                        <th className="d-none d-lg-table-cell">Rôle</th>
-                        <th className="d-none d-sm-table-cell">Inscrit le</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((u) => (
-                        <tr key={(u as any).id}>
-                          <td className="text-truncate" style={{ maxWidth: 280 }}>
-                            <Link to={`/admin/users/${(u as any).id}`} className="link-dark">
-                              {(u as any).first_name || (u as any).last_name
-                                ? `${(u as any).first_name ?? ""} ${(u as any).last_name ?? ""}`.trim()
-                                : (u as any).phone || `#${(u as any).id}`}
-                            </Link>
-                          </td>
-                          <td className="d-none d-md-table-cell">{(u as any).phone}</td>
-                          <td className="d-none d-lg-table-cell">
-                            <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
-                              {(u as any).role}
-                            </span>
-                          </td>
-                          <td className="d-none d-sm-table-cell">{shortDate((u as any).created_at)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
-          </div>
-        </div>
+
+            {/* Utilisateurs */}
+            <div className="col-12">
+              <div className="card h-100 shadow-sm">
+                <div className="card-body">
+                  <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
+                    <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
+                      Derniers utilisateurs inscrits
+                    </h2>
+                    <Link to="/admin/users" className="btn btn-sm btn-duu w-100 w-sm-auto">
+                      Gérer
+                    </Link>
+                  </div>
+
+                  {!users ? (
+                    <div className="text-muted small">Chargement…</div>
+                  ) : users.length === 0 ? (
+                    <div className="text-muted small">Aucun utilisateur.</div>
+                  ) : (
+                    <div className="table-responsive" style={{ WebkitOverflowScrolling: "touch" }}>
+                      <table className="table table-sm align-middle mb-0">
+                        <thead className="sticky-top bg-white">
+                          <tr>
+                            <th>Utilisateur</th>
+                            <th className="d-none d-md-table-cell">Téléphone</th>
+                            <th className="d-none d-lg-table-cell">Rôle</th>
+                            <th className="d-none d-sm-table-cell">Inscrit le</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {users.map((u) => (
+                            <tr key={(u as any).id}>
+                              <td className="text-truncate" style={{ maxWidth: 280 }}>
+                                <Link to={`/admin/users/${(u as any).id}`} className="link-dark">
+                                  {(u as any).first_name || (u as any).last_name
+                                    ? `${(u as any).first_name ?? ""} ${(u as any).last_name ?? ""}`.trim()
+                                    : (u as any).phone || `#${(u as any).id}`}
+                                </Link>
+                              </td>
+                              <td className="d-none d-md-table-cell">{(u as any).phone}</td>
+                              <td className="d-none d-lg-table-cell">
+                                <span className="badge bg-light text-dark" style={{ borderRadius: 999 }}>
+                                  {(u as any).role}
+                                </span>
+                              </td>
+                              <td className="d-none d-sm-table-cell">{shortDate((u as any).created_at)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {error ? (
@@ -953,6 +1015,15 @@ export default function AdminHome() {
           {error}
         </div>
       ) : null}
+
+      <style>{`
+        .btn-duu{
+          background: var(--duu-yellow);
+          color: #1f1f1f;
+          border: none;
+        }
+        .btn-duu:hover{ filter: brightness(0.95); }
+      `}</style>
     </div>
   );
 }

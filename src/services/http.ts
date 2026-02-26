@@ -16,6 +16,7 @@ export type HttpConfig = {
   noAuth?: boolean;
   /** Inclure cookies (si besoin) */
   credentials?: RequestCredentials;
+  params?: Record<string, any>; // ✅ alias
 
   /** ✅ AbortController support (pour autocomplete / cancel request) */
   signal?: AbortSignal;
