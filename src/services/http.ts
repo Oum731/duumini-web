@@ -20,6 +20,12 @@ export type HttpConfig = {
 
   /** ✅ AbortController support (pour autocomplete / cancel request) */
   signal?: AbortSignal;
+
+  /** ✅ Ville forcée pour cette requête (override localStorage) */
+  city?: string | null;
+
+  /** ✅ Ne pas envoyer la ville sur cette requête */
+  noCity?: boolean;
 };
 
 export type HttpErrorPayload = {
@@ -103,7 +109,6 @@ function mergeSignals(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined
   const controller = new AbortController();
   const anyAbort = () => controller.abort();
 
-  // Si un des deux est déjà aborted
   if (a.aborted || b.aborted) {
     controller.abort();
     return controller.signal;
@@ -125,7 +130,6 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeout);
 
-  // ✅ on fusionne : timeoutController + signal externe
   const mergedSignal = mergeSignals(signal, controller.signal);
 
   try {
@@ -135,6 +139,17 @@ async function fetchWithTimeout(
     });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Lecture safe de la ville globale */
+function readCityFromStorage(): string | null {
+  try {
+    const v = localStorage.getItem("duumini_city");
+    const s = String(v || "").trim();
+    return s ? s : null;
+  } catch {
+    return null;
   }
 }
 
@@ -154,12 +169,24 @@ export async function http<T = unknown>(
     noAuth = false,
     credentials,
     signal,
+    city,     // ✅ override ville
+    noCity,   // ✅ désactiver ville
   } = config;
 
   const hdrs: Record<string, string> = {
     Accept: "application/json",
     ...headers,
   };
+
+  // ✅ Ville globale envoyée automatiquement (sans répétition dans les pages)
+  if (!noCity) {
+    const cityToSend =
+      typeof city !== "undefined" ? (city ? String(city).trim() : null) : readCityFromStorage();
+
+    if (cityToSend) {
+      hdrs["X-Duumini-City"] = cityToSend;
+    }
+  }
 
   // Auth bearer si token dispo (utilise la même source que auth.ts)
   const token = noAuth ? null : getAccessToken();
@@ -174,7 +201,7 @@ export async function http<T = unknown>(
   let finalBody: BodyInit | undefined = undefined;
   if (body !== undefined && body !== null) {
     if (isFormData(body)) {
-      finalBody = body; // ne pas ajouter content-type
+      finalBody = body;
     } else if (typeof body === "string") {
       finalBody = body;
       hdrs["Content-Type"] ||= "application/json";
@@ -184,22 +211,19 @@ export async function http<T = unknown>(
     }
   }
 
-  // ⚠️ IMPORTANT: init doit être "recréé" au retry (headers peut changer après refresh)
   const makeInit = (): RequestInit => ({
     method,
     headers: hdrs,
     body: finalBody,
     mode: "cors",
-    credentials, // "include" si tu utilises des cookies côté API
+    credentials,
   });
 
   let res: Response;
 
   try {
-    // 1) première tentative
     res = await fetchWithTimeout(url, makeInit(), timeout, signal);
 
-    // 2) si 401 → refresh 1 fois puis retry
     if (res.status === 401 && !noAuth) {
       try {
         await doRefresh();
