@@ -1,3 +1,4 @@
+// src/pages/products/ProductForm.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../../services/http";
 import type { Category } from "../../services/categories";
@@ -98,7 +99,11 @@ export function imgUrl(u?: string | null) {
   return `${API_BASE}/${s}`;
 }
 
-function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
+function computePromoPrice(
+  price: number,
+  type: PromoDiscountType,
+  value: number
+) {
   const priceC = toCents(price);
   const v = Number(value);
   if (priceC <= 0 || !Number.isFinite(v) || v <= 0) return fromCents(priceC);
@@ -120,8 +125,8 @@ export function isActive(p: any): 0 | 1 {
     p?.is_active != null
       ? Number(p.is_active)
       : p?.active != null
-        ? Number(p.active)
-        : 1;
+      ? Number(p.active)
+      : 1;
   return (v === 0 ? 0 : 1) as 0 | 1;
 }
 
@@ -148,7 +153,9 @@ export function promoPriceForAdmin(p: any): number | null {
   if (!hasRealPromo(p)) return null;
   const price = basePriceForAdmin(p);
   const t: PromoDiscountType =
-    String(p?.promo_discount_type || "").toUpperCase() === "AMOUNT" ? "AMOUNT" : "PERCENT";
+    String(p?.promo_discount_type || "").toUpperCase() === "AMOUNT"
+      ? "AMOUNT"
+      : "PERCENT";
   const v = Number(p?.promo_discount_value || 0);
   if (price <= 0 || !Number.isFinite(v) || v <= 0) return null;
   return computePromoPrice(price, t, v);
@@ -332,8 +339,8 @@ export default function ProductForm({
         anyInit?.is_active != null
           ? (Number(anyInit.is_active) as 0 | 1)
           : anyInit?.active != null
-            ? (Number(anyInit.active) as 0 | 1)
-            : 1,
+          ? (Number(anyInit.active) as 0 | 1)
+          : 1,
     };
   });
 
@@ -434,7 +441,6 @@ export default function ProductForm({
   const categoriesByStyle = useMemo(() => {
     const st = String(draft.style || "").toLowerCase();
     if (!st) return safeCategories;
-    // si tu as une logique de style, tu peux filtrer ici
     return safeCategories;
   }, [safeCategories, draft.style]);
 
@@ -442,7 +448,6 @@ export default function ProductForm({
     const cid = Number(draft.category_id || 0);
     if (!cid) return [];
     let list = safeSubCategories.filter((sc) => Number(sc.category_id) === cid);
-    // si tu as une logique de style, tu peux filtrer ici
     return list;
   }, [safeSubCategories, draft.category_id, draft.style]);
 
@@ -970,10 +975,10 @@ export default function ProductForm({
                     {!draft.style
                       ? "(Choisir le type d’abord)"
                       : !draft.category_id
-                        ? "(Choisir une catégorie d’abord)"
-                        : filteredSubCats.length
-                          ? "(Sélectionner)"
-                          : "(Aucune sous-catégorie)"}
+                      ? "(Choisir une catégorie d’abord)"
+                      : filteredSubCats.length
+                      ? "(Sélectionner)"
+                      : "(Aucune sous-catégorie)"}
                   </option>
 
                   {filteredSubCats.map((sc) => (

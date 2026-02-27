@@ -54,6 +54,66 @@ function safeImgUrl(u?: string | null) {
   return `${API_BASE}/${s}`;
 }
 
+/** ✅ Vertical/Style robust (backend may return different keys/values) */
+function normalizeVertical(input: any): "FOOD" | "MARKET" | "FASHION" | "" {
+  const raw = String(input ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!raw) return "";
+
+  // direct
+  if (raw === "FOOD" || raw === "MARKET" || raw === "FASHION") return raw;
+
+  // common aliases
+  if (raw === "MEAL" || raw === "PLAT" || raw === "RESTAURANT") return "FOOD";
+  if (raw === "GROCERY" || raw === "EPICERIE" || raw === "STORE" || raw === "SHOP") return "MARKET";
+  if (raw === "CLOTH" || raw === "CLOTHES" || raw === "APPAREL" || raw === "MODE") return "FASHION";
+
+  // sometimes style comes as "food/market/fashion"
+  if (raw === "FOOD/DRINKS" || raw === "FOOD&DRINKS") return "FOOD";
+  if (raw === "FOOD") return "FOOD";
+
+  return "";
+}
+
+function verticalFromProduct(p: any): "FOOD" | "MARKET" | "FASHION" | "" {
+  // try many keys without breaking
+  return (
+    normalizeVertical(p?.vertical) ||
+    normalizeVertical(p?.product_vertical) ||
+    normalizeVertical(p?.product_type) ||
+    normalizeVertical(p?.type) ||
+    normalizeVertical(p?.kind) ||
+    normalizeVertical(p?.style) ||
+    ""
+  );
+}
+
+function mapDraftStyleToVertical(style: any): "FOOD" | "MARKET" | "FASHION" | "" {
+  const s = String(style ?? "").trim().toUpperCase();
+  if (!s) return "";
+  // already vertical?
+  if (s === "FOOD" || s === "MARKET" || s === "FASHION") return s as any;
+
+  // style values
+  if (s === "FOOD") return "FOOD";
+  if (s === "MARKET") return "MARKET";
+  if (s === "FASHION") return "FASHION";
+
+  if (s === "FOOD") return "FOOD";
+  if (s === "MARKET") return "MARKET";
+  if (s === "FASHION") return "FASHION";
+
+  // lower-case style
+  const low = String(style ?? "").trim().toLowerCase();
+  if (low === "food") return "FOOD";
+  if (low === "market") return "MARKET";
+  if (low === "fashion") return "FASHION";
+
+  return "";
+}
+
 function Modal({
   open,
   title,
@@ -116,8 +176,15 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<any>(null);
 
+  // ✅ accepte plusieurs libellés possibles de rôle vendeur
+  const roleUp = String(user?.role || "").toUpperCase();
   const isVendor =
-    scope === "vendor" || String(user?.role || "").toUpperCase() === "VENDOR";
+    scope === "vendor" ||
+    roleUp === "VENDOR" ||
+    roleUp === "VENDEUR" ||
+    roleUp === "SELLER" ||
+    roleUp === "BOUTIQUE" ||
+    roleUp === "SHOP";
 
   // catalog
   const [categories, setCategories] = useState<Category[]>([]);
@@ -199,7 +266,14 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       const res: any = await listManageProducts({ onlyActive: false });
       const data = unwrap<any>(res);
       const rows = asArray(data);
-      setItems(rows);
+
+      // ✅ normalise vertical à la liste (utile pour affichage + édition)
+      const mapped = (rows || []).map((p: any) => ({
+        ...p,
+        vertical: verticalFromProduct(p) || p?.vertical || p?.type || p?.style || null,
+      }));
+
+      setItems(mapped);
     } catch (e: any) {
       setErr(e?.message || String(e));
     } finally {
@@ -215,8 +289,14 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         const u = unwrap(await me());
         setUser(u || null);
 
+        const uRole = String(u?.role || "").toUpperCase();
         const vendorMode =
-          scope === "vendor" || String(u?.role || "").toUpperCase() === "VENDOR";
+          scope === "vendor" ||
+          uRole === "VENDOR" ||
+          uRole === "VENDEUR" ||
+          uRole === "SELLER" ||
+          uRole === "BOUTIQUE" ||
+          uRole === "SHOP";
 
         await loadCatalogs(vendorMode);
         await refresh();
@@ -237,7 +317,8 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       const name = String(p?.name || "").toLowerCase();
       const shop = String(p?.shop_name || p?.shop || "").toLowerCase();
       const id = String(p?.id || "");
-      return name.includes(s) || shop.includes(s) || id.includes(s);
+      const vert = String(verticalFromProduct(p) || p?.vertical || "").toLowerCase();
+      return name.includes(s) || shop.includes(s) || id.includes(s) || vert.includes(s);
     });
   }, [items, q]);
 
@@ -267,11 +348,11 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
   }
 
   const loadProductById = useCallback(async (id: number) => {
-    // ✅ endpoint détail (si ton backend l'expose)
-    // - Si chez toi c'est /api/products/manage/:id, laisse comme ça
-    // - Sinon remets /api/manage/products/:id
+    // ✅ endpoint détail
     const r = await api.get(`/api/products/manage/${id}`);
     const p = unwrap<any>(r);
+
+    const normalizedVertical = verticalFromProduct(p);
 
     const mapped: FullProduct = {
       ...(p || {}),
@@ -284,7 +365,10 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       promo_discount_value:
         p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
       images: Array.isArray(p?.images) ? (p.images as ProductImage[]) : [],
-    };
+
+      // ✅ important: garantir un "vertical" propre pour ProductForm
+      vertical: normalizedVertical || p?.vertical || p?.type || p?.style || null,
+    } as any;
 
     return mapped;
   }, []);
@@ -353,8 +437,12 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         fd.append(k, String(v));
       };
 
-      const vertical = String(draft.style || "").toUpperCase();
-      put("vertical", vertical);
+      // ✅ vertical robuste : prend draft.style, sinon fallback sur editing.vertical
+      const vFromDraft = mapDraftStyleToVertical(draft.style);
+      const vFromEditing = verticalFromProduct(editing as any);
+      const vertical = vFromDraft || vFromEditing;
+
+      if (vertical) put("vertical", vertical);
 
       put("name", draft.name);
       put("price", draft.price);
@@ -379,7 +467,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
 
       fd.append("replace_images", replaceImages ? "true" : "false");
 
-      // ✅ multer souvent: upload.array("images[]", ...)
       for (const f of files || []) fd.append("images[]", f);
 
       const cleaned = cleanVariantsForApi(variants || []);
@@ -389,10 +476,8 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
 
       try {
         if (editingId) {
-          // ✅ IMPORTANT: NE PAS SET Content-Type ici
           await api.put(`/api/products/${editingId}`, fd);
         } else {
-          // ✅ IMPORTANT: NE PAS SET Content-Type ici
           await api.post(`/api/products`, fd);
         }
 
@@ -403,7 +488,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         throw e;
       }
     },
-    [closeForm, editing?.id, isVendor, refresh]
+    [closeForm, editing, isVendor, refresh]
   );
 
   if (booting) {
@@ -439,7 +524,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
           <input
             className="form-control"
             style={{ maxWidth: 320 }}
-            placeholder="Rechercher (nom, boutique, id)…"
+            placeholder="Rechercher (nom, boutique, id, vertical)…"
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
@@ -497,6 +582,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                     null;
 
                   const src = rawImg ? safeImgUrl(String(rawImg)) : "";
+                  const vert = verticalFromProduct(p);
 
                   return (
                     <tr
@@ -517,7 +603,14 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                       <td>#{p.id}</td>
 
                       <td>
-                        <div className="fw-semibold">{p.name}</div>
+                        <div className="fw-semibold d-flex align-items-center gap-2 flex-wrap">
+                          <span>{p.name}</span>
+                          {vert ? (
+                            <span className="badge text-bg-light border">
+                              {vert}
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="small text-muted">
                           {p?.sub_category_name || p?.sub_category ? (
                             <span className="badge text-bg-light border">
