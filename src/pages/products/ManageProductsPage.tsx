@@ -123,8 +123,7 @@ function Modal({
 }) {
   if (!open) return null;
 
-  const maxW =
-    size === "sm" ? 520 : size === "md" ? 760 : size === "lg" ? 980 : 1180;
+  const maxW = size === "sm" ? 520 : size === "md" ? 760 : size === "lg" ? 980 : 1180;
 
   return (
     <div
@@ -151,9 +150,7 @@ function Modal({
           </div>
 
           {footer ? (
-            <div className="px-3 py-2 border-top d-flex justify-content-end gap-2">
-              {footer}
-            </div>
+            <div className="px-3 py-2 border-top d-flex justify-content-end gap-2">{footer}</div>
           ) : null}
         </div>
       </div>
@@ -349,8 +346,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       sub_category_id: p.sub_category_id != null ? Number(p.sub_category_id) : null,
       price: p.price != null ? Number(p.price) : null,
       stock: p.stock != null ? Number(p.stock) : null,
-      promo_discount_value:
-        p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
+      promo_discount_value: p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
       images: Array.isArray(p?.images) ? (p.images as ProductImage[]) : [],
       vertical: normalizedVertical || p?.vertical || p?.type || p?.style || null,
     } as any;
@@ -389,32 +385,35 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
   }, []);
 
   /**
-   * ✅ FIX: backend requires vertical for categories
-   * ProductForm calls onCreateCategory(name, vertical)
+   * ✅ FIX: vertical obligatoire (signature identique à ProductForm)
    */
-  const onCreateCategory = useCallback(
-    async (name: string, vertical?: Vertical) => {
-      const v = normalizeVertical(vertical) as Vertical | "";
-      if (!v) throw new Error("vertical required (FOOD|MARKET|FASHION)");
+  const onCreateCategory = useCallback(async (name: string, vertical: Vertical) => {
+    const v = normalizeVertical(vertical) as Vertical | "";
+    if (!v) throw new Error("vertical required (FOOD|MARKET|FASHION)");
 
-      const r = await createCategory(
-        { name: String(name || "").trim(), vertical: v as CategoryVertical },
-        v as CategoryVertical
-      );
+    // ✅ un seul payload suffit (évite double-arg selon implémentation)
+    const r = await createCategory({
+      name: String(name || "").trim(),
+      vertical: v as CategoryVertical,
+    } as any);
 
-      const created = unwrap<Category>(r);
-      setCategories((prev) => [...prev, created]);
-      return created;
-    },
-    []
-  );
+    const created = unwrap<Category>(r);
+
+    const normalized: any = {
+      ...created,
+      id: Number((created as any)?.id),
+      vertical: normalizeVertical((created as any)?.vertical || v) || v,
+    };
+
+    setCategories((prev) => [...prev, normalized]);
+    return normalized as Category;
+  }, []);
 
   /**
-   * ✅ FIX: backend may require vertical for sub-categories too
-   * ProductForm calls onCreateSubCategory(categoryId, name, vertical)
+   * ✅ FIX: vertical obligatoire (signature identique à ProductForm)
    */
   const onCreateSubCategory = useCallback(
-    async (categoryId: number, name: string, vertical?: Vertical) => {
+    async (categoryId: number, name: string, vertical: Vertical) => {
       const v = normalizeVertical(vertical) as Vertical | "";
       if (!v) throw new Error("vertical required (FOOD|MARKET|FASHION)");
 
@@ -422,7 +421,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         category_id: Number(categoryId),
         name: String(name || "").trim(),
         vertical: v as SubVertical,
-      });
+      } as any);
 
       const created = unwrap<SvcSubCategory>(r);
 
@@ -433,7 +432,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         slug: String((created as any).slug ?? ""),
         category_name: (created as any).category_name ?? null,
         category_slug: (created as any).category_slug ?? null,
-        vertical: normalizeVertical((created as any).vertical || v) || null,
+        vertical: normalizeVertical((created as any).vertical || v) || v,
       };
 
       setSubCategories((prev) => [...prev, sc]);
@@ -453,7 +452,8 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       };
 
       // ✅ vertical obligatoire
-      const vFromDraft = normalizeVertical((draft as any).vertical) || mapDraftStyleToVertical(draft.style);
+      const vFromDraft =
+        normalizeVertical((draft as any).vertical) || mapDraftStyleToVertical((draft as any).style);
       const vFromEditing = verticalFromProduct(editing as any);
       const vertical = (vFromDraft || vFromEditing) as Vertical | "";
 
@@ -528,9 +528,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
         <div>
           <h1 className="h4 mb-1">{isVendor ? "Mes produits" : "Gestion des produits"}</h1>
-          <div className="text-muted small">
-            {loading ? "Chargement…" : `${total} produit(s)`}
-          </div>
+          <div className="text-muted small">{loading ? "Chargement…" : `${total} produit(s)`}</div>
           {err ? <div className="alert alert-danger py-2 mt-2 mb-0">{err}</div> : null}
         </div>
 
@@ -588,22 +586,13 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                 pageItems.map((p: any) => {
                   const base = basePriceForAdmin(p);
                   const rawImg =
-                    p?.cover ||
-                    p?.image ||
-                    p?.image_url ||
-                    p?.thumb ||
-                    p?.images?.[0]?.url ||
-                    null;
+                    p?.cover || p?.image || p?.image_url || p?.thumb || p?.images?.[0]?.url || null;
 
                   const src = rawImg ? safeImgUrl(String(rawImg)) : "";
                   const vert = verticalFromProduct(p);
 
                   return (
-                    <tr
-                      key={p.id}
-                      className="row-click"
-                      onClick={() => openEdit(Number(p.id))}
-                    >
+                    <tr key={p.id} className="row-click" onClick={() => openEdit(Number(p.id))}>
                       <td onClick={(e) => e.stopPropagation()}>
                         {src ? (
                           <img src={src} alt={p.name} className="duu-thumb" />
@@ -619,9 +608,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                       <td>
                         <div className="fw-semibold d-flex align-items-center gap-2 flex-wrap">
                           <span>{p.name}</span>
-                          {vert ? (
-                            <span className="badge text-bg-light border">{vert}</span>
-                          ) : null}
+                          {vert ? <span className="badge text-bg-light border">{vert}</span> : null}
                         </div>
                         <div className="small text-muted">
                           {p?.sub_category_name || p?.sub_category ? (
@@ -646,24 +633,15 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
 
                       <td className="text-end" onClick={(e) => e.stopPropagation()}>
                         <div className="d-flex justify-content-end gap-2 flex-wrap">
-                          <button
-                            className="btn btn-sm btn-outline-dark"
-                            onClick={() => openEdit(Number(p.id))}
-                          >
+                          <button className="btn btn-sm btn-outline-dark" onClick={() => openEdit(Number(p.id))}>
                             Modifier
                           </button>
 
-                          <button
-                            className="btn btn-sm btn-outline-warning"
-                            onClick={() => onToggleActive(p)}
-                          >
+                          <button className="btn btn-sm btn-outline-warning" onClick={() => onToggleActive(p)}>
                             {isActive(p) ? "Désactiver" : "Activer"}
                           </button>
 
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() => onDelete(p.id)}
-                          >
+                          <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(p.id)}>
                             Supprimer
                           </button>
                         </div>
@@ -706,11 +684,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         onClose={closeForm}
         size="xl"
         footer={
-          <button
-            className="btn btn-outline-secondary"
-            onClick={closeForm}
-            disabled={formLoading}
-          >
+          <button className="btn btn-outline-secondary" onClick={closeForm} disabled={formLoading}>
             Fermer
           </button>
         }

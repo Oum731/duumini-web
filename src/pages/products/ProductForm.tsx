@@ -26,6 +26,8 @@ export type Shop = {
   cover?: string | null;
 };
 
+export type Vertical = "FOOD" | "MARKET" | "FASHION";
+
 export type SubCategory = {
   id: number;
   category_id: number;
@@ -33,7 +35,7 @@ export type SubCategory = {
   slug: string;
   category_name?: string | null;
   category_slug?: string | null;
-  vertical?: "FOOD" | "MARKET" | "FASHION" | null;
+  vertical?: Vertical | null;
 };
 
 export type ProductStyle = "food" | "market" | "fashion";
@@ -41,7 +43,7 @@ export type PromoDiscountType = SvcPromoDiscountType;
 
 export type Draft = {
   style?: ProductStyle | "";
-  vertical?: "FOOD" | "MARKET" | "FASHION" | null;
+  vertical?: Vertical | null;
 
   name: string;
   price?: number | null;
@@ -168,16 +170,22 @@ function splitNames(raw: string) {
     .slice(0, 30);
 }
 
+function normalizeVertical(v: any): Vertical | null {
+  const x = String(v ?? "").trim().toUpperCase();
+  if (x === "FOOD" || x === "MARKET" || x === "FASHION") return x as Vertical;
+  return null;
+}
+
 function inferStyleFromProduct(p: any): ProductStyle | "" {
-  const v = String(p?.vertical || "").toUpperCase();
+  const v = normalizeVertical(p?.vertical);
   if (v === "FOOD") return "food";
   if (v === "MARKET") return "market";
   if (v === "FASHION") return "fashion";
   return "";
 }
 
-function styleToVertical(st: any): "FOOD" | "MARKET" | "FASHION" | null {
-  const s = String(st || "").toLowerCase();
+function styleToVertical(st: any): Vertical | null {
+  const s = String(st || "").trim().toLowerCase();
   if (s === "food") return "FOOD";
   if (s === "market") return "MARKET";
   if (s === "fashion") return "FASHION";
@@ -309,13 +317,9 @@ export default function ProductForm({
   shops: Shop[];
   isVendor: boolean;
 
-  // ✅ we pass vertical as 2nd arg (JS ignore if handler only uses 1 arg)
-  onCreateCategory: (name: string, vertical?: "FOOD" | "MARKET" | "FASHION") => Promise<Category>;
-  onCreateSubCategory: (
-    categoryId: number,
-    name: string,
-    vertical?: "FOOD" | "MARKET" | "FASHION"
-  ) => Promise<SubCategory>;
+  // ✅ IMPORTANT: vertical obligatoire pour éviter 400 backend
+  onCreateCategory: (name: string, vertical: Vertical) => Promise<Category>;
+  onCreateSubCategory: (categoryId: number, name: string, vertical: Vertical) => Promise<SubCategory>;
 
   onSubmit: (
     draft: Draft,
@@ -331,17 +335,12 @@ export default function ProductForm({
 
   const [draft, setDraft] = useState<Draft>(() => {
     const anyInit: any = initial || {};
-
     const initStyle = inferStyleFromProduct(anyInit);
-    const initVertical = String(anyInit?.vertical || "").trim().toUpperCase();
-    const vertical =
-      initVertical === "FOOD" || initVertical === "MARKET" || initVertical === "FASHION"
-        ? (initVertical as any)
-        : styleToVertical(initStyle);
+    const initVertical = normalizeVertical(anyInit?.vertical) ?? styleToVertical(initStyle);
 
     return {
       style: initStyle || "",
-      vertical: vertical ?? null,
+      vertical: initVertical ?? null,
 
       name: anyInit?.name || "",
       price: anyInit?.price ?? null,
@@ -379,16 +378,18 @@ export default function ProductForm({
     };
   });
 
+  // ✅ Sync from initial
   useEffect(() => {
     if (!initial) return;
     setDraft((d) => {
       const style = d.style || inferStyleFromProduct(initial as any);
-      const vertical = d.vertical ?? styleToVertical(style);
-      return { ...d, style, vertical };
+      const vertical = normalizeVertical((initial as any)?.vertical) ?? styleToVertical(style);
+      return { ...d, style, vertical: vertical ?? null };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
 
+  // ✅ Keep vertical aligned with style
   useEffect(() => {
     if (!draft.style) return;
     const v = styleToVertical(draft.style);
@@ -480,17 +481,15 @@ export default function ProductForm({
     return computePromoPrice(priceNum, promoType, promoValueNum);
   }, [promoEnabled, promoType, promoValueNum, priceNum]);
 
-  const categoriesByStyle = useMemo(() => {
-    return safeCategories;
-  }, [safeCategories]);
+  const categoriesByStyle = useMemo(() => safeCategories, [safeCategories]);
 
   const filteredSubCats = useMemo(() => {
     const cid = Number(draft.category_id || 0);
     if (!cid) return [];
-    const list = safeSubCategories.filter((sc) => Number(sc.category_id) === cid);
-    return list;
+    return safeSubCategories.filter((sc) => Number(sc.category_id) === cid);
   }, [safeSubCategories, draft.category_id]);
 
+  // ✅ Reset dependent state when style changes
   useEffect(() => {
     setIsCustomCategory(false);
     setIsCustomSubCategory(false);
@@ -741,7 +740,7 @@ export default function ProductForm({
 
       if (isCustomCategory) {
         const createdCat = await onCreateCategory(newCategoryName.trim(), vert);
-        categoryId = createdCat.id;
+        categoryId = (createdCat as any).id;
 
         const cid = Number(categoryId || 0);
         if (!cid) throw new Error("category_id manquant après création.");
@@ -780,7 +779,7 @@ export default function ProductForm({
       const finalDraft: Draft = {
         ...draft,
         style: st as any,
-        vertical: vert, // ✅ CRITIQUE
+        vertical: vert, // ✅ CRITIQUE: utilisé par l’API (products + sub-categories)
         category_id: categoryId ?? null,
         sub_category_id: subCatId ?? null,
       };
@@ -894,6 +893,15 @@ export default function ProductForm({
               <small className="text-muted">
                 Choisis le type d’abord, ensuite tu sélectionnes (ou crées) catégorie et sous-catégorie.
               </small>
+            </div>
+
+            {/* ✅ Debug utile en prod: affiche le vertical calculé */}
+            <div className="col-12 col-md-6 d-flex align-items-end">
+              <div className="w-100">
+                <label className="form-label">Vertical</label>
+                <input className="form-control" value={draft.vertical || ""} readOnly />
+                <small className="text-muted">Auto (FOOD / MARKET / FASHION).</small>
+              </div>
             </div>
           </div>
 
