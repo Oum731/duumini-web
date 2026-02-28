@@ -14,9 +14,15 @@ import {
   listCategories,
   createCategory,
   type Category,
+  type Vertical as CategoryVertical,
 } from "../../services/categories";
 
-import { listSubCategories } from "../../services/subCategories";
+import {
+  listSubCategories,
+  createSubCategory,
+  type SubCategory as SvcSubCategory,
+  type Vertical as SubVertical,
+} from "../../services/subCategories";
 
 import ProductForm, {
   type Draft,
@@ -32,6 +38,7 @@ import ProductForm, {
 } from "./ProductForm";
 
 type Scope = "admin" | "vendor";
+type Vertical = "FOOD" | "MARKET" | "FASHION";
 
 function unwrap<T = any>(r: any): T {
   return (r?.data ?? r) as T;
@@ -54,31 +61,27 @@ function safeImgUrl(u?: string | null) {
   return `${API_BASE}/${s}`;
 }
 
-/** ✅ Vertical/Style robust (backend may return different keys/values) */
-function normalizeVertical(input: any): "FOOD" | "MARKET" | "FASHION" | "" {
-  const raw = String(input ?? "")
-    .trim()
-    .toUpperCase();
-
+/** ✅ Vertical robust */
+function normalizeVertical(input: any): Vertical | "" {
+  const raw = String(input ?? "").trim().toUpperCase();
   if (!raw) return "";
-
-  // direct
   if (raw === "FOOD" || raw === "MARKET" || raw === "FASHION") return raw;
 
-  // common aliases
   if (raw === "MEAL" || raw === "PLAT" || raw === "RESTAURANT") return "FOOD";
-  if (raw === "GROCERY" || raw === "EPICERIE" || raw === "STORE" || raw === "SHOP") return "MARKET";
-  if (raw === "CLOTH" || raw === "CLOTHES" || raw === "APPAREL" || raw === "MODE") return "FASHION";
+  if (raw === "GROCERY" || raw === "EPICERIE" || raw === "STORE" || raw === "SHOP")
+    return "MARKET";
+  if (raw === "CLOTH" || raw === "CLOTHES" || raw === "APPAREL" || raw === "MODE")
+    return "FASHION";
 
-  // sometimes style comes as "food/market/fashion"
-  if (raw === "FOOD/DRINKS" || raw === "FOOD&DRINKS") return "FOOD";
-  if (raw === "FOOD") return "FOOD";
+  const low = raw.toLowerCase();
+  if (low === "food") return "FOOD";
+  if (low === "market") return "MARKET";
+  if (low === "fashion") return "FASHION";
 
   return "";
 }
 
-function verticalFromProduct(p: any): "FOOD" | "MARKET" | "FASHION" | "" {
-  // try many keys without breaking
+function verticalFromProduct(p: any): Vertical | "" {
   return (
     normalizeVertical(p?.vertical) ||
     normalizeVertical(p?.product_vertical) ||
@@ -90,26 +93,15 @@ function verticalFromProduct(p: any): "FOOD" | "MARKET" | "FASHION" | "" {
   );
 }
 
-function mapDraftStyleToVertical(style: any): "FOOD" | "MARKET" | "FASHION" | "" {
-  const s = String(style ?? "").trim().toUpperCase();
+function mapDraftStyleToVertical(style: any): Vertical | "" {
+  const s = String(style ?? "").trim().toLowerCase();
   if (!s) return "";
-  // already vertical?
-  if (s === "FOOD" || s === "MARKET" || s === "FASHION") return s as any;
+  if (s === "food") return "FOOD";
+  if (s === "market") return "MARKET";
+  if (s === "fashion") return "FASHION";
 
-  // style values
-  if (s === "FOOD") return "FOOD";
-  if (s === "MARKET") return "MARKET";
-  if (s === "FASHION") return "FASHION";
-
-  if (s === "FOOD") return "FOOD";
-  if (s === "MARKET") return "MARKET";
-  if (s === "FASHION") return "FASHION";
-
-  // lower-case style
-  const low = String(style ?? "").trim().toLowerCase();
-  if (low === "food") return "FOOD";
-  if (low === "market") return "MARKET";
-  if (low === "fashion") return "FASHION";
+  const up = String(style ?? "").trim().toUpperCase();
+  if (up === "FOOD" || up === "MARKET" || up === "FASHION") return up as Vertical;
 
   return "";
 }
@@ -149,10 +141,7 @@ function Modal({
         >
           <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
             <div className="fw-bold">{title}</div>
-            <button
-              className="btn btn-sm btn-outline-secondary"
-              onClick={onClose}
-            >
+            <button className="btn btn-sm btn-outline-secondary" onClick={onClose}>
               ×
             </button>
           </div>
@@ -176,7 +165,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<any>(null);
 
-  // ✅ accepte plusieurs libellés possibles de rôle vendeur
   const roleUp = String(user?.role || "").toUpperCase();
   const isVendor =
     scope === "vendor" ||
@@ -245,6 +233,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         slug: String(x.slug ?? ""),
         category_name: x.category_name ?? null,
         category_slug: x.category_slug ?? null,
+        vertical: normalizeVertical(x.vertical) || null,
       }));
       setSubCategories(mappedSubs);
 
@@ -267,7 +256,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       const data = unwrap<any>(res);
       const rows = asArray(data);
 
-      // ✅ normalise vertical à la liste (utile pour affichage + édition)
       const mapped = (rows || []).map((p: any) => ({
         ...p,
         vertical: verticalFromProduct(p) || p?.vertical || p?.type || p?.style || null,
@@ -348,7 +336,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
   }
 
   const loadProductById = useCallback(async (id: number) => {
-    // ✅ endpoint détail
     const r = await api.get(`/api/products/manage/${id}`);
     const p = unwrap<any>(r);
 
@@ -365,8 +352,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       promo_discount_value:
         p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
       images: Array.isArray(p?.images) ? (p.images as ProductImage[]) : [],
-
-      // ✅ important: garantir un "vertical" propre pour ProductForm
       vertical: normalizedVertical || p?.vertical || p?.type || p?.style || null,
     } as any;
 
@@ -403,29 +388,59 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
     setFormLoading(false);
   }, []);
 
-  const onCreateCategory = useCallback(async (name: string) => {
-    const r = await createCategory(name);
-    const created = unwrap<Category>(r);
-    setCategories((prev) => [...prev, created]);
-    return created;
-  }, []);
+  /**
+   * ✅ FIX: backend requires vertical for categories
+   * ProductForm calls onCreateCategory(name, vertical)
+   */
+  const onCreateCategory = useCallback(
+    async (name: string, vertical?: Vertical) => {
+      const v = normalizeVertical(vertical) as Vertical | "";
+      if (!v) throw new Error("vertical required (FOOD|MARKET|FASHION)");
 
-  const onCreateSubCategory = useCallback(async (categoryId: number, name: string) => {
-    const r = await api.post("/api/sub-categories", { category_id: categoryId, name });
-    const created = unwrap<any>(r);
+      const r = await createCategory(
+        { name: String(name || "").trim(), vertical: v as CategoryVertical },
+        v as CategoryVertical
+      );
 
-    const sc: SubCategory = {
-      id: Number(created.id),
-      category_id: Number(created.category_id ?? categoryId),
-      name: String(created.name ?? name),
-      slug: String(created.slug ?? ""),
-      category_name: created.category_name ?? null,
-      category_slug: created.category_slug ?? null,
-    };
+      const created = unwrap<Category>(r);
+      setCategories((prev) => [...prev, created]);
+      return created;
+    },
+    []
+  );
 
-    setSubCategories((prev) => [...prev, sc]);
-    return sc;
-  }, []);
+  /**
+   * ✅ FIX: backend may require vertical for sub-categories too
+   * ProductForm calls onCreateSubCategory(categoryId, name, vertical)
+   */
+  const onCreateSubCategory = useCallback(
+    async (categoryId: number, name: string, vertical?: Vertical) => {
+      const v = normalizeVertical(vertical) as Vertical | "";
+      if (!v) throw new Error("vertical required (FOOD|MARKET|FASHION)");
+
+      const r = await createSubCategory({
+        category_id: Number(categoryId),
+        name: String(name || "").trim(),
+        vertical: v as SubVertical,
+      });
+
+      const created = unwrap<SvcSubCategory>(r);
+
+      const sc: SubCategory = {
+        id: Number((created as any).id),
+        category_id: Number((created as any).category_id ?? categoryId),
+        name: String((created as any).name ?? name),
+        slug: String((created as any).slug ?? ""),
+        category_name: (created as any).category_name ?? null,
+        category_slug: (created as any).category_slug ?? null,
+        vertical: normalizeVertical((created as any).vertical || v) || null,
+      };
+
+      setSubCategories((prev) => [...prev, sc]);
+      return sc;
+    },
+    []
+  );
 
   const createOrUpdate = useCallback(
     async (draft: Draft, files: File[], replaceImages: boolean, variants: VariantDraft[]) => {
@@ -437,12 +452,13 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         fd.append(k, String(v));
       };
 
-      // ✅ vertical robuste : prend draft.style, sinon fallback sur editing.vertical
-      const vFromDraft = mapDraftStyleToVertical(draft.style);
+      // ✅ vertical obligatoire
+      const vFromDraft = normalizeVertical((draft as any).vertical) || mapDraftStyleToVertical(draft.style);
       const vFromEditing = verticalFromProduct(editing as any);
-      const vertical = vFromDraft || vFromEditing;
+      const vertical = (vFromDraft || vFromEditing) as Vertical | "";
 
-      if (vertical) put("vertical", vertical);
+      if (!vertical) throw new Error("vertical required (FOOD|MARKET|FASHION)");
+      put("vertical", vertical);
 
       put("name", draft.name);
       put("price", draft.price);
@@ -456,7 +472,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       put("category_id", draft.category_id);
       put("sub_category_id", draft.sub_category_id);
 
-      // Admin: shop obligatoire, Vendor: shop déduit côté API
       if (!isVendor) put("shop_id", draft.shop_id);
 
       put("promo_discount_type", draft.promo_discount_type || "PERCENT");
@@ -466,7 +481,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       if (draft.is_active != null) put("is_active", draft.is_active);
 
       fd.append("replace_images", replaceImages ? "true" : "false");
-
       for (const f of files || []) fd.append("images[]", f);
 
       const cleaned = cleanVariantsForApi(variants || []);
@@ -606,9 +620,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                         <div className="fw-semibold d-flex align-items-center gap-2 flex-wrap">
                           <span>{p.name}</span>
                           {vert ? (
-                            <span className="badge text-bg-light border">
-                              {vert}
-                            </span>
+                            <span className="badge text-bg-light border">{vert}</span>
                           ) : null}
                         </div>
                         <div className="small text-muted">

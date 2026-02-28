@@ -33,6 +33,7 @@ export type SubCategory = {
   slug: string;
   category_name?: string | null;
   category_slug?: string | null;
+  vertical?: "FOOD" | "MARKET" | "FASHION" | null;
 };
 
 export type ProductStyle = "food" | "market" | "fashion";
@@ -40,6 +41,8 @@ export type PromoDiscountType = SvcPromoDiscountType;
 
 export type Draft = {
   style?: ProductStyle | "";
+  vertical?: "FOOD" | "MARKET" | "FASHION" | null;
+
   name: string;
   price?: number | null;
   currency?: string | null;
@@ -99,11 +102,7 @@ export function imgUrl(u?: string | null) {
   return `${API_BASE}/${s}`;
 }
 
-function computePromoPrice(
-  price: number,
-  type: PromoDiscountType,
-  value: number
-) {
+function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
   const priceC = toCents(price);
   const v = Number(value);
   if (priceC <= 0 || !Number.isFinite(v) || v <= 0) return fromCents(priceC);
@@ -175,6 +174,14 @@ function inferStyleFromProduct(p: any): ProductStyle | "" {
   if (v === "MARKET") return "market";
   if (v === "FASHION") return "fashion";
   return "";
+}
+
+function styleToVertical(st: any): "FOOD" | "MARKET" | "FASHION" | null {
+  const s = String(st || "").toLowerCase();
+  if (s === "food") return "FOOD";
+  if (s === "market") return "MARKET";
+  if (s === "fashion") return "FASHION";
+  return null;
 }
 
 /* ================= Variants helpers (API + UI) ================= */
@@ -301,9 +308,21 @@ export default function ProductForm({
   subCategories: SubCategory[];
   shops: Shop[];
   isVendor: boolean;
-  onCreateCategory: (name: string) => Promise<Category>;
-  onCreateSubCategory: (categoryId: number, name: string) => Promise<SubCategory>;
-  onSubmit: (draft: Draft, files: File[], replaceImages: boolean, variants: VariantDraft[]) => Promise<void> | void;
+
+  // ✅ we pass vertical as 2nd arg (JS ignore if handler only uses 1 arg)
+  onCreateCategory: (name: string, vertical?: "FOOD" | "MARKET" | "FASHION") => Promise<Category>;
+  onCreateSubCategory: (
+    categoryId: number,
+    name: string,
+    vertical?: "FOOD" | "MARKET" | "FASHION"
+  ) => Promise<SubCategory>;
+
+  onSubmit: (
+    draft: Draft,
+    files: File[],
+    replaceImages: boolean,
+    variants: VariantDraft[]
+  ) => Promise<void> | void;
   onCancel: () => void;
 }) {
   const safeCategories = Array.isArray(categories) ? categories : [];
@@ -312,8 +331,18 @@ export default function ProductForm({
 
   const [draft, setDraft] = useState<Draft>(() => {
     const anyInit: any = initial || {};
+
+    const initStyle = inferStyleFromProduct(anyInit);
+    const initVertical = String(anyInit?.vertical || "").trim().toUpperCase();
+    const vertical =
+      initVertical === "FOOD" || initVertical === "MARKET" || initVertical === "FASHION"
+        ? (initVertical as any)
+        : styleToVertical(initStyle);
+
     return {
-      style: "",
+      style: initStyle || "",
+      vertical: vertical ?? null,
+
       name: anyInit?.name || "",
       price: anyInit?.price ?? null,
       description: anyInit?.description || "",
@@ -323,8 +352,14 @@ export default function ProductForm({
       is_featured: anyInit?.is_featured != null ? (Number(anyInit.is_featured) as 0 | 1) : 0,
       promo_eligible: anyInit?.promo_eligible != null ? (Number(anyInit.promo_eligible) as 0 | 1) : 0,
 
-      category_id: anyInit?.category_id != null && anyInit?.category_id !== "" ? Number(anyInit.category_id) : null,
-      sub_category_id: anyInit?.sub_category_id != null && anyInit?.sub_category_id !== "" ? Number(anyInit.sub_category_id) : null,
+      category_id:
+        anyInit?.category_id != null && anyInit?.category_id !== ""
+          ? Number(anyInit.category_id)
+          : null,
+      sub_category_id:
+        anyInit?.sub_category_id != null && anyInit?.sub_category_id !== ""
+          ? Number(anyInit.sub_category_id)
+          : null,
 
       shop_id: anyInit?.shop_id != null ? Number(anyInit.shop_id) : null,
 
@@ -347,12 +382,19 @@ export default function ProductForm({
   useEffect(() => {
     if (!initial) return;
     setDraft((d) => {
-      if (d.style) return d;
-      const style = inferStyleFromProduct(initial as any);
-      return style ? { ...d, style } : d;
+      const style = d.style || inferStyleFromProduct(initial as any);
+      const vertical = d.vertical ?? styleToVertical(style);
+      return { ...d, style, vertical };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
+
+  useEffect(() => {
+    if (!draft.style) return;
+    const v = styleToVertical(draft.style);
+    setDraft((d) => (d.vertical === v ? d : { ...d, vertical: v }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.style]);
 
   // vendeur: si une seule boutique, pré-sélection auto
   useEffect(() => {
@@ -439,17 +481,15 @@ export default function ProductForm({
   }, [promoEnabled, promoType, promoValueNum, priceNum]);
 
   const categoriesByStyle = useMemo(() => {
-    const st = String(draft.style || "").toLowerCase();
-    if (!st) return safeCategories;
     return safeCategories;
-  }, [safeCategories, draft.style]);
+  }, [safeCategories]);
 
   const filteredSubCats = useMemo(() => {
     const cid = Number(draft.category_id || 0);
     if (!cid) return [];
-    let list = safeSubCategories.filter((sc) => Number(sc.category_id) === cid);
+    const list = safeSubCategories.filter((sc) => Number(sc.category_id) === cid);
     return list;
-  }, [safeSubCategories, draft.category_id, draft.style]);
+  }, [safeSubCategories, draft.category_id]);
 
   useEffect(() => {
     setIsCustomCategory(false);
@@ -642,6 +682,12 @@ export default function ProductForm({
       return;
     }
 
+    const vert = styleToVertical(st);
+    if (!vert) {
+      setFormError("vertical required (FOOD|MARKET|FASHION)");
+      return;
+    }
+
     const promoErr = validatePromo();
     if (promoErr) {
       setFormError(promoErr);
@@ -694,7 +740,7 @@ export default function ProductForm({
       let subCatId: number | null | undefined = draft.sub_category_id;
 
       if (isCustomCategory) {
-        const createdCat = await onCreateCategory(newCategoryName.trim());
+        const createdCat = await onCreateCategory(newCategoryName.trim(), vert);
         categoryId = createdCat.id;
 
         const cid = Number(categoryId || 0);
@@ -704,8 +750,8 @@ export default function ProductForm({
         let firstCreated: SubCategory | null = null;
 
         for (let i = 0; i < names.length; i++) {
-          const created = await onCreateSubCategory(cid, names[i]);
-          if (!firstCreated) firstCreated = created;
+          const created = await onCreateSubCategory(cid, names[i], vert);
+          if (!firstCreated) firstCreated = created as any;
         }
 
         subCatId = firstCreated?.id ?? null;
@@ -724,7 +770,7 @@ export default function ProductForm({
         if (!cid) throw new Error("Sélectionne une catégorie d’abord.");
 
         if (isCustomSubCategory) {
-          const createdSub = await onCreateSubCategory(cid, newSubCategoryName.trim());
+          const createdSub = await onCreateSubCategory(cid, newSubCategoryName.trim(), vert);
           subCatId = createdSub.id;
           setIsCustomSubCategory(false);
           setNewSubCategoryName("");
@@ -733,6 +779,8 @@ export default function ProductForm({
 
       const finalDraft: Draft = {
         ...draft,
+        style: st as any,
+        vertical: vert, // ✅ CRITIQUE
         category_id: categoryId ?? null,
         sub_category_id: subCatId ?? null,
       };
@@ -828,7 +876,14 @@ export default function ProductForm({
               <select
                 className="form-select duu-focus"
                 value={draft.style || ""}
-                onChange={(ev) => setDraft((d) => ({ ...d, style: (ev.target.value as any) || "" }))}
+                onChange={(ev) => {
+                  const style = (ev.target.value as any) || "";
+                  setDraft((d) => ({
+                    ...d,
+                    style,
+                    vertical: styleToVertical(style),
+                  }));
+                }}
                 required
               >
                 <option value="">(Choisir le type)</option>
