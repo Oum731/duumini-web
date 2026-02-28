@@ -30,7 +30,7 @@ type LocationContextType = {
   city: CityCode | null;
   setCity: (city: CityCode | null, source?: CitySource) => void;
 
-  // ✅ auto-detect pour guests
+  // ✅ auto-detect (GPS -> IP)
   autoDetectCity: () => Promise<CityCode | null>;
 
   isReady: boolean;
@@ -111,6 +111,12 @@ function readStorageSource(): CitySource {
   return "unknown";
 }
 
+function isManualLocked() {
+  const c = readStorageCity();
+  const src = readStorageSource();
+  return !!c && src === "manual";
+}
+
 /** GPS -> obtenir lat/lng */
 function getBrowserPosition(timeoutMs = 4500): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
@@ -127,26 +133,23 @@ function getBrowserPosition(timeoutMs = 4500): Promise<GeolocationPosition> {
 }
 
 /** Reverse geocoding via Nominatim (OpenStreetMap) */
-async function reverseGeocodeCity(lat: number, lon: number): Promise<string | null> {
-  // ⚠️ Nominatim: respecter un User-Agent / referrer OK en front,
-  // mais si tu préfères, on peut le faire côté backend.
-  const url =
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
-      lat
-    )}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
+async function reverseGeocodeCity(
+  lat: number,
+  lon: number
+): Promise<string | null> {
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(
+    lat
+  )}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`;
 
   const res = await fetch(url, {
     method: "GET",
-    headers: {
-      Accept: "application/json",
-    },
+    headers: { Accept: "application/json" },
   });
 
   if (!res.ok) return null;
   const data: any = await res.json();
   const a = data?.address || {};
 
-  // On prend city/town/village/municipality/county
   const raw =
     a.city ||
     a.town ||
@@ -172,7 +175,6 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     return normalizeCityLabel(u?.ville ?? u?.city ?? null);
   }, [user]);
 
-  // ✅ API: setCity unique
   function setCity(next: CityCode | null, src: CitySource = "manual") {
     const normalized = normalizeCityLabel(next);
     setCityState(normalized);
@@ -180,21 +182,19 @@ export function LocationProvider({ children }: { children: ReactNode }) {
     writeStorageCity(normalized, src);
   }
 
-  // ✅ auto detect (GPS -> IP)
   async function autoDetectCity(): Promise<CityCode | null> {
-    // si déjà en storage, stop
-    const already = readStorageCity();
-    if (already) return already;
+    // ✅ Ne jamais écraser un choix manuel
+    if (isManualLocked()) return readStorageCity();
 
     setDetecting(true);
     try {
-      // 1) GPS (permission)
+      // 1) GPS
       try {
         const pos = await getBrowserPosition(4500);
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-
-        const fromGps = await reverseGeocodeCity(lat, lon);
+        const fromGps = await reverseGeocodeCity(
+          pos.coords.latitude,
+          pos.coords.longitude
+        );
         if (fromGps) {
           setCity(fromGps, "gps");
           return fromGps;
@@ -203,7 +203,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         // ignore -> fallback IP
       }
 
-      // 2) IP (pas de permission)
+      // 2) IP
       try {
         const r = await geoByIp();
         const fromIp = normalizeCityLabel(r?.city ?? null);
@@ -212,10 +212,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           return fromIp;
         }
       } catch {
-        // ignore -> unknown
+        // ignore
       }
 
-      // 3) rien trouvé
       setSource("unknown");
       return null;
     } finally {
@@ -224,31 +223,48 @@ export function LocationProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // 1) localStorage
-    const fromStorage = readStorageCity();
-    if (fromStorage) {
-      setCityState(fromStorage);
-      setSource(readStorageSource());
+    // 1) localStorage (si existe)
+    const storedCity = readStorageCity();
+    const storedSrc = readStorageSource();
+
+    if (storedCity) {
+      setCityState(storedCity);
+      setSource(storedSrc);
       setIsReady(true);
+
+      // ✅ si manual => on ne redétecte jamais
+      if (storedSrc === "manual") return;
+
+      // ✅ si gps/ip => on peut rafraîchir (optionnel) sans casser le choix user
+      (async () => {
+        await autoDetectCity();
+      })();
+
       return;
     }
 
-    // 2) profil (connecté) fallback
+    // 2) si connecté et ville profil, on l'utilise seulement si pas de storage
     if (user && userVille) {
       setCityState(userVille);
       setSource("profile");
       writeStorageCity(userVille, "profile");
       setIsReady(true);
+
+      // optionnel: rafraîchir gps/ip ensuite (sans écraser manual)
+      (async () => {
+        await autoDetectCity();
+      })();
+
       return;
     }
 
-    // 3) guest: auto detect
+    // 3) sinon auto-detect (GPS -> IP)
     (async () => {
       await autoDetectCity();
       setIsReady(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, userVille, user]);
+  }, [user?.id, userVille]);
 
   return (
     <LocationContext.Provider

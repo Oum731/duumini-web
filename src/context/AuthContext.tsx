@@ -63,7 +63,7 @@ type AuthContextType = {
 
   shops: ShopLite[];
   activeShopId: number | null;
-  actingShopId: number | null; // shop utilisé réellement (impersonation > activeShopId)
+  actingShopId: number | null;
   isImpersonating: boolean;
 
   setActiveShopId: (shopId: number | null) => void;
@@ -95,7 +95,6 @@ function broadcastAuthChange(user: UserWithShops | null) {
     const payload = {
       ts: Date.now(),
       user: user ? { id: user.id, role: user.role } : null,
-      // utile si tu veux invalider le shop actif sur d’autres onglets
       activeShopId: (() => {
         const v = window.localStorage.getItem("duumini:activeShopId");
         return v ? Number(v) : null;
@@ -148,7 +147,6 @@ function pickDefaultShopId(user: UserWithShops | null): number | null {
   const stored = readStoredActiveShopId();
   if (stored && shops.some((s) => Number(s.id) === stored)) return stored;
 
-  // Option: priorité selon rôle
   const role = String(user?.role || "").trim().toUpperCase();
   if (role === "FOURNISSEUR") {
     const s = shops.find((x) => normalizeShopType(x.shop_type) === "SUPPLIER");
@@ -210,24 +208,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (shopId: number | null) => {
       const n = shopId && Number(shopId) > 0 ? Number(shopId) : null;
 
-      // Si on est en impersonation, on laisse le shop actif se mettre à jour,
-      // mais actingShopId restera l'impersonate_shop_id.
       _setActiveShopId(n);
       if (typeof window !== "undefined") writeStoredActiveShopId(n);
 
-      // Option: broadcast pour les autres onglets
       broadcastAuthChange(user);
     },
     [user]
-  );
-
-  const applyRoleChangeIfNeeded = useCallback(
-    async (prev: UserWithShops | null, next: UserWithShops | null) => {
-      const prevRole = (prev?.role || "").toString().trim().toUpperCase();
-      const nextRole = (next?.role || "").toString().trim().toUpperCase();
-      if (prevRole && nextRole && prevRole !== nextRole) hardReload();
-    },
-    []
   );
 
   const setupPush = useCallback(async () => {
@@ -235,10 +221,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = await initPush();
       if (token) {
         await registerDevice(token, "pushy");
-        console.log("[Auth] device registered", token);
       }
-    } catch (e) {
-      console.warn("[Auth] init push failed", e);
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -249,29 +234,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(u);
 
-      // ✅ recalcul shop actif si nécessaire
       const nextDefaultShopId = pickDefaultShopId(u);
       if (nextDefaultShopId !== activeShopId) {
         _setActiveShopId(nextDefaultShopId);
         if (typeof window !== "undefined") writeStoredActiveShopId(nextDefaultShopId);
       }
 
-      await applyRoleChangeIfNeeded(before, u);
+      const prevRole = String(before?.role || "").trim().toUpperCase();
+      const nextRole = String(u?.role || "").trim().toUpperCase();
+      if (prevRole && nextRole && prevRole !== nextRole) hardReload();
     } catch {
       setUser(null);
       _setActiveShopId(null);
       if (typeof window !== "undefined") writeStoredActiveShopId(null);
     }
-  }, [applyRoleChangeIfNeeded, activeShopId]);
+  }, [activeShopId]);
 
   useEffect(() => {
     let alive = true;
+
     (async () => {
       const token = getAccessToken();
       if (!token) {
         if (alive) setLoading(false);
         return;
       }
+
       try {
         const before = getCurrentUser() as any;
         const u = (await apiMe()) as any as UserWithShops;
@@ -283,7 +271,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         _setActiveShopId(nextDefaultShopId);
         if (typeof window !== "undefined") writeStoredActiveShopId(nextDefaultShopId);
 
-        await applyRoleChangeIfNeeded(before, u);
+        const prevRole = String(before?.role || "").trim().toUpperCase();
+        const nextRole = String(u?.role || "").trim().toUpperCase();
+        if (prevRole && nextRole && prevRole !== nextRole) {
+          hardReload();
+          return;
+        }
+
         if (u) await setupPush();
       } catch {
         if (!alive) return;
@@ -294,16 +288,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (alive) setLoading(false);
       }
     })();
+
     return () => {
       alive = false;
     };
-  }, [applyRoleChangeIfNeeded, setupPush]);
+  }, [setupPush]);
 
   useEffect(() => {
     const onFocus = () => refreshUser();
     const onVis = () => {
       if (document.visibilityState === "visible") refreshUser();
     };
+
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
@@ -314,8 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(iv);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshUser]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -332,6 +327,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (phone: string, password: string) => {
       const before = getCurrentUser() as any;
       const u = (await apiLogin(phone, password)) as any as UserWithShops;
+
       setUser(u);
 
       const nextDefaultShopId = pickDefaultShopId(u);
@@ -339,12 +335,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (typeof window !== "undefined") writeStoredActiveShopId(nextDefaultShopId);
 
       broadcastAuthChange(u);
-      await applyRoleChangeIfNeeded(before, u);
 
       await setupPush();
+
+      const prevRole = String(before?.role || "").trim().toUpperCase();
+      const nextRole = String(u?.role || "").trim().toUpperCase();
+      if (prevRole && nextRole && prevRole !== nextRole) {
+        hardReload();
+        return;
+      }
+
       hardReload();
     },
-    [applyRoleChangeIfNeeded, setupPush]
+    [setupPush]
   );
 
   const register = useCallback(async (data: RegisterPayload) => {
@@ -355,6 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await unregisterDevice();
     } catch {}
+
     await apiLogout();
     setUser(null);
 
@@ -365,21 +369,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     hardReload();
   }, []);
 
-  const updateProfile = useCallback(
-    async (data: Partial<User>) => {
-      const before = getCurrentUser() as any;
-      const updated = (await apiUpdateProfile(data)) as any as UserWithShops;
-      setUser(updated);
+  const updateProfile = useCallback(async (data: Partial<User>) => {
+    const before = getCurrentUser() as any;
+    const updated = (await apiUpdateProfile(data)) as any as UserWithShops;
 
-      const nextDefaultShopId = pickDefaultShopId(updated);
-      _setActiveShopId(nextDefaultShopId);
-      if (typeof window !== "undefined") writeStoredActiveShopId(nextDefaultShopId);
+    setUser(updated);
 
-      broadcastAuthChange(updated);
-      await applyRoleChangeIfNeeded(before, updated);
-    },
-    [applyRoleChangeIfNeeded]
-  );
+    const nextDefaultShopId = pickDefaultShopId(updated);
+    _setActiveShopId(nextDefaultShopId);
+    if (typeof window !== "undefined") writeStoredActiveShopId(nextDefaultShopId);
+
+    broadcastAuthChange(updated);
+
+    const prevRole = String(before?.role || "").trim().toUpperCase();
+    const nextRole = String(updated?.role || "").trim().toUpperCase();
+    if (prevRole && nextRole && prevRole !== nextRole) hardReload();
+  }, []);
 
   return (
     <AuthContext.Provider
