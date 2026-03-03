@@ -51,6 +51,9 @@ import NotificationBubble from "./components/NotificationBubble";
 import { trackPageView } from "./lib/analytics";
 import { trackMetricoolPageView } from "./lib/metricool";
 
+// ✅ META Pixel
+import { metaPageView } from "./lib/metaPixel";
+
 import PromotionsPage from "./pages/PromotionsPage";
 import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
 import CanKickLottie from "./components/CanKickLottie";
@@ -92,8 +95,12 @@ function PageViewTracker() {
   const { pathname, search } = useLocation();
   useEffect(() => {
     const path = `${pathname}${search || ""}`;
+
     trackPageView(path);
     trackMetricoolPageView();
+
+    // ✅ Meta Pixel (SPA)
+    metaPageView(path);
   }, [pathname, search]);
   return null;
 }
@@ -182,11 +189,7 @@ function GlobalRatingModal(props: {
     setError(null);
     setSuccess(null);
     try {
-      await rateProduct(
-        pending.product_id,
-        rating,
-        comment.trim() || undefined
-      );
+      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch {
@@ -238,9 +241,7 @@ function GlobalRatingModal(props: {
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">
-                  Votre avis (optionnel)
-                </label>
+                <label className="form-label small">Votre avis (optionnel)</label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -251,7 +252,9 @@ function GlobalRatingModal(props: {
                 />
               </div>
 
-              {error && <div className="alert alert-danger py-1 small">{error}</div>}
+              {error && (
+                <div className="alert alert-danger py-1 small">{error}</div>
+              )}
               {success && (
                 <div className="alert alert-success py-1 small">{success}</div>
               )}
@@ -318,7 +321,9 @@ export default function App() {
           <main className="flex-fill">
             <React.Suspense
               fallback={
-                <div className="container-xxl py-5 text-muted">Chargement…</div>
+                <div className="container-xxl py-5 text-muted">
+                  Chargement…
+                </div>
               }
             >
               <Routes>
@@ -359,7 +364,10 @@ export default function App() {
                   element={<Fashion />}
                 />
 
-                <Route path="/share/product/:idOrSlug" element={<ProductView />} />
+                <Route
+                  path="/share/product/:idOrSlug"
+                  element={<ProductView />}
+                />
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
 
                 <Route path="/top-products" element={<TopProductsPage />} />
@@ -415,12 +423,17 @@ export default function App() {
                 <Route
                   element={
                     <RequireAuth
-                      allow={(v: { caps: { canAccessPro: any; canAccessAdmin: any; }; }) => v.caps.canAccessPro || v.caps.canAccessAdmin}
+                      allow={(v: any) =>
+                        v.caps.canAccessPro || v.caps.canAccessAdmin
+                      }
                       redirectTo="/"
                     />
                   }
                 >
-                  <Route path="/vendeur" element={<Navigate to="/ma-boutique" replace />} />
+                  <Route
+                    path="/vendeur"
+                    element={<Navigate to="/ma-boutique" replace />}
+                  />
 
                   <Route path="/ma-boutique" element={<Outlet />}>
                     <Route index element={<VendorHome />} />
@@ -431,7 +444,10 @@ export default function App() {
                     path="/vendeur/produits"
                     element={<ManageProductsPage scope="vendor" />}
                   />
-                  <Route path="/vendeur/commandes" element={<OrdersAdminPage />} />
+                  <Route
+                    path="/vendeur/commandes"
+                    element={<OrdersAdminPage />}
+                  />
                   <Route
                     path="/vendeur/promotions"
                     element={<PromotionsAdminPage />}

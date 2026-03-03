@@ -7,7 +7,15 @@ import { API_BASE } from "../services/http";
 import ProductRating from "../components/ProductRating";
 import { useCart } from "../store/cart";
 import { trackAddToCart } from "../lib/analytics";
-import { getAccessToken, getCurrentUser, me, type Role as AuthRole } from "../services/auth";
+import {
+  getAccessToken,
+  getCurrentUser,
+  me,
+  type Role as AuthRole,
+} from "../services/auth";
+
+// ✅ META Pixel
+import { metaAddToCart, metaViewContent } from "../lib/metaPixel";
 
 /* =========================
  * Helpers
@@ -44,15 +52,18 @@ function subToken(p: Product | null | undefined) {
   if (s) return s;
 
   const id = anyP.sub_category_id;
-  if (id != null && String(id).trim() !== "") return String(id).trim().toLowerCase();
+  if (id != null && String(id).trim() !== "")
+    return String(id).trim().toLowerCase();
 
   return "";
 }
 
 function sectionPathFor(p: Product | null | undefined) {
   const t = subToken(p);
-  if (t === "food" || t.includes("food") || t.includes("alimentation")) return "/african-food";
-  if (t === "fashion" || t.includes("fashion") || t.includes("mode")) return "/fashion";
+  if (t === "food" || t.includes("food") || t.includes("alimentation"))
+    return "/african-food";
+  if (t === "fashion" || t.includes("fashion") || t.includes("mode"))
+    return "/fashion";
   return "/african-market";
 }
 
@@ -128,7 +139,10 @@ function computePromoPrice(price: number, type: PromoDiscountType, value: number
 }
 
 function hasRealPromo(p: any) {
-  return Number(p?.promo_eligible ?? 0) === 1 && Number(p?.promo_discount_value ?? 0) > 0;
+  return (
+    Number(p?.promo_eligible ?? 0) === 1 &&
+    Number(p?.promo_discount_value ?? 0) > 0
+  );
 }
 
 /* =========================
@@ -187,7 +201,8 @@ function parseVariants(product: Product | null): UiVariant[] {
     const price = po == null || po === "" ? null : Number(po);
 
     const stockRaw = v?.stock ?? v?.qty ?? null;
-    const stock = stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
+    const stock =
+      stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
 
     out.push({
       id,
@@ -229,12 +244,22 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
   return (
     <>
       <div className="modal-backdrop fade show" />
-      <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+      <div
+        className="modal fade show d-block"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">{title}</h5>
-              <button type="button" className="btn-close" aria-label="Fermer" onClick={onClose} />
+              <button
+                type="button"
+                className="btn-close"
+                aria-label="Fermer"
+                onClick={onClose}
+              />
             </div>
             <div className="modal-body">
               <p className="text-muted" style={{ whiteSpace: "pre-wrap" }}>
@@ -242,7 +267,11 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
               </p>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-sm btn-outline-dark" onClick={onClose}>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-dark"
+                onClick={onClose}
+              >
                 Fermer
               </button>
             </div>
@@ -270,7 +299,14 @@ async function fetchJSON(url: string, ms = 12000, init?: RequestInit) {
 /* =========================
  * Viewer Role (based on your backend roles)
  * =======================*/
-type ViewerRole = "GUEST" | "MEMBER" | "VENDEUR" | "FOURNISSEUR" | "RESTAURANT" | "LIVREUR" | "ADMIN";
+type ViewerRole =
+  | "GUEST"
+  | "MEMBER"
+  | "VENDEUR"
+  | "FOURNISSEUR"
+  | "RESTAURANT"
+  | "LIVREUR"
+  | "ADMIN";
 
 function normalizeViewerRole(role?: AuthRole | null): ViewerRole {
   const r = String(role || "").trim().toUpperCase();
@@ -290,8 +326,6 @@ function canSeeSupplierPanel(vr: ViewerRole) {
   return vr === "FOURNISSEUR" || vr === "ADMIN";
 }
 function canOrder(vr: ViewerRole) {
-  // ✅ toi tu veux généralement: tout le monde peut commander (même guest)
-  // si tu veux interdire aux fournisseurs/livreurs => modifie ici.
   return vr !== "FOURNISSEUR" && vr !== "LIVREUR";
 }
 
@@ -317,24 +351,20 @@ export default function ProductView() {
 
   const [infoOpen, setInfoOpen] = useState(false);
 
-  // ✅ viewer / role
   const [viewerRole, setViewerRole] = useState<ViewerRole>("GUEST");
   const [viewerUser, setViewerUser] = useState<any>(null);
 
-  // ===== init viewer (supports impersonation via getAccessToken)
   useEffect(() => {
     let stop = false;
 
     (async () => {
       try {
-        // 1) fast from storage
         const local = getCurrentUser?.();
         if (!stop && local?.role) {
           setViewerUser(local);
           setViewerRole(normalizeViewerRole(local.role));
         }
 
-        // 2) if token, refresh from DB
         const token = getAccessToken?.();
         if (!token) {
           if (!stop) setViewerRole((prev) => prev || "GUEST");
@@ -375,19 +405,28 @@ export default function ProductView() {
     return p || fromShareQuery || "";
   }, [rawParam, location.search, location.hash]);
 
-  // ===== CONTEXTE d’origine =====
   const origin = useMemo(() => {
     const st: any = (location.state as any) || {};
     const from = st.from || st.origin || st.ctx || st || {};
 
-    const originCategoryId = Number(from.categoryId ?? from.category_id ?? 0) || 0;
-    const originSubCategoryId = Number(from.subCategoryId ?? from.sub_category_id ?? 0) || 0;
+    const originCategoryId =
+      Number(from.categoryId ?? from.category_id ?? 0) || 0;
+    const originSubCategoryId =
+      Number(from.subCategoryId ?? from.sub_category_id ?? 0) || 0;
 
-    const originCategorySlug = String(from.categorySlug ?? from.category_slug ?? "").trim();
-    const originSubCategorySlug = String(from.subCategorySlug ?? from.sub_category_slug ?? "").trim();
+    const originCategorySlug = String(
+      from.categorySlug ?? from.category_slug ?? ""
+    ).trim();
+    const originSubCategorySlug = String(
+      from.subCategorySlug ?? from.sub_category_slug ?? ""
+    ).trim();
 
-    const originSectionPath = String(from.sectionPath ?? from.section_path ?? "").trim();
-    const originListPath = String(from.listPath ?? from.list_path ?? from.fromPath ?? "").trim();
+    const originSectionPath = String(
+      from.sectionPath ?? from.section_path ?? ""
+    ).trim();
+    const originListPath = String(
+      from.listPath ?? from.list_path ?? from.fromPath ?? ""
+    ).trim();
     const originLabel = String(from.label ?? "").trim();
 
     return {
@@ -420,7 +459,6 @@ export default function ProductView() {
     nav(sectionPath);
   }, [nav, origin?.listPath, origin?.sectionPath, backPath, sectionPath]);
 
-  // ===== load product =====
   useEffect(() => {
     let stop = false;
 
@@ -434,9 +472,11 @@ export default function ProductView() {
 
         const asId = Number(resolvedIdOrSlug);
         if (Number.isFinite(asId) && asId > 0) {
-          const r1 = await fetchJSON(`${API_BASE}/api/products/${asId}?variants=1`, 12000, {
-            credentials: "omit",
-          });
+          const r1 = await fetchJSON(
+            `${API_BASE}/api/products/${asId}?variants=1`,
+            12000,
+            { credentials: "omit" }
+          );
           if (!stop && r1.ok) {
             setProduct((r1.data as Product) || null);
             return;
@@ -444,7 +484,9 @@ export default function ProductView() {
         }
 
         const r2 = await fetchJSON(
-          `${API_BASE}/api/products/slug/${encodeURIComponent(resolvedIdOrSlug)}?variants=1`,
+          `${API_BASE}/api/products/slug/${encodeURIComponent(
+            resolvedIdOrSlug
+          )}?variants=1`,
           12000,
           { credentials: "omit" }
         );
@@ -453,12 +495,17 @@ export default function ProductView() {
           return;
         }
 
-        const cleaned = String(resolvedIdOrSlug).split("?")[0].split("#")[0].trim();
+        const cleaned = String(resolvedIdOrSlug)
+          .split("?")[0]
+          .split("#")[0]
+          .trim();
         const n2 = Number(cleaned);
         if (Number.isFinite(n2) && n2 > 0 && cleaned !== resolvedIdOrSlug) {
-          const r3 = await fetchJSON(`${API_BASE}/api/products/${n2}?variants=1`, 12000, {
-            credentials: "omit",
-          });
+          const r3 = await fetchJSON(
+            `${API_BASE}/api/products/${n2}?variants=1`,
+            12000,
+            { credentials: "omit" }
+          );
           if (!stop && r3.ok) {
             setProduct((r3.data as Product) || null);
             return;
@@ -482,7 +529,6 @@ export default function ProductView() {
     };
   }, [resolvedIdOrSlug]);
 
-  // ===== related products =====
   useEffect(() => {
     let stop = false;
 
@@ -493,7 +539,9 @@ export default function ProductView() {
         const pAny = product as any;
         const currentId = Number(pAny?.id || 0);
 
-        const originSubId = origin?.subCategoryId ? Number(origin.subCategoryId) : 0;
+        const originSubId = origin?.subCategoryId
+          ? Number(origin.subCategoryId)
+          : 0;
         const originCatId = origin?.categoryId ? Number(origin.categoryId) : 0;
 
         const fallbackSubId = Number(pAny?.sub_category_id || 0);
@@ -555,21 +603,19 @@ export default function ProductView() {
     };
   }, [product, origin]);
 
-  // ===== base price / stock =====
   const basePriceClient = useMemo(() => {
-    // ✅ prix “client” robuste
     return Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0);
   }, [anyP?.price_client, anyP?.client_price, anyP?.price]);
 
   const vendorPrice = useMemo(() => {
-    // ✅ prix “vendeur” (si dispo)
     const v = nnum(anyP?.vendor_price);
     return v == null ? null : v;
   }, [anyP?.vendor_price]);
 
   const supplierCost = useMemo(() => {
-    // ✅ coût fournisseur/wholesale (si dispo)
-    const v = nnum(anyP?.supplier_cost ?? anyP?.price_wholesale ?? anyP?.cost_price);
+    const v = nnum(
+      anyP?.supplier_cost ?? anyP?.price_wholesale ?? anyP?.cost_price
+    );
     return v == null ? null : v;
   }, [anyP?.supplier_cost, anyP?.price_wholesale, anyP?.cost_price]);
 
@@ -585,7 +631,6 @@ export default function ProductView() {
 
   const isOutOfStock = stock === 0;
 
-  // ===== variants =====
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
 
@@ -608,16 +653,20 @@ export default function ProductView() {
     [variants, selectedKey]
   );
 
-  // ✅ prix "normal"
   const regularPrice = useMemo(() => {
     if (selectedVariant?.price != null) return Number(selectedVariant.price);
     return basePriceClient;
   }, [basePriceClient, selectedVariant]);
 
-  // ===== promo computed =====
   const promoActive = useMemo(() => hasRealPromo(anyP), [anyP]);
-  const promoType = useMemo(() => normPromoType(anyP?.promo_discount_type), [anyP?.promo_discount_type]);
-  const promoValue = useMemo(() => Number(anyP?.promo_discount_value ?? 0), [anyP?.promo_discount_value]);
+  const promoType = useMemo(
+    () => normPromoType(anyP?.promo_discount_type),
+    [anyP?.promo_discount_type]
+  );
+  const promoValue = useMemo(
+    () => Number(anyP?.promo_discount_value ?? 0),
+    [anyP?.promo_discount_value]
+  );
 
   const promoPrice = useMemo(() => {
     if (!promoActive) return regularPrice;
@@ -632,29 +681,38 @@ export default function ProductView() {
     return `-${moneyMAD(promoValue)}`;
   }, [promoActive, promoType, promoValue]);
 
-  const promoFreeDelivery = useMemo(() => Number(anyP?.promo_free_delivery ?? 0) === 1, [anyP?.promo_free_delivery]);
+  const promoFreeDelivery = useMemo(
+    () => Number(anyP?.promo_free_delivery ?? 0) === 1,
+    [anyP?.promo_free_delivery]
+  );
 
   const badge = useMemo(() => {
     const v = String(anyP?.vertical || "").trim().toUpperCase();
     if (v === "FASHION") return "Fashion";
-    return String(anyP?.sub_category_slug || "").toLowerCase() === "food" ? "Food" : "Market";
+    return String(anyP?.sub_category_slug || "").toLowerCase() === "food"
+      ? "Food"
+      : "Market";
   }, [anyP?.sub_category_slug, anyP?.vertical]);
 
-  // ===== qty in cart =====
   const qtySelected = useMemo(() => {
     if (!product) return 0;
     const pid = Number((product as any).id);
     if (!hasVariants) return qtyForProduct(pid);
     const key = selectedVariant?.key || "default";
     return qtyForProductVariant(pid, key);
-  }, [product, hasVariants, qtyForProduct, qtyForProductVariant, selectedVariant]);
+  }, [
+    product,
+    hasVariants,
+    qtyForProduct,
+    qtyForProductVariant,
+    selectedVariant,
+  ]);
 
   const canAddNow =
     canOrder(viewerRole) &&
     !isOutOfStock &&
     (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
-  // ===== pro panels & margins =====
   const showVendorPanel = useMemo(() => canSeeVendorPanel(viewerRole), [viewerRole]);
   const showSupplierPanel = useMemo(() => canSeeSupplierPanel(viewerRole), [viewerRole]);
 
@@ -674,7 +732,18 @@ export default function ProductView() {
     return m;
   }, [displayPrice, showSupplierPanel, supplierCost]);
 
-  // ===== actions =====
+  // ✅ Meta ViewContent (1 fois par produit)
+  useEffect(() => {
+    if (!product) return;
+    const pAny: any = product;
+    metaViewContent({
+      id: pAny.id,
+      name: pAny.name,
+      price: Number(displayPrice || 0),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id]);
+
   const handleAdd = useCallback(() => {
     if (!product) return;
     if (!canAddNow) return;
@@ -691,7 +760,12 @@ export default function ProductView() {
               label: selectedVariant.label,
               price: cartPrice,
             }
-          : { variant_id: null, variant_key: "default", label: null, price: cartPrice },
+          : {
+              variant_id: null,
+              variant_key: "default",
+              label: null,
+              price: cartPrice,
+            },
     });
 
     trackAddToCart({
@@ -702,6 +776,9 @@ export default function ProductView() {
       currency: "MAD",
       category: String(pAny?.sub_category_slug || pAny?.sub_category_name || ""),
     });
+
+    // ✅ Meta AddToCart
+    metaAddToCart({ id: pAny.id, name: pAny.name, price: cartPrice }, 1);
   }, [add, canAddNow, displayPrice, hasVariants, product, selectedVariant]);
 
   const handleDecrease = useCallback(() => {
@@ -719,11 +796,15 @@ export default function ProductView() {
               label: selectedVariant.label,
               price: cartPrice,
             }
-          : { variant_id: null, variant_key: "default", label: null, price: cartPrice },
+          : {
+              variant_id: null,
+              variant_key: "default",
+              label: null,
+              price: cartPrice,
+            },
     });
   }, [add, displayPrice, hasVariants, product, qtySelected, selectedVariant]);
 
-  // ===== UI states =====
   if (loading) {
     return (
       <div className="container-xxl py-4">
@@ -748,7 +829,11 @@ export default function ProductView() {
     return (
       <div className="container-xxl py-4">
         <div className="d-flex flex-wrap gap-2 mb-3">
-          <button className="btn btn-outline-dark" onClick={handleBack} type="button">
+          <button
+            className="btn btn-outline-dark"
+            onClick={handleBack}
+            type="button"
+          >
             ← Retour
           </button>
           <Link to={backPath} className="btn btn-dark">
@@ -756,10 +841,15 @@ export default function ProductView() {
           </Link>
         </div>
 
-        <div className="alert alert-warning d-flex align-items-center" role="alert">
+        <div
+          className="alert alert-warning d-flex align-items-center"
+          role="alert"
+        >
           <span className="me-2">⚠️</span>
           <span>
-            {product && !productIsActive ? "Ce produit n'est plus disponible." : error || "Produit introuvable"}
+            {product && !productIsActive
+              ? "Ce produit n'est plus disponible."
+              : error || "Produit introuvable"}
           </span>
         </div>
       </div>
@@ -772,7 +862,11 @@ export default function ProductView() {
     <div className="container-xxl py-4">
       <div className="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
         <div className="d-flex flex-wrap gap-2">
-          <button className="btn btn-outline-dark" onClick={handleBack} type="button">
+          <button
+            className="btn btn-outline-dark"
+            onClick={handleBack}
+            type="button"
+          >
             ← Retour
           </button>
           <Link to={backPath} className="btn btn-dark">
@@ -780,7 +874,6 @@ export default function ProductView() {
           </Link>
         </div>
 
-        {/* ✅ Badge rôle (debug soft, utile en impersonation) */}
         <span className="badge text-bg-light border">
           Rôle: <strong className="ms-1">{viewerRole}</strong>
           {viewerUser?.impersonation?.impersonate_shop_id ? (
@@ -797,9 +890,16 @@ export default function ProductView() {
         <div className="col-12 col-md-6">
           <div className="position-relative">
             {coverUrl ? (
-              <img src={coverUrl} alt={String(anyP?.name || "")} className="img-fluid rounded" />
+              <img
+                src={coverUrl}
+                alt={String(anyP?.name || "")}
+                className="img-fluid rounded"
+              />
             ) : (
-              <div className="bg-light rounded" style={{ width: "100%", paddingTop: "100%" }} />
+              <div
+                className="bg-light rounded"
+                style={{ width: "100%", paddingTop: "100%" }}
+              />
             )}
 
             {promoActive && (
@@ -864,7 +964,9 @@ export default function ProductView() {
             <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
               {badge}
             </span>
-            {hasVariants && <span className="badge text-bg-light border">Variantes</span>}
+            {hasVariants && (
+              <span className="badge text-bg-light border">Variantes</span>
+            )}
 
             {promoActive && (
               <span
@@ -889,9 +991,17 @@ export default function ProductView() {
             <div className="mb-3">
               <div className="small text-muted mb-1">Choisir une variante</div>
 
-              <select className="form-select" value={selectedKey || ""} onChange={(e) => setSelectedKey(e.target.value)}>
+              <select
+                className="form-select"
+                value={selectedKey || ""}
+                onChange={(e) => setSelectedKey(e.target.value)}
+              >
                 {variants.map((v) => (
-                  <option key={v.key} value={v.key} disabled={isVariantOutOfStock(v)}>
+                  <option
+                    key={v.key}
+                    value={v.key}
+                    disabled={isVariantOutOfStock(v)}
+                  >
                     {v.label}
                   </option>
                 ))}
@@ -901,7 +1011,8 @@ export default function ProductView() {
                 <div className="small text-muted mt-2">
                   {selectedVariant.stock != null && (
                     <span className="me-3">
-                      Reste : <strong>{Math.max(0, Number(selectedVariant.stock))}</strong>
+                      Reste :{" "}
+                      <strong>{Math.max(0, Number(selectedVariant.stock))}</strong>
                     </span>
                   )}
 
@@ -930,12 +1041,13 @@ export default function ProductView() {
               )}
 
               {selectedVariant && isVariantOutOfStock(selectedVariant) && (
-                <div className="alert alert-warning mt-2 py-2 small mb-0">Cette variante est en rupture.</div>
+                <div className="alert alert-warning mt-2 py-2 small mb-0">
+                  Cette variante est en rupture.
+                </div>
               )}
             </div>
           )}
 
-          {/* ✅ PANELS PRO: vendeur/restaurant/fournisseur/admin */}
           {(showVendorPanel || showSupplierPanel) && (
             <div className="alert alert-light border mb-3 py-2">
               <div className="fw-bold small mb-2">Infos Pro</div>
@@ -944,13 +1056,22 @@ export default function ProductView() {
                 <div className="small text-muted">
                   <div>
                     Prix vendeur : <strong>{moneyMAD(vendorPrice ?? 0)}</strong>
-                    {vendorPrice == null && <span className="ms-2">(non défini)</span>}
+                    {vendorPrice == null && (
+                      <span className="ms-2">(non défini)</span>
+                    )}
                   </div>
 
                   {marginVsVendor != null && vendorPrice != null && (
                     <div>
                       Marge (client − vendeur) :{" "}
-                      <strong style={{ color: marginVsVendor >= 0 ? "inherit" : "var(--duu-red,#E53935)" }}>
+                      <strong
+                        style={{
+                          color:
+                            marginVsVendor >= 0
+                              ? "inherit"
+                              : "var(--duu-red,#E53935)",
+                        }}
+                      >
                         {moneyMAD(marginVsVendor)}
                       </strong>
                     </div>
@@ -962,17 +1083,29 @@ export default function ProductView() {
                 <div className="small text-muted mt-2">
                   <div>
                     Stock fournisseur : <strong>{supplierStock ?? 0}</strong>
-                    {supplierStock == null && <span className="ms-2">(non défini)</span>}
+                    {supplierStock == null && (
+                      <span className="ms-2">(non défini)</span>
+                    )}
                   </div>
                   <div>
-                    Coût wholesale : <strong>{moneyMAD(supplierCost ?? 0)}</strong>
-                    {supplierCost == null && <span className="ms-2">(non défini)</span>}
+                    Coût wholesale :{" "}
+                    <strong>{moneyMAD(supplierCost ?? 0)}</strong>
+                    {supplierCost == null && (
+                      <span className="ms-2">(non défini)</span>
+                    )}
                   </div>
 
                   {marginVsSupplier != null && supplierCost != null && (
                     <div>
                       Marge (client − wholesale) :{" "}
-                      <strong style={{ color: marginVsSupplier >= 0 ? "inherit" : "var(--duu-red,#E53935)" }}>
+                      <strong
+                        style={{
+                          color:
+                            marginVsSupplier >= 0
+                              ? "inherit"
+                              : "var(--duu-red,#E53935)",
+                        }}
+                      >
                         {moneyMAD(marginVsSupplier)}
                       </strong>
                     </div>
@@ -984,27 +1117,51 @@ export default function ProductView() {
 
           <div className="d-flex gap-2 mb-3">
             {qtySelected > 0 ? (
-              <div className="btn-group" role="group" aria-label="Quantité panier">
-                <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
+              <div
+                className="btn-group"
+                role="group"
+                aria-label="Quantité panier"
+              >
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={handleDecrease}
+                  type="button"
+                >
                   −
                 </button>
                 <button className="btn btn-light disabled" type="button">
                   {qtySelected}
                 </button>
-                <button className="btn btn-duu" onClick={handleAdd} type="button" disabled={!canAddNow}>
+                <button
+                  className="btn btn-duu"
+                  onClick={handleAdd}
+                  type="button"
+                  disabled={!canAddNow}
+                >
                   +
                 </button>
               </div>
             ) : (
-              <button className="btn btn-duu fw-semibold" onClick={handleAdd} disabled={!canAddNow} type="button">
+              <button
+                className="btn btn-duu fw-semibold"
+                onClick={handleAdd}
+                disabled={!canAddNow}
+                type="button"
+              >
                 + Ajouter au panier
               </button>
             )}
 
-            {isOutOfStock && <span className="badge text-bg-danger align-self-center">En rupture</span>}
+            {isOutOfStock && (
+              <span className="badge text-bg-danger align-self-center">
+                En rupture
+              </span>
+            )}
 
             {!canOrder(viewerRole) && (
-              <span className="badge text-bg-warning align-self-center">Commande désactivée pour ce rôle</span>
+              <span className="badge text-bg-warning align-self-center">
+                Commande désactivée pour ce rôle
+              </span>
             )}
           </div>
 
@@ -1019,7 +1176,9 @@ export default function ProductView() {
               >
                 <p className="text-muted mb-0">
                   {desc.length > 160 ? desc.slice(0, 160) + "…" : desc}
-                  <span className="ms-1 text-decoration-underline">Voir plus</span>
+                  <span className="ms-1 text-decoration-underline">
+                    Voir plus
+                  </span>
                 </p>
               </button>
             </>
@@ -1055,7 +1214,9 @@ export default function ProductView() {
             ))}
           </div>
         ) : (
-          <div className="text-muted small">Aucun autre produit trouvé pour le moment.</div>
+          <div className="text-muted small">
+            Aucun autre produit trouvé pour le moment.
+          </div>
         )}
       </div>
 
