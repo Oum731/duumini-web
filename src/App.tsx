@@ -71,6 +71,7 @@ import ManageProductsPage from "./pages/products/ManageProductsPage";
 // - src/components/RequireAuth.tsx
 import RequireAuth from "./components/RequireCaps";
 import { useViewer } from "./hooks/useViewer";
+import PublicReceiptPage from "./pages/PublicReceiptPage";
 
 function Page({ title }: { title: string }) {
   return (
@@ -189,7 +190,11 @@ function GlobalRatingModal(props: {
     setError(null);
     setSuccess(null);
     try {
-      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
+      await rateProduct(
+        pending.product_id,
+        rating,
+        comment.trim() || undefined,
+      );
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch {
@@ -241,7 +246,9 @@ function GlobalRatingModal(props: {
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">Votre avis (optionnel)</label>
+                <label className="form-label small">
+                  Votre avis (optionnel)
+                </label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -321,9 +328,7 @@ export default function App() {
           <main className="flex-fill">
             <React.Suspense
               fallback={
-                <div className="container-xxl py-5 text-muted">
-                  Chargement…
-                </div>
+                <div className="container-xxl py-5 text-muted">Chargement…</div>
               }
             >
               <Routes>
@@ -389,12 +394,15 @@ export default function App() {
                     />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
-                    <Route path="promotions" element={<PromotionsAdminPage />} />
+                    <Route
+                      path="promotions"
+                      element={<PromotionsAdminPage />}
+                    />
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
                     <Route path="content-ai" element={<ContentAiPage />} />
-
+                    <Route path="/r/:token" element={<PublicReceiptPage />} />
                     {/* Aliases FR */}
                     <Route
                       path="produits"
