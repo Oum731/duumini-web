@@ -1,7 +1,7 @@
 // src/services/orders.ts
 import { api } from "./http";
 
-/** ✅ Aligné avec ton backend: { items, pageInfo } */
+/** ✅ Aligné backend: { items, pageInfo } */
 export type Paginated<T> = {
   items: T[];
   pageInfo: { page: number; pageSize: number; total: number };
@@ -13,16 +13,16 @@ export type OrderStatus = "OPEN" | "PREPARATION" | "DELIVERY" | "DONE" | "CANCEL
 /** DB status (orders.payment_status) */
 export type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
 
-/** UI status (affichage) : inclut PENDING (virement en attente) */
+/** UI status : inclut PENDING (virement en attente) */
 export type PayStatus = PaymentStatus | "PENDING";
 
-/** ✅ Payment object renvoyé par le backend (status peut être PENDING) */
+/** ✅ Payment object renvoyé par le backend */
 export type OrderPayment = {
   status: PayStatus;
   paid_amount: number;
   remaining_amount: number;
   currency: string;
-  method?: string;
+  method?: string | null;
   note?: string | null;
 };
 
@@ -32,7 +32,7 @@ export type OrderItemInput = {
   qty: number;
   variant_id?: number | null;
 
-  // (optionnels, UI only, pas utilisés par backend)
+  // UI-only
   name?: string;
   price?: number;
   variant_key?: string | null;
@@ -40,24 +40,24 @@ export type OrderItemInput = {
 };
 
 export type CreateOrderPayload = {
-  contact: {
+  contact?: {
     first_name?: string;
     last_name?: string;
     name?: string;
-    phone: string;
+    phone?: string; // ✅ backend accepte aussi contact vide en auth (fallback user)
   };
 
-  address: {
+  address?: {
     ville?: string;
     commune?: string;
     quartier?: string | null;
     gps?: { lat: number; lng: number } | null;
   };
 
-  delivery: {
-    mode: "EXPRESS" | "SIMPLE" | "PROMO_FREE" | "CASABLANCA" | "CITY";
-    fee: number;
-    currency: "MAD" | string;
+  delivery?: {
+    mode?: "EXPRESS" | "SIMPLE" | "PROMO_FREE" | "CASABLANCA" | "CITY";
+    fee?: number;
+    currency?: "MAD" | string;
   };
 
   items: OrderItemInput[];
@@ -70,16 +70,17 @@ export type CreateOrderPayload = {
     currency?: string;
   };
 
-  /** ✅ align backend: buildPaymentFromPayload() accepte paid_amount/amount */
+  /** ✅ align backend buildPaymentFromPayload() */
   payment?: {
-    paid_amount?: number; // (optionnel)
+    paid_amount?: number;
     amount?: number; // alias compat
+    add_amount?: number; // (si tu veux l’utiliser plus tard)
     method?: "CASH" | "COD" | "BANK_TRANSFER" | "BANK" | "TRANSFER" | "VIREMENT" | string;
     note?: string | null;
     status?: PaymentStatus; // optionnel, backend recalcule
   };
 
-  // compat (si certains endpoints attendent encore ces champs plats)
+  // compat legacy
   address_city?: string;
   address_commune?: string | null;
   address_district?: string | null;
@@ -94,9 +95,24 @@ export type CreateOrderResult = {
   total?: number;
   currency?: string;
   geo_link?: string | null;
-
-  /** ✅ backend renvoie payment dans POST */
   payment?: OrderPayment | null;
+
+  // ✅ si tu ajoutes receipt_number/token dans la réponse plus tard
+  receipt_number?: string | null;
+  receipt_token?: string | null;
+};
+
+export type OrderTotals = {
+  items_amount?: number;
+  delivery_fee?: number;
+  amount?: number;
+  currency?: string;
+
+  // ✅ backend mis à jour: duumini_commission
+  duumini_commission?: number | null;
+
+  // compat ancien champ (au cas où)
+  duumini_amount?: number | null;
 };
 
 export type Order = {
@@ -106,12 +122,6 @@ export type Order = {
   user_id?: number | null;
 
   contact?: {
-    first_name?: string | null;
-    last_name?: string | null;
-    phone?: string | null;
-  } | null;
-
-  user?: {
     first_name?: string | null;
     last_name?: string | null;
     phone?: string | null;
@@ -127,27 +137,23 @@ export type Order = {
   created_at: string;
   updated_at?: string | null;
 
-  // champs admin (peuvent être masqués côté backend selon rôle)
+  // admin (peut être masqué côté backend)
   commission_duumini?: number | null;
 
-  // champs calculés / list endpoint
+  // list endpoint calc
   items_amount?: number | null;
 
-  totals?: {
-    items_amount?: number;
-    delivery_fee?: number;
-    amount?: number;
-    currency?: string;
-    duumini_amount?: number | null;
-  } | null;
+  totals?: OrderTotals | null;
 
-  /** ✅ paiement (peut être null) */
   payment?: OrderPayment | null;
 
-  /** ✅ colonnes plates (peuvent contenir PENDING si ton backend le renvoie) */
   payment_status?: PayStatus | string | null;
   paid_amount?: number | null;
   remaining_amount?: number | null;
+
+  // ✅ reçu
+  receipt_number?: string | null;
+  receipt_token?: string | null;
 };
 
 export type OrderItem = {
@@ -156,7 +162,6 @@ export type OrderItem = {
 
   product_id: number;
 
-  /** ✅ variante choisie (si applicable) */
   variant_id?: number | null;
   variant_key?: string | null;
   variant_label?: string | null;
@@ -164,33 +169,17 @@ export type OrderItem = {
   qty: number;
   unit_price: number;
 
-  // infos produit
   product_name?: string | null;
   product_cover?: string | null;
 
-  // compat anciens payloads
   name?: string | null;
   price?: number | null;
 
-  // optionnel: infos variante joinées si ton backend les renvoie
-  variant?: {
-    id: number;
-    size?: string | null;
-    color?: string | null;
-    sku?: string | null;
-    price_override?: number | null;
-  } | null;
+  // backend join:
+  variant_size?: string | null;
+  variant_color?: string | null;
+  variant_sku?: string | null;
 
-  // optionnel: si tu renvoies un objet produit
-  product?: {
-    id?: number;
-    name?: string | null;
-    cover?: string | null;
-    product_cover?: string | null;
-    image_url?: string | null;
-  } | null;
-
-  // ✅ promo figée (si colonnes existent et si ton backend les renvoie)
   promo_applied?: 0 | 1 | number | null;
   promo_type?: "PERCENT" | "AMOUNT" | string | null;
   promo_value?: number | null;
@@ -199,7 +188,6 @@ export type OrderItem = {
 
 export type OrderDetail = Order & {
   items: OrderItem[];
-
   delivery?: {
     mode?: "EXPRESS" | "SIMPLE" | "PROMO_FREE" | "CASABLANCA" | "CITY";
     fee?: number | null;
@@ -211,13 +199,14 @@ export type OrderDetail = Order & {
     delivery_fee: number;
     amount: number;
     currency: string;
-    duumini_amount?: number | null;
+    duumini_commission?: number | null;
+    duumini_amount?: number | null; // compat
   };
 
   payment?: OrderPayment | null;
 };
 
-/* ===== Types pour la liste ===== */
+/* ===== List options ===== */
 export type ListOrdersOptions = {
   page?: number;
   pageSize?: number;
@@ -225,16 +214,15 @@ export type ListOrdersOptions = {
   mineOnly?: boolean;
   q?: string;
 
-  /** ✅ filtre paiement */
   payment_status?: PayStatus | "ALL";
   pay?: PayStatus | "ALL"; // alias
 };
 
-/* ===== Types pour update payment ===== */
+/* ===== Update payment ===== */
 export type UpdateOrderPaymentPayload = {
   mode?: "SET" | "ADD";
-  paid_amount?: number; // required si mode=SET
-  add_amount?: number; // required si mode=ADD
+  paid_amount?: number; // required si SET
+  add_amount?: number; // required si ADD
   method?: string;
   note?: string | null;
 };
@@ -242,6 +230,8 @@ export type UpdateOrderPaymentPayload = {
 export type UpdateOrderPaymentResult = {
   ok: true;
   id: number;
+  status?: OrderStatus | string;
+  display_code?: string;
   payment: OrderPayment;
 };
 
@@ -262,7 +252,7 @@ function toNumOrNull(v: any) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** ✅ Normalise un item, sans exiger name/price (UI only) */
+/** ✅ Normalise un item */
 function normalizeItemInput(x: any): OrderItemInput | null {
   if (!x || typeof x !== "object") return null;
 
@@ -277,7 +267,6 @@ function normalizeItemInput(x: any): OrderItemInput | null {
 
   const out: OrderItemInput = { product_id, qty, variant_id };
 
-  // UI-only (optionnels)
   if (x.name != null) out.name = cleanString(x.name) || undefined;
   if (x.price != null && Number.isFinite(Number(x.price))) out.price = Number(x.price);
 
@@ -293,15 +282,16 @@ function normalizeCreatePayload(payload: CreateOrderPayload): CreateOrderPayload
 
   const phone = cleanString(payload?.contact?.phone);
 
-  const paidAmount =
-    payload?.payment?.paid_amount ?? payload?.payment?.amount ?? null;
+  const paidAmount = payload?.payment?.paid_amount ?? payload?.payment?.amount ?? null;
 
   return {
     ...payload,
-    contact: {
-      ...payload.contact,
-      phone,
-    },
+    contact: payload.contact
+      ? {
+          ...payload.contact,
+          ...(phone ? { phone } : {}),
+        }
+      : payload.contact,
     items: cleanItems,
     payment: payload.payment
       ? {
@@ -323,7 +313,6 @@ export async function listOrders(opts: ListOrdersOptions = {}) {
   if (opts.mineOnly) query.mine = 1;
   if (opts.q && cleanString(opts.q)) query.q = cleanString(opts.q);
 
-  // ✅ payment filter (inclut PENDING)
   const pay =
     opts.payment_status && opts.payment_status !== "ALL"
       ? opts.payment_status
@@ -356,7 +345,11 @@ export async function createGuestOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>("/api/orders/guest", normalizeCreatePayload(payload));
 }
 
-/** ✅ update payment */
 export async function updateOrderPayment(id: number, payload: UpdateOrderPaymentPayload) {
   return api.put<UpdateOrderPaymentResult>(`/api/orders/${id}/payment`, payload);
+}
+
+/** ✅ Récupérer le PDF reçu (streamed by backend) */
+export function getOrderReceiptPdfUrl(orderId: number) {
+  return `/api/orders/${orderId}/receipt.pdf`;
 }

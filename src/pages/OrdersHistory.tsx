@@ -13,6 +13,9 @@ import {
 import { mad } from "../store/cart";
 import { API_BASE } from "../services/http";
 
+import OrderReceiptButton from "../components/orders/OrderReceiptButton";
+import OrderReceiptTicket from "../components/orders/OrderReceiptTicket";
+
 /* ===== Helpers image ===== */
 function imgUrl(u?: string | null) {
   if (!u) return "";
@@ -25,7 +28,7 @@ function imgUrl(u?: string | null) {
 function getItemImage(it: OrderItem): string {
   const anyIt = it as any;
   const raw =
-    (it as any).product_cover || // ✅ rempli par l’API /api/orders/:id
+    (it as any).product_cover ||
     (it as any).image_url ||
     (it as any).cover ||
     anyIt.product_image ||
@@ -87,7 +90,7 @@ function getItemVariantLabel(it: OrderItem): string {
       anyIt?.variantLabel ||
       anyIt?.variant_name ||
       anyIt?.variant ||
-      ""
+      "",
   )
     .trim()
     .replace(/\s+/g, " ");
@@ -96,7 +99,9 @@ function getItemVariantLabel(it: OrderItem): string {
 type ListOrDetail = Order & Partial<OrderDetail>;
 
 /* ===== Helper: code alphanumérique pour affichage ===== */
-function getOrderDisplayCode(orderOrId: { id: number | string } | number | string): string {
+function getOrderDisplayCode(
+  orderOrId: { id: number | string } | number | string,
+): string {
   const rawId =
     typeof orderOrId === "number" || typeof orderOrId === "string"
       ? orderOrId
@@ -109,10 +114,7 @@ function getOrderDisplayCode(orderOrId: { id: number | string } | number | strin
 
 /* =========================
    ✅ PROMO (inspiré checkout)
-   - OrderItem contient le prix figé (unit_price)
-   - On tente aussi de trouver "prix avant promo" si dispo
    ========================= */
-
 function toNum(x: any): number | null {
   if (x === undefined || x === null) return null;
   const n = typeof x === "number" ? x : Number(String(x).replace(",", "."));
@@ -121,8 +123,8 @@ function toNum(x: any): number | null {
 
 type ItemPricing = {
   qty: number;
-  unitFinal: number; // prix unitaire figé (après promo si promo)
-  unitBase: number | null; // prix avant promo si dispo
+  unitFinal: number;
+  unitBase: number | null;
   hasPromo: boolean;
   discountLabel: string;
   lineTotal: number;
@@ -131,7 +133,6 @@ type ItemPricing = {
 function getOrderItemPricing(it: any): ItemPricing {
   const qty = Math.max(1, Number(it?.qty ?? 1) || 1);
 
-  // ✅ prix final (figé serveur) : le plus important
   const unitFinal =
     toNum(it?.unit_price) ??
     toNum(it?.price) ??
@@ -139,7 +140,6 @@ function getOrderItemPricing(it: any): ItemPricing {
     toNum(it?.final_unit_price) ??
     0;
 
-  // ✅ prix avant promo : champs possibles selon backend
   const unitBase =
     toNum(it?.base_unit_price) ??
     toNum(it?.original_unit_price) ??
@@ -149,12 +149,16 @@ function getOrderItemPricing(it: any): ItemPricing {
     toNum(it?.was_unit_price) ??
     null;
 
-  // ✅ promo meta éventuelle
-  const rawType = String(it?.promo_discount_type ?? it?.promo_type ?? "").toUpperCase();
+  const rawType = String(
+    it?.promo_discount_type ?? it?.promo_type ?? "",
+  ).toUpperCase();
   const dv = Number(it?.promo_discount_value ?? it?.discount_value ?? 0) || 0;
 
   const hasPromo =
-    (unitBase != null && unitBase > 0 && unitFinal > 0 && unitFinal < unitBase) ||
+    (unitBase != null &&
+      unitBase > 0 &&
+      unitFinal > 0 &&
+      unitFinal < unitBase) ||
     Number(it?.promo_applied ?? it?.is_promo ?? 0) === 1;
 
   let discountLabel = "";
@@ -169,38 +173,51 @@ function getOrderItemPricing(it: any): ItemPricing {
   }
 
   const lineTotal = unitFinal * qty;
-
-  return { qty, unitFinal, unitBase: hasPromo ? unitBase : null, hasPromo, discountLabel, lineTotal };
+  return {
+    qty,
+    unitFinal,
+    unitBase: hasPromo ? unitBase : null,
+    hasPromo,
+    discountLabel,
+    lineTotal,
+  };
 }
 
 /* =========================
    ✅ Livraison (nouveau modèle)
-   + Message “nous livrons entre 09h et 20h”
    ========================= */
-
 type DeliveryMode = "CASABLANCA" | "CITY";
 
-const DELIVERY_WINDOW = { startHour: 9, endHour: 20 }; // ✅ 09h → 20h (message)
+const DELIVERY_WINDOW = { startHour: 9, endHour: 20 };
 
 function inferDeliveryMode(order: ListOrDetail): DeliveryMode {
   const anyOrder = order as any;
 
-  const raw = anyOrder?.delivery?.mode ?? anyOrder?.delivery_mode ?? anyOrder?.deliveryMode ?? "";
+  const raw =
+    anyOrder?.delivery?.mode ??
+    anyOrder?.delivery_mode ??
+    anyOrder?.deliveryMode ??
+    "";
   const s = String(raw || "").toUpperCase();
 
   if (s.includes("CASA")) return "CASABLANCA";
   if (s === "CITY") return "CITY";
 
   const city = String(
-    anyOrder?.address?.city || anyOrder?.address?.ville || anyOrder?.address_city || ""
+    anyOrder?.address?.city ||
+      anyOrder?.address?.ville ||
+      anyOrder?.address_city ||
+      "",
   ).toLowerCase();
   if (city.includes("casa")) return "CASABLANCA";
 
   return "CITY";
 }
 
-/** Fenêtre ETA approximative (min/max) */
-function computeEtaWindow(createdAt: Date, mode: DeliveryMode): { start: Date; end: Date } {
+function computeEtaWindow(
+  createdAt: Date,
+  mode: DeliveryMode,
+): { start: Date; end: Date } {
   const minStart = mode === "CASABLANCA" ? 25 : 60;
   const minEnd = mode === "CASABLANCA" ? 90 : 180;
 
@@ -210,7 +227,10 @@ function computeEtaWindow(createdAt: Date, mode: DeliveryMode): { start: Date; e
 }
 
 function formatTimeLabel(d: Date): string {
-  const s = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const s = d.toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   return s.replace(":", "h");
 }
 function formatTimeRange(start: Date, end: Date): string {
@@ -228,17 +248,14 @@ function formatCountdownMs(ms: number): string | null {
   return `${s}s`;
 }
 
-/** ✅ Clamp ETA dans la fenêtre de livraison 09h–20h (pour affichage) */
 function clampToDeliveryHours(d: Date, startHour = 9, endHour = 20): Date {
   const x = new Date(d);
   const h = x.getHours();
 
-  // si avant 09h → 09h00
   if (h < startHour) {
     x.setHours(startHour, 0, 0, 0);
     return x;
   }
-  // si après 20h → jour suivant 09h00
   if (h >= endHour) {
     x.setDate(x.getDate() + 1);
     x.setHours(startHour, 0, 0, 0);
@@ -247,7 +264,6 @@ function clampToDeliveryHours(d: Date, startHour = 9, endHour = 20): Date {
   return x;
 }
 
-/** ✅ Label clair “Nous livrons entre 09h et 20h” + précision si l’ETA sort de la plage */
 function buildDeliveryWindowMessage(opts: {
   status: OrderStatus;
   createdAtDate: Date | null;
@@ -257,22 +273,27 @@ function buildDeliveryWindowMessage(opts: {
   const { status, createdAtDate, etaStart, etaEnd } = opts;
 
   const base = `⏰ Nous livrons entre ${String(DELIVERY_WINDOW.startHour).padStart(2, "0")}h et ${String(
-    DELIVERY_WINDOW.endHour
+    DELIVERY_WINDOW.endHour,
   ).padStart(2, "0")}h.`;
 
-  // si pas d'ETA dispo → juste le message base
   if (!createdAtDate || !etaStart || !etaEnd) return base;
 
-  // clamp pour affichage (évite “23h”)
-  const cStart = clampToDeliveryHours(etaStart, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
-  const cEnd = clampToDeliveryHours(etaEnd, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
+  const cStart = clampToDeliveryHours(
+    etaStart,
+    DELIVERY_WINDOW.startHour,
+    DELIVERY_WINDOW.endHour,
+  );
+  const cEnd = clampToDeliveryHours(
+    etaEnd,
+    DELIVERY_WINDOW.startHour,
+    DELIVERY_WINDOW.endHour,
+  );
 
-  // si l'estimation sortait de la plage, on l’indique proprement
-  const hadClamp = cStart.getTime() !== etaStart.getTime() || cEnd.getTime() !== etaEnd.getTime();
-
+  const hadClamp =
+    cStart.getTime() !== etaStart.getTime() ||
+    cEnd.getTime() !== etaEnd.getTime();
   if (!hadClamp) return base;
 
-  // message plus précis selon statut
   if (status === "OPEN" || status === "PREPARATION") {
     return `${base} Si l’estimation dépasse 20h, la livraison sera reportée au prochain créneau (à partir de 09h).`;
   }
@@ -282,7 +303,7 @@ function buildDeliveryWindowMessage(opts: {
   return base;
 }
 
-/* ===== Helper: construction du message WhatsApp (promo inclus si visible) ===== */
+/* ===== Helper: construction du message WhatsApp ===== */
 function buildWhatsappText(opts: {
   order: ListOrDetail;
   items: OrderItem[];
@@ -292,7 +313,15 @@ function buildWhatsappText(opts: {
   currency: string;
   status?: OrderStatus;
 }) {
-  const { order, items, itemsAmount, deliveryFee, totalAmount, currency, status } = opts;
+  const {
+    order,
+    items,
+    itemsAmount,
+    deliveryFee,
+    totalAmount,
+    currency,
+    status,
+  } = opts;
 
   const anyOrder = order as any;
   const contact = anyOrder.contact || {};
@@ -301,8 +330,8 @@ function buildWhatsappText(opts: {
   const created = order?.created_at
     ? new Date(order.created_at).toLocaleString("fr-FR")
     : anyOrder.date
-    ? new Date(anyOrder.date).toLocaleString("fr-FR")
-    : "";
+      ? new Date(anyOrder.date).toLocaleString("fr-FR")
+      : "";
 
   const displayCode = getOrderDisplayCode(order);
 
@@ -325,18 +354,23 @@ function buildWhatsappText(opts: {
           })
           .join("\n");
 
-  const contactName = [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim();
+  const contactName = [contact.first_name, contact.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
   const phone = contact.phone || anyOrder.phone || "";
 
   const ville = address.city || address.ville || anyOrder.address_city || "";
   const commune = address.commune || anyOrder.address_commune || "";
-  const quartier = address.district || address.quartier || anyOrder.address_district || "";
+  const quartier =
+    address.district || address.quartier || anyOrder.address_district || "";
 
   const statusLabel = getStatusLabel(status);
 
   const parts: string[] = [];
-
-  parts.push(`Bonjour, je souhaite avoir des infos sur ma commande #${displayCode}.`);
+  parts.push(
+    `Bonjour, je souhaite avoir des infos sur ma commande #${displayCode}.`,
+  );
   if (created) parts.push(`Date de la commande : ${created}`);
 
   parts.push("");
@@ -392,6 +426,12 @@ export default function OrdersHistoryPage() {
   const [cancelingId, setCancelingId] = useState<number | null>(null);
   const [params] = useSearchParams();
 
+  // ✅ Modal reçu
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState<OrderDetail | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [receiptErr, setReceiptErr] = useState<string | null>(null);
+
   const selectedId = useMemo(() => {
     const raw = params.get("order");
     if (!raw) return null;
@@ -409,15 +449,19 @@ export default function OrdersHistoryPage() {
   const fetchOrders = useCallback(async () => {
     try {
       setErr(null);
+      setLoading(true);
 
       const res = await listOrders({ page: 1, pageSize: 20, mineOnly: true });
       const baseList: Order[] = res?.items ?? [];
 
-      const details = await Promise.allSettled(baseList.map((o) => getOrder(o.id)));
+      const details = await Promise.allSettled(
+        baseList.map((o) => getOrder(o.id)),
+      );
 
       const merged: ListOrDetail[] = baseList.map((o, i) => {
         const d = details[i];
-        if (d && d.status === "fulfilled") return { ...o, ...d.value } as ListOrDetail;
+        if (d && d.status === "fulfilled")
+          return { ...o, ...d.value } as ListOrDetail;
         return o as ListOrDetail;
       });
 
@@ -438,21 +482,28 @@ export default function OrdersHistoryPage() {
   const sorted = useMemo(
     () =>
       [...orders].sort((a, b) => {
-        const da = new Date((a as any)?.created_at || (a as any)?.date || 0).getTime();
-        const db = new Date((b as any)?.created_at || (b as any)?.date || 0).getTime();
+        const da = new Date(
+          (a as any)?.created_at || (a as any)?.date || 0,
+        ).getTime();
+        const db = new Date(
+          (b as any)?.created_at || (b as any)?.date || 0,
+        ).getTime();
         return db - da;
       }),
-    [orders]
+    [orders],
   );
 
-  async function onCancelOrder(id: number, status: OrderStatus | string | undefined) {
+  async function onCancelOrder(
+    id: number,
+    status: OrderStatus | string | undefined,
+  ) {
     const s = (status || "OPEN").toUpperCase() as OrderStatus;
     const canCancel = s === "OPEN" || s === "PREPARATION";
     if (!canCancel) return;
 
     const ok = window.confirm(
       "Voulez-vous vraiment annuler cette commande ?\n\n" +
-        "Vous pouvez annuler tant que la commande n’est pas encore en statut « En livraison »."
+        "Vous pouvez annuler tant que la commande n’est pas encore en statut « En livraison ».",
     );
     if (!ok) return;
 
@@ -467,6 +518,27 @@ export default function OrdersHistoryPage() {
     }
   }
 
+  async function openReceipt(orderId: number) {
+    try {
+      setReceiptErr(null);
+      setReceiptLoading(true);
+      setReceiptOpen(true);
+
+      const d = await getOrder(orderId);
+      setReceiptOrder(d);
+    } catch (e: any) {
+      setReceiptErr(e?.message || "Impossible de charger le reçu.");
+    } finally {
+      setReceiptLoading(false);
+    }
+  }
+
+  function closeReceipt() {
+    setReceiptOpen(false);
+    setReceiptOrder(null);
+    setReceiptErr(null);
+  }
+
   if (loading) {
     return (
       <div className="container-xxl py-4">
@@ -474,6 +546,8 @@ export default function OrdersHistoryPage() {
           .orders-history .price-old{ text-decoration: line-through; opacity:.7; margin-right:.35rem; white-space:nowrap; }
           .orders-history .price-new{ font-weight:800; color: var(--duu-red); white-space:nowrap; }
           .orders-history .badge-duu{ background: var(--duu-yellow); color:#111; border:1px solid rgba(0,0,0,.08); }
+          .orders-history .btn-duu{ background:#111; color: var(--duu-yellow); border:1px solid #111; }
+          .orders-history .btn-duu:hover{ opacity:.92; }
         `}</style>
         <h1 className="h4 mb-3">Mes commandes</h1>
         <div className="text-muted">Chargement…</div>
@@ -487,6 +561,28 @@ export default function OrdersHistoryPage() {
         .orders-history .price-old{ text-decoration: line-through; opacity:.7; margin-right:.35rem; white-space:nowrap; }
         .orders-history .price-new{ font-weight:800; color: var(--duu-red); white-space:nowrap; }
         .orders-history .badge-duu{ background: var(--duu-yellow); color:#111; border:1px solid rgba(0,0,0,.08); }
+        .orders-history .btn-duu{ background:#111; color: var(--duu-yellow); border:1px solid #111; font-weight:800; }
+        .orders-history .btn-duu:hover{ opacity:.92; }
+        .orders-history .modal-backdrop-duu{
+          position: fixed; inset:0; background: rgba(0,0,0,.55); z-index: 1050;
+          display:flex; align-items:flex-start; justify-content:center; padding: 24px 12px;
+          overflow:auto;
+        }
+        .orders-history .modal-card-duu{
+          width: min(980px, 100%);
+          background: #fff;
+          border-radius: 18px;
+          box-shadow: 0 20px 60px rgba(0,0,0,.28);
+          overflow: hidden;
+          border: 1px solid rgba(0,0,0,.08);
+        }
+        .orders-history .modal-head-duu{
+          display:flex; align-items:center; justify-content:space-between; gap: 10px;
+          padding: 12px 14px; background: #fff;
+          border-bottom: 1px solid rgba(0,0,0,.08);
+        }
+        .orders-history .modal-title-duu{ font-weight: 900; }
+        .orders-history .modal-body-duu{ padding: 12px; }
       `}</style>
 
       <div className="d-flex align-items-center justify-content-between mb-3">
@@ -502,22 +598,27 @@ export default function OrdersHistoryPage() {
         style={{ borderLeft: `4px solid var(--duu-red)` }}
       >
         <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en statut{" "}
-          <em>En livraison</em>.
+          Vous pouvez annuler votre commande tant qu’elle n’est pas encore en
+          statut <em>En livraison</em>.
         </div>
         <small className="text-muted">
-          Une fois la commande passée en livraison, l’annulation n’est plus possible.
+          Une fois la commande passée en livraison, l’annulation n’est plus
+          possible.
         </small>
       </div>
 
-      {/* ✅ Message global précis sur la plage de livraison */}
-      <div className="alert alert-info" role="status" style={{ borderLeft: `4px solid var(--duu-yellow)` }}>
+      <div
+        className="alert alert-info"
+        role="status"
+        style={{ borderLeft: `4px solid var(--duu-yellow)` }}
+      >
         <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-          ⏰ Période de livraison : nous livrons chaque jour entre <strong>09h</strong> et <strong>20h</strong>.
+          ⏰ Période de livraison : nous livrons chaque jour entre{" "}
+          <strong>09h</strong> et <strong>20h</strong>.
         </div>
         <small className="text-muted">
-          Si une estimation dépasse <strong>20h</strong>, la livraison est reportée au prochain créneau (à partir de{" "}
-          <strong>09h</strong>).
+          Si une estimation dépasse <strong>20h</strong>, la livraison est
+          reportée au prochain créneau (à partir de <strong>09h</strong>).
         </small>
       </div>
 
@@ -539,37 +640,49 @@ export default function OrdersHistoryPage() {
               ? new Date((o as any).created_at).toLocaleString("fr-FR")
               : "";
 
-            const createdAtDate =
-              (o as any)?.created_at
-                ? new Date((o as any).created_at)
-                : (o as any)?.date
+            const createdAtDate = (o as any)?.created_at
+              ? new Date((o as any).created_at)
+              : (o as any)?.date
                 ? new Date((o as any).date)
                 : null;
 
-            const items: OrderItem[] = Array.isArray((o as any)?.items) ? (o as any).items : [];
-            const totals = (o as any)?.totals as OrderDetail["totals"] | undefined;
+            const items: OrderItem[] = Array.isArray((o as any)?.items)
+              ? (o as any).items
+              : [];
+            const totals = (o as any)?.totals as
+              | OrderDetail["totals"]
+              | undefined;
 
-            // ✅ Sous-total articles : totals.items_amount sinon somme des lignes (unit_price figé)
             const itemsAmount: number =
-              (typeof totals?.items_amount === "number" ? totals.items_amount : null) ??
-              items.reduce((sum, it: any) => sum + getOrderItemPricing(it).lineTotal, 0);
+              (typeof totals?.items_amount === "number"
+                ? totals.items_amount
+                : null) ??
+              items.reduce(
+                (sum, it: any) => sum + getOrderItemPricing(it).lineTotal,
+                0,
+              );
 
-            // ✅ Total : o.total puis totals.amount sinon fallback
             const totalAmount: number =
-              (typeof (o as any)?.total === "number" ? (o as any).total : null) ??
+              (typeof (o as any)?.total === "number"
+                ? (o as any).total
+                : null) ??
               (typeof totals?.amount === "number" ? totals.amount : null) ??
               itemsAmount;
 
-            // ✅ Livraison : totals.delivery_fee sinon fallback total-items
             const deliveryFee: number =
-              (typeof totals?.delivery_fee === "number" ? totals.delivery_fee : null) ??
-              Math.max(0, totalAmount - itemsAmount);
+              (typeof totals?.delivery_fee === "number"
+                ? totals.delivery_fee
+                : null) ?? Math.max(0, totalAmount - itemsAmount);
 
-            const currency = String(totals?.currency || (o as any)?.currency || "MAD").toUpperCase();
+            const currency = String(
+              totals?.currency || (o as any)?.currency || "MAD",
+            ).toUpperCase();
 
             const isHighlighted = selectedId === (o as any).id;
 
-            const status = String((o as any)?.status || "OPEN").toUpperCase() as OrderStatus;
+            const status = String(
+              (o as any)?.status || "OPEN",
+            ).toUpperCase() as OrderStatus;
             const canCancel = status === "OPEN" || status === "PREPARATION";
 
             const waUrl = whatsappHref({
@@ -584,38 +697,50 @@ export default function OrdersHistoryPage() {
 
             const deliveryMode: DeliveryMode = inferDeliveryMode(o);
 
-            // 🕒 ETA approximatif (OPEN/PREPARATION) + clamp 09h-20h pour affichage
             let etaRangeLabel: string | null = null;
             let etaStart: Date | null = null;
             let etaEnd: Date | null = null;
 
-            if (createdAtDate && (status === "OPEN" || status === "PREPARATION")) {
+            if (
+              createdAtDate &&
+              (status === "OPEN" || status === "PREPARATION")
+            ) {
               const w = computeEtaWindow(createdAtDate, deliveryMode);
-              etaStart = clampToDeliveryHours(w.start, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
-              etaEnd = clampToDeliveryHours(w.end, DELIVERY_WINDOW.startHour, DELIVERY_WINDOW.endHour);
+              etaStart = clampToDeliveryHours(
+                w.start,
+                DELIVERY_WINDOW.startHour,
+                DELIVERY_WINDOW.endHour,
+              );
+              etaEnd = clampToDeliveryHours(
+                w.end,
+                DELIVERY_WINDOW.startHour,
+                DELIVERY_WINDOW.endHour,
+              );
               etaRangeLabel = formatTimeRange(etaStart, etaEnd);
             }
 
-            // ⏱️ Compte à rebours si DELIVERY
             let countdownText: string | null = null;
             if (status === "DELIVERY" && createdAtDate) {
               const anyOrder = o as any;
               const deliveryObj = anyOrder.delivery || {};
 
-              const deliveryStart: Date =
-                deliveryObj.started_at
-                  ? new Date(deliveryObj.started_at)
-                  : anyOrder.delivery_started_at
+              const deliveryStart: Date = deliveryObj.started_at
+                ? new Date(deliveryObj.started_at)
+                : anyOrder.delivery_started_at
                   ? new Date(anyOrder.delivery_started_at)
                   : createdAtDate;
 
               const driverEtaSeconds =
-                typeof deliveryObj.driver_eta_seconds === "number" ? deliveryObj.driver_eta_seconds : null;
+                typeof deliveryObj.driver_eta_seconds === "number"
+                  ? deliveryObj.driver_eta_seconds
+                  : null;
 
               let remainingMs: number | null = null;
 
               if (driverEtaSeconds && driverEtaSeconds > 0) {
-                const etaTarget = new Date(deliveryStart.getTime() + driverEtaSeconds * 1000);
+                const etaTarget = new Date(
+                  deliveryStart.getTime() + driverEtaSeconds * 1000,
+                );
                 remainingMs = etaTarget.getTime() - nowTs;
               } else {
                 const defaultTarget =
@@ -625,13 +750,14 @@ export default function OrdersHistoryPage() {
                 remainingMs = defaultTarget.getTime() - nowTs;
               }
 
-              if (remainingMs && remainingMs > 0) countdownText = formatCountdownMs(remainingMs);
+              if (remainingMs && remainingMs > 0)
+                countdownText = formatCountdownMs(remainingMs);
             }
 
-            // ✅ info “promo” au niveau commande si au moins une ligne promo
-            const hasPromoOrder = items.some((it: any) => getOrderItemPricing(it).hasPromo);
+            const hasPromoOrder = items.some(
+              (it: any) => getOrderItemPricing(it).hasPromo,
+            );
 
-            // ✅ message précis sur la période 09h-20h (par commande, contextuel)
             const deliveryWindowMsg = buildDeliveryWindowMessage({
               status,
               createdAtDate,
@@ -650,9 +776,24 @@ export default function OrdersHistoryPage() {
                     <div className="d-flex align-items-center gap-2 flex-wrap">
                       <div className="h6 m-0">Commande #{displayCode}</div>
                       {statusBadge(status)}
-                      {hasPromoOrder && <span className="badge badge-duu">Promo appliquée</span>}
+                      {hasPromoOrder && (
+                        <span className="badge badge-duu">Promo appliquée</span>
+                      )}
                     </div>
                     <div className="text-muted small">{created}</div>
+                  </div>
+
+                  {/* ✅ actions “reçu” (PDF + aperçu ticket) */}
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    <OrderReceiptButton orderId={(o as any).id} />
+                    <button
+                      type="button"
+                      className="btn btn-duu btn-sm"
+                      onClick={() => openReceipt((o as any).id)}
+                      aria-label={`Voir le reçu de la commande #${displayCode}`}
+                    >
+                      Voir le reçu
+                    </button>
                   </div>
 
                   {/* ✅ Message précis plage de livraison */}
@@ -663,7 +804,9 @@ export default function OrdersHistoryPage() {
                   {/* ETA / livraison */}
                   {etaRangeLabel && (
                     <div className="alert alert-info py-2 px-3 mt-2 mb-0 small">
-                      <span className="fw-semibold">Estimation de livraison :</span>{" "}
+                      <span className="fw-semibold">
+                        Estimation de livraison :
+                      </span>{" "}
                       entre <strong>{etaRangeLabel}</strong>
                       {deliveryMode === "CASABLANCA" ? " (Casablanca)." : "."}
                     </div>
@@ -671,15 +814,21 @@ export default function OrdersHistoryPage() {
 
                   {status === "DELIVERY" && (
                     <div className="alert alert-info py-2 px-3 mt-2 mb-0 small">
-                      <span className="fw-semibold">Votre commande est en cours de livraison.</span>{" "}
+                      <span className="fw-semibold">
+                        Votre commande est en cours de livraison.
+                      </span>{" "}
                       {countdownText ? (
                         <>
                           Arrivée estimée dans{" "}
-                          <strong style={{ color: "var(--duu-red)" }}>{countdownText}</strong>.
+                          <strong style={{ color: "var(--duu-red)" }}>
+                            {countdownText}
+                          </strong>
+                          .
                         </>
                       ) : (
                         <>
-                          Elle devrait arriver <strong>dans quelques instants</strong>.
+                          Elle devrait arriver{" "}
+                          <strong>dans quelques instants</strong>.
                         </>
                       )}
                     </div>
@@ -700,7 +849,10 @@ export default function OrdersHistoryPage() {
                           key={idx}
                           className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2"
                         >
-                          <div className="d-flex align-items-center gap-2 flex-grow-1" style={{ minWidth: 0 }}>
+                          <div
+                            className="d-flex align-items-center gap-2 flex-grow-1"
+                            style={{ minWidth: 0 }}
+                          >
                             {img ? (
                               <div
                                 className="flex-shrink-0"
@@ -722,37 +874,57 @@ export default function OrdersHistoryPage() {
                             ) : null}
 
                             <div style={{ minWidth: 0 }}>
-                              <div className="fw-semibold text-truncate" title={name}>
+                              <div
+                                className="fw-semibold text-truncate"
+                                title={name}
+                              >
                                 {name}
                               </div>
 
                               {vLabel && (
-                                <div className="small text-muted text-truncate" title={vLabel}>
+                                <div
+                                  className="small text-muted text-truncate"
+                                  title={vLabel}
+                                >
                                   Variante : {vLabel}
                                 </div>
                               )}
 
-                              {/* ✅ prix unitaire promo/pas promo */}
                               <div className="small text-muted d-flex flex-wrap align-items-center gap-1">
-                                {p.hasPromo && p.unitBase != null && p.unitBase > p.unitFinal ? (
+                                {p.hasPromo &&
+                                p.unitBase != null &&
+                                p.unitBase > p.unitFinal ? (
                                   <>
-                                    <span className="price-old">{mad(p.unitBase)}</span>
-                                    <span className="price-new">{mad(p.unitFinal)}</span>
+                                    <span className="price-old">
+                                      {mad(p.unitBase)}
+                                    </span>
+                                    <span className="price-new">
+                                      {mad(p.unitFinal)}
+                                    </span>
                                     {p.discountLabel ? (
-                                      <span className="badge text-bg-warning ms-1">{p.discountLabel}</span>
+                                      <span className="badge text-bg-warning ms-1">
+                                        {p.discountLabel}
+                                      </span>
                                     ) : (
-                                      <span className="badge text-bg-warning ms-1">Promo</span>
+                                      <span className="badge text-bg-warning ms-1">
+                                        Promo
+                                      </span>
                                     )}
                                   </>
                                 ) : (
-                                  <span className="fw-semibold">{mad(p.unitFinal)}</span>
+                                  <span className="fw-semibold">
+                                    {mad(p.unitFinal)}
+                                  </span>
                                 )}
                                 <span className="text-muted">×{p.qty}</span>
                               </div>
                             </div>
                           </div>
 
-                          <div className="fw-semibold text-end" style={{ minWidth: 110, fontSize: "0.9rem" }}>
+                          <div
+                            className="fw-semibold text-end"
+                            style={{ minWidth: 110, fontSize: "0.9rem" }}
+                          >
                             {mad(p.lineTotal)}
                           </div>
                         </li>
@@ -762,8 +934,13 @@ export default function OrdersHistoryPage() {
                     {deliveryFee > 0 && (
                       <li className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <span className="text-muted">Livraison</span>
-                        <div className="text-end" style={{ minWidth: 110, fontSize: "0.9rem" }}>
-                          <span className="fw-semibold">{mad(deliveryFee)}</span>
+                        <div
+                          className="text-end"
+                          style={{ minWidth: 110, fontSize: "0.9rem" }}
+                        >
+                          <span className="fw-semibold">
+                            {mad(deliveryFee)}
+                          </span>
                         </div>
                       </li>
                     )}
@@ -772,15 +949,26 @@ export default function OrdersHistoryPage() {
                   {/* Totaux */}
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
                     <div className="text-muted">Sous-total articles</div>
-                    <div className="fw-semibold" style={{ minWidth: 110, textAlign: "right" }}>
+                    <div
+                      className="fw-semibold"
+                      style={{ minWidth: 110, textAlign: "right" }}
+                    >
                       {mad(itemsAmount)}
                     </div>
                   </div>
 
                   <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <div className="text-muted">Total</div>
-                    <div className="h6 m-0" style={{ minWidth: 110, textAlign: "right", fontSize: "1rem" }}>
-                      {mad(totalAmount)} <span className="text-muted small">{currency}</span>
+                    <div
+                      className="h6 m-0"
+                      style={{
+                        minWidth: 110,
+                        textAlign: "right",
+                        fontSize: "1rem",
+                      }}
+                    >
+                      {mad(totalAmount)}{" "}
+                      <span className="text-muted small">{currency}</span>
                     </div>
                   </div>
 
@@ -796,7 +984,10 @@ export default function OrdersHistoryPage() {
                       WhatsApp Support
                     </a>
 
-                    <Link to={`/orders?order=${(o as any).id}`} className="btn btn-outline-dark">
+                    <Link
+                      to={`/orders?order=${(o as any).id}`}
+                      className="btn btn-outline-dark"
+                    >
                       Actualiser l’état
                     </Link>
 
@@ -807,7 +998,9 @@ export default function OrdersHistoryPage() {
                         onClick={() => onCancelOrder((o as any).id, status)}
                         title="Annuler la commande"
                       >
-                        {cancelingId === (o as any).id ? "Annulation…" : "Annuler la commande"}
+                        {cancelingId === (o as any).id
+                          ? "Annulation…"
+                          : "Annuler la commande"}
                       </button>
                     )}
                   </div>
@@ -815,6 +1008,81 @@ export default function OrdersHistoryPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ✅ MODAL REÇU (aperçu ticket + impression) */}
+      {receiptOpen && (
+        <div
+          className="modal-backdrop-duu"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeReceipt();
+          }}
+        >
+          <div
+            className="modal-card-duu"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="modal-head-duu">
+              <div className="modal-title-duu">Reçu Duumini</div>
+              <button
+                type="button"
+                className="btn btn-outline-dark btn-sm"
+                onClick={closeReceipt}
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="modal-body-duu">
+              {receiptLoading && (
+                <div className="text-muted">Chargement du reçu…</div>
+              )}
+              {receiptErr && (
+                <div className="alert alert-danger">{receiptErr}</div>
+              )}
+
+              {!receiptLoading && !receiptErr && receiptOrder && (
+                <div className="d-flex flex-wrap gap-3 align-items-start justify-content-between">
+                  <div style={{ flex: "1 1 360px" }}>
+                    <OrderReceiptTicket
+                      order={receiptOrder}
+                      logoSrc="/logo.jpeg"
+                      slogan="Marketplace & Livraison"
+                      hotlinePhone="+212 6 XX XX XX XX"
+                      publicWebBase={
+                        typeof window !== "undefined"
+                          ? window.location.origin
+                          : undefined
+                      }
+                    />
+                  </div>
+
+                  <div style={{ flex: "1 1 260px" }}>
+                    <div className="card border-0 shadow-sm">
+                      <div className="card-body">
+                        <div className="fw-bold mb-2">Téléchargement PDF</div>
+                        <OrderReceiptButton
+                          orderId={receiptOrder.id}
+                          className="w-100"
+                        />
+                        <div className="text-muted small mt-2">
+                          Vous pouvez aussi imprimer directement depuis
+                          l’aperçu.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="alert alert-light border mt-3 mb-0 small">
+                      📲 Le QR code permet de vérifier l’authenticité du reçu.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </section>
