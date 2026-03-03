@@ -382,6 +382,7 @@ export default function App() {
                 <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                 <Route path="/legal/terms" element={<Terms />} />
                 <Route path="/legal/returns" element={<ReturnsPolicy />} />
+                <Route path="/r/:token" element={<PublicReceiptPage />} />
 
                 {/* ✅ ADMIN (gardé tel quel) */}
                 <Route path="/admin" element={<ProtectedAdmin />}>
@@ -402,7 +403,6 @@ export default function App() {
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
                     <Route path="content-ai" element={<ContentAiPage />} />
-                    <Route path="/r/:token" element={<PublicReceiptPage />} />
                     {/* Aliases FR */}
                     <Route
                       path="produits"
