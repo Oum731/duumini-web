@@ -1,4 +1,6 @@
 // src/lib/analytics.ts
+import { metaPageView, metaAddToCart, metaPurchase } from "./metaPixel";
+
 declare global {
   interface Window {
     dataLayer?: any[];
@@ -14,10 +16,16 @@ function pushToDataLayer(event: Record<string, any>) {
 
 /** Page vue SPA (React Router) */
 export function trackPageView(path?: string) {
+  const pagePath = path || (typeof window !== "undefined" ? window.location.pathname : "/");
+
+  // ✅ GTM
   pushToDataLayer({
     event: "page_view",
-    page_path: path || window.location.pathname,
+    page_path: pagePath,
   });
+
+  // ✅ Meta Pixel
+  metaPageView(pagePath);
 }
 
 /** Ajout au panier */
@@ -25,19 +33,13 @@ export function trackAddToCart(args: {
   productId: number | string;
   name: string;
   price: number;
-  currency?: string;
+  currency?: string; // ✅ optionnel
   quantity?: number;
   category?: string;
 }) {
-  const {
-    productId,
-    name,
-    price,
-    currency = "MAD",
-    quantity = 1,
-    category,
-  } = args;
+  const { productId, name, price, currency = "MAD", quantity = 1, category } = args;
 
+  // ✅ GTM
   pushToDataLayer({
     event: "add_to_cart",
     item_id: productId,
@@ -47,13 +49,19 @@ export function trackAddToCart(args: {
     quantity,
     item_category: category,
   });
+
+  // ✅ Meta Pixel (simple)
+  metaAddToCart(
+    { id: productId, name, price },
+    quantity
+  );
 }
 
 /** Achat / commande confirmée */
 export function trackPurchase(args: {
   orderId: number | string;
   value: number;
-  currency?: string;
+  currency?: string; // ✅ optionnel
   items: {
     id: number | string;
     name: string;
@@ -64,6 +72,7 @@ export function trackPurchase(args: {
 }) {
   const { orderId, value, currency = "MAD", items } = args;
 
+  // ✅ GTM
   pushToDataLayer({
     event: "purchase",
     transaction_id: orderId,
@@ -76,5 +85,12 @@ export function trackPurchase(args: {
       quantity: it.quantity,
       item_category: it.category,
     })),
+  });
+
+  // ✅ Meta Pixel (simple)
+  metaPurchase({
+    order_id: String(orderId),
+    value: Number(value || 0),
+    product_ids: (items || []).map((it) => it.id),
   });
 }
