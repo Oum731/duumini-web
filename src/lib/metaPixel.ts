@@ -9,12 +9,15 @@ declare global {
 const PIXEL_ID: string = (import.meta as any).env?.VITE_META_PIXEL_ID || "";
 
 let loaded = false;
+let injected = false;
 
-function injectScript(src: string) {
+function injectScriptOnce(src: string) {
+  if (injected) return;
   const s = document.createElement("script");
   s.async = true;
   s.src = src;
   document.head.appendChild(s);
+  injected = true;
 }
 
 function loadMetaPixelOnce() {
@@ -25,7 +28,6 @@ function loadMetaPixelOnce() {
     return;
   }
 
-  // ✅ Création de fbq sans le pattern "!(function...)"
   const fbq = function (...args: any[]) {
     // @ts-ignore
     (fbq as any).callMethod
@@ -45,16 +47,26 @@ function loadMetaPixelOnce() {
   window.fbq = window.fbq || fbq;
   window._fbq = window._fbq || fbq;
 
-  injectScript("https://connect.facebook.net/en_US/fbevents.js");
+  injectScriptOnce("https://connect.facebook.net/en_US/fbevents.js");
 
   window.fbq?.("init", PIXEL_ID);
   loaded = true;
 }
 
+function cleanUndefined<T extends Record<string, any>>(obj: T) {
+  const out: Record<string, any> = {};
+  for (const k of Object.keys(obj)) {
+    const v = obj[k];
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
 function track(event: string, payload?: Record<string, any>) {
   loadMetaPixelOnce();
   if (!window.fbq) return;
-  if (payload) window.fbq("track", event, payload);
+
+  if (payload) window.fbq("track", event, cleanUndefined(payload));
   else window.fbq("track", event);
 }
 
@@ -63,7 +75,7 @@ export function metaPageView(path?: string) {
   track("PageView", path ? { page_path: path } : undefined);
 }
 
-/** ✅ Page produit */
+/** ✅ Page produit (simple) */
 export function metaViewContent(p: {
   id: number | string;
   name?: string | null;
@@ -74,11 +86,11 @@ export function metaViewContent(p: {
     content_name: p.name || "",
     content_type: "product",
     value: Number(p.price || 0),
-    currency: "MAD",
+    currency: "MAD", // ✅ interne (ne pas passer depuis l'appel)
   });
 }
 
-/** ✅ Ajout panier */
+/** ✅ Ajout panier (simple) */
 export function metaAddToCart(
   p: { id: number | string; name?: string | null; price?: number | null },
   qty = 1
@@ -88,11 +100,11 @@ export function metaAddToCart(
     content_name: p.name || "",
     content_type: "product",
     value: Number(p.price || 0) * Number(qty || 1),
-    currency: "MAD",
+    currency: "MAD", // ✅ interne
   });
 }
 
-/** ✅ Début checkout */
+/** ✅ Début checkout (signature SIMPLE) */
 export function metaInitiateCheckout(payload: {
   product_ids: Array<number | string>;
   value: number;
@@ -101,11 +113,11 @@ export function metaInitiateCheckout(payload: {
     content_ids: payload.product_ids.map((x) => String(x)),
     content_type: "product",
     value: Number(payload.value || 0),
-    currency: "MAD",
+    currency: "MAD", // ✅ interne
   });
 }
 
-/** ✅ Achat */
+/** ✅ Achat (signature SIMPLE) */
 export function metaPurchase(payload: {
   product_ids: Array<number | string>;
   value: number;
@@ -115,7 +127,7 @@ export function metaPurchase(payload: {
     content_ids: payload.product_ids.map((x) => String(x)),
     content_type: "product",
     value: Number(payload.value || 0),
-    currency: "MAD",
+    currency: "MAD", // ✅ interne
     order_id: payload.order_id ? String(payload.order_id) : undefined,
   });
 }
