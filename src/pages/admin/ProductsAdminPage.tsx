@@ -1,11 +1,9 @@
-// src/pages/admin/ProductsAdminPage.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../services/http";
 import { me } from "../../services/auth";
 import { listCategories, createCategory, type Category } from "../../services/categories";
 import { listSubCategories, type SubCategory as SvcSubCategory } from "../../services/subCategories";
 
-// ✅ ProductForm est une "page" au même niveau que ManageProductsPage
 import ProductForm, {
   type Draft,
   type FullProduct,
@@ -71,10 +69,7 @@ function Modal({
       }}
     >
       <div className="h-100 d-flex align-items-center justify-content-center p-3">
-        <div
-          className="bg-white rounded-4 shadow w-100"
-          style={{ maxWidth: maxW, maxHeight: "92vh", overflow: "hidden" }}
-        >
+        <div className="bg-white rounded-4 shadow w-100" style={{ maxWidth: maxW, maxHeight: "92vh", overflow: "hidden" }}>
           <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
             <div className="fw-bold">{title}</div>
             <button className="btn btn-sm btn-outline-secondary" onClick={onClose}>
@@ -86,9 +81,7 @@ function Modal({
             <div className="p-3">{children}</div>
           </div>
 
-          {footer ? (
-            <div className="px-3 py-2 border-top d-flex justify-content-end gap-2">{footer}</div>
-          ) : null}
+          {footer ? <div className="px-3 py-2 border-top d-flex justify-content-end gap-2">{footer}</div> : null}
         </div>
       </div>
     </div>
@@ -101,14 +94,14 @@ export default function ProductsAdminPage() {
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<AnyObj | null>(null);
 
-  const isVendor = String(user?.role || "").toUpperCase() === "VENDOR" || String(user?.role || "").toUpperCase() === "VENDEUR";
+  const isVendor =
+    String(user?.role || "").toUpperCase() === "VENDOR" ||
+    String(user?.role || "").toUpperCase() === "VENDEUR";
 
-  // data sources
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
 
-  // list products
   const [items, setItems] = useState<FullProduct[]>([]);
   const [pageInfo, setPageInfo] = useState<PageInfo>({
     page: 1,
@@ -119,16 +112,19 @@ export default function ProductsAdminPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // filters
   const [q, setQ] = useState("");
   const [style, setStyle] = useState<ProductStyle | "">("");
   const [shopId, setShopId] = useState<number | "">("");
   const [active, setActive] = useState<"" | "1" | "0">("");
   const [promo, setPromo] = useState<"" | "1">("");
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
 
-  // modal create/edit
+  const [categoryId, setCategoryId] = useState<number | "">("");
+  const [subCategoryId, setSubCategoryId] = useState<number | "">("");
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const pageSizeOptions = [20, 50, 100, 200, 500];
+
   const [openForm, setOpenForm] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -139,19 +135,14 @@ export default function ProductsAdminPage() {
     return editing?.id ? `Modifier produit #${editing.id}` : "Ajouter un produit";
   }, [openForm, editing?.id]);
 
-  /* ================= Load bootstrap (me + catalogs) ================= */
-
   const loadShops = useCallback(async (vendorMode: boolean) => {
-    // ✅ vendeur: essayer /api/shops/mine, sinon fallback /api/shops
     try {
       if (vendorMode) {
         const rMine = await api.get("/api/shops/mine");
         const rows = unwrap<Shop[]>(rMine) || [];
         if (Array.isArray(rows) && rows.length) return rows;
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     const r = await api.get("/api/shops");
     const rows = unwrap<Shop[]>(r) || [];
@@ -160,11 +151,7 @@ export default function ProductsAdminPage() {
 
   const loadCatalogs = useCallback(
     async (vendorMode: boolean) => {
-      const [cats, subs, sh] = await Promise.all([
-        listCategories(),
-        listSubCategories(),
-        loadShops(vendorMode),
-      ]);
+      const [cats, subs, sh] = await Promise.all([listCategories(), listSubCategories(), loadShops(vendorMode)]);
 
       setCategories((unwrap<Category[]>(cats) || []) as Category[]);
 
@@ -182,7 +169,6 @@ export default function ProductsAdminPage() {
       const mappedShops = (sh || []).map((s) => ({ ...s, id: Number(s.id) }));
       setShops(mappedShops);
 
-      // ✅ vendeur: si 1 seule boutique => filtre auto
       if (vendorMode && mappedShops.length === 1) setShopId(Number(mappedShops[0].id));
     },
     [loadShops]
@@ -198,7 +184,8 @@ export default function ProductsAdminPage() {
         setUser(u || null);
 
         const vendorMode =
-          String(u?.role || "").toUpperCase() === "VENDOR" || String(u?.role || "").toUpperCase() === "VENDEUR";
+          String(u?.role || "").toUpperCase() === "VENDOR" ||
+          String(u?.role || "").toUpperCase() === "VENDEUR";
         await loadCatalogs(vendorMode);
       } catch (e: any) {
         setErr(e?.message || String(e));
@@ -210,23 +197,39 @@ export default function ProductsAdminPage() {
     run();
   }, [loadCatalogs]);
 
-  /* ================= Load products list ================= */
-
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     setErr(null);
 
     try {
-      const params: AnyObj = { page, page_size: pageSize };
+      const params: AnyObj = {
+        page,
+        pageSize,
+        pagesize: pageSize,
+        noCache: 1, // ✅ bypass cache for admin listing
+      };
 
       const qs = String(q || "").trim();
       if (qs) params.q = qs;
-      if (style) params.vertical = String(style).toUpperCase(); // FOOD/MARKET/FASHION
-      if (shopId !== "") params.shop_id = Number(shopId);
-      if (active !== "") params.is_active = Number(active);
-      if (promo === "1") params.promo = 1;
 
-      // ✅ BACKEND ROUTE: /api/products/manage
+      if (style) params.vertical = String(style).toUpperCase();
+
+      if (shopId !== "") params.shop_id = Number(shopId);
+
+      if (active === "1") params.onlyActive = 1;
+      if (active === "0") params.onlyActive = 0;
+
+      if (promo === "1") params.onlyPromos = 1;
+
+      if (categoryId !== "") {
+        params.category_id = Number(categoryId);
+        params.categoryId = Number(categoryId);
+      }
+      if (subCategoryId !== "") {
+        params.sub_category_id = Number(subCategoryId);
+        params.subCategoryId = Number(subCategoryId);
+      }
+
       const r = await api.get("/api/products/manage", { params });
       const data = unwrap<any>(r);
 
@@ -237,9 +240,12 @@ export default function ProductsAdminPage() {
         data?.page_info ||
         ({
           page: toInt(data?.page, page),
-          pageSize: toInt(data?.page_size, pageSize),
-          total: toInt(data?.total, rows?.length || 0),
-          pages: toInt(data?.pages, 1),
+          pageSize: toInt(data?.pageSize ?? data?.page_size ?? data?.pagesize ?? data?.pageInfo?.pageSize, pageSize),
+          total: toInt(data?.total ?? data?.pageInfo?.total, rows?.length || 0),
+          pages: toInt(
+            data?.pages ?? data?.totalPages ?? data?.pageInfo?.totalPages,
+            1
+          ),
         } as PageInfo);
 
       const mapped: FullProduct[] = (rows || []).map((p: any) => ({
@@ -255,11 +261,16 @@ export default function ProductsAdminPage() {
       }));
 
       setItems(mapped);
+
+      const total = toInt(info.total, mapped.length);
+      const size = Math.max(1, toInt(info.pageSize, pageSize));
+      const pages = Math.max(1, Math.ceil(total / size));
+
       setPageInfo({
         page: toInt(info.page, page),
-        pageSize: toInt(info.pageSize, pageSize),
-        total: toInt(info.total, mapped.length),
-        pages: Math.max(1, toInt(info.pages, 1)),
+        pageSize: size,
+        total,
+        pages,
       });
     } catch (e: any) {
       const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
@@ -267,18 +278,15 @@ export default function ProductsAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, q, style, shopId, active, promo]);
+  }, [page, pageSize, q, style, shopId, active, promo, categoryId, subCategoryId]);
 
   useEffect(() => {
     if (booting) return;
     fetchProducts();
   }, [booting, fetchProducts]);
 
-  /* ================= CRUD helpers ================= */
-
   const loadProductById = useCallback(async (id: number) => {
-    // ✅ BACKEND ROUTE: /api/products/manage/:id
-    const r = await api.get(`/api/products/manage/${id}`);
+    const r = await api.get(`/api/products/manage/${id}`, { params: { noCache: 1 } });
     const p = unwrap<any>(r);
 
     const mapped: FullProduct = {
@@ -332,7 +340,6 @@ export default function ProductsAdminPage() {
       if (!confirm(`Supprimer le produit "${p.name}" ?`)) return;
 
       try {
-        // ✅ BACKEND ROUTE: DELETE /api/products/:id
         await api.delete(`/api/products/${p.id}`);
         await fetchProducts();
       } catch (e: any) {
@@ -379,7 +386,6 @@ export default function ProductsAdminPage() {
 
       put("replace_images", replaceImages ? 1 : 0);
 
-      // ✅ IMPORTANT: backend attend images[]
       for (const f of files || []) fd.append("images[]", f);
 
       const cleaned = cleanVariantsForApi(variants || []);
@@ -389,12 +395,10 @@ export default function ProductsAdminPage() {
 
       try {
         if (editingId) {
-          // ✅ BACKEND ROUTE: PUT /api/products/:id
           await api.put(`/api/products/${editingId}`, fd, {
             headers: { "Content-Type": "multipart/form-data" },
           });
         } else {
-          // ✅ BACKEND ROUTE: POST /api/products
           await api.post(`/api/products`, fd, {
             headers: { "Content-Type": "multipart/form-data" },
           });
@@ -410,8 +414,6 @@ export default function ProductsAdminPage() {
     },
     [closeForm, editing?.id, fetchProducts, isVendor]
   );
-
-  /* ================= Category creation ================= */
 
   const onCreateCategory = useCallback(async (name: string) => {
     const r = await createCategory(name);
@@ -437,8 +439,6 @@ export default function ProductsAdminPage() {
     return sc;
   }, []);
 
-  /* ================= Derived UI ================= */
-
   const totalLabel = useMemo(() => {
     if (loading) return "Chargement…";
     return `${pageInfo.total} produit(s)`;
@@ -452,6 +452,20 @@ export default function ProductsAdminPage() {
       String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" })
     );
   }, [shops]);
+
+  const categoryOptions = useMemo(() => {
+    return [...categories].sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" })
+    );
+  }, [categories]);
+
+  const subCategoryOptions = useMemo(() => {
+    const cid = categoryId === "" ? 0 : Number(categoryId);
+    const arr = cid ? subCategories.filter((s) => Number(s.category_id) === cid) : subCategories;
+    return [...arr].sort((a, b) =>
+      String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" })
+    );
+  }, [subCategories, categoryId]);
 
   if (booting) {
     return (
@@ -489,7 +503,6 @@ export default function ProductsAdminPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="card duu-card border-0 bg-light mt-3">
         <div className="card-body p-3">
           <div className="row g-2 align-items-end">
@@ -502,7 +515,7 @@ export default function ProductsAdminPage() {
                   setQ(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Nom, SKU, etc."
+                placeholder="Nom, boutique, description…"
               />
             </div>
 
@@ -575,6 +588,65 @@ export default function ProductsAdminPage() {
               </select>
             </div>
 
+            <div className="col-6 col-md-3">
+              <label className="form-label">Catégorie</label>
+              <select
+                className="form-select duu-focus"
+                value={categoryId === "" ? "" : String(categoryId)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCategoryId(v ? Number(v) : "");
+                  setSubCategoryId("");
+                  setPage(1);
+                }}
+              >
+                <option value="">Toutes</option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-6 col-md-3">
+              <label className="form-label">Sous-catégorie</label>
+              <select
+                className="form-select duu-focus"
+                value={subCategoryId === "" ? "" : String(subCategoryId)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSubCategoryId(v ? Number(v) : "");
+                  setPage(1);
+                }}
+              >
+                <option value="">Toutes</option>
+                {subCategoryOptions.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-6 col-md-2">
+              <label className="form-label">Page size</label>
+              <select
+                className="form-select duu-focus"
+                value={String(pageSize)}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+              >
+                {pageSizeOptions.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="col-12 d-flex gap-2 flex-wrap mt-2">
               <button
                 className="btn btn-outline-dark"
@@ -584,6 +656,9 @@ export default function ProductsAdminPage() {
                   setActive("");
                   setPromo("");
                   setShopId("");
+                  setCategoryId("");
+                  setSubCategoryId("");
+                  setPageSize(50);
                   setPage(1);
                 }}
               >
@@ -596,7 +671,6 @@ export default function ProductsAdminPage() {
 
       {err ? <div className="alert alert-danger mt-3 mb-0">{err}</div> : null}
 
-      {/* Table */}
       <div className="card duu-card mt-3">
         <div className="card-body p-0">
           <div className="table-responsive">
@@ -671,10 +745,7 @@ export default function ProductsAdminPage() {
                             {(p as any)?.sub_category_name ? (
                               <>
                                 {" "}
-                                •{" "}
-                                <span className="badge text-bg-light border">
-                                  {(p as any).sub_category_name}
-                                </span>
+                                • <span className="badge text-bg-light border">{(p as any).sub_category_name}</span>
                               </>
                             ) : null}
                           </div>
@@ -704,11 +775,7 @@ export default function ProductsAdminPage() {
                         </td>
 
                         <td className="p-2">
-                          {activeFlag ? (
-                            <span className="badge bg-success">Actif</span>
-                          ) : (
-                            <span className="badge bg-secondary">Off</span>
-                          )}
+                          {activeFlag ? <span className="badge bg-success">Actif</span> : <span className="badge bg-secondary">Off</span>}
                         </td>
 
                         <td className="p-2 text-end">
@@ -730,10 +797,9 @@ export default function ProductsAdminPage() {
           </div>
         </div>
 
-        {/* Pagination */}
         <div className="card-footer bg-white d-flex align-items-center justify-content-between flex-wrap gap-2">
           <div className="small text-muted">
-            Page <b>{page}</b> / <b>{pageInfo.pages}</b> • {pageInfo.total} total
+            Page <b>{page}</b> / <b>{pageInfo.pages}</b> • {pageInfo.total} total • {pageInfo.pageSize}/page
           </div>
 
           <div className="d-flex gap-2">
@@ -755,7 +821,6 @@ export default function ProductsAdminPage() {
         </div>
       </div>
 
-      {/* Create/Edit modal */}
       <Modal
         open={openForm}
         title={title}
