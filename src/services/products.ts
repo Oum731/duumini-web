@@ -280,7 +280,8 @@ function asPaginated<T = any>(x: any): Paginated<T> {
   const body = unwrap<any>(x);
 
   if (body && Array.isArray(body.items) && body.pageInfo) return body as Paginated<T>;
-  if (body?.data && Array.isArray(body.data.items) && body.data.pageInfo) return body.data as Paginated<T>;
+  if (body?.data && Array.isArray(body.data.items) && body.data.pageInfo)
+    return body.data as Paginated<T>;
 
   const items = asArray<T>(body);
   const pageInfo = {
@@ -298,8 +299,12 @@ function asPaginated<T = any>(x: any): Paginated<T> {
 
 function withPageCompat(query: Record<string, any>, page: number, pageSize: number) {
   query.page = page;
+
+  // ✅ support all common variants
   query.pageSize = pageSize;
+  query.pagesize = pageSize;
   query.page_size = pageSize;
+
   return query;
 }
 
@@ -620,7 +625,6 @@ export async function listProductOptionGroups(productId: number): Promise<Produc
     const raw = await api.get<any>(`${OPTIONS_BASE}/${productId}/options`);
     return asArray<ProductOptionGroup>(raw);
   } catch (e) {
-    // fallback si route inexistante
     if (isNotFoundError(e)) return [];
     throw e;
   }
@@ -643,10 +647,7 @@ export async function upsertProductOptionGroups(
     const raw = await api.post<any>(`${OPTIONS_BASE}/${productId}/options`, payload, { query });
     return unwrap<{ ok: true }>(raw);
   } catch (e) {
-    if (isNotFoundError(e)) {
-      // backend pas encore prêt => on ne casse pas le flow front
-      return { ok: true };
-    }
+    if (isNotFoundError(e)) return { ok: true };
     throw e;
   }
 }
@@ -974,8 +975,13 @@ export async function removeProduct(id: number): Promise<{ ok: true }> {
  * ===================================================================== */
 
 export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
-export async function listTopOrderedProducts(opts: { limit?: number; onlyActive?: boolean }): Promise<Product[]>;
-export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: number; onlyActive?: boolean }) {
+export async function listTopOrderedProducts(opts: {
+  limit?: number;
+  onlyActive?: boolean;
+}): Promise<Product[]>;
+export async function listTopOrderedProducts(
+  limitOrOpts?: number | { limit?: number; onlyActive?: boolean }
+) {
   let limit = 8;
   let onlyActive = true;
 
@@ -997,7 +1003,9 @@ export async function listTopOrderedProducts(limitOrOpts?: number | { limit?: nu
 export async function listTopRatedProducts(
   opts?: { limit?: number; minCount?: number; onlyActive?: boolean }
 ): Promise<Product[]>;
-export async function listTopRatedProducts(opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}) {
+export async function listTopRatedProducts(
+  opts: { limit?: number; minCount?: number; onlyActive?: boolean } = {}
+) {
   const limit = opts.limit ?? 8;
   const minCount = opts.minCount ?? 2;
   const onlyActive = opts.onlyActive ?? true;
@@ -1050,7 +1058,10 @@ export async function getPendingRatingProduct(): Promise<PendingRatingProduct> {
   return unwrap<PendingRatingProduct>(raw);
 }
 
-export async function rateProduct(productId: number, payload: { rating: number; comment?: string | null }) {
+export async function rateProduct(
+  productId: number,
+  payload: { rating: number; comment?: string | null }
+) {
   const raw = await api.post<any>(`/api/products/${productId}/rate`, payload);
   return unwrap<{
     ok: true;
