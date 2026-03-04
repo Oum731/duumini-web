@@ -14,7 +14,16 @@ type CurrentUser = {
 
 function isVendorRole(role?: string) {
   const r = String(role || "").toUpperCase();
-  return r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
+  // ✅ on couvre tes rôles possibles (tu utilises souvent "VENDEUR")
+  return (
+    r === "VENDEUR" ||
+    r === "VENDOR" ||
+    r === "SELLER" ||
+    r === "SHOP" ||
+    r === "BOUTIQUE" ||
+    r === "RESTAURANT" ||
+    r === "FOURNISSEUR"
+  );
 }
 
 export default function AdminTopNav({
@@ -50,7 +59,6 @@ export default function AdminTopNav({
     (isActive ? "btn-dark" : "btn-outline-dark");
 
   const computedTitle = useMemo(() => {
-    // si le parent passe un title, on le respecte, mais on ajuste si vendeur
     if (title && title !== "Espace admin") return title;
     return isVendor ? "Espace vendeur" : "Espace admin";
   }, [title, isVendor]);
@@ -58,40 +66,46 @@ export default function AdminTopNav({
   return (
     <nav aria-label="Menu admin" className="mb-3">
       {showTitle && (
-        <div className="text-muted fw-semibold small mb-2">
-          {computedTitle}
-        </div>
+        <div className="text-muted fw-semibold small mb-2">{computedTitle}</div>
       )}
 
-      {/* 2 colonnes sur mobile, inline en ≥sm */}
       <div className="row row-cols-2 row-cols-sm-auto g-2">
-        {/* Dashboard: visible pour admin + vendeur */}
+        {/* Dashboard: admin + vendeur */}
         <div className="col">
           <NavLink to="/admin" end className={cls}>
             Tableau de bord
           </NavLink>
         </div>
 
-        {/* Commandes: visible pour admin + vendeur */}
+        {/* Commandes: admin + vendeur */}
         <div className="col">
           <NavLink to="/admin/orders" className={cls}>
             Commandes
           </NavLink>
         </div>
 
-        {/* Produits: visible pour admin + vendeur */}
+        {/* Produits: admin + vendeur */}
         <div className="col">
           <NavLink to="/admin/products" className={cls}>
             Produits
           </NavLink>
         </div>
 
-        {/* ✅ Promotions: visible pour admin + vendeur */}
+        {/* Promotions: admin + vendeur */}
         <div className="col">
           <NavLink to="/admin/promotions" className={cls}>
             Promotions
           </NavLink>
         </div>
+
+        {/* ✅ Rapports: ADMIN uniquement */}
+        {!isVendor && (
+          <div className="col">
+            <NavLink to="/admin/reports/sales" className={cls}>
+              Rapports
+            </NavLink>
+          </div>
+        )}
 
         {/* Contenu IA: ADMIN uniquement */}
         {!isVendor && (

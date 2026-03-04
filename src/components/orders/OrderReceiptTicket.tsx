@@ -222,7 +222,7 @@ export default function OrderReceiptTicket({
       if (nav?.share && (!nav?.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({
           title: "Reçu Duumini",
-          text: "Voici le reçu.",
+          text: "Reçu.",
           files: [file],
         });
         return;

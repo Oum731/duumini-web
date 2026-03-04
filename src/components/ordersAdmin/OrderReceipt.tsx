@@ -183,7 +183,7 @@ export default function OrderReceipt(props: {
       if (nav?.share && (!nav?.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({
           title: "Reçu Duumini",
-          text: "Voici le reçu.",
+          text: "Reçu.",
           files: [file],
         });
         return;

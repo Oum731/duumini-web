@@ -1,7 +1,7 @@
 // src/components/ordersAdmin/orderUtils.ts
 import type { Product } from "../../services/products";
 import { API_BASE } from "../../services/http";
-import type { OrderStatus } from "../../services/orders";
+import type { OrderStatus, PayStatus as SvcPayStatus } from "../../services/orders";
 
 export type AnyObj = Record<string, any>;
 
@@ -59,7 +59,8 @@ export function getItemImage(it: AnyObj): string {
 
 /** Vignette pour la ligne de tableau (liste des commandes) */
 export function getOrderThumb(o: AnyObj): string {
-  return imgUrl(o.first_product_cover || o.product_cover || "");
+  const raw = o.first_product_cover || o.product_cover || o.cover || "";
+  return imgUrl(raw);
 }
 
 /* ===== Helpers téléphone / WhatsApp ===== */
@@ -91,10 +92,16 @@ export function productShareUrl(it: AnyObj) {
 }
 
 /* ===== Helper: code alphanumérique pour affichage ===== */
-export function getOrderDisplayCode(orderOrId: string | number | { id?: string | number }): string {
+export function getOrderDisplayCode(orderOrId: string | number | { id?: string | number; display_code?: string | null }) {
+  const anyO = orderOrId as any;
+
+  const display = anyO?.display_code ?? anyO?.displayCode ?? null;
+  if (display) return String(display).toUpperCase();
+
   let rawId: string | number | undefined;
   if (typeof orderOrId === "number" || typeof orderOrId === "string") rawId = orderOrId;
-  else rawId = orderOrId?.id;
+  else rawId = anyO?.id;
+
   if (rawId == null) return "";
 
   const num = typeof rawId === "number" ? rawId : Number(rawId);
@@ -103,12 +110,16 @@ export function getOrderDisplayCode(orderOrId: string | number | { id?: string |
 }
 
 /* =========================
- * ✅ Fulfillment (Delivery / Pickup / Expedition)
+ * ✅ Fulfillment
+ * Align backend delivery.mode:
+ * "EXPRESS" | "SIMPLE" | "PROMO_FREE" | "CASABLANCA" | "CITY" => DELIVERY
+ * (pickup/expedition compatibles si ajout futur)
  * =======================*/
 export type Fulfillment = "DELIVERY" | "PICKUP" | "EXPEDITION";
 
 export function normFulfillment(o: AnyObj): Fulfillment {
   const delivery = o?.delivery && typeof o.delivery === "object" ? o.delivery : null;
+
   const modeRaw =
     String(
       delivery?.mode ??
@@ -123,6 +134,7 @@ export function normFulfillment(o: AnyObj): Fulfillment {
 
   if (modeRaw === "PICKUP") return "PICKUP";
   if (modeRaw === "EXPEDITION") return "EXPEDITION";
+
   if (modeRaw) return "DELIVERY";
   return "DELIVERY";
 }
@@ -135,8 +147,9 @@ export function fulfillmentLabel(f: Fulfillment) {
 
 /* ====== Totaux/Commission ======
   ✅ itemsAmount = sous-total articles
-  ✅ deliveryFee = livraison
+  ✅ deliveryFee/shippingFee = livraison
   ✅ duuShare = commission Duumini (DONE only)
+  ✅ ca = CA produits (hors livraison)
 */
 export function computeOrderAmounts(order: AnyObj) {
   const totals = order?.totals || null;
@@ -146,7 +159,9 @@ export function computeOrderAmounts(order: AnyObj) {
   const deliveryFee =
     hasTotals && typeof totals.delivery_fee === "number"
       ? Number(totals.delivery_fee)
-      : Number(order?.delivery_fee || order?.deliveryFee || 0) || 0;
+      : order?.delivery && typeof order.delivery === "object" && order.delivery?.fee != null
+        ? numSafe(order.delivery.fee)
+        : numSafe(order?.delivery_fee ?? order?.deliveryFee ?? 0);
 
   let itemsAmount =
     hasTotals && typeof totals.items_amount === "number"
@@ -155,7 +170,6 @@ export function computeOrderAmounts(order: AnyObj) {
         ? Number(order.items_amount)
         : 0;
 
-  // fallback si items_amount absent
   if (!itemsAmount || itemsAmount <= 0) {
     const arr = Array.isArray(order?.items)
       ? order.items
@@ -169,22 +183,19 @@ export function computeOrderAmounts(order: AnyObj) {
         return s + unit * qty;
       }, 0);
     } else {
-      // si on a juste total, on déduit livraison
       const totalFallback =
         typeof order?.total === "number"
           ? order.total
           : hasTotals && typeof totals.amount === "number"
             ? Number(totals.amount)
-            : Number(order?.total || 0) || 0;
+            : numSafe(order?.total);
 
       itemsAmount = Math.max(0, Number(totalFallback) - Number(deliveryFee));
     }
   }
 
-  // ✅ CA = ventes produits (hors livraison/expédition)
   const ca = Math.max(0, itemsAmount);
 
-  // ✅ Total (si fourni par API on le respecte, sinon on reconstruit)
   const totalFromApi =
     typeof order?.total === "number"
       ? order.total
@@ -197,44 +208,51 @@ export function computeOrderAmounts(order: AnyObj) {
       ? Number(totalFromApi)
       : ca + Math.max(0, deliveryFee);
 
-  const direct =
+  const totalsCommission =
+    hasTotals && typeof totals.duumini_commission === "number" ? Number(totals.duumini_commission) : null;
+
+  const directCommission =
     typeof order?.commission_duumini === "number"
       ? Number(order.commission_duumini)
       : order?.commission_duumini != null
         ? Number(order.commission_duumini)
         : null;
 
-  const totalsShare =
+  const legacyTotalsShare =
     hasTotals && typeof totals.duumini_amount === "number"
       ? Number(totals.duumini_amount)
       : hasTotals && typeof totals.commission === "number"
         ? Number(totals.commission)
         : null;
 
-  let duuShareRaw = Number(direct != null ? direct : totalsShare != null ? totalsShare : 0);
+  let duuShareRaw = Number(
+    totalsCommission != null
+      ? totalsCommission
+      : directCommission != null
+        ? directCommission
+        : legacyTotalsShare != null
+          ? legacyTotalsShare
+          : 0,
+  );
   if (!Number.isFinite(duuShareRaw) || duuShareRaw < 0) duuShareRaw = 0;
 
-  // ✅ commission uniquement sur DONE
   const duuShare = status === "DONE" ? duuShareRaw : 0;
-
-  // ✅ net vendeur = CA - commission (toujours hors livraison)
   const vendorNet = Math.max(0, ca - duuShare);
-
-  // ✅ aliases clairs
   const shippingFee = Math.max(0, deliveryFee);
 
   return {
     total,
     deliveryFee, // compat
-    shippingFee, // nouveau
+    shippingFee,
     itemsAmount,
-    ca,          // ✅ nouveau: CA hors livraison
+    ca,
     duuShare,
     vendorNet,
   };
 }
-/* ===== Payment helpers ===== */
-export type PayStatus = "PAID" | "UNPAID" | "PARTIAL" | "PENDING";
+
+/* ===== Payment helpers (align orders.ts) ===== */
+export type PayStatus = SvcPayStatus | "PENDING";
 
 export function normPayStatus(s: any): PayStatus | null {
   const v = String(s || "").trim().toUpperCase();
@@ -254,16 +272,24 @@ export function fromInputNumberValue(v: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isBankMethod(method?: string | null) {
+  const m = String(method || "").trim().toUpperCase();
+  return m === "BANK_TRANSFER" || m === "BANK" || m === "TRANSFER" || m === "VIREMENT";
+}
+
 export function getPaymentFromOrder(o: AnyObj) {
   const payment = o?.payment && typeof o.payment === "object" ? o.payment : null;
 
-  const status: PayStatus | null = normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
+  const status: PayStatus | null =
+    normPayStatus(o?.payment_status) || normPayStatus(payment?.status) || null;
 
   const paid_amount =
     numSafe(o?.paid_amount) || numSafe(payment?.paid_amount) || numSafe(payment?.paidAmount) || 0;
 
-  const remaining_amount_raw = o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
-  const remaining_amount = remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
+  const remaining_amount_raw =
+    o?.remaining_amount ?? payment?.remaining_amount ?? payment?.remainingAmount ?? null;
+  const remaining_amount =
+    remaining_amount_raw == null ? null : Math.max(0, numSafe(remaining_amount_raw));
 
   const method = String(payment?.method || o?.payment_method || "").trim() || null;
   const note = payment?.note != null ? String(payment.note) : null;
@@ -286,10 +312,6 @@ export function computePayStatus(total: number, paid: number): PayStatus {
   return "PARTIAL";
 }
 
-/**
- * ✅ Paiement badge
- * ✅ Virement => "EN ATTENTE"
- */
 export function getPaymentLabelForRow(o: AnyObj) {
   const oStatus = String(o?.status || "").toUpperCase();
   if (oStatus === "CANCELLED") return { text: "ANNULÉE", cls: "bg-danger" };
@@ -297,8 +319,7 @@ export function getPaymentLabelForRow(o: AnyObj) {
   const { total } = computeOrderAmounts(o);
   const pay = getPaymentFromOrder(o);
 
-  const method = String(pay.method || "").toUpperCase();
-  const isBank = method === "BANK_TRANSFER" || method === "BANK" || method === "TRANSFER" || method === "VIREMENT";
+  const bank = isBankMethod(pay.method);
 
   const paid = numSafe(pay.paid_amount);
   const remain = computeRemaining(total, paid);
@@ -306,8 +327,10 @@ export function getPaymentLabelForRow(o: AnyObj) {
 
   if (explicit === "PAID") return { text: "PAYÉ", cls: "bg-success" };
   if (explicit === "PENDING") return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
-  if (isBank && (explicit === "UNPAID" || explicit === "PARTIAL" || explicit == null))
-    return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
+
+  if (bank && (explicit === "UNPAID" || explicit === "PARTIAL" || explicit == null)) {
+    if (paid <= 0) return { text: "VIREMENT: EN ATTENTE", cls: "bg-warning text-dark" };
+  }
 
   if (paid > 0 && remain > 0) return { text: "PARTIEL", cls: "bg-warning text-dark" };
   if (paid >= total && total > 0) return { text: "PAYÉ", cls: "bg-success" };
@@ -315,7 +338,6 @@ export function getPaymentLabelForRow(o: AnyObj) {
   return { text: "NON PAYÉ", cls: "bg-secondary" };
 }
 
-/** Colonne "Reste" */
 export function getRemainingAmountForRow(o: AnyObj): number | null {
   const st = String(o?.status || "").toUpperCase();
   if (st === "CANCELLED") return null;
@@ -337,7 +359,9 @@ export function buildAdminWhatsappMessage(order: AnyObj) {
   const address = order.address || {};
   const contact = order.contact || order.user || {};
   const fullName =
-    `${contact.first_name || ""} ${contact.last_name || ""}`.trim() || contact.name || "cher(e) client(e)";
+    `${contact.first_name || ""} ${contact.last_name || ""}`.trim() ||
+    contact.name ||
+    "cher(e) client(e)";
 
   const phone = contact.phone || order.phone || "";
   const displayCode = getOrderDisplayCode(order);
@@ -480,13 +504,15 @@ export type CurrentUser = {
 
 export function isVendorRole(role?: string) {
   const r = String(role || "").toUpperCase();
-  return r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
+  return r === "VENDEUR" || r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE" || r === "RESTAURANT";
 }
 
 export function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
   if (!user) return false;
 
-  // admin voit tout
+  const role = String(user.role || "").toUpperCase();
+  if (role === "ADMIN") return true;
+
   if (!isVendorRole(user.role)) return true;
 
   const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;

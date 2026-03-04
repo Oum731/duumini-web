@@ -14,6 +14,16 @@ import {
   telHref,
 } from "./orderUtils";
 
+function safeBadgeForStatus(status: string) {
+  const s = String(status || "").toUpperCase();
+  if (s === "OPEN") return BADGE.OPEN;
+  if (s === "PREPARATION") return BADGE.PREPARATION;
+  if (s === "DELIVERY") return BADGE.DELIVERY;
+  if (s === "DONE") return BADGE.DONE;
+  if (s === "CANCELLED") return BADGE.CANCELLED;
+  return "bg-secondary";
+}
+
 export default function OrdersTable(props: {
   loading: boolean;
   orders: Order[];
@@ -44,7 +54,6 @@ export default function OrdersTable(props: {
             <th>Paiement</th>
             <th className="text-end">Reste</th>
 
-            {/* ✅ séparations */}
             <th className="text-end">CA (produits)</th>
             <th className="text-end">Livraison/Expédition</th>
 
@@ -55,32 +64,33 @@ export default function OrdersTable(props: {
 
         <tbody>
           {orders.map((o) => {
-            const c = (o as any)?.contact || (o as any)?.user || {};
-            const fn = (c?.first_name || "").trim();
-            const ln = (c?.last_name || "").trim();
-            const clientName = fn || ln ? `${fn} ${ln}`.trim() : "—";
-            const phone = (c?.phone || "").trim();
+            const anyO = o as AnyObj;
+
+            const c = anyO?.contact || anyO?.user || {};
+            const fn = String(c?.first_name || "").trim();
+            const ln = String(c?.last_name || "").trim();
+            const clientName = fn || ln ? `${fn} ${ln}`.trim() : (String(c?.name || "").trim() || "—");
+
+            const phone = String(c?.phone || "").trim();
             const hrefTel = telHref(phone);
 
-            const thumb = getOrderThumb(o as AnyObj);
-            const displayCode = getOrderDisplayCode(o);
+            const thumb = getOrderThumb(anyO);
+            const displayCode = getOrderDisplayCode(anyO);
 
-            const {
-              ca, // ✅ CA produits (hors livraison)
-              shippingFee, // ✅ livraison/expédition
-              duuShare: duuCommission,
-            } = computeOrderAmounts(o as AnyObj);
+            const { ca, shippingFee, duuShare: duuCommission } = computeOrderAmounts(anyO);
 
-            const payBadge = getPaymentLabelForRow(o as AnyObj);
-            const remaining = getRemainingAmountForRow(o as AnyObj);
+            const payBadge = getPaymentLabelForRow(anyO);
+            const remaining = getRemainingAmountForRow(anyO);
+
             const st = String(o.status || "").toUpperCase();
+            const stBadge = safeBadgeForStatus(st);
 
-            const f = normFulfillment(o as AnyObj);
+            const f = normFulfillment(anyO);
             const fBadge = fulfillmentLabel(f);
 
             return (
               <tr key={o.id}>
-                <td>
+                <td style={{ whiteSpace: "nowrap" }}>
                   <button
                     className="btn btn-link link-dark p-0"
                     onClick={() => onView(o.id)}
@@ -113,16 +123,16 @@ export default function OrdersTable(props: {
                   )}
                 </td>
 
-                <td>{dateTime(o.created_at)}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{dateTime(o.created_at)}</td>
 
                 <td className="text-truncate" style={{ maxWidth: 220 }}>
                   {clientName}
                 </td>
 
-                <td>
+                <td style={{ minWidth: 170 }}>
                   <div className="d-flex flex-column">
-                    <small className="text-muted">{phone || "—"}</small>
-                    <div className="d-flex gap-1 mt-1">
+                    <small className="text-muted text-break">{phone || "—"}</small>
+                    <div className="d-flex gap-1 mt-1 flex-wrap">
                       <button
                         type="button"
                         className="btn btn-sm btn-outline-secondary"
@@ -140,7 +150,7 @@ export default function OrdersTable(props: {
                 </td>
 
                 <td>
-                  <span className={`badge ${BADGE[o.status]}`}>{o.status}</span>
+                  <span className={`badge ${stBadge}`}>{st || "—"}</span>
                 </td>
 
                 <td>
@@ -151,7 +161,7 @@ export default function OrdersTable(props: {
                   <span className={`badge ${payBadge.cls}`}>{payBadge.text}</span>
                 </td>
 
-                <td className="text-end">
+                <td className="text-end" style={{ whiteSpace: "nowrap" }}>
                   {remaining == null ? (
                     <span className="text-muted">—</span>
                   ) : (
@@ -159,13 +169,15 @@ export default function OrdersTable(props: {
                   )}
                 </td>
 
-                {/* ✅ CA produits */}
-                <td className="text-end">{mad(ca)}</td>
+                <td className="text-end" style={{ whiteSpace: "nowrap" }}>
+                  {mad(ca)}
+                </td>
 
-                {/* ✅ Livraison/Expédition séparée */}
-                <td className="text-end">{shippingFee > 0 ? mad(shippingFee) : <span className="text-muted">—</span>}</td>
+                <td className="text-end" style={{ whiteSpace: "nowrap" }}>
+                  {shippingFee > 0 ? mad(shippingFee) : <span className="text-muted">—</span>}
+                </td>
 
-                <td className="text-end">
+                <td className="text-end" style={{ whiteSpace: "nowrap" }}>
                   {st === "DONE" ? (
                     <span className="fw-semibold">{mad(duuCommission)}</span>
                   ) : (
@@ -173,7 +185,7 @@ export default function OrdersTable(props: {
                   )}
                 </td>
 
-                <td className="text-end">
+                <td className="text-end" style={{ whiteSpace: "nowrap" }}>
                   <div className="btn-group">
                     <button className="btn btn-sm btn-outline-secondary" onClick={() => onView(o.id)}>
                       Voir
@@ -182,7 +194,7 @@ export default function OrdersTable(props: {
                       Modifier
                     </button>
 
-                    {o.status !== "CANCELLED" && o.status !== "DONE" && (
+                    {st !== "CANCELLED" && st !== "DONE" && (
                       <button className="btn btn-sm btn-outline-danger" onClick={() => onCancel(o.id)}>
                         Annuler
                       </button>

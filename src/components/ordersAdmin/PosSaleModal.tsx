@@ -1,10 +1,11 @@
 // src/components/ordersAdmin/PosSaleModal.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listProducts, type Product } from "../../services/products";
+import { listProducts, type Product, isProductActive } from "../../services/products";
 import {
   createOrder,
   updateOrderStatus,
   type OrderStatus,
+  type PaymentStatus,
 } from "../../services/orders";
 
 type AnyObj = Record<string, any>;
@@ -43,8 +44,8 @@ function computeRemaining(total: number, paid: number) {
   return Math.max(0, t - p);
 }
 
-type PayStatus = "PAID" | "UNPAID" | "PARTIAL";
-function computePayStatus(total: number, paid: number): PayStatus {
+/** ✅ Align backend orders.ts: PaymentStatus = "PAID" | "UNPAID" | "PARTIAL" */
+function computePayStatus(total: number, paid: number): PaymentStatus {
   const t = Math.max(0, numSafe(total));
   const p = Math.max(0, Math.min(numSafe(paid), t));
   if (t <= 0 || p <= 0) return "UNPAID";
@@ -96,9 +97,16 @@ function hasPromo(p: Product): boolean {
 /**
  * ✅ POS / Vente sur place
  * - Charge tous les produits (pagination)
+ * - Option: inclure produits cachés (is_active=0)
  * - Panier + qty
  * - Saisie paiement
- * - Crée une commande PICKUP (fee=0) + payment
+ * - Crée une commande "sur place"
+ *
+ * ✅ Align backend orders.ts:
+ * - delivery.mode: "SIMPLE" (PICKUP n'existe pas dans ton type backend)
+ * - fee: 0
+ * - payment.status: "PAID" | "UNPAID" | "PARTIAL"
+ * - payment.paid_amount
  */
 export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   // client (facultatif)
@@ -115,6 +123,9 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [search, setSearch] = useState("");
   const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
   const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">("NAME");
+
+  // ✅ produits cachés
+  const [includeHidden, setIncludeHidden] = useState(false);
 
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchErr, setSearchErr] = useState<string | null>(null);
@@ -145,15 +156,20 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setSearch("");
     setPromoFilter("ALL");
     setSortBy("NAME");
+    setIncludeHidden(false);
+
     setSearchErr(null);
     setSearchLoading(false);
     setResults([]);
+
     setBasket([]);
     setAmountPaid(0);
+
     setCFirst("");
     setCLast("");
     setCPhone("");
     setMarkDone(true);
+
     setSaving(false);
   }, []);
 
@@ -176,7 +192,9 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
   function setQty(pId: number, qty: number) {
     setBasket((prev) =>
-      prev.map((x) => (x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x)),
+      prev
+        .map((x) => (x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x))
+        .filter((x) => x.qty > 0),
     );
   }
 
@@ -208,7 +226,14 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       let totalExpected = Infinity;
 
       while (!ac.signal.aborted) {
-        const res = await listProducts({ page, pageSize: pageSizeAll } as any);
+        // ✅ listProducts(...) a "onlyActive" (par défaut true)
+        // -> includeHidden = true => onlyActive=false (si backend support)
+        const res = await listProducts({
+          page,
+          pageSize: pageSizeAll,
+          onlyActive: includeHidden ? false : true,
+        } as any);
+
         if (ac.signal.aborted) return;
 
         const batch = (res.items || []) as Product[];
@@ -226,16 +251,22 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
       if (ac.signal.aborted) return;
 
+      // de-dupe
       const map = new Map<number, Product>();
       all.forEach((p) => map.set(p.id, p));
-      setResults(Array.from(map.values()));
+
+      const merged = Array.from(map.values());
+
+      // ✅ sécurité: si backend ignore onlyActive=false, on applique le filtre côté front
+      const finalList = includeHidden ? merged : merged.filter((p) => isProductActive(p));
+      setResults(finalList);
     } catch (e: any) {
       if (ac.signal.aborted) return;
       setSearchErr(e?.message || "Impossible de charger les produits.");
     } finally {
       if (!ac.signal.aborted) setSearchLoading(false);
     }
-  }, [open]);
+  }, [open, includeHidden]);
 
   useEffect(() => {
     if (!open) return;
@@ -284,28 +315,38 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       return {
         product_id: b.product.id,
         qty: b.qty,
+        // UI-only (pas grave, backend normalizer accepte)
         name: b.product.name,
         price: Number(unit || 0),
       };
     });
 
     const payload = {
-      contact: { first_name: cFirst || "", last_name: cLast || "", phone: cPhone || "" },
+      contact:
+        cFirst || cLast || cPhone
+          ? { first_name: cFirst || "", last_name: cLast || "", phone: cPhone || "" }
+          : {},
+
       address: { ville: "Casablanca", commune: "Sur place", quartier: "Boutique", gps: null },
-      delivery: { mode: "PICKUP" as const, fee: 0, currency: "MAD" as const },
+
+      // ✅ align backend: PAS "PICKUP" ici
+      delivery: { mode: "SIMPLE" as const, fee: 0, currency: "MAD" as const },
+
       items: itemsPayload,
+
       totals: {
-        items_count: itemsPayload.reduce((s, it) => s + it.qty, 0),
+        items_count: itemsPayload.reduce((s, it) => s + (Number(it.qty) || 0), 0),
         items_amount: total,
         delivery_fee: 0,
         amount: total,
         currency: "MAD",
       },
+
       payment: {
         method: "CASH",
         note: `Vente sur place | ${status} | payé=${paid} | reste=${remain}`,
         paid_amount: paid,
-        status,
+        status, // ✅ PaymentStatus
       },
     };
 
@@ -318,7 +359,6 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       }
 
       if (onCreated) await onCreated();
-
       onClose();
     } catch (e: any) {
       alert(e?.message || "Erreur lors de la création.");
@@ -334,7 +374,10 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       <div className="modal-dialog modal-xl" role="document">
         <div className="modal-content pos-modal">
           <div className="modal-header pos-sticky-header">
-            <h5 className="modal-title">Vente sur place</h5>
+            <div className="d-flex flex-column">
+              <h5 className="modal-title mb-0">Vente sur place</h5>
+              <div className="text-muted small">Commande “sur place” (livraison = 0)</div>
+            </div>
             <button className="btn-close" onClick={onClose} disabled={saving} />
           </div>
 
@@ -368,6 +411,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           disabled={saving}
                         />
                       </div>
+
                       <div className="col-12 col-md-3">
                         <select
                           className="form-select"
@@ -380,6 +424,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           <option value="NO_PROMO">Sans promo</option>
                         </select>
                       </div>
+
                       <div className="col-12 col-md-3">
                         <select
                           className="form-select"
@@ -391,6 +436,22 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           <option value="PRICE_ASC">Prix ↑</option>
                           <option value="PRICE_DESC">Prix ↓</option>
                         </select>
+                      </div>
+
+                      <div className="col-12">
+                        <div className="form-check">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            id="posIncludeHidden"
+                            checked={includeHidden}
+                            onChange={(e) => setIncludeHidden(e.target.checked)}
+                            disabled={saving}
+                          />
+                          <label className="form-check-label" htmlFor="posIncludeHidden">
+                            Inclure les <strong>produits cachés</strong> (inactifs)
+                          </label>
+                        </div>
                       </div>
                     </div>
 
@@ -405,15 +466,17 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                             const unit = getProductUnitPrice(p);
                             const promo = hasPromo(p);
                             const base = Number((p as AnyObj)?.price ?? unit);
+                            const active = isProductActive(p);
 
                             return (
                               <div
                                 key={p.id}
                                 className="d-flex justify-content-between align-items-center border rounded p-2"
                               >
-                                <div className="text-truncate" style={{ maxWidth: 420 }}>
+                                <div className="text-truncate" style={{ maxWidth: 460 }}>
                                   <div className="fw-semibold text-truncate d-flex align-items-center gap-2">
                                     <span className="text-truncate">{p.name}</span>
+                                    {!active ? <span className="badge bg-dark">Caché</span> : null}
                                     {promo ? <span className="badge bg-danger">Promo</span> : null}
                                   </div>
 
@@ -530,9 +593,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                                   style={{ width: 80 }}
                                   min={1}
                                   value={ln.qty}
-                                  onChange={(e) =>
-                                    setQty(ln.product.id, Math.max(1, Number(e.target.value || 1)))
-                                  }
+                                  onChange={(e) => setQty(ln.product.id, Math.max(1, Number(e.target.value || 1)))}
                                   disabled={saving}
                                 />
                                 <button

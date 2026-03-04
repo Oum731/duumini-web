@@ -15,12 +15,23 @@ export default function EditStatusModal(props: {
   if (!open) return null;
 
   return (
-    <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.2)" }}>
-      <div className="modal-dialog" role="document">
+    <div
+      className="modal d-block"
+      tabIndex={-1}
+      role="dialog"
+      aria-modal="true"
+      style={{ background: "rgba(0,0,0,.35)" }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="modal-dialog modal-dialog-centered" role="document">
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title">{title}</h5>
-            <button className="btn-close" onClick={onClose} />
+            <h5 className="modal-title text-truncate" style={{ maxWidth: "80%" }}>
+              {title}
+            </h5>
+            <button type="button" className="btn-close" onClick={onClose} disabled={saving} />
           </div>
 
           <div className="modal-body">
@@ -37,6 +48,11 @@ export default function EditStatusModal(props: {
                 </option>
               ))}
             </select>
+
+            <div className="text-muted small mt-2" style={{ lineHeight: 1.35 }}>
+              Astuce : <span className="fw-semibold">DONE</span> signifie livrée/terminée.{" "}
+              <span className="fw-semibold">CANCELLED</span> annule définitivement la commande.
+            </div>
           </div>
 
           <div className="modal-footer">

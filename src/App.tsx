@@ -72,6 +72,8 @@ import ManageProductsPage from "./pages/products/ManageProductsPage";
 import RequireAuth from "./components/RequireCaps";
 import { useViewer } from "./hooks/useViewer";
 import PublicReceiptPage from "./pages/PublicReceiptPage";
+import ReportSalesViewPage from "./pages/admin/ReportSalesViewPage";
+import ReportsSalesPage from "./pages/admin/ReportsSalesPage";
 
 function Page({ title }: { title: string }) {
   return (
@@ -423,6 +425,14 @@ export default function App() {
                     <Route
                       path="promos"
                       element={<Navigate to="/admin/promotions" replace />}
+                    />
+                    <Route
+                      path="/admin/reports/sales"
+                      element={<ReportsSalesPage />}
+                    />
+                    <Route
+                      path="/admin/reports/sales/:id"
+                      element={<ReportSalesViewPage />}
                     />
                   </Route>
                 </Route>
