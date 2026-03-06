@@ -1,7 +1,7 @@
 // src/pages/AfricanMarket.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import CategoriesMenu from "../components/CategoriesMenu";
 import { listManageProducts, listProducts, type Product } from "../services/products";
@@ -15,14 +15,15 @@ function GridSkeleton() {
     <div className="row g-3">
       {Array.from({ length: 12 }).map((_, i) => (
         <div className="col-6 col-sm-4 col-md-3 col-lg-2" key={i}>
-          <div className="card h-100 border-0">
+          <div className="card h-100 border-0 shadow-sm am-skeleton-card">
             <div
               className="placeholder w-100"
-              style={{ aspectRatio: "1 / 1", borderRadius: ".5rem .5rem 0 0" }}
+              style={{ aspectRatio: "1 / 1", borderRadius: "18px 18px 0 0" }}
             />
             <div className="card-body">
               <div className="placeholder col-8 mb-2" />
-              <div className="placeholder col-5" />
+              <div className="placeholder col-6 mb-2" />
+              <div className="placeholder col-4" />
             </div>
           </div>
         </div>
@@ -383,7 +384,17 @@ export default function AfricanMarket() {
   const title = useMemo(() => {
     if (selectedSubCategory) return (selectedSubCategory as any).name || "Produits";
     if (selectedCategory) return (selectedCategory as any).name || "Produits";
-    return "Produits";
+    return "African Market";
+  }, [selectedCategory, selectedSubCategory]);
+
+  const subtitle = useMemo(() => {
+    if (selectedSubCategory) {
+      return "Découvre une sélection ciblée de produits de cette sous-catégorie.";
+    }
+    if (selectedCategory) {
+      return "Explore les meilleurs produits de cette catégorie avec livraison simple et rapide.";
+    }
+    return "Épicerie, boissons, cosmétiques, accessoires et bien plus encore.";
   }, [selectedCategory, selectedSubCategory]);
 
   const activeCategoryId = (selectedCategory as any)?.id ?? null;
@@ -395,11 +406,18 @@ export default function AfricanMarket() {
   return (
     <section className="container-xxl py-4">
       <style>{`
+        .am-skeleton-card{
+          border-radius: 18px;
+          overflow: hidden;
+          border: 1px solid rgba(0,0,0,.06);
+        }
+
         .btn-duu{
           background: var(--duu-yellow);
           color: #1f1f1f;
           border: none;
-          font-weight: 800;
+          font-weight: 900;
+          border-radius: 14px;
         }
         .btn-duu:hover{ filter: brightness(.96); }
         .btn-duu:focus,
@@ -408,20 +426,85 @@ export default function AfricanMarket() {
           box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
         }
 
+        .am-hero{
+          border-radius: 20px;
+          border: 1px solid rgba(0,0,0,.08);
+          background:
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.08), transparent 55%),
+            #fff;
+          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+          padding: 16px;
+        }
+
+        .am-kicker{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(var(--duu-yellow-rgb), .20);
+          border: 1px solid rgba(0,0,0,.08);
+          font-weight: 900;
+          color: var(--duu-black);
+          font-size: .82rem;
+        }
+
+        .am-title{
+          color: var(--duu-black);
+          font-weight: 950;
+          letter-spacing: -.02em;
+        }
+
+        .am-subtitle{
+          color: rgba(0,0,0,.62);
+          font-weight: 600;
+          line-height: 1.45;
+        }
+
+        .am-toolbar{
+          margin-top: 14px;
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+
+        .am-filter-wrap{
+          display:flex;
+          align-items:center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .am-filter-icon{
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          border: 1px solid rgba(0,0,0,.10);
+          background: rgba(255,255,255,.94);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          flex: 0 0 auto;
+        }
+
         .duu-filter-btn .btn,
         .duu-filter-btn .dropdown > .btn,
         .duu-filter-btn > .btn{
-          border-color: rgba(0,0,0,.22) !important;
+          border-color: rgba(0,0,0,.16) !important;
           color: var(--duu-black) !important;
-          background: rgba(255,255,255,.92) !important;
-          font-weight: 800;
+          background: rgba(255,255,255,.96) !important;
+          font-weight: 900;
+          border-radius: 14px !important;
+          min-height: 42px;
+          padding: 9px 12px !important;
         }
         .duu-filter-btn .btn:hover,
         .duu-filter-btn .dropdown > .btn:hover,
         .duu-filter-btn > .btn:hover{
-          border-color: rgba(0,0,0,.32) !important;
+          border-color: rgba(0,0,0,.28) !important;
           color: var(--duu-red) !important;
-          background: rgba(255,255,255,.98) !important;
+          background: rgba(255,255,255,.99) !important;
         }
         .duu-filter-btn .btn:focus,
         .duu-filter-btn .dropdown > .btn:focus,
@@ -431,94 +514,179 @@ export default function AfricanMarket() {
         .duu-filter-btn > .btn:focus-visible{
           outline: none !important;
           box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
-          background: rgba(255,255,255,.98) !important;
-          color: var(--duu-black) !important;
-        }
-        .duu-filter-btn .btn:active,
-        .duu-filter-btn .dropdown > .btn:active,
-        .duu-filter-btn > .btn:active{
-          transform: translateY(0);
-          background: rgba(var(--duu-yellow-rgb), .16) !important;
+          background: rgba(255,255,255,.99) !important;
           color: var(--duu-black) !important;
         }
 
+        .am-search{
+          position: relative;
+        }
+        .am-search .form-control{
+          min-height: 46px;
+          border-radius: 14px;
+          padding-left: 42px;
+          border-color: rgba(0,0,0,.10);
+        }
+        .am-search .form-control:focus{
+          border-color: rgba(var(--duu-yellow-rgb), .55);
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .25);
+        }
+        .am-search-icon{
+          position: absolute;
+          left: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: rgba(0,0,0,.45);
+          pointer-events: none;
+          z-index: 2;
+        }
+        .am-clear-btn{
+          border-radius: 12px !important;
+          font-weight: 900 !important;
+        }
+
+        .am-chip-row{
+          display:flex;
+          flex-wrap:wrap;
+          align-items:center;
+          gap: 10px;
+          margin-top: 14px;
+        }
+
         .filter-chip{
-          border: 1px solid rgba(0,0,0,.12);
+          border: 1px solid rgba(0,0,0,.10);
           border-radius: 999px;
-          padding: 6px 10px;
-          background: rgba(255,255,255,.75);
+          padding: 7px 11px;
+          background: rgba(255,255,255,.88);
           font-weight: 800;
           display:inline-flex;
           align-items:center;
           gap: 8px;
+          color: var(--duu-black);
+        }
+
+        .am-soft-btn{
+          border: 1px solid rgba(0,0,0,.12);
+          background: #fff;
+          border-radius: 12px;
+          font-weight: 800;
+        }
+
+        .am-subcats{
+          display:flex;
+          flex-wrap:wrap;
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .am-subcats .btn{
+          border-radius: 999px;
+          font-weight: 800;
+          padding: 7px 12px;
+        }
+
+        .am-topline{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap: 12px;
+          margin: 18px 0 12px;
+        }
+
+        .am-count{
+          color: rgba(0,0,0,.56);
+          font-size: .9rem;
+          font-weight: 700;
         }
 
         .promo-wrap{
           border: 1px solid rgba(0,0,0,.08);
-          border-radius: 18px;
+          border-radius: 20px;
           background:
-            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.18), transparent 60%),
-            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.09), transparent 55%),
             #fff;
           box-shadow: 0 10px 24px rgba(0,0,0,.05);
           overflow: hidden;
         }
         .promo-head{
-          padding: 12px 14px;
+          padding: 14px 16px;
           border-bottom: 1px solid rgba(0,0,0,.06);
           display:flex;
           align-items:center;
           justify-content:space-between;
           gap: 10px;
-          font-weight: 900;
+        }
+        .promo-title{
+          font-weight: 950;
           color: var(--duu-black);
+          margin: 0;
+        }
+        .promo-sub{
+          color: rgba(0,0,0,.56);
+          font-size: .88rem;
+          margin-top: 2px;
         }
         .promo-badge{
           display:inline-flex;
           align-items:center;
           gap: 8px;
-          padding: 6px 10px;
+          padding: 7px 11px;
           border-radius: 999px;
           background: rgba(var(--duu-red-rgb), .08);
           border: 1px solid rgba(var(--duu-red-rgb), .20);
           font-weight: 900;
+          color: var(--duu-red);
+          white-space: nowrap;
+        }
+
+        .am-pagination{
+          margin-top: 18px;
+          display:flex;
+          justify-content:flex-end;
+          align-items:center;
+        }
+        .am-pagination .btn-group .btn{
+          min-width: 42px;
+          border-radius: 12px !important;
+          font-weight: 900;
+        }
+
+        @media (min-width: 768px){
+          .am-toolbar{
+            grid-template-columns: minmax(250px, auto) minmax(280px, 420px);
+            justify-content: space-between;
+            align-items: center;
+          }
         }
       `}</style>
 
-      <div className="d-flex flex-column gap-2 mb-3">
-        <div className="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
-          <div className="min-w-0">
-            <h1 className="h4 mb-0" style={{ color: "var(--duu-black)" }}>
-              {title}
-            </h1>
+      <div className="am-hero">
+        <div className="d-flex flex-column gap-2">
+          <div className="am-kicker">🛒 DUUMINI Market</div>
 
-            {(viewer.role === "ADMIN" ||
-              viewer.role === "VENDEUR" ||
-              viewer.role === "RESTAURANT" ||
-              viewer.role === "FOURNISSEUR") && (
-              <div className="small text-muted mt-1">
-                {viewer.role === "ADMIN"
-                  ? "Mode admin : catalogue MARKET (manage)."
-                  : viewer.actingShopId
-                  ? `Mode pro : produits MARKET de la boutique #${viewer.actingShopId}.`
-                  : "Mode pro : aucune boutique active."}
-              </div>
-            )}
+          <div className="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3">
+            <div className="min-w-0">
+              <h1 className="h3 mb-1 am-title">{title}</h1>
+              <div className="am-subtitle">{subtitle}</div>
+
+              {(viewer.role === "ADMIN" ||
+                viewer.role === "VENDEUR" ||
+                viewer.role === "RESTAURANT" ||
+                viewer.role === "FOURNISSEUR") && (
+                <div className="small text-muted mt-2">
+                  {viewer.role === "ADMIN"
+                    ? "Mode admin : catalogue MARKET (manage)."
+                    : viewer.actingShopId
+                    ? `Mode pro : produits MARKET de la boutique #${viewer.actingShopId}.`
+                    : "Mode pro : aucune boutique active."}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
-            <div className="d-flex align-items-center gap-2 flex-shrink-0 duu-filter-btn">
-              <span
-                className="d-inline-flex align-items-center justify-content-center"
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,.10)",
-                  background: "rgba(255,255,255,.92)",
-                }}
-                aria-hidden="true"
-              >
+          <div className="am-toolbar">
+            <div className="am-filter-wrap duu-filter-btn">
+              <span className="am-filter-icon" aria-hidden="true">
                 <SlidersHorizontal size={18} />
               </span>
 
@@ -542,7 +710,11 @@ export default function AfricanMarket() {
               />
             </div>
 
-            <div className="input-group" style={{ maxWidth: 420 }}>
+            <div className="input-group am-search">
+              <span className="am-search-icon">
+                <Search size={16} />
+              </span>
+
               <input
                 className="form-control"
                 placeholder="Rechercher un produit…"
@@ -554,7 +726,7 @@ export default function AfricanMarket() {
                 aria-label="Rechercher"
               />
               <button
-                className="btn btn-duu"
+                className="btn btn-duu am-clear-btn"
                 onClick={() => {
                   setQ("");
                   setPage(1);
@@ -565,75 +737,83 @@ export default function AfricanMarket() {
               </button>
             </div>
           </div>
+
+          {showFiltersBar && (
+            <div className="am-chip-row">
+              {selectedCategory && (
+                <span className="filter-chip">
+                  <span style={{ opacity: 0.7 }}>📦</span>
+                  {(selectedCategory as any).name}
+                </span>
+              )}
+              {selectedSubCategory && (
+                <span className="filter-chip">
+                  <span style={{ opacity: 0.7 }}>🏷️</span>
+                  {(selectedSubCategory as any).name}
+                </span>
+              )}
+
+              <button
+                type="button"
+                className="btn btn-sm am-soft-btn"
+                onClick={() => {
+                  setPage(1);
+                  navigate("/african-market");
+                }}
+              >
+                Tout afficher
+              </button>
+            </div>
+          )}
+
+          {selectedCategory && (
+            <div className="am-subcats">
+              <button
+                type="button"
+                className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
+                onClick={() => {
+                  setPage(1);
+                  navigate(`/african-market/${(selectedCategory as any).slug}`);
+                }}
+              >
+                Tout
+              </button>
+
+              {(subsByCatId[(selectedCategory as any).id] || []).map((s) => {
+                const active = (selectedSubCategory as any)?.id === (s as any).id;
+                return (
+                  <button
+                    key={(s as any).id}
+                    type="button"
+                    className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
+                    onClick={() => {
+                      setPage(1);
+                      navigate(`/african-market/${(selectedCategory as any).slug}/${(s as any).slug}`);
+                    }}
+                  >
+                    {(s as any).name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-
-        {showFiltersBar && (
-          <div className="d-flex flex-wrap align-items-center gap-2">
-            {selectedCategory && (
-              <span className="filter-chip">
-                <span style={{ opacity: 0.7 }}>📦</span>
-                {(selectedCategory as any).name}
-              </span>
-            )}
-            {selectedSubCategory && (
-              <span className="filter-chip">
-                <span style={{ opacity: 0.7 }}>🏷️</span>
-                {(selectedSubCategory as any).name}
-              </span>
-            )}
-
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary"
-              onClick={() => {
-                setPage(1);
-                navigate("/african-market");
-              }}
-            >
-              Tout afficher
-            </button>
-          </div>
-        )}
-
-        {selectedCategory && (
-          <div className="d-flex flex-wrap align-items-center gap-2">
-            <button
-              type="button"
-              className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
-              onClick={() => {
-                setPage(1);
-                navigate(`/african-market/${(selectedCategory as any).slug}`);
-              }}
-            >
-              Tout
-            </button>
-
-            {(subsByCatId[(selectedCategory as any).id] || []).map((s) => {
-              const active = (selectedSubCategory as any)?.id === (s as any).id;
-              return (
-                <button
-                  key={(s as any).id}
-                  type="button"
-                  className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
-                  onClick={() => {
-                    setPage(1);
-                    navigate(`/african-market/${(selectedCategory as any).slug}/${(s as any).slug}`);
-                  }}
-                >
-                  {(s as any).name}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {error && (
-        <div className="alert alert-danger d-flex justify-content-between align-items-center">
+        <div className="alert alert-danger d-flex justify-content-between align-items-center mt-3">
           <span>{error}</span>
           <button className="btn btn-duu btn-sm" onClick={refresh}>
             Réessayer
           </button>
+        </div>
+      )}
+
+      {!loadingAny && !error && (
+        <div className="am-topline">
+          <div className="am-count">
+            {promoItems.length + normalItems.length} produit(s) affiché(s)
+          </div>
         </div>
       )}
 
@@ -642,10 +822,13 @@ export default function AfricanMarket() {
       ) : (
         <>
           {promoItems.length > 0 && (
-            <div className="promo-wrap mb-3">
+            <div className="promo-wrap mb-4">
               <div className="promo-head">
-                <span>Promos du moment</span>
-                <span className="promo-badge">🔥 Promo</span>
+                <div>
+                  <h2 className="h6 promo-title">Promos du moment</h2>
+                  <div className="promo-sub">Les meilleures offres disponibles en ce moment.</div>
+                </div>
+                <span className="promo-badge">🔥 {promoItems.length}</span>
               </div>
 
               <div className="p-3">
@@ -675,7 +858,7 @@ export default function AfricanMarket() {
       )}
 
       {!loadingAny && pages > 1 && (
-        <div className="d-flex justify-content-end align-items-center mt-3">
+        <div className="am-pagination">
           <div className="btn-group">
             <button
               className="btn btn-sm btn-outline-dark"

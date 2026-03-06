@@ -28,7 +28,9 @@ function moneyMAD(n?: number | null) {
 
 /* ===== Offline banner ===== */
 function OfflineBanner() {
-  const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [online, setOnline] = useState(
+    typeof navigator !== "undefined" ? navigator.onLine : true,
+  );
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -42,7 +44,11 @@ function OfflineBanner() {
   }, []);
 
   if (online) return null;
-  return <div className="alert alert-warning rounded-0 text-center small m-0">Vous êtes hors-ligne.</div>;
+  return (
+    <div className="alert alert-warning rounded-0 text-center small m-0">
+      Vous êtes hors-ligne.
+    </div>
+  );
 }
 
 /* ===== Mini product card (carrousel) ===== */
@@ -63,12 +69,12 @@ function MiniCard({
   return (
     <Link
       to={href}
-      className="text-reset text-decoration-none d-inline-block"
-      style={{ width: 176 }}
+      className="text-reset text-decoration-none d-inline-block home-mini-link"
+      style={{ width: 184 }}
       title={hint ? `${name} — Voir toute la catégorie` : name}
     >
-      <div className="card border-0 shadow-sm overflow-hidden" style={{ borderRadius: 16 }}>
-        <div style={{ height: 128 }} className="bg-light position-relative">
+      <div className="card border-0 shadow-sm overflow-hidden home-mini-card">
+        <div style={{ height: 136 }} className="bg-light position-relative">
           {image ? (
             <img
               src={imgUrl(image)}
@@ -83,20 +89,17 @@ function MiniCard({
             </div>
           )}
 
-          <span
-            className="position-absolute top-0 end-0 m-2 badge"
-            style={{ background: "rgba(17,17,17,.72)", color: "#fff" }}
-          >
-            Voir tout
+          <span className="home-mini-badge position-absolute top-0 end-0 m-2">
+            Voir
           </span>
         </div>
 
-        <div className="card-body p-2">
+        <div className="card-body p-2 p-sm-3">
           <div className="small fw-semibold text-truncate">{name}</div>
-          <div className="small" style={{ color: "var(--duu-black)" }}>
-            {moneyMAD(price)}
-          </div>
-          {hint ? <div className="small text-muted text-truncate">{hint}</div> : null}
+          <div className="small home-mini-price">{moneyMAD(price)}</div>
+          {hint ? (
+            <div className="small text-muted text-truncate">{hint}</div>
+          ) : null}
         </div>
       </div>
     </Link>
@@ -174,7 +177,11 @@ function AutoCarousel({
       >
         {items.map((p) => (
           <div key={(p as any).id} style={{ scrollSnapAlign: "start" }}>
-            <MiniCard product={p} href={itemHref(p)} hint={itemHint ? itemHint(p) : null} />
+            <MiniCard
+              product={p}
+              href={itemHref(p)}
+              hint={itemHint ? itemHint(p) : null}
+            />
           </div>
         ))}
       </div>
@@ -268,7 +275,11 @@ export default function Home() {
   const fashionQ = results[4];
 
   const loading =
-    catsQ.isLoading || subsQ.isLoading || foodQ.isLoading || marketQ.isLoading || fashionQ.isLoading;
+    catsQ.isLoading ||
+    subsQ.isLoading ||
+    foodQ.isLoading ||
+    marketQ.isLoading ||
+    fashionQ.isLoading;
 
   const err =
     (catsQ.error as any)?.message ||
@@ -284,7 +295,9 @@ export default function Home() {
   const fashion = (fashionQ.data?.items || []) as Product[];
 
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
-  const [activeSubCategoryId, setActiveSubCategoryId] = useState<number | null>(null);
+  const [activeSubCategoryId, setActiveSubCategoryId] = useState<number | null>(
+    null,
+  );
 
   const categoriesById = useMemo(() => {
     const m: Record<number, Category> = {};
@@ -322,7 +335,9 @@ export default function Home() {
     }
 
     const arr = Array.from(set);
-    arr.sort((a, b) => (activeMap[b]?.length || 0) - (activeMap[a]?.length || 0));
+    arr.sort(
+      (a, b) => (activeMap[b]?.length || 0) - (activeMap[a]?.length || 0),
+    );
     return arr;
   }, [activeMap]);
 
@@ -343,6 +358,23 @@ export default function Home() {
     return name ? `Catégorie: ${name}` : null;
   }
 
+  const heroTitle = useMemo(() => {
+    if (activeVertical === "FOOD")
+      return "Découvre les meilleurs produits Food";
+    if (activeVertical === "MARKET") return "";
+    return "Trouve les nouveautés Fashion";
+  }, [activeVertical]);
+
+  const heroSubtitle = useMemo(() => {
+    if (activeVertical === "FOOD") {
+      return "Plats, sauces, boissons et spécialités africaines à portée de main.";
+    }
+    if (activeVertical === "MARKET") {
+      return "";
+    }
+    return "Mode, tailles, couleurs et tendances pour tous les styles.";
+  }, [activeVertical]);
+
   return (
     <div className="pb-4" style={{ background: "#f8f9fa" }}>
       <style>{`
@@ -354,41 +386,61 @@ export default function Home() {
           min-height: 100%;
         }
 
+        .home-hero{
+          border-radius: 22px;
+          border: 1px solid rgba(0,0,0,.08);
+          background:
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
+            #fff;
+          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+          padding: 18px;
+        }
+
+        .home-kicker{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(var(--duu-yellow-rgb), .20);
+          border: 1px solid rgba(0,0,0,.08);
+          font-weight: 900;
+          color: var(--duu-black);
+          font-size: .82rem;
+        }
+
+        .home-title{
+          color: var(--duu-black);
+          font-weight: 950;
+          letter-spacing: -.02em;
+        }
+
+        .home-subtitle{
+          color: rgba(0,0,0,.62);
+          font-weight: 600;
+          line-height: 1.45;
+        }
+
         .seg{
-          display:flex; gap:8px; flex-wrap:wrap; align-items:center;
-          margin-top: 10px;
+          display:flex;
+          gap:10px;
+          flex-wrap:wrap;
+          align-items:center;
+          margin-top: 14px;
         }
         .seg .btn{
           border-radius: 999px;
           font-weight: 900;
-          padding: 8px 12px;
+          padding: 8px 14px;
         }
-
-        .sec{
-          border-radius: 18px;
-          border: 1px solid rgba(0,0,0,.08);
-          background: #fff;
-          overflow: hidden;
-          box-shadow: 0 10px 26px rgba(0,0,0,.05);
-        }
-        .sec-head{
-          padding: 12px 14px;
-          border-bottom: 1px solid rgba(0,0,0,.06);
-          display:flex;
-          align-items:center;
-          justify-content:space-between;
-          gap: 10px;
-        }
-        .head-yellow{ background: linear-gradient(90deg, rgba(var(--duu-yellow-rgb),.55), rgba(var(--duu-yellow-rgb),.10)); }
-        .head-red{ background: linear-gradient(90deg, rgba(var(--duu-red-rgb),.18), rgba(var(--duu-red-rgb),.06)); }
-        .head-dark{ background: linear-gradient(90deg, rgba(17,17,17,.12), rgba(17,17,17,.04)); }
 
         .soft-action{
           border: 1px solid rgba(0,0,0,.12);
           border-radius: 999px;
-          padding: 6px 10px;
+          padding: 8px 12px;
           font-weight: 900;
-          background: rgba(255,255,255,.65);
+          background: rgba(255,255,255,.75);
           text-decoration: none;
           color: var(--duu-black);
           white-space: nowrap;
@@ -396,31 +448,35 @@ export default function Home() {
           align-items:center;
           gap: 6px;
         }
-        .soft-action:hover{ color: var(--duu-red); border-color: rgba(0,0,0,.20); }
+        .soft-action:hover{
+          color: var(--duu-red);
+          border-color: rgba(0,0,0,.20);
+        }
 
-        .filter-bar{
+        .home-toolbar{
+          margin-top: 14px;
           display:flex;
           align-items:center;
           justify-content:flex-end;
-          margin-top: 10px;
         }
 
         .duu-filter-btn .btn,
         .duu-filter-btn .dropdown > .btn,
         .duu-filter-btn > .btn{
-          border-color: rgba(0,0,0,.22) !important;
+          border-color: rgba(0,0,0,.16) !important;
           color: var(--duu-black) !important;
-          background: rgba(255,255,255,.92) !important;
+          background: rgba(255,255,255,.96) !important;
           font-weight: 900;
           border-radius: 14px !important;
-          padding: 10px 12px !important;
+          min-height: 42px;
+          padding: 9px 12px !important;
         }
         .duu-filter-btn .btn:hover,
         .duu-filter-btn .dropdown > .btn:hover,
         .duu-filter-btn > .btn:hover{
-          border-color: rgba(0,0,0,.32) !important;
+          border-color: rgba(0,0,0,.28) !important;
           color: var(--duu-red) !important;
-          background: rgba(255,255,255,.98) !important;
+          background: rgba(255,255,255,.99) !important;
         }
         .duu-filter-btn .btn:focus,
         .duu-filter-btn .dropdown > .btn:focus,
@@ -430,7 +486,7 @@ export default function Home() {
         .duu-filter-btn > .btn:focus-visible{
           outline: none !important;
           box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb),.35) !important;
-          background: rgba(255,255,255,.98) !important;
+          background: rgba(255,255,255,.99) !important;
           color: var(--duu-black) !important;
         }
         .duu-filter-btn .btn:active,
@@ -445,10 +501,77 @@ export default function Home() {
           height: 42px;
           border-radius: 14px;
           border: 1px solid rgba(0,0,0,.10);
-          background: rgba(255,255,255,.92);
+          background: rgba(255,255,255,.94);
           display:flex;
           align-items:center;
           justify-content:center;
+        }
+
+        .home-mini-link{
+          transition: transform .18s ease;
+        }
+        .home-mini-link:hover{
+          transform: translateY(-2px);
+        }
+        .home-mini-card{
+          border-radius: 18px;
+          border: 1px solid rgba(0,0,0,.06);
+        }
+        .home-mini-badge{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          border-radius: 999px;
+          padding: 6px 10px;
+          background: rgba(17,17,17,.72);
+          color: #fff;
+          font-weight: 800;
+          font-size: .78rem;
+        }
+        .home-mini-price{
+          color: var(--duu-black);
+          font-weight: 900;
+        }
+
+        .sec{
+          border-radius: 20px;
+          border: 1px solid rgba(0,0,0,.08);
+          background: #fff;
+          overflow: hidden;
+          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+        }
+        .sec-head{
+          padding: 14px 16px;
+          border-bottom: 1px solid rgba(0,0,0,.06);
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap: 10px;
+        }
+        .head-yellow{
+          background: linear-gradient(90deg, rgba(var(--duu-yellow-rgb),.40), rgba(var(--duu-yellow-rgb),.08));
+        }
+        .head-red{
+          background: linear-gradient(90deg, rgba(var(--duu-red-rgb),.16), rgba(var(--duu-red-rgb),.05));
+        }
+        .head-dark{
+          background: linear-gradient(90deg, rgba(17,17,17,.11), rgba(17,17,17,.04));
+        }
+
+        .sec-title{
+          font-weight: 950;
+          color: var(--duu-black);
+        }
+        .sec-sub{
+          color: rgba(0,0,0,.56);
+          font-size: .88rem;
+          margin-top: 2px;
+        }
+
+        .home-empty{
+          border-radius: 20px;
+          border: 1px dashed rgba(0,0,0,.12);
+          background: rgba(255,255,255,.7);
         }
       `}</style>
 
@@ -458,75 +581,123 @@ export default function Home() {
         <section className="container pt-3">
           <InstallPWA />
 
-          <div className="seg">
-            <button
-              type="button"
-              className={"btn " + (activeVertical === "FOOD" ? "btn-dark" : "btn-outline-dark")}
-              onClick={() => {
-                setActiveVertical("FOOD");
-                setActiveCategoryId(null);
-                setActiveSubCategoryId(null);
-              }}
-            >
-              🍽️ Food
-            </button>
-            <button
-              type="button"
-              className={"btn " + (activeVertical === "MARKET" ? "btn-dark" : "btn-outline-dark")}
-              onClick={() => {
-                setActiveVertical("MARKET");
-                setActiveCategoryId(null);
-                setActiveSubCategoryId(null);
-              }}
-            >
-              🛒 Market
-            </button>
-            <button
-              type="button"
-              className={"btn " + (activeVertical === "FASHION" ? "btn-dark" : "btn-outline-dark")}
-              onClick={() => {
-                setActiveVertical("FASHION");
-                setActiveCategoryId(null);
-                setActiveSubCategoryId(null);
-              }}
-            >
-              👕 Fashion
-            </button>
+          <div className="home-hero">
+            <div className="d-flex flex-column gap-2">
+              <div className="home-kicker">✨ DUUMINI</div>
 
-            <Link to={rootForVertical(activeVertical)} className="soft-action ms-auto">
-              Voir tout <ChevronRight size={14} />
-            </Link>
-          </div>
+              {(heroTitle || heroSubtitle) && (
+                <div className="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3">
+                  <div className="min-w-0">
+                    {heroTitle ? (
+                      <h1 className="h3 mb-1 home-title">{heroTitle}</h1>
+                    ) : null}
+                    {heroSubtitle ? (
+                      <div className="home-subtitle">{heroSubtitle}</div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
 
-          <div className="filter-bar">
-            <div className="duu-filter-btn d-flex align-items-center gap-2">
-              <span className="filter-icon" aria-hidden="true">
-                <SlidersHorizontal size={18} />
-              </span>
+              <div className="seg">
+                <button
+                  type="button"
+                  className={
+                    "btn " +
+                    (activeVertical === "FOOD"
+                      ? "btn-dark"
+                      : "btn-outline-dark")
+                  }
+                  onClick={() => {
+                    setActiveVertical("FOOD");
+                    setActiveCategoryId(null);
+                    setActiveSubCategoryId(null);
+                  }}
+                >
+                  🍽️ Food
+                </button>
+                <button
+                  type="button"
+                  className={
+                    "btn " +
+                    (activeVertical === "MARKET"
+                      ? "btn-dark"
+                      : "btn-outline-dark")
+                  }
+                  onClick={() => {
+                    setActiveVertical("MARKET");
+                    setActiveCategoryId(null);
+                    setActiveSubCategoryId(null);
+                  }}
+                >
+                  🛒 Market
+                </button>
+                <button
+                  type="button"
+                  className={
+                    "btn " +
+                    (activeVertical === "FASHION"
+                      ? "btn-dark"
+                      : "btn-outline-dark")
+                  }
+                  onClick={() => {
+                    setActiveVertical("FASHION");
+                    setActiveCategoryId(null);
+                    setActiveSubCategoryId(null);
+                  }}
+                >
+                  👕 Fashion
+                </button>
 
-              <CategoriesMenu
-                title="Filtrer"
-                variant="auto"
-                activeCategoryId={activeCategoryId}
-                activeSubCategoryId={activeSubCategoryId}
-                onSelectCategory={(c) => {
-                  setActiveCategoryId(c.id);
-                  setActiveSubCategoryId(null);
-                  navigate(routeForCategorySlug(activeVertical, String((c as any).slug || "")));
-                }}
-                onSelectSubCategory={(s) => {
-                  const sid = Number((s as any).id || 0);
-                  const cid = Number((s as any).category_id || 0);
-                  setActiveSubCategoryId(sid || null);
-                  setActiveCategoryId(cid || null);
+                <Link
+                  to={rootForVertical(activeVertical)}
+                  className="soft-action ms-auto"
+                >
+                  Voir tout <ChevronRight size={14} />
+                </Link>
+              </div>
 
-                  const cat = categoriesById[cid];
-                  const catSlug = String((cat as any)?.slug || "");
-                  if (!catSlug) return;
+              <div className="home-toolbar">
+                <div className="duu-filter-btn d-flex align-items-center gap-2">
+                  <span className="filter-icon" aria-hidden="true">
+                    <SlidersHorizontal size={18} />
+                  </span>
 
-                  navigate(routeForSubSlug(activeVertical, catSlug, String((s as any).slug || "")));
-                }}
-              />
+                  <CategoriesMenu
+                    title="Filtrer"
+                    variant="auto"
+                    activeCategoryId={activeCategoryId}
+                    activeSubCategoryId={activeSubCategoryId}
+                    onSelectCategory={(c) => {
+                      setActiveCategoryId(c.id);
+                      setActiveSubCategoryId(null);
+                      navigate(
+                        routeForCategorySlug(
+                          activeVertical,
+                          String((c as any).slug || ""),
+                        ),
+                      );
+                    }}
+                    onSelectSubCategory={(s) => {
+                      const sid = Number((s as any).id || 0);
+                      const cid = Number((s as any).category_id || 0);
+                      setActiveSubCategoryId(sid || null);
+                      setActiveCategoryId(cid || null);
+
+                      const cat = categoriesById[cid];
+                      const catSlug = String((cat as any)?.slug || "");
+                      if (!catSlug) return;
+
+                      navigate(
+                        routeForSubSlug(
+                          activeVertical,
+                          catSlug,
+                          String((s as any).slug || ""),
+                        ),
+                      );
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -535,7 +706,11 @@ export default function Home() {
               <span>{err}</span>
               <button
                 className="btn btn-sm"
-                style={{ background: "var(--duu-yellow)", border: "none", fontWeight: 900 }}
+                style={{
+                  background: "var(--duu-yellow)",
+                  border: "none",
+                  fontWeight: 900,
+                }}
                 onClick={() => {
                   catsQ.refetch();
                   subsQ.refetch();
@@ -549,7 +724,9 @@ export default function Home() {
             </div>
           )}
 
-          {loading ? <div className="text-muted small mt-3">Chargement…</div> : null}
+          {loading ? (
+            <div className="text-muted small mt-3">Chargement…</div>
+          ) : null}
 
           {!loading && !err && (
             <div className="d-flex flex-column gap-3 mt-3">
@@ -563,18 +740,31 @@ export default function Home() {
                 const items = list.slice(0, 18);
 
                 const v = pickSectionVariant(idx);
-                const headClass = v === "yellow" ? "head-yellow" : v === "red" ? "head-red" : "head-dark";
+                const headClass =
+                  v === "yellow"
+                    ? "head-yellow"
+                    : v === "red"
+                      ? "head-red"
+                      : "head-dark";
 
                 const catSlug = String((cat as any).slug || "");
-                const mainLink = catSlug ? routeForCategorySlug(activeVertical, catSlug) : rootForVertical(activeVertical);
+                const mainLink = catSlug
+                  ? routeForCategorySlug(activeVertical, catSlug)
+                  : rootForVertical(activeVertical);
 
                 return (
                   <div key={`${activeVertical}-${cid}`} className="sec">
                     <div className={`sec-head ${headClass}`}>
                       <div className="min-w-0">
-                        <div className="fw-bold text-truncate">{(cat as any).name}</div>
-                        <div className="small text-muted">
-                          {activeVertical === "FOOD" ? "Food" : activeVertical === "MARKET" ? "Market" : "Fashion"}
+                        <div className="sec-title text-truncate">
+                          {(cat as any).name}
+                        </div>
+                        <div className="sec-sub">
+                          {activeVertical === "FOOD"
+                            ? "Food"
+                            : activeVertical === "MARKET"
+                              ? "Market"
+                              : "Fashion"}
                         </div>
                       </div>
 
@@ -596,8 +786,14 @@ export default function Home() {
               })}
 
               {!categoryIdsWithProducts.length && (
-                <div className="text-center text-muted py-5">
-                  Aucun produit {activeVertical === "FOOD" ? "Food" : activeVertical === "MARKET" ? "Market" : "Fashion"} pour le moment.
+                <div className="home-empty text-center text-muted py-5">
+                  Aucun produit{" "}
+                  {activeVertical === "FOOD"
+                    ? "Food"
+                    : activeVertical === "MARKET"
+                      ? "Market"
+                      : "Fashion"}{" "}
+                  pour le moment.
                 </div>
               )}
             </div>

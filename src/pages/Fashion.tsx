@@ -1,7 +1,7 @@
 // src/pages/Fashion.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { SlidersHorizontal } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import CategoriesMenu from "../components/CategoriesMenu";
 import { listProducts, type Product } from "../services/products";
@@ -14,16 +14,14 @@ function GridSkeleton() {
     <div className="row g-3">
       {Array.from({ length: 12 }).map((_, i) => (
         <div className="col-12 col-sm-6 col-md-6 col-lg-4" key={i}>
-          <div
-            className="card h-100 border-0 shadow-sm"
-            style={{ borderRadius: 16, overflow: "hidden" }}
-          >
-            <div className="d-flex">
-              <div className="placeholder" style={{ width: "52%", minHeight: 190 }} />
-              <div className="card-body" style={{ flex: 1 }}>
+          <div className="card h-100 border-0 shadow-sm fa-skeleton-card">
+            <div className="d-flex flex-column flex-sm-row h-100">
+              <div className="placeholder fa-skeleton-media" />
+              <div className="card-body flex-grow-1">
                 <div className="placeholder col-8 mb-2" />
                 <div className="placeholder col-5 mb-2" />
-                <div className="placeholder col-10" />
+                <div className="placeholder col-10 mb-2" />
+                <div className="placeholder col-7" />
               </div>
             </div>
           </div>
@@ -65,7 +63,7 @@ function getWindowKey(now = Date.now()) {
   return Math.floor(now / win);
 }
 
-/** ✅ Détection robuste "promo" (même logique que Market/Food) */
+/** ✅ Détection robuste "promo" */
 function isPromoProduct(p: Product) {
   const x = p as any;
 
@@ -127,7 +125,6 @@ export default function Fashion() {
   const [pageSize] = useState(24);
   const [total, setTotal] = useState(0);
 
-  // search debounce
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   useEffect(() => {
@@ -143,7 +140,6 @@ export default function Fashion() {
   const abortProductsRef = useRef<AbortController | null>(null);
   const abortMetaRef = useRef<AbortController | null>(null);
 
-  /** ✅ meta (cats/subs) */
   const loadMeta = useCallback(async () => {
     abortMetaRef.current?.abort();
     const ac = new AbortController();
@@ -173,7 +169,6 @@ export default function Fashion() {
     return () => abortMetaRef.current?.abort();
   }, [loadMeta]);
 
-  /** ✅ produits */
   const loadProducts = useCallback(async () => {
     abortProductsRef.current?.abort();
     const ac = new AbortController();
@@ -224,9 +219,6 @@ export default function Fashion() {
     if (!allCategories.length || !allSubCategories.length) loadMeta();
   }, [loadProducts, loadMeta, allCategories.length, allSubCategories.length]);
 
-  /** ✅ IMPORTANT: on ne filtre plus les catégories par "ids présents dans les produits"
-   *  => c’est CategoriesMenu qui filtre selon la page (scope="fashion")
-   */
   const categoriesAll = useMemo(() => {
     const out = [...allCategories];
     out.sort((a, b) => (a.name || "").localeCompare(b.name || "", "fr"));
@@ -239,7 +231,6 @@ export default function Fashion() {
     return out;
   }, [allSubCategories]);
 
-  // maps (sur tout le catalogue)
   const categoriesById = useMemo(() => {
     const map: Record<number, Category> = {};
     for (const c of categoriesAll) map[c.id] = c;
@@ -277,7 +268,6 @@ export default function Fashion() {
     return list.find((s) => String((s as any).slug || "").toLowerCase() === subSlugParam) || null;
   }, [subSlugParam, selectedCategory, subsByCatId]);
 
-  // URL invalide → redirect
   useEffect(() => {
     if (!categoriesAll.length) return;
 
@@ -292,28 +282,29 @@ export default function Fashion() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoriesAll.length, categorySlugParam, subSlugParam, selectedCategory, selectedSubCategory]);
 
-  // search filter
   const filteredBySearch = useMemo(() => {
     if (!qDebounced) return items;
     return items.filter((p) => (p.name || "").toLowerCase().includes(qDebounced));
   }, [items, qDebounced]);
 
-  // category/subcategory filter
   const filtered = useMemo(() => {
     let out = filteredBySearch;
 
     if (selectedCategory) {
-      out = out.filter((p) => Number((p as any).category_id || 0) === Number((selectedCategory as any).id));
+      out = out.filter(
+        (p) => Number((p as any).category_id || 0) === Number((selectedCategory as any).id)
+      );
     }
 
     if (selectedSubCategory) {
-      out = out.filter((p) => Number((p as any).sub_category_id || 0) === Number((selectedSubCategory as any).id));
+      out = out.filter(
+        (p) => Number((p as any).sub_category_id || 0) === Number((selectedSubCategory as any).id)
+      );
     }
 
     return out;
   }, [filteredBySearch, selectedCategory, selectedSubCategory]);
 
-  /** ✅ promos + normal (sans doublons) */
   const promoItems = useMemo(() => uniqById(filtered.filter(isPromoProduct)), [filtered]);
 
   const promoIds = useMemo(() => {
@@ -333,6 +324,16 @@ export default function Fashion() {
     return "Fashion";
   }, [selectedCategory, selectedSubCategory]);
 
+  const subtitle = useMemo(() => {
+    if (selectedSubCategory) {
+      return "Une sélection ciblée de pièces élégantes, tendances et faciles à porter.";
+    }
+    if (selectedCategory) {
+      return "Découvre les meilleurs articles de mode, matières et coupes de cette catégorie.";
+    }
+    return "Tailles • Couleurs • Nouveautés — Paiement à la livraison.";
+  }, [selectedCategory, selectedSubCategory]);
+
   const activeCategoryId = (selectedCategory as any)?.id ?? null;
   const activeSubCategoryId = (selectedSubCategory as any)?.id ?? null;
   const showFiltersBar = !!selectedCategory || !!selectedSubCategory;
@@ -342,34 +343,28 @@ export default function Fashion() {
   return (
     <section className="container-xxl py-4">
       <style>{`
-        .fashion-hero{
+        .fa-skeleton-card{
           border-radius: 18px;
-          border: 1px solid rgba(0,0,0,.08);
-          background:
-            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.18), transparent 60%),
-            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
-            #fff;
-          padding: 14px;
-          box-shadow: 0 10px 24px rgba(0,0,0,.05);
+          overflow: hidden;
+          border: 1px solid rgba(0,0,0,.06);
         }
-        .fashion-kicker{
-          display:inline-flex;
-          align-items:center;
-          gap: 8px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(var(--duu-yellow-rgb), .22);
-          border: 1px solid rgba(0,0,0,.10);
-          font-weight: 900;
-          color: var(--duu-black);
+        .fa-skeleton-media{
+          width: 100%;
+          min-height: 220px;
         }
-        .fashion-sub{ color: rgba(0,0,0,.6); font-weight: 600; }
+        @media (min-width: 576px){
+          .fa-skeleton-media{
+            width: 48%;
+            min-height: 220px;
+          }
+        }
 
         .btn-duu{
           background: var(--duu-yellow);
           color: #1f1f1f;
           border: none;
           font-weight: 900;
+          border-radius: 14px;
         }
         .btn-duu:hover{ filter: brightness(.96); }
         .btn-duu:focus,
@@ -378,27 +373,145 @@ export default function Fashion() {
           box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
         }
 
+        .fashion-hero{
+          border-radius: 22px;
+          border: 1px solid rgba(0,0,0,.08);
+          background:
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
+            #fff;
+          padding: 18px;
+          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+        }
+
+        .fashion-kicker{
+          display:inline-flex;
+          align-items:center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(var(--duu-yellow-rgb), .20);
+          border: 1px solid rgba(0,0,0,.08);
+          font-weight: 900;
+          color: var(--duu-black);
+          font-size: .82rem;
+        }
+
+        .fashion-title{
+          color: var(--duu-black);
+          font-weight: 950;
+          letter-spacing: -.02em;
+        }
+
+        .fashion-sub{
+          color: rgba(0,0,0,.62);
+          font-weight: 600;
+          line-height: 1.45;
+        }
+
+        .fashion-toolbar{
+          margin-top: 16px;
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+
+        .fashion-filter-wrap{
+          display:flex;
+          align-items:center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .fashion-filter-icon{
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+          border: 1px solid rgba(0,0,0,.10);
+          background: rgba(255,255,255,.94);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          flex: 0 0 auto;
+        }
+
         .duu-filter-btn .btn,
         .duu-filter-btn .dropdown > .btn,
         .duu-filter-btn > .btn{
-          border-color: rgba(0,0,0,.22) !important;
+          border-color: rgba(0,0,0,.16) !important;
           color: var(--duu-black) !important;
-          background: rgba(255,255,255,.92) !important;
+          background: rgba(255,255,255,.96) !important;
           font-weight: 900;
           border-radius: 14px !important;
-          padding: 10px 12px !important;
+          min-height: 42px;
+          padding: 9px 12px !important;
+        }
+        .duu-filter-btn .btn:hover,
+        .duu-filter-btn .dropdown > .btn:hover,
+        .duu-filter-btn > .btn:hover{
+          border-color: rgba(0,0,0,.28) !important;
+          color: var(--duu-red) !important;
+          background: rgba(255,255,255,.99) !important;
+        }
+        .duu-filter-btn .btn:focus,
+        .duu-filter-btn .dropdown > .btn:focus,
+        .duu-filter-btn > .btn:focus,
+        .duu-filter-btn .btn:focus-visible,
+        .duu-filter-btn .dropdown > .btn:focus-visible,
+        .duu-filter-btn > .btn:focus-visible{
+          outline: none !important;
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
+          background: rgba(255,255,255,.99) !important;
+          color: var(--duu-black) !important;
+        }
+
+        .fashion-search{
+          position: relative;
+        }
+        .fashion-search .form-control{
+          min-height: 46px;
+          border-radius: 14px;
+          padding-left: 42px;
+          border-color: rgba(0,0,0,.10);
+        }
+        .fashion-search .form-control:focus{
+          border-color: rgba(var(--duu-yellow-rgb), .55);
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .25);
+        }
+        .fashion-search-icon{
+          position: absolute;
+          left: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: rgba(0,0,0,.45);
+          pointer-events: none;
+          z-index: 2;
+        }
+        .fashion-clear-btn{
+          border-radius: 12px !important;
+          font-weight: 900 !important;
+        }
+
+        .fashion-chip-row{
+          display:flex;
+          flex-wrap:wrap;
+          align-items:center;
+          gap: 10px;
+          margin-top: 14px;
         }
 
         .filter-chip{
-          border: 1px solid rgba(0,0,0,.12);
+          border: 1px solid rgba(0,0,0,.10);
           border-radius: 999px;
-          padding: 6px 10px;
-          background: rgba(255,255,255,.75);
+          padding: 7px 11px;
+          background: rgba(255,255,255,.88);
           font-weight: 800;
           display:inline-flex;
           align-items:center;
           gap: 8px;
+          color: var(--duu-black);
         }
+
         .soft-clear{
           border: 1px solid rgba(0,0,0,.12);
           background: #fff;
@@ -406,65 +519,111 @@ export default function Fashion() {
           font-weight: 800;
         }
 
+        .fashion-subcats{
+          display:flex;
+          flex-wrap:wrap;
+          gap: 10px;
+          margin-top: 12px;
+        }
+        .fashion-subcats .btn{
+          border-radius: 999px;
+          font-weight: 800;
+          padding: 7px 12px;
+        }
+
+        .fashion-topline{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap: 12px;
+          margin: 18px 0 12px;
+        }
+
+        .fashion-count{
+          color: rgba(0,0,0,.56);
+          font-size: .9rem;
+          font-weight: 700;
+        }
+
         .promo-wrap{
           border: 1px solid rgba(0,0,0,.08);
-          border-radius: 18px;
+          border-radius: 22px;
           background:
-            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.18), transparent 60%),
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
             radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
             #fff;
           box-shadow: 0 10px 24px rgba(0,0,0,.05);
           overflow: hidden;
         }
         .promo-head{
-          padding: 12px 14px;
+          padding: 14px 16px;
           border-bottom: 1px solid rgba(0,0,0,.06);
           display:flex;
           align-items:center;
           justify-content:space-between;
           gap: 10px;
-          font-weight: 900;
+        }
+        .promo-title{
+          font-weight: 950;
           color: var(--duu-black);
+          margin: 0;
+        }
+        .promo-sub{
+          color: rgba(0,0,0,.56);
+          font-size: .88rem;
+          margin-top: 2px;
         }
         .promo-badge{
           display:inline-flex;
           align-items:center;
           gap: 8px;
-          padding: 6px 10px;
+          padding: 7px 11px;
           border-radius: 999px;
           background: rgba(var(--duu-red-rgb), .08);
           border: 1px solid rgba(var(--duu-red-rgb), .20);
           font-weight: 900;
+          color: var(--duu-red);
+          white-space: nowrap;
+        }
+
+        .fashion-pagination{
+          margin-top: 18px;
+          display:flex;
+          justify-content:flex-end;
+          align-items:center;
+        }
+        .fashion-pagination .btn-group .btn{
+          min-width: 42px;
+          border-radius: 12px !important;
+          font-weight: 900;
+        }
+
+        @media (min-width: 768px){
+          .fashion-toolbar{
+            grid-template-columns: minmax(250px, auto) minmax(280px, 420px);
+            justify-content: space-between;
+            align-items: center;
+          }
         }
       `}</style>
 
       <div className="fashion-hero mb-3">
-        <div className="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-2">
-          <div className="min-w-0">
-            <div className="fashion-kicker">👗 DUUMINI Fashion</div>
-            <h1 className="h4 mb-1 mt-2" style={{ color: "var(--duu-black)" }}>
-              {title}
-            </h1>
-            <div className="fashion-sub">Tailles • Couleurs • Nouveautés — Paiement à la livraison</div>
+        <div className="d-flex flex-column gap-2">
+          <div className="fashion-kicker">👗 DUUMINI Fashion</div>
+
+          <div className="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3">
+            <div className="min-w-0">
+              <h1 className="h3 mb-1 fashion-title">{title}</h1>
+              <div className="fashion-sub">{subtitle}</div>
+            </div>
           </div>
 
-          <div className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-end gap-2">
-            <div className="d-flex align-items-center gap-2 flex-shrink-0 duu-filter-btn">
-              <span
-                className="d-inline-flex align-items-center justify-content-center"
-                style={{
-                  width: 42,
-                  height: 42,
-                  borderRadius: 14,
-                  border: "1px solid rgba(0,0,0,.10)",
-                  background: "rgba(255,255,255,.92)",
-                }}
-                aria-hidden="true"
-              >
+          <div className="fashion-toolbar">
+            <div className="fashion-filter-wrap duu-filter-btn">
+              <span className="fashion-filter-icon" aria-hidden="true">
                 <SlidersHorizontal size={18} />
               </span>
 
-              {/* ✅ le menu se filtre tout seul pour Fashion */}
               <CategoriesMenu
                 scope="fashion"
                 title="Filtrer"
@@ -485,7 +644,11 @@ export default function Fashion() {
               />
             </div>
 
-            <div className="input-group" style={{ maxWidth: 420 }}>
+            <div className="input-group fashion-search">
+              <span className="fashion-search-icon">
+                <Search size={16} />
+              </span>
+
               <input
                 className="form-control"
                 placeholder="Rechercher un article…"
@@ -497,7 +660,7 @@ export default function Fashion() {
                 aria-label="Rechercher"
               />
               <button
-                className="btn btn-duu"
+                className="btn btn-duu fashion-clear-btn"
                 onClick={() => {
                   setQ("");
                   setPage(1);
@@ -508,86 +671,99 @@ export default function Fashion() {
               </button>
             </div>
           </div>
+
+          {showFiltersBar ? (
+            <div className="fashion-chip-row">
+              {selectedCategory ? (
+                <span className="filter-chip">
+                  <span style={{ opacity: 0.7 }}>🧷</span>
+                  {(selectedCategory as any).name}
+                </span>
+              ) : null}
+              {selectedSubCategory ? (
+                <span className="filter-chip">
+                  <span style={{ opacity: 0.7 }}>🏷️</span>
+                  {(selectedSubCategory as any).name}
+                </span>
+              ) : null}
+
+              <button
+                type="button"
+                className="btn btn-sm soft-clear"
+                onClick={() => {
+                  setPage(1);
+                  navigate("/fashion");
+                }}
+              >
+                Tout afficher
+              </button>
+            </div>
+          ) : null}
+
+          {selectedCategory ? (
+            <div className="fashion-subcats">
+              <button
+                type="button"
+                className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
+                onClick={() => {
+                  setPage(1);
+                  navigate(`/fashion/${(selectedCategory as any).slug}`);
+                }}
+              >
+                Tout
+              </button>
+
+              {(subsByCatId[(selectedCategory as any).id] || []).map((s) => {
+                const active = (selectedSubCategory as any)?.id === (s as any).id;
+                return (
+                  <button
+                    key={(s as any).id}
+                    type="button"
+                    className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
+                    onClick={() => {
+                      setPage(1);
+                      navigate(`/fashion/${(selectedCategory as any).slug}/${(s as any).slug}`);
+                    }}
+                  >
+                    {(s as any).name}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
-
-        {showFiltersBar && (
-          <div className="d-flex flex-wrap align-items-center gap-2 mt-3">
-            {selectedCategory && (
-              <span className="filter-chip">
-                <span style={{ opacity: 0.7 }}>🧷</span>
-                {(selectedCategory as any).name}
-              </span>
-            )}
-            {selectedSubCategory && (
-              <span className="filter-chip">
-                <span style={{ opacity: 0.7 }}>🏷️</span>
-                {(selectedSubCategory as any).name}
-              </span>
-            )}
-
-            <button
-              type="button"
-              className="btn btn-sm soft-clear"
-              onClick={() => {
-                setPage(1);
-                navigate("/fashion");
-              }}
-            >
-              Tout afficher
-            </button>
-          </div>
-        )}
-
-        {selectedCategory && (
-          <div className="d-flex flex-wrap align-items-center gap-2 mt-2">
-            <button
-              type="button"
-              className={"btn btn-sm " + (!selectedSubCategory ? "btn-dark" : "btn-outline-dark")}
-              onClick={() => {
-                setPage(1);
-                navigate(`/fashion/${(selectedCategory as any).slug}`);
-              }}
-            >
-              Tout
-            </button>
-
-            {(subsByCatId[(selectedCategory as any).id] || []).map((s) => {
-              const active = (selectedSubCategory as any)?.id === (s as any).id;
-              return (
-                <button
-                  key={(s as any).id}
-                  type="button"
-                  className={"btn btn-sm " + (active ? "btn-dark" : "btn-outline-dark")}
-                  onClick={() => {
-                    setPage(1);
-                    navigate(`/fashion/${(selectedCategory as any).slug}/${(s as any).slug}`);
-                  }}
-                >
-                  {(s as any).name}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
-      {error && (
+      {error ? (
         <div className="alert alert-danger d-flex justify-content-between align-items-center">
           <span>{error}</span>
           <button className="btn btn-duu btn-sm" onClick={refresh}>
             Réessayer
           </button>
         </div>
-      )}
+      ) : null}
+
+      {!loadingAny && !error ? (
+        <div className="fashion-topline">
+          <div className="fashion-count">
+            {promoItems.length + normalItems.length} article(s) affiché(s)
+          </div>
+        </div>
+      ) : null}
 
       {loadingAny ? (
         <GridSkeleton />
       ) : (
         <>
-          {promoItems.length > 0 && (
-            <div className="promo-wrap mb-3">
+          {promoItems.length > 0 ? (
+            <div className="promo-wrap mb-4">
               <div className="promo-head">
-                <span>Promos du moment</span>
+                <div>
+                  <h2 className="h6 promo-title">Promos du moment</h2>
+                  <div className="promo-sub">
+                    Les meilleures pièces mode et looks à ne pas manquer.
+                  </div>
+                </div>
                 <span className="promo-badge">🔥 {promoItems.length}</span>
               </div>
 
@@ -601,7 +777,7 @@ export default function Fashion() {
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
           {normalItems.length === 0 ? (
             <div className="text-center text-muted py-5">Aucun article trouvé.</div>
@@ -617,8 +793,8 @@ export default function Fashion() {
         </>
       )}
 
-      {!loadingAny && pages > 1 && (
-        <div className="d-flex justify-content-end align-items-center mt-3">
+      {!loadingAny && pages > 1 ? (
+        <div className="fashion-pagination">
           <div className="btn-group">
             <button
               className="btn btn-sm btn-outline-dark"
@@ -645,7 +821,7 @@ export default function Fashion() {
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

@@ -18,10 +18,11 @@ type ClientLite = {
   last_name?: string | null;
   phone?: string | null;
   role?: string | null;
+  ville?: string | null;
+  quartier?: string | null;
 
-  // ✅ affichage/UX
-  has_account?: boolean; // true si user existe (id>0)
-  from_orders?: boolean; // true si vient des orders (guest)
+  has_account?: boolean;
+  from_orders?: boolean;
 };
 
 type Props = {
@@ -29,6 +30,29 @@ type Props = {
   onClose: () => void;
   onCreated?: () => void | Promise<void>;
 };
+
+const CITY_OPTIONS = [
+  "Casablanca",
+  "Marrakech",
+  "Rabat",
+  "Tanger",
+  "Fès",
+  "Agadir",
+  "Meknès",
+  "Oujda",
+  "Kénitra",
+  "Tétouan",
+  "Safi",
+  "El Jadida",
+  "Mohammédia",
+  "Béni Mellal",
+  "Nador",
+  "Khouribga",
+  "Settat",
+  "Temara",
+  "Salé",
+  "Autre",
+];
 
 const mad = (n?: number | null) =>
   new Intl.NumberFormat("fr-FR", {
@@ -73,7 +97,6 @@ function imgUrl(u?: string | null) {
   return s;
 }
 
-/** ✅ essaie de sortir une image produit (cover / images[0] / media...) */
 function getProductThumb(p: Product): string {
   const anyP = p as AnyObj;
 
@@ -156,13 +179,6 @@ function normalizePhoneKey(phone?: string | null) {
   return String(phone || "").trim().replace(/\s+/g, "");
 }
 
-/**
- * ✅ dé-doublonnage robuste:
- * - users: id>0
- * - guests (orders): id=0/NULL mais phone présent
- * - clé principale: phone si présent, sinon id
- * - priorité: USER > GUEST
- */
 function dedupeClients(list: ClientLite[]) {
   const byKey = new Map<string, ClientLite>();
 
@@ -181,7 +197,6 @@ function dedupeClients(list: ClientLite[]) {
     const prevIsUser = Number(prev.id || 0) > 0;
     const curIsUser = id > 0;
 
-    // priorité user
     const keep = prevIsUser || !curIsUser ? prev : c;
     const other = keep === prev ? c : prev;
 
@@ -191,6 +206,8 @@ function dedupeClients(list: ClientLite[]) {
       last_name: keep.last_name || other.last_name || null,
       phone: keep.phone || other.phone || null,
       role: keep.role || other.role || null,
+      ville: keep.ville || other.ville || null,
+      quartier: keep.quartier || other.quartier || null,
       has_account: keep.has_account ?? other.has_account,
       from_orders: keep.from_orders ?? other.from_orders,
     });
@@ -216,11 +233,13 @@ function mapAdminUserToClient(u: AdminUser): ClientLite {
   const hasAccount = anyU?.has_account != null ? !!anyU.has_account : idNum > 0;
 
   return {
-    id: idNum > 0 ? idNum : 0, // guests => 0
+    id: idNum > 0 ? idNum : 0,
     first_name: names.first_name,
     last_name: names.last_name,
     phone: anyU?.phone ?? anyU?.tel ?? null,
     role: anyU?.role ?? (hasAccount ? "MEMBER" : "GUEST"),
+    ville: anyU?.ville ?? anyU?.city ?? anyU?.customer_city ?? null,
+    quartier: anyU?.quartier ?? anyU?.district ?? anyU?.customer_district ?? null,
     has_account: hasAccount,
     from_orders: anyU?.from_orders != null ? !!anyU.from_orders : !hasAccount,
   };
@@ -239,6 +258,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   const [deliveryMode, setDeliveryMode] = useState<
     "SIMPLE" | "EXPRESS" | "CITY" | "CASABLANCA" | "PROMO_FREE"
   >("SIMPLE");
+
+  const [clientCity, setClientCity] = useState<string>("");
+  const [clientDistrict, setClientDistrict] = useState<string>("");
 
   const [search, setSearch] = useState("");
   const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
@@ -276,8 +298,18 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
   useEffect(() => {
     if (paidClamped !== amountPaid) setAmountPaid(paidClamped);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paidClamped]);
+  }, [paidClamped, amountPaid]);
+
+  useEffect(() => {
+    if (!selectedClient) {
+      setClientCity("");
+      setClientDistrict("");
+      return;
+    }
+
+    setClientCity(String(selectedClient.ville || "").trim());
+    setClientDistrict(String(selectedClient.quartier || "").trim());
+  }, [selectedClient]);
 
   const reset = useCallback(() => {
     setSelectedClient(null);
@@ -291,6 +323,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
     setDeliveryFee(0);
     setDeliveryMode("SIMPLE");
+
+    setClientCity("");
+    setClientDistrict("");
 
     setSearch("");
     setPromoFilter("ALL");
@@ -466,7 +501,16 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     return clients.filter((c) => {
       const label = clientLabel(c).toLowerCase();
       const phone = normalizePhoneKey(c.phone).toLowerCase();
-      return label.includes(ql) || phone.includes(ql) || (c.id > 0 && String(c.id).includes(ql));
+      const ville = String(c.ville || "").toLowerCase();
+      const quartier = String(c.quartier || "").toLowerCase();
+
+      return (
+        label.includes(ql) ||
+        phone.includes(ql) ||
+        ville.includes(ql) ||
+        quartier.includes(ql) ||
+        (c.id > 0 && String(c.id).includes(ql))
+      );
     });
   }, [clients, clientQ]);
 
@@ -486,6 +530,14 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     }
     if (basket.length === 0) {
       alert("Ajoutez au moins un produit.");
+      return;
+    }
+
+    const city = String(clientCity || "").trim();
+    const district = String(clientDistrict || "").trim();
+
+    if (!city) {
+      alert("Choisis la ville du client.");
       return;
     }
 
@@ -513,6 +565,13 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       };
     });
 
+    const clientLocation = {
+      ville: city,
+      city,
+      quartier: district || undefined,
+      district: district || undefined,
+    };
+
     const payload: any = {
       ...(isGuest
         ? {
@@ -520,14 +579,21 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
               phone: normalizePhoneKey(selectedClient.phone),
               first_name: selectedClient.first_name || undefined,
               last_name: selectedClient.last_name || undefined,
+              ...clientLocation,
             },
           }
-        : { customer_id: Number(selectedClient.id) }),
+        : {
+            customer_id: Number(selectedClient.id),
+            customer: {
+              ...clientLocation,
+            },
+          }),
 
       delivery: {
         mode: deliveryMode,
         fee: Math.max(0, numSafe(deliveryFee)),
         currency: "MAD",
+        ...clientLocation,
       },
       items: itemsPayload,
       totals: {
@@ -580,7 +646,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
           <div className="modal-body pos-body">
             <div className="row g-3 pos-grid">
-              {/* Produits */}
               <div className="col-12 col-lg-7 pos-col">
                 <div className="card border-0 shadow-sm h-100">
                   <div className="card-body d-flex flex-column">
@@ -725,7 +790,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                 </div>
               </div>
 
-              {/* Client + panier */}
               <div className="col-12 col-lg-5 pos-col">
                 <div className="card border-0 shadow-sm h-100">
                   <div className="card-body d-flex flex-column">
@@ -739,7 +803,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       </button>
                     </div>
 
-                    {/* Clients */}
                     <div className="mt-2">
                       <div className="d-flex align-items-center justify-content-between">
                         <label className="form-label m-0">Client</label>
@@ -750,7 +813,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                       <input
                         className="form-control form-control-sm mt-2"
-                        placeholder="Rechercher client (nom, téléphone, id)…"
+                        placeholder="Rechercher client (nom, téléphone, ville, quartier, id)…"
                         value={clientQ}
                         onChange={(e) => setClientQ(e.target.value)}
                         disabled={saving}
@@ -783,6 +846,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                 <div className="client-sub small text-muted">
                                   {c.has_account ? `ID: ${c.id}` : "Invité (sans compte)"}
                                   {c.from_orders ? " • orders" : ""}
+                                  {c.ville ? ` • ${c.ville}` : ""}
+                                  {c.quartier ? ` • ${c.quartier}` : ""}
                                 </div>
                               </button>
                             );
@@ -795,7 +860,40 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       </div>
                     </div>
 
-                    {/* Totaux */}
+                    <div className="row g-2 mt-3">
+                      <div className="col-12 col-md-6">
+                        <label className="form-label">Ville du client</label>
+                        <select
+                          className="form-select"
+                          value={clientCity}
+                          onChange={(e) => setClientCity((e.target as HTMLSelectElement).value)}
+                          disabled={saving}
+                        >
+                          <option value="">Choisir une ville</option>
+                          {CITY_OPTIONS.map((city) => (
+                            <option key={city} value={city}>
+                              {city}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <label className="form-label">Quartier (optionnel)</label>
+                        <input
+                          className="form-control"
+                          value={clientDistrict}
+                          onChange={(e) => setClientDistrict((e.target as HTMLInputElement).value)}
+                          disabled={saving}
+                          placeholder="Ex: Maarif, Gueliz, Hay Mohammadi…"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="small text-muted mt-1">
+                      La ville est obligatoire. Le quartier peut rester vide.
+                    </div>
+
                     <div className="pos-summary mt-3">
                       <div className="d-flex justify-content-between align-items-center">
                         <span className="text-muted">Articles</span>
@@ -832,7 +930,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       </div>
                     </div>
 
-                    {/* Panier */}
                     <div className="vstack gap-2 mt-3 pos-scroll">
                       {basket.length === 0 ? (
                         <div className="text-muted small">Aucun article.</div>
@@ -908,7 +1005,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <hr className="my-3" />
 
-                    {/* Livraison */}
                     <div className="row g-2">
                       <div className="col-12 col-md-6">
                         <label className="form-label">Mode livraison</label>
@@ -941,7 +1037,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <hr className="my-3" />
 
-                    {/* Paiement */}
                     <div className="row g-2">
                       <div className="col-12 col-md-6">
                         <label className="form-label">Méthode paiement</label>
@@ -999,7 +1094,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                   </div>
                 </div>
               </div>
-              {/* /Client + panier */}
             </div>
           </div>
 
@@ -1010,7 +1104,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
             <button
               className="btn btn-dark"
               onClick={submitCreate}
-              disabled={saving || basket.length === 0 || !selectedClient}
+              disabled={saving || basket.length === 0 || !selectedClient || !clientCity.trim()}
             >
               {saving ? "Enregistrement…" : "Créer la commande"}
             </button>
@@ -1079,7 +1173,6 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
               background: linear-gradient(135deg, rgba(0,0,0,.05), rgba(0,0,0,.02));
             }
 
-            /* ✅ Liste clients scrollable */
             .client-list{
               max-height: 220px;
               overflow-y: auto;

@@ -13,8 +13,6 @@ import {
   me,
   type Role as AuthRole,
 } from "../services/auth";
-
-// ✅ META Pixel
 import { metaAddToCart, metaViewContent } from "../lib/metaPixel";
 
 /* =========================
@@ -34,6 +32,13 @@ function moneyMAD(n?: number | null) {
     currency: "MAD",
     maximumFractionDigits: 0,
   }).format(Number(n || 0));
+}
+
+function shortText(s?: string | null, max = 180) {
+  const t = String(s || "").trim();
+  if (!t) return "";
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
 }
 
 function isActiveProduct(p: Product | null | undefined) {
@@ -152,7 +157,7 @@ type UiVariant = {
   id: number;
   key: string;
   label: string;
-  price: number | null; // price_override
+  price: number | null;
   stock: number | null;
 };
 
@@ -251,7 +256,7 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
         aria-modal="true"
       >
         <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-          <div className="modal-content">
+          <div className="modal-content" style={{ borderRadius: 18 }}>
             <div className="modal-header">
               <h5 className="modal-title">{title}</h5>
               <button
@@ -262,7 +267,7 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
               />
             </div>
             <div className="modal-body">
-              <p className="text-muted" style={{ whiteSpace: "pre-wrap" }}>
+              <p className="text-muted mb-0" style={{ whiteSpace: "pre-wrap" }}>
                 {body}
               </p>
             </div>
@@ -297,7 +302,7 @@ async function fetchJSON(url: string, ms = 12000, init?: RequestInit) {
 }
 
 /* =========================
- * Viewer Role (based on your backend roles)
+ * Viewer Role
  * =======================*/
 type ViewerRole =
   | "GUEST"
@@ -354,6 +359,9 @@ export default function ProductView() {
   const [viewerRole, setViewerRole] = useState<ViewerRole>("GUEST");
   const [viewerUser, setViewerUser] = useState<any>(null);
 
+  const [selectedKey, setSelectedKey] = useState<string>("");
+  const [galleryIndex, setGalleryIndex] = useState(0);
+
   useEffect(() => {
     let stop = false;
 
@@ -390,11 +398,29 @@ export default function ProductView() {
 
   const title = useMemo(() => String(anyP?.name || "Produit"), [anyP?.name]);
 
-  const cover = useMemo(
-    () => anyP?.cover || anyP?.images?.[0]?.url || anyP?.image || null,
-    [anyP?.cover, anyP?.images, anyP?.image]
-  );
-  const coverUrl = useMemo(() => imgUrl(cover), [cover]);
+  const images = useMemo(() => {
+    const arr: string[] = [];
+    const cover = anyP?.cover || anyP?.image || null;
+    if (cover) arr.push(String(cover));
+
+    const list = Array.isArray(anyP?.images) ? anyP.images : [];
+    for (const it of list) {
+      const u = typeof it === "string" ? it : it?.url;
+      if (u) arr.push(String(u));
+    }
+
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const u of arr) {
+      const key = String(u).trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(imgUrl(key));
+    }
+    return out;
+  }, [anyP?.cover, anyP?.image, anyP?.images]);
+
+  const coverUrl = useMemo(() => images[galleryIndex] || "", [images, galleryIndex]);
 
   const productIsActive = useMemo(() => isActiveProduct(product), [product]);
   const sectionPath = useMemo(() => sectionPathFor(product), [product]);
@@ -530,6 +556,10 @@ export default function ProductView() {
   }, [resolvedIdOrSlug]);
 
   useEffect(() => {
+    setGalleryIndex(0);
+  }, [product?.id]);
+
+  useEffect(() => {
     let stop = false;
 
     (async () => {
@@ -634,8 +664,6 @@ export default function ProductView() {
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
 
-  const [selectedKey, setSelectedKey] = useState<string>("");
-
   useEffect(() => {
     if (!hasVariants) {
       setSelectedKey("");
@@ -732,7 +760,24 @@ export default function ProductView() {
     return m;
   }, [displayPrice, showSupplierPanel, supplierCost]);
 
-  // ✅ Meta ViewContent (1 fois par produit)
+  const stockText = useMemo(() => {
+    if (selectedVariant?.stock != null) {
+      if (selectedVariant.stock <= 0) return "En rupture";
+      return `Reste: ${selectedVariant.stock}`;
+    }
+    if (stock == null) return "";
+    if (stock <= 0) return "En rupture";
+    return `Disponible: ${stock}`;
+  }, [selectedVariant, stock]);
+
+  const stockTone = useMemo(() => {
+    const s = selectedVariant?.stock ?? stock;
+    if (s == null) return "neutral";
+    if (s <= 0) return "danger";
+    if (s <= 5) return "warning";
+    return "success";
+  }, [selectedVariant, stock]);
+
   useEffect(() => {
     if (!product) return;
     const pAny: any = product;
@@ -777,7 +822,6 @@ export default function ProductView() {
       category: String(pAny?.sub_category_slug || pAny?.sub_category_name || ""),
     });
 
-    // ✅ Meta AddToCart
     metaAddToCart({ id: pAny.id, name: pAny.name, price: cartPrice }, 1);
   }, [add, canAddNow, displayPrice, hasVariants, product, selectedVariant]);
 
@@ -805,19 +849,33 @@ export default function ProductView() {
     });
   }, [add, displayPrice, hasVariants, product, qtySelected, selectedVariant]);
 
+  const nextImage = useCallback(() => {
+    if (!images.length) return;
+    setGalleryIndex((i) => (i + 1) % images.length);
+  }, [images.length]);
+
+  const prevImage = useCallback(() => {
+    if (!images.length) return;
+    setGalleryIndex((i) => (i - 1 + images.length) % images.length);
+  }, [images.length]);
+
   if (loading) {
     return (
       <div className="container-xxl py-4">
         <div className="placeholder-glow">
           <div className="placeholder col-6 mb-3" style={{ height: 32 }} />
-          <div className="row g-3">
-            <div className="col-12 col-md-6">
-              <div className="placeholder w-100" style={{ aspectRatio: "1/1" }} />
+          <div className="row g-4">
+            <div className="col-12 col-lg-6">
+              <div className="placeholder w-100 rounded-4" style={{ aspectRatio: "1 / 1" }} />
             </div>
-            <div className="col-12 col-md-6">
-              <div className="placeholder col-8 mb-2" />
+            <div className="col-12 col-lg-3">
               <div className="placeholder col-10 mb-2" />
-              <div className="placeholder col-7 mb-2" />
+              <div className="placeholder col-8 mb-2" />
+              <div className="placeholder col-12 mb-2" />
+              <div className="placeholder col-9 mb-2" />
+            </div>
+            <div className="col-12 col-lg-3">
+              <div className="placeholder col-12 mb-2" style={{ height: 220, borderRadius: 18 }} />
             </div>
           </div>
         </div>
@@ -841,10 +899,7 @@ export default function ProductView() {
           </Link>
         </div>
 
-        <div
-          className="alert alert-warning d-flex align-items-center"
-          role="alert"
-        >
+        <div className="alert alert-warning d-flex align-items-center" role="alert">
           <span className="me-2">⚠️</span>
           <span>
             {product && !productIsActive
@@ -860,13 +915,291 @@ export default function ProductView() {
 
   return (
     <div className="container-xxl py-4">
+      <style>{`
+        .btn-duu{
+          background: var(--duu-yellow);
+          color: #1f1f1f;
+          border: none;
+          font-weight: 900;
+        }
+        .btn-duu:hover{ filter: brightness(0.96); }
+        .btn-duu:focus,
+        .btn-duu:focus-visible{
+          outline: none !important;
+          box-shadow: 0 0 0 .22rem rgba(var(--duu-yellow-rgb), .35) !important;
+        }
+
+        .pv-hero{
+          border-radius: 20px;
+          border: 1px solid rgba(0,0,0,.08);
+          background:
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.08), transparent 55%),
+            #fff;
+          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+          overflow: hidden;
+        }
+
+        .pv-gallery{
+          border-radius: 18px;
+          overflow: hidden;
+          background: #f6f6f6;
+          border: 1px solid rgba(0,0,0,.06);
+          position: relative;
+        }
+        .pv-gallery-main{
+          width: 100%;
+          aspect-ratio: 1 / 1;
+          object-fit: cover;
+          display: block;
+          background: #f6f6f6;
+        }
+        .pv-gallery-empty{
+          width: 100%;
+          aspect-ratio: 1 / 1;
+          background: linear-gradient(135deg, rgba(0,0,0,.06), rgba(0,0,0,.02));
+        }
+
+        .pv-badge{
+          position: absolute;
+          z-index: 2;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 7px 11px;
+          border-radius: 999px;
+          font-size: .8rem;
+          font-weight: 900;
+          line-height: 1;
+        }
+        .pv-badge--promo{
+          top: 12px;
+          left: 12px;
+          background: rgba(229,57,53,.95);
+          color: #fff;
+          box-shadow: 0 10px 20px rgba(229,57,53,.22);
+        }
+        .pv-badge--free{
+          left: 12px;
+          bottom: 12px;
+          background: rgba(17,17,17,.84);
+          color: #fff;
+          border: 1px solid rgba(255,255,255,.14);
+        }
+        .pv-badge--count{
+          right: 12px;
+          bottom: 12px;
+          background: rgba(17,17,17,.72);
+          color: #fff;
+        }
+
+        .pv-arrow{
+          position: absolute;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 2;
+          width: 40px;
+          height: 40px;
+          border-radius: 999px;
+          border: 1px solid rgba(0,0,0,.08);
+          background: rgba(255,255,255,.92);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 900;
+          box-shadow: 0 10px 16px rgba(0,0,0,.08);
+        }
+        .pv-arrow:hover{ background: #fff; }
+        .pv-arrow--left{ left: 12px; }
+        .pv-arrow--right{ right: 12px; }
+
+        .pv-thumbs{
+          display: flex;
+          gap: 10px;
+          overflow-x: auto;
+          padding-top: 12px;
+        }
+        .pv-thumb{
+          border: 1px solid rgba(0,0,0,.08);
+          border-radius: 14px;
+          overflow: hidden;
+          background: #fff;
+          width: 78px;
+          height: 78px;
+          flex: 0 0 auto;
+          padding: 0;
+        }
+        .pv-thumb img{
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .pv-thumb--active{
+          box-shadow: 0 0 0 2px rgba(var(--duu-yellow-rgb), .50);
+          border-color: rgba(var(--duu-yellow-rgb), .45);
+        }
+
+        .pv-info-card,
+        .pv-buy-card,
+        .pv-pro-card,
+        .pv-desc-card,
+        .pv-related-card{
+          background: #fff;
+          border: 1px solid rgba(0,0,0,.08);
+          border-radius: 18px;
+          box-shadow: 0 10px 22px rgba(0,0,0,.04);
+        }
+
+        .pv-info-card,
+        .pv-buy-card,
+        .pv-pro-card,
+        .pv-desc-card{
+          padding: 16px;
+        }
+
+        .pv-kicker{
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(0,0,0,.04);
+          border: 1px solid rgba(0,0,0,.08);
+          font-weight: 800;
+          font-size: .8rem;
+        }
+
+        .pv-title{
+          font-weight: 950;
+          color: var(--duu-black);
+          line-height: 1.1;
+          margin: 0;
+        }
+
+        .pv-price-row{
+          display: flex;
+          align-items: baseline;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .pv-price-main{
+          font-size: 1.9rem;
+          font-weight: 950;
+          line-height: 1;
+          color: var(--duu-black);
+        }
+        .pv-price-old{
+          text-decoration: line-through;
+          color: rgba(0,0,0,.42);
+          font-weight: 800;
+          font-size: 1rem;
+        }
+
+        .pv-pill-row{
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        .pv-pill{
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-size: .8rem;
+          font-weight: 800;
+          border: 1px solid rgba(0,0,0,.08);
+          background: rgba(0,0,0,.04);
+          color: rgba(0,0,0,.8);
+        }
+        .pv-pill--promo{
+          background: rgba(229,57,53,.08);
+          color: var(--duu-red,#E53935);
+          border-color: rgba(229,57,53,.18);
+        }
+        .pv-pill--success{
+          background: rgba(25,135,84,.08);
+          color: #157347;
+          border-color: rgba(25,135,84,.18);
+        }
+        .pv-pill--warning{
+          background: rgba(255,193,7,.10);
+          color: #7a5a00;
+          border-color: rgba(255,193,7,.25);
+        }
+        .pv-pill--danger{
+          background: rgba(220,53,69,.08);
+          color: #b02a37;
+          border-color: rgba(220,53,69,.18);
+        }
+
+        .pv-label{
+          color: rgba(0,0,0,.58);
+          font-size: .82rem;
+          font-weight: 900;
+          margin-bottom: 6px;
+        }
+
+        .pv-select{
+          border-radius: 14px;
+          min-height: 44px;
+        }
+        .pv-select:focus{
+          outline: none !important;
+          box-shadow: 0 0 0 .22rem rgba(var(--duu-yellow-rgb), .35) !important;
+          border-color: rgba(229,57,53,.22) !important;
+        }
+
+        .pv-buy-card{
+          position: sticky;
+          top: 88px;
+        }
+
+        .pv-buy-price{
+          font-size: 1.55rem;
+          font-weight: 950;
+          line-height: 1;
+          color: var(--duu-black);
+        }
+        .pv-buy-old{
+          text-decoration: line-through;
+          color: rgba(0,0,0,.42);
+          font-weight: 800;
+          font-size: .95rem;
+        }
+
+        .pv-qty-group .btn,
+        .pv-qty-group .btn-light{
+          border-radius: 12px !important;
+          min-width: 42px;
+          font-weight: 900;
+        }
+
+        .pv-desc{
+          color: rgba(0,0,0,.66);
+          line-height: 1.55;
+          margin: 0;
+        }
+
+        .pv-related-card{
+          padding: 14px;
+        }
+
+        @media (max-width: 991.98px){
+          .pv-buy-card{
+            position: static;
+            top: auto;
+          }
+          .pv-price-main{
+            font-size: 1.65rem;
+          }
+        }
+      `}</style>
+
       <div className="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
         <div className="d-flex flex-wrap gap-2">
-          <button
-            className="btn btn-outline-dark"
-            onClick={handleBack}
-            type="button"
-          >
+          <button className="btn btn-outline-dark" onClick={handleBack} type="button">
             ← Retour
           </button>
           <Link to={backPath} className="btn btn-dark">
@@ -878,327 +1211,328 @@ export default function ProductView() {
           Rôle: <strong className="ms-1">{viewerRole}</strong>
           {viewerUser?.impersonation?.impersonate_shop_id ? (
             <span className="ms-2 text-muted">
-              (impersonation shop #{viewerUser.impersonation.impersonate_shop_id})
+              (shop #{viewerUser.impersonation.impersonate_shop_id})
             </span>
           ) : null}
         </span>
       </div>
 
-      <h1 className="h4 mb-3">{title}</h1>
-
-      <div className="row g-4">
-        <div className="col-12 col-md-6">
-          <div className="position-relative">
-            {coverUrl ? (
-              <img
-                src={coverUrl}
-                alt={String(anyP?.name || "")}
-                className="img-fluid rounded"
-              />
-            ) : (
-              <div
-                className="bg-light rounded"
-                style={{ width: "100%", paddingTop: "100%" }}
-              />
-            )}
-
-            {promoActive && (
-              <span
-                className="badge"
-                style={{
-                  position: "absolute",
-                  top: 12,
-                  left: 12,
-                  background: "var(--duu-red,#E53935)",
-                  color: "#fff",
-                  fontWeight: 900,
-                  padding: "8px 10px",
-                  borderRadius: 999,
-                  boxShadow: "0 10px 20px rgba(229,57,53,.22)",
-                }}
-              >
-                PROMO {promoSavedLabel}
-              </span>
-            )}
-
-            {promoActive && promoFreeDelivery && (
-              <span
-                className="badge"
-                style={{
-                  position: "absolute",
-                  bottom: 12,
-                  left: 12,
-                  background: "rgba(0,0,0,.85)",
-                  color: "#fff",
-                  fontWeight: 900,
-                  padding: "7px 10px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,.18)",
-                }}
-              >
-                🚚 Livraison gratuite
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="col-12 col-md-6">
-          <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <div className="h5 m-0 d-flex align-items-baseline gap-2 flex-wrap">
-              <span style={{ fontWeight: 950 }}>{moneyMAD(displayPrice)}</span>
-
-              {promoActive && (
-                <span
-                  style={{
-                    textDecoration: "line-through",
-                    color: "rgba(0,0,0,.45)",
-                    fontWeight: 800,
-                    fontSize: ".95rem",
-                  }}
-                >
-                  {moneyMAD(regularPrice)}
-                </span>
+      <div className="pv-hero p-3 p-lg-4">
+        <div className="row g-4">
+          <div className="col-12 col-lg-6">
+            <div className="pv-gallery">
+              {coverUrl ? (
+                <img
+                  src={coverUrl}
+                  alt={String(anyP?.name || "")}
+                  className="pv-gallery-main"
+                />
+              ) : (
+                <div className="pv-gallery-empty" />
               )}
-            </div>
 
-            <span className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
-              {badge}
-            </span>
-            {hasVariants && (
-              <span className="badge text-bg-light border">Variantes</span>
-            )}
+              {promoActive ? (
+                <span className="pv-badge pv-badge--promo">PROMO {promoSavedLabel}</span>
+              ) : null}
 
-            {promoActive && (
-              <span
-                className="badge"
-                style={{
-                  background: "rgba(229,57,53,.10)",
-                  color: "var(--duu-red,#E53935)",
-                  border: "1px solid rgba(229,57,53,.20)",
-                  fontWeight: 900,
-                }}
-              >
-                {promoSavedLabel}
-              </span>
-            )}
-          </div>
+              {promoActive && promoFreeDelivery ? (
+                <span className="pv-badge pv-badge--free">🚚 Livraison gratuite</span>
+              ) : null}
 
-          <div className="mb-3">
-            <ProductRating productId={Number(anyP?.id)} />
-          </div>
+              {images.length > 1 ? (
+                <>
+                  <span className="pv-badge pv-badge--count">
+                    {galleryIndex + 1}/{images.length}
+                  </span>
 
-          {hasVariants && (
-            <div className="mb-3">
-              <div className="small text-muted mb-1">Choisir une variante</div>
-
-              <select
-                className="form-select"
-                value={selectedKey || ""}
-                onChange={(e) => setSelectedKey(e.target.value)}
-              >
-                {variants.map((v) => (
-                  <option
-                    key={v.key}
-                    value={v.key}
-                    disabled={isVariantOutOfStock(v)}
+                  <button
+                    type="button"
+                    className="pv-arrow pv-arrow--left"
+                    onClick={prevImage}
+                    aria-label="Image précédente"
                   >
-                    {v.label}
-                  </option>
+                    ◀
+                  </button>
+                  <button
+                    type="button"
+                    className="pv-arrow pv-arrow--right"
+                    onClick={nextImage}
+                    aria-label="Image suivante"
+                  >
+                    ▶
+                  </button>
+                </>
+              ) : null}
+            </div>
+
+            {images.length > 1 ? (
+              <div className="pv-thumbs">
+                {images.map((u, i) => (
+                  <button
+                    key={`${u}-${i}`}
+                    type="button"
+                    className={`pv-thumb ${i === galleryIndex ? "pv-thumb--active" : ""}`}
+                    onClick={() => setGalleryIndex(i)}
+                    aria-label={`Voir image ${i + 1}`}
+                  >
+                    <img src={u} alt={`${title} ${i + 1}`} />
+                  </button>
                 ))}
-              </select>
+              </div>
+            ) : null}
+          </div>
 
-              {selectedVariant && (
-                <div className="small text-muted mt-2">
-                  {selectedVariant.stock != null && (
-                    <span className="me-3">
-                      Reste :{" "}
-                      <strong>{Math.max(0, Number(selectedVariant.stock))}</strong>
-                    </span>
-                  )}
+          <div className="col-12 col-lg-3">
+            <div className="pv-info-card h-100 d-flex flex-column gap-3">
+              <div>
+                <div className="pv-kicker mb-2">{badge}</div>
+                <h1 className="h3 pv-title">{title}</h1>
+              </div>
 
-                  {selectedVariant.price != null && !promoActive && (
-                    <span>
-                      Prix : <strong>{moneyMAD(selectedVariant.price)}</strong>
-                    </span>
-                  )}
+              <div>
+                <ProductRating productId={Number(anyP?.id)} />
+              </div>
 
-                  {promoActive && (
-                    <span>
-                      Prix : <strong>{moneyMAD(displayPrice)}</strong>
-                      <span
-                        style={{
-                          textDecoration: "line-through",
-                          color: "rgba(0,0,0,.45)",
-                          fontWeight: 800,
-                          marginLeft: 6,
-                        }}
+              <div className="pv-price-row">
+                <span className="pv-price-main">{moneyMAD(displayPrice)}</span>
+                {promoActive ? (
+                  <span className="pv-price-old">{moneyMAD(regularPrice)}</span>
+                ) : null}
+              </div>
+
+              <div className="pv-pill-row">
+                <span className={`pv-pill pv-pill--${stockTone}`}>
+                  {stockText || "Disponibilité à confirmer"}
+                </span>
+                {hasVariants ? <span className="pv-pill">Variantes</span> : null}
+                {promoActive ? <span className="pv-pill pv-pill--promo">{promoSavedLabel}</span> : null}
+              </div>
+
+              {hasVariants ? (
+                <div>
+                  <div className="pv-label">Choisir une variante</div>
+                  <select
+                    className="form-select pv-select"
+                    value={selectedKey || ""}
+                    onChange={(e) => setSelectedKey(e.target.value)}
+                  >
+                    {variants.map((v) => (
+                      <option
+                        key={v.key}
+                        value={v.key}
+                        disabled={isVariantOutOfStock(v)}
                       >
-                        {moneyMAD(regularPrice)}
-                      </span>
-                    </span>
-                  )}
-                </div>
-              )}
+                        {v.label}
+                      </option>
+                    ))}
+                  </select>
 
-              {selectedVariant && isVariantOutOfStock(selectedVariant) && (
-                <div className="alert alert-warning mt-2 py-2 small mb-0">
-                  Cette variante est en rupture.
-                </div>
-              )}
-            </div>
-          )}
+                  {selectedVariant ? (
+                    <div className="small text-muted mt-2">
+                      {selectedVariant.stock != null ? (
+                        <span className="me-3">
+                          Reste : <strong>{Math.max(0, Number(selectedVariant.stock))}</strong>
+                        </span>
+                      ) : null}
 
-          {(showVendorPanel || showSupplierPanel) && (
-            <div className="alert alert-light border mb-3 py-2">
-              <div className="fw-bold small mb-2">Infos Pro</div>
+                      {selectedVariant.price != null && !promoActive ? (
+                        <span>
+                          Prix : <strong>{moneyMAD(selectedVariant.price)}</strong>
+                        </span>
+                      ) : null}
 
-              {showVendorPanel && (
-                <div className="small text-muted">
-                  <div>
-                    Prix vendeur : <strong>{moneyMAD(vendorPrice ?? 0)}</strong>
-                    {vendorPrice == null && (
-                      <span className="ms-2">(non défini)</span>
-                    )}
-                  </div>
-
-                  {marginVsVendor != null && vendorPrice != null && (
-                    <div>
-                      Marge (client − vendeur) :{" "}
-                      <strong
-                        style={{
-                          color:
-                            marginVsVendor >= 0
-                              ? "inherit"
-                              : "var(--duu-red,#E53935)",
-                        }}
-                      >
-                        {moneyMAD(marginVsVendor)}
-                      </strong>
+                      {promoActive ? (
+                        <span>
+                          Prix : <strong>{moneyMAD(displayPrice)}</strong>
+                          <span
+                            style={{
+                              textDecoration: "line-through",
+                              color: "rgba(0,0,0,.45)",
+                              fontWeight: 800,
+                              marginLeft: 6,
+                            }}
+                          >
+                            {moneyMAD(regularPrice)}
+                          </span>
+                        </span>
+                      ) : null}
                     </div>
-                  )}
-                </div>
-              )}
+                  ) : null}
 
-              {showSupplierPanel && (
-                <div className="small text-muted mt-2">
-                  <div>
-                    Stock fournisseur : <strong>{supplierStock ?? 0}</strong>
-                    {supplierStock == null && (
-                      <span className="ms-2">(non défini)</span>
-                    )}
-                  </div>
-                  <div>
-                    Coût wholesale :{" "}
-                    <strong>{moneyMAD(supplierCost ?? 0)}</strong>
-                    {supplierCost == null && (
-                      <span className="ms-2">(non défini)</span>
-                    )}
-                  </div>
-
-                  {marginVsSupplier != null && supplierCost != null && (
-                    <div>
-                      Marge (client − wholesale) :{" "}
-                      <strong
-                        style={{
-                          color:
-                            marginVsSupplier >= 0
-                              ? "inherit"
-                              : "var(--duu-red,#E53935)",
-                        }}
-                      >
-                        {moneyMAD(marginVsSupplier)}
-                      </strong>
+                  {selectedVariant && isVariantOutOfStock(selectedVariant) ? (
+                    <div className="alert alert-warning mt-2 py-2 small mb-0">
+                      Cette variante est en rupture.
                     </div>
-                  )}
+                  ) : null}
                 </div>
-              )}
-            </div>
-          )}
+              ) : null}
 
-          <div className="d-flex gap-2 mb-3">
-            {qtySelected > 0 ? (
-              <div
-                className="btn-group"
-                role="group"
-                aria-label="Quantité panier"
-              >
-                <button
-                  className="btn btn-outline-dark"
-                  onClick={handleDecrease}
-                  type="button"
-                >
-                  −
-                </button>
-                <button className="btn btn-light disabled" type="button">
-                  {qtySelected}
-                </button>
+              <div className="pv-desc-card mt-auto">
+                <div className="pv-label">Description</div>
+                {desc ? (
+                  <>
+                    <p className="pv-desc">
+                      {desc.length > 220 ? shortText(desc, 220) : desc}
+                    </p>
+                    {desc.length > 220 ? (
+                      <button
+                        type="button"
+                        className="btn btn-link p-0 mt-2 text-decoration-none"
+                        onClick={() => setInfoOpen(true)}
+                      >
+                        Lire plus
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="pv-desc">Aucune description fournie.</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="col-12 col-lg-3">
+            <div className="pv-buy-card d-flex flex-column gap-3">
+              <div className="pv-buy-price">{moneyMAD(displayPrice)}</div>
+
+              {promoActive ? (
+                <div className="pv-buy-old">{moneyMAD(regularPrice)}</div>
+              ) : null}
+
+              <div className="pv-pill-row">
+                <span className={`pv-pill pv-pill--${stockTone}`}>
+                  {isOutOfStock ? "En rupture" : "Disponible"}
+                </span>
+                {!canOrder(viewerRole) ? (
+                  <span className="pv-pill pv-pill--warning">
+                    Commande désactivée pour ce rôle
+                  </span>
+                ) : null}
+              </div>
+
+              <div>
+                <div className="pv-label">Quantité</div>
+                {qtySelected > 0 ? (
+                  <div className="btn-group pv-qty-group" role="group" aria-label="Quantité panier">
+                    <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
+                      −
+                    </button>
+                    <button className="btn btn-light disabled" type="button">
+                      {qtySelected}
+                    </button>
+                    <button
+                      className="btn btn-duu"
+                      onClick={handleAdd}
+                      type="button"
+                      disabled={!canAddNow}
+                    >
+                      +
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btn btn-duu w-100"
+                    onClick={handleAdd}
+                    disabled={!canAddNow}
+                    type="button"
+                  >
+                    + Ajouter au panier
+                  </button>
+                )}
+              </div>
+
+              {qtySelected > 0 ? (
                 <button
                   className="btn btn-duu"
                   onClick={handleAdd}
-                  type="button"
                   disabled={!canAddNow}
+                  type="button"
                 >
-                  +
+                  Ajouter encore
                 </button>
-              </div>
-            ) : (
-              <button
-                className="btn btn-duu fw-semibold"
-                onClick={handleAdd}
-                disabled={!canAddNow}
-                type="button"
-              >
-                + Ajouter au panier
-              </button>
-            )}
+              ) : null}
 
-            {isOutOfStock && (
-              <span className="badge text-bg-danger align-self-center">
-                En rupture
-              </span>
-            )}
-
-            {!canOrder(viewerRole) && (
-              <span className="badge text-bg-warning align-self-center">
-                Commande désactivée pour ce rôle
-              </span>
-            )}
-          </div>
-
-          {desc ? (
-            <>
-              <div className="small text-muted mb-1">Description</div>
               <button
                 type="button"
-                className="btn btn-link p-0 text-start text-decoration-none"
+                className="btn btn-outline-dark"
                 onClick={() => setInfoOpen(true)}
-                style={{ color: "inherit" }}
+                disabled={!desc}
               >
-                <p className="text-muted mb-0">
-                  {desc.length > 160 ? desc.slice(0, 160) + "…" : desc}
-                  <span className="ms-1 text-decoration-underline">
-                    Voir plus
-                  </span>
-                </p>
+                Voir la description
               </button>
-            </>
-          ) : (
-            <p className="text-muted">Aucune description fournie.</p>
-          )}
 
-          <style>{`
-            .btn-duu{
-              background: var(--duu-yellow);
-              color: #1f1f1f;
-              border: none;
-            }
-            .btn-duu:hover{ filter: brightness(0.95); }
-          `}</style>
+              <div className="pt-2 border-top small text-muted d-flex flex-column gap-2">
+                <div>✓ Livraison rapide</div>
+                <div>✓ Paiement à la livraison</div>
+                {promoFreeDelivery ? <div>✓ Livraison gratuite sur cette promo</div> : null}
+              </div>
+            </div>
+
+            {(showVendorPanel || showSupplierPanel) ? (
+              <div className="pv-pro-card mt-3">
+                <div className="pv-label mb-2">Infos Pro</div>
+
+                {showVendorPanel ? (
+                  <div className="small text-muted">
+                    <div>
+                      Prix vendeur : <strong>{moneyMAD(vendorPrice ?? 0)}</strong>
+                      {vendorPrice == null ? <span className="ms-2">(non défini)</span> : null}
+                    </div>
+
+                    {marginVsVendor != null && vendorPrice != null ? (
+                      <div className="mt-1">
+                        Marge (client − vendeur) :{" "}
+                        <strong
+                          style={{
+                            color:
+                              marginVsVendor >= 0
+                                ? "inherit"
+                                : "var(--duu-red,#E53935)",
+                          }}
+                        >
+                          {moneyMAD(marginVsVendor)}
+                        </strong>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {showSupplierPanel ? (
+                  <div className={`small text-muted ${showVendorPanel ? "mt-3 pt-3 border-top" : ""}`}>
+                    <div>
+                      Stock fournisseur : <strong>{supplierStock ?? 0}</strong>
+                      {supplierStock == null ? <span className="ms-2">(non défini)</span> : null}
+                    </div>
+                    <div className="mt-1">
+                      Coût wholesale : <strong>{moneyMAD(supplierCost ?? 0)}</strong>
+                      {supplierCost == null ? <span className="ms-2">(non défini)</span> : null}
+                    </div>
+
+                    {marginVsSupplier != null && supplierCost != null ? (
+                      <div className="mt-1">
+                        Marge (client − wholesale) :{" "}
+                        <strong
+                          style={{
+                            color:
+                              marginVsSupplier >= 0
+                                ? "inherit"
+                                : "var(--duu-red,#E53935)",
+                          }}
+                        >
+                          {moneyMAD(marginVsSupplier)}
+                        </strong>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
-      <div className="mt-4">
-        <div className="d-flex align-items-center justify-content-between mb-2">
+      <div className="pv-related-card mt-4">
+        <div className="d-flex align-items-center justify-content-between mb-3">
           <h2 className="h6 m-0">{relatedTitle}</h2>
           <Link to={backPath} className="btn btn-sm btn-outline-dark">
             Voir tout
@@ -1206,10 +1540,13 @@ export default function ProductView() {
         </div>
 
         {related.length > 0 ? (
-          <div className="row g-2 g-sm-3">
+          <div className="row g-3">
             {related.map((p) => (
               <div key={(p as any).id} className="col-6 col-md-4 col-lg-3">
-                <ProductCard product={p} />
+                <ProductCard
+                  product={p}
+                  layout={String((p as any)?.vertical || "").toUpperCase() === "FASHION" ? "fashion" : "default"}
+                />
               </div>
             ))}
           </div>
@@ -1220,13 +1557,13 @@ export default function ProductView() {
         )}
       </div>
 
-      {infoOpen && (
+      {infoOpen ? (
         <InfoModal
           title={String(anyP?.name || "Infos produit")}
           body={desc || "Aucune description."}
           onClose={() => setInfoOpen(false)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

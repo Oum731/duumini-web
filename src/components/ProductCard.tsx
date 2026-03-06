@@ -1,5 +1,6 @@
 // src/components/ProductCard.tsx
-import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
+import { Link } from "react-router-dom";
 import type { Product } from "../services/products";
 import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
@@ -17,11 +18,6 @@ function imgUrl(u?: string | null) {
   return s;
 }
 
-/* =========================
- * ✅ Prix robustes (évite float + arrondis bizarres)
- * - calcul en CENTIMES (int)
- * - affichage en MAD entiers (0 décimale)
- * =======================*/
 function toNum(x: any): number {
   const n = Number(x);
   return Number.isFinite(n) ? n : 0;
@@ -33,11 +29,9 @@ function fromCents(c: any): number {
   const n = Number(c);
   return Number.isFinite(n) ? Math.round(n) / 100 : 0;
 }
-/** ✅ Arrondit au MAD entier (multiple de 100 cents) */
 function roundToMAD(cents: number) {
   return Math.round((cents || 0) / 100) * 100;
 }
-/** ✅ Affichage MAD: entier, jamais ",86" */
 function moneyMAD(n?: number | null) {
   const cents = roundToMAD(toCents(n ?? 0));
   const v = fromCents(cents);
@@ -48,20 +42,17 @@ function moneyMAD(n?: number | null) {
   return `${s} MAD`;
 }
 
-function shortText(s?: string | null, max = 200) {
-  const t = (s || "").trim();
+function shortText(s?: string | null, max = 140) {
+  const t = String(s || "").trim();
+  if (!t) return "";
   if (t.length <= max) return t;
-  return t.slice(0, Math.max(0, max - 1)) + "…";
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
 }
 
 function normToken(x: any) {
   return String(x ?? "").trim().toLowerCase();
 }
 
-/**
- * ⚠️ IMPORTANT: on n'utilise PAS p.sub_category
- * On utilise: sub_category_slug / sub_category_name / sub_category_id
- */
 function getSubCategoryToken(p: Product) {
   const anyP = p as any;
 
@@ -77,17 +68,10 @@ function getSubCategoryToken(p: Product) {
   return "";
 }
 
-/* =========================
- * ✅ Partage (WEB + Mobile)
- * - Pour que WhatsApp Desktop / Facebook aient un aperçu OG:
- *   => on PARTAGE /share/product/:id
- * - Pour ouvrir (humain): /products/:id
- * =======================*/
 function cleanBase(x: string) {
   return String(x || "").trim().replace(/\/+$/, "");
 }
 
-/** ✅ Domaine public du site (pas l'API). */
 function getWebOrigin() {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
@@ -106,7 +90,6 @@ function getProductId(p: Product) {
   return Number.isFinite(id) && id > 0 ? id : 0;
 }
 
-/** URL humaine (navigation) */
 function buildPublicProductUrl(p: Product) {
   const web = getWebOrigin();
   const id = getProductId(p);
@@ -114,7 +97,6 @@ function buildPublicProductUrl(p: Product) {
   return `${web}/products/${id}`;
 }
 
-/** URL OG (pour partage web) */
 function buildShareOgUrl(p: Product) {
   const web = getWebOrigin();
   const id = getProductId(p);
@@ -122,7 +104,6 @@ function buildShareOgUrl(p: Product) {
   return `${web}/share/product/${id}`;
 }
 
-/** liens fallback (quand WebShare indispo) */
 function buildShareLinks(shareUrl: string, text: string) {
   const u = encodeURIComponent(shareUrl);
   const t = encodeURIComponent(text);
@@ -136,9 +117,6 @@ function buildShareLinks(shareUrl: string, text: string) {
   };
 }
 
-/* =========================
- * Share image helper (Web Share API files)
- * =======================*/
 async function fetchAsFile(url: string, filename: string): Promise<File | null> {
   try {
     if (!url) return null;
@@ -174,7 +152,6 @@ function canShareFiles(file: File) {
   }
 }
 
-/* ✅ helper: prix base */
 function getDisplayPrice(anyP: any, priceOverride: number | null) {
   if (priceOverride != null) return toNum(priceOverride || 0);
 
@@ -188,7 +165,7 @@ function getDisplayPrice(anyP: any, priceOverride: number | null) {
 }
 
 /* =========================
- * PROMO (AUTO) — ✅ en CENTIMES
+ * PROMO
  * =======================*/
 type PromoRule =
   | { kind: "PERCENT"; value: number }
@@ -226,24 +203,25 @@ function computePromoPriceFromRule(price: number, rule: PromoRule) {
 
 function formatPromoBadge(rule: PromoRule, base: number, promo: number) {
   if (!rule) return "PROMO";
-  if (rule.kind === "PERCENT") return `PROMO -${Math.round(rule.value)}%`;
-  if (rule.kind === "AMOUNT") return `PROMO -${moneyMAD(rule.value)}`;
+  if (rule.kind === "PERCENT") return `-${Math.round(rule.value)}%`;
+  if (rule.kind === "AMOUNT") return `-${moneyMAD(rule.value)}`;
   if (base > 0 && promo >= 0 && promo < base) {
     const pct = Math.round(((base - promo) / base) * 100);
-    if (pct > 0) return `PROMO -${pct}%`;
+    if (pct > 0) return `-${pct}%`;
   }
   return "PROMO";
 }
 
 function getPromoMeta(anyP: any, basePrice: number) {
   const base = toNum(basePrice || 0);
-  if (!base)
+  if (!base) {
     return {
       isPromo: false,
       rule: null as PromoRule,
       oldPrice: null as number | null,
       badgeText: null as string | null,
     };
+  }
 
   const flag =
     anyP.is_promo === true ||
@@ -328,8 +306,10 @@ function getPromoMeta(anyP: any, basePrice: number) {
     }
   }
 
-  if (flag)
+  if (flag) {
     return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
+  }
+
   return { isPromo: false, rule: null, oldPrice: null, badgeText: null };
 }
 
@@ -385,7 +365,8 @@ function parseVariants(product: Product): UiVariant[] {
     const price = po == null || po === "" ? null : toNum(po);
 
     const stockRaw = v?.stock ?? v?.qty ?? null;
-    const stock = stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
+    const stock =
+      stockRaw == null || stockRaw === "" ? null : Number(stockRaw);
 
     const { size, color } = extractSizeColor(v);
     const key = `id:${id}`;
@@ -419,11 +400,8 @@ function isVariantOutOfStock(v: UiVariant) {
 type Props = {
   product: Product;
   onAdd?: (p: Product) => void;
-  /** ⚠️ peut être utilisé comme “prix final déjà promo” sur des pages promos */
   priceOverride?: number | null;
-  /** si priceOverride est “final promo”, oldPrice doit être le prix avant promo */
   oldPrice?: number | null;
-  /** idem: badge promo */
   badgeText?: string | null;
   hideSubCategories?: string[];
   layout?: "default" | "fashion";
@@ -491,10 +469,6 @@ function ProductCardInner({
     [anyP, priceOverride]
   );
 
-  /**
-   * ✅ FIX DOUBLE PROMO
-   * Si priceOverride + (oldPrice/badgeText) => priceOverride déjà FINAL => pas de promo auto.
-   */
   const treatOverrideAsFinal = useMemo(() => {
     return priceOverride != null && (oldPrice != null || !!badgeText);
   }, [badgeText, oldPrice, priceOverride]);
@@ -602,10 +576,17 @@ function ProductCardInner({
     return baseStock;
   }, [baseStock, hasVariants, selectedVariant]);
 
+  const stockTone = useMemo(() => {
+    if (effectiveStock == null) return "neutral";
+    if (effectiveStock <= 0) return "danger";
+    if (effectiveStock <= 5) return "warning";
+    return "success";
+  }, [effectiveStock]);
+
   const stockText = useMemo(() => {
     if (effectiveStock == null) return "";
     if (effectiveStock <= 0) return "En rupture";
-    return `${stockLabel}:${effectiveStock}`;
+    return `${stockLabel}: ${effectiveStock}`;
   }, [effectiveStock, stockLabel]);
 
   const qtyTotal = useMemo(
@@ -621,10 +602,7 @@ function ProductCardInner({
 
   const openModal = useCallback(
     (startIdx = 0) => {
-      const safe = Math.max(
-        0,
-        Math.min(startIdx, Math.max(0, images.length - 1))
-      );
+      const safe = Math.max(0, Math.min(startIdx, Math.max(0, images.length - 1)));
       setImgIdx(safe);
       setOpen(true);
     },
@@ -685,7 +663,12 @@ function ProductCardInner({
 
       add(productForCart, delta, {
         variant: isDefault
-          ? { variant_id: null, variant_key: "default", label: null, price: finalPrice }
+          ? {
+              variant_id: null,
+              variant_key: "default",
+              label: null,
+              price: finalPrice,
+            }
           : {
               variant_id: variant!.id,
               variant_key: variant!.key,
@@ -729,11 +712,6 @@ function ProductCardInner({
     addWithVariant(hasVariants ? selectedVariant : null, -1);
   }, [addWithVariant, hasVariants, qtySelected, selectedVariant]);
 
-  /* =========================
-   * ✅ Partage (web-friendly OG)
-   * - shareUrl: /share/product/:id  (preview OG + WhatsApp/Facebook desktop)
-   * - humanUrl: /products/:id       (ouvrir pour humain)
-   * =======================*/
   const humanUrl = useMemo(() => buildPublicProductUrl(product), [product]);
   const shareUrl = useMemo(
     () => buildShareOgUrl(product) || humanUrl,
@@ -742,7 +720,10 @@ function ProductCardInner({
 
   const shareTitle = useMemo(() => {
     const name = String(anyP.name || "Produit");
-    if (effectiveOldPrice != null && toNum(effectiveOldPrice) > toNum(displayPrice)) {
+    if (
+      effectiveOldPrice != null &&
+      toNum(effectiveOldPrice) > toNum(displayPrice)
+    ) {
       return `${name} — Promo ${moneyMAD(displayPrice)} (au lieu de ${moneyMAD(
         effectiveOldPrice
       )})`;
@@ -784,7 +765,6 @@ function ProductCardInner({
 
     const img = coverUrl || currentImg || "";
 
-    // ✅ Mobile: essayer avec image (si supporté)
     if (navAny?.share && img) {
       const file = await fetchAsFile(
         img,
@@ -803,7 +783,6 @@ function ProductCardInner({
       }
     }
 
-    // ✅ Mobile: share standard
     if (navAny?.share) {
       try {
         await navAny.share({
@@ -815,223 +794,38 @@ function ProductCardInner({
       } catch {}
     }
 
-    // ✅ Web/desktop: menu avec liens
     setShareMenuOpen(true);
   }, [anyP.name, coverUrl, currentImg, product, shareText, shareUrl]);
 
-  /* ===== Image swiper (CARD VIEW) ===== */
-  const CardImageSwiper = ({
-    variant = "square",
-    minHeight,
-  }: {
-    variant?: "square" | "fashion";
-    minHeight?: number;
-  }) => {
-    const hasMany = images.length > 1;
-    const scrollerRef = useRef<HTMLDivElement | null>(null);
-    const [active, setActive] = useState(0);
+  const productPath = useMemo(() => {
+    const id = Number(anyP.id || 0);
+    return id > 0 ? `/products/${id}` : "#";
+  }, [anyP.id]);
 
-    const dragRef = useRef({ downX: 0, downY: 0, dragging: false });
-    const onPointerDown = (e: React.PointerEvent) => {
-      dragRef.current.downX = e.clientX;
-      dragRef.current.downY = e.clientY;
-      dragRef.current.dragging = false;
-    };
-    const onPointerMove = (e: React.PointerEvent) => {
-      const dx = Math.abs(e.clientX - dragRef.current.downX);
-      const dy = Math.abs(e.clientY - dragRef.current.downY);
-      if (dx > 8 && dx > dy) dragRef.current.dragging = true;
-    };
-    const onClickSlide = (idx: number) => {
-      if (dragRef.current.dragging) return;
-      openModal(idx);
-    };
+  const PriceBlock = () => (
+    <div className="duu-price-wrap">
+      <div className="duu-price-row">
+        <span className="duu-price-main">{moneyMAD(displayPrice)}</span>
 
-    const onScroll = useCallback(() => {
-      const el = scrollerRef.current;
-      if (!el) return;
-      const w = el.clientWidth || 1;
-      const idx = Math.round(el.scrollLeft / w);
-      if (Number.isFinite(idx))
-        setActive(Math.max(0, Math.min(idx, images.length - 1)));
-    }, [images.length]);
-
-    const jumpTo = (idx: number) => {
-      const el = scrollerRef.current;
-      if (!el) return;
-      const w = el.clientWidth || 1;
-      el.scrollTo({ left: idx * w, behavior: "smooth" });
-    };
-
-    if (!coverUrl) {
-      return variant === "square" ? (
-        <div className="w-100 bg-light" style={{ aspectRatio: "1/1" }} />
-      ) : (
-        <div className="duu-fashion-img" />
-      );
-    }
-
-    const ImgTag = ({
-      src,
-      className,
-      style,
-      alt,
-      onClick,
-    }: {
-      src: string;
-      className?: string;
-      style?: React.CSSProperties;
-      alt: string;
-      onClick?: () => void;
-    }) => (
-      <img
-        src={src}
-        alt={alt}
-        className={className}
-        style={style}
-        loading="lazy"
-        decoding="async"
-        draggable={false}
-        onClick={onClick}
-      />
-    );
-
-    if (!hasMany) {
-      if (variant === "square") {
-        return (
-          <ImgTag
-            src={coverUrl}
-            alt={String(anyP.name || "")}
-            className="w-100"
-            style={{ aspectRatio: "1/1", objectFit: "cover", cursor: "pointer" }}
-            onClick={() => openModal(0)}
-          />
-        );
-      }
-      return (
-        <ImgTag
-          src={coverUrl}
-          alt={String(anyP.name || "")}
-          className="duu-fashion-img"
-          style={{ cursor: "pointer", minHeight: minHeight ?? undefined }}
-          onClick={() => openModal(0)}
-        />
-      );
-    }
-
-    return (
-      <div className="duu-swipe-wrap position-relative">
-        <div
-          ref={scrollerRef}
-          className="duu-swipe"
-          onScroll={onScroll}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-        >
-          {images.map((u, i) => (
-            <button
-              key={u + i}
-              type="button"
-              className="duu-swipe-slide"
-              onClick={() => onClickSlide(i)}
-              aria-label={`Voir image ${i + 1}`}
-              title={`Image ${i + 1}`}
-            >
-              <ImgTag
-                src={u}
-                alt={String(anyP.name || "")}
-                className={
-                  variant === "square"
-                    ? "duu-swipe-img-square"
-                    : "duu-swipe-img-fashion"
-                }
-              />
-            </button>
-          ))}
-        </div>
-
-        <div className="duu-swipe-dots">
-          {images.slice(0, 8).map((_, i) => (
-            <button
-              key={i}
-              type="button"
-              className={"duu-dot " + (i === active ? "active" : "")}
-              onClick={() => jumpTo(i)}
-              aria-label={`Aller à l'image ${i + 1}`}
-              title={`Image ${i + 1}`}
-            />
-          ))}
-        </div>
-
-        <span
-          className="badge position-absolute bottom-0 end-0 m-2 text-white"
-          style={{ background: "rgba(17,17,17,.75)" }}
-        >
-          {active + 1}/{images.length}
-        </span>
-
-        <style>{`
-          .duu-swipe-wrap{ background:#f5f5f5; }
-          .duu-swipe{
-            display:flex;
-            overflow-x:auto;
-            scroll-snap-type:x mandatory;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-          }
-          .duu-swipe::-webkit-scrollbar{ display:none; }
-          .duu-swipe-slide{
-            all: unset;
-            flex: 0 0 100%;
-            width: 100%;
-            scroll-snap-align: start;
-            cursor: pointer;
-          }
-          .duu-swipe-img-square{
-            width: 100%;
-            height: auto;
-            aspect-ratio: 1 / 1;
-            object-fit: cover;
-            display:block;
-            user-select:none;
-            -webkit-user-drag:none;
-          }
-          .duu-swipe-img-fashion{
-            width: 100%;
-            height: 100%;
-            min-height: ${minHeight ?? 190}px;
-            object-fit: cover;
-            display:block;
-            user-select:none;
-            -webkit-user-drag:none;
-          }
-          .duu-swipe-dots{
-            position:absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            bottom: 8px;
-            display:flex;
-            gap: 6px;
-            padding: 6px 8px;
-            border-radius: 999px;
-            background: rgba(255,255,255,.75);
-            backdrop-filter: blur(6px);
-          }
-          .duu-dot{
-            all: unset;
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-            background: rgba(0,0,0,.25);
-            cursor: pointer;
-          }
-          .duu-dot.active{ background: rgba(0,0,0,.70); }
-        `}</style>
+        {effectiveOldPrice != null &&
+          toNum(effectiveOldPrice) > toNum(displayPrice) && (
+            <span className="duu-price-old">{moneyMAD(effectiveOldPrice)}</span>
+          )}
       </div>
-    );
-  };
 
-  const VariantSelector = ({ size = "sm" }: { size?: "sm" | "md" }) => {
+      <div className="duu-meta-row">
+        {stockText ? (
+          <span className={`duu-stock-pill duu-stock-pill--${stockTone}`}>
+            {stockText}
+          </span>
+        ) : null}
+
+        {hasVariants ? <span className="duu-soft-pill">Variantes</span> : null}
+      </div>
+    </div>
+  );
+
+  const VariantSelector = () => {
     if (!hasVariants) return null;
 
     const selected = selectedVariant;
@@ -1041,40 +835,12 @@ function ProductCardInner({
       return sc || v.label;
     };
 
-    const qv = selected ? qtyForProductVariant(Number(anyP.id), selected.key) : 0;
-
-    const infoParts: string[] = [];
-    if (selected?.stock != null) infoParts.push(`${stockLabel}:${selected.stock}`);
-    else if (effectiveStock != null) infoParts.push(`${stockLabel}:${effectiveStock}`);
-
-    const raw = selected?.price != null ? toNum(selected.price) : null;
-    if (raw != null) {
-      const final = treatOverrideAsFinal
-        ? fromCents(roundToMAD(toCents(raw)))
-        : fromCents(computePromoCentsFromRule(toCents(raw), effectiveRule));
-
-      infoParts.push(`Prix:${moneyMAD(final)}`);
-
-      const rawRounded = fromCents(roundToMAD(toCents(raw)));
-      const old = !treatOverrideAsFinal && final < rawRounded ? rawRounded : null;
-      if (old != null) infoParts.push(`Ancien:${moneyMAD(old)}`);
-    }
-
-    const infoLine = infoParts.join(" • ");
-
     return (
-      <div className={size === "sm" ? "mt-2" : "mt-3"}>
-        <div className="d-flex align-items-center justify-content-between">
-          <div className="small text-muted fw-semibold">Variante</div>
-          {qv > 0 ? (
-            <div className="small fw-bold" style={{ color: "var(--duu-black)" }}>
-              Dans le panier : {qv}
-            </div>
-          ) : null}
-        </div>
+      <div className="duu-variant-wrap">
+        <div className="duu-section-label">Variante</div>
 
         <select
-          className="form-select form-select-sm mt-2"
+          className="form-select form-select-sm duu-select"
           value={selectedKey}
           onChange={(e) => setSelectedKey(e.target.value)}
           aria-label="Sélection de variante"
@@ -1086,113 +852,324 @@ function ProductCardInner({
           ))}
         </select>
 
-        {infoLine ? (
-          <div className="small mt-2" style={{ color: "rgba(0,0,0,.65)", fontWeight: 800 }}>
-            {infoLine}
-          </div>
-        ) : null}
-
         {selected && isVariantOutOfStock(selected) ? (
           <div className="alert alert-warning mt-2 py-2 small mb-0">
             Cette variante est en rupture.
           </div>
         ) : null}
-
-        <div className="mt-2 d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-outline-dark btn-sm"
-            onClick={() => selected && addWithVariant(selected, -1)}
-            disabled={!selected || qv <= 0}
-          >
-            −
-          </button>
-          <button type="button" className="btn btn-light btn-sm" disabled>
-            {qv || 0}
-          </button>
-          <button
-            type="button"
-            className="btn btn-duu btn-sm"
-            onClick={() => selected && addWithVariant(selected, +1)}
-            disabled={!selected || isVariantOutOfStock(selected)}
-          >
-            +
-          </button>
-        </div>
-
-        <style>{`
-          .form-select:focus{
-            outline: none !important;
-            box-shadow: 0 0 0 .22rem rgba(255,213,79,.40) !important;
-            border-color: rgba(229,57,53,.35) !important;
-          }
-          .btn-duu{ background: var(--duu-yellow); color: #1f1f1f; border: none; }
-          .btn-duu:hover{ filter: brightness(0.95); }
-        `}</style>
       </div>
     );
   };
 
-  const PriceStockLine = () => (
-    <div className="d-flex flex-wrap align-items-center gap-2 mt-1">
-      <div className="fw-semibold">Prix:{moneyMAD(displayPrice)}</div>
+  const CardImage = () => {
+    const hasMany = images.length > 1;
 
-      {effectiveOldPrice != null && toNum(effectiveOldPrice) > toNum(displayPrice) && (
+    if (!coverUrl) {
+      return (
         <div
-          style={{
-            textDecoration: "line-through",
-            color: "rgba(0,0,0,.45)",
-            fontWeight: 800,
-          }}
-        >
-          {moneyMAD(effectiveOldPrice)}
-        </div>
-      )}
-
-      {stockText ? (
-        <span
           className={
-            "badge " +
-            (effectiveStock != null && effectiveStock <= 0
-              ? "bg-danger"
-              : "bg-light text-dark")
+            layout === "fashion"
+              ? "duu-media duu-media--fashion ph"
+              : "duu-media duu-media--default ph"
           }
-          style={{ border: "1px solid rgba(0,0,0,.10)", fontWeight: 900 }}
+        />
+      );
+    }
+
+    return (
+      <div
+        className={
+          layout === "fashion"
+            ? "duu-media duu-media--fashion"
+            : "duu-media duu-media--default"
+        }
+      >
+        <button
+          type="button"
+          className="duu-media-btn"
+          onClick={() => openModal(0)}
+          title={String(anyP.name || "")}
         >
-          {stockText}
-        </span>
-      ) : null}
-    </div>
-  );
+          <img
+            src={coverUrl}
+            alt={String(anyP.name || "")}
+            className="duu-media-img"
+            loading="lazy"
+            decoding="async"
+          />
+        </button>
+
+        {effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) ? (
+          <span className="duu-badge duu-badge--promo">{effectiveBadgeText}</span>
+        ) : null}
+
+        {effectiveStock != null && effectiveStock <= 0 ? (
+          <span className="duu-badge duu-badge--danger">En rupture</span>
+        ) : null}
+
+        {hasMany ? (
+          <span className="duu-count-badge">{images.length} photos</span>
+        ) : null}
+      </div>
+    );
+  };
 
   return (
     <>
-      <div
-        className={
-          "card border-0 shadow-sm " +
-          (layout === "fashion" ? "duu-fashion-card h-100" : "h-100")
-        }
-      >
+      <div className={`card border-0 shadow-sm duu-card ${layout === "fashion" ? "duu-card--fashion" : "duu-card--default"}`}>
         <style>{`
-          .btn-duu{ background: var(--duu-yellow); color:#1f1f1f; border:none; }
-          .btn-duu:hover{ filter: brightness(0.95); }
-          .duu-fashion-card{ border-radius: 16px; overflow: hidden; }
-          .duu-fashion-row{ display:flex; gap:10px; height:100%; }
-          .duu-fashion-media{ flex:0 0 56%; max-width:56%; position:relative; display:flex; flex-direction:column; }
-          .duu-fashion-img{ width:100%; height:100%; min-height:190px; object-fit:cover; background:#f5f5f5; }
-          .duu-fashion-side{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; padding:12px; }
-          .duu-fashion-title{
-            font-weight:900; color:var(--duu-black); line-height:1.1; margin:0;
-            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+          .duu-card{
+            border-radius: 18px;
+            overflow: hidden;
+            background: #fff;
+            border: 1px solid rgba(0,0,0,.06);
+            box-shadow: 0 10px 26px rgba(0,0,0,.06) !important;
+            transition: transform .18s ease, box-shadow .18s ease;
           }
-          .duu-mini-desc-btn{
-            all:unset; cursor:pointer; margin-top:6px; color:rgba(0,0,0,.62);
-            font-weight:600; font-size:.86rem; line-height:1.15;
-            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+          .duu-card:hover{
+            transform: translateY(-2px);
+            box-shadow: 0 14px 30px rgba(0,0,0,.08) !important;
           }
-          .duu-mini-desc-btn:hover{ color:rgba(0,0,0,.80); text-decoration:underline; }
-          .duu-mini-desc-btn:focus,.duu-mini-desc-btn:focus-visible{
-            outline:none !important; box-shadow:0 0 0 .22rem rgba(255,213,79,.40) !important; border-radius:10px;
+
+          .duu-card--default .card-body{
+            padding: 14px;
+          }
+          .duu-card--fashion .card-body{
+            padding: 14px;
+          }
+
+          .duu-media{
+            position: relative;
+            overflow: hidden;
+            background: #f5f5f5;
+          }
+          .duu-media--default{
+            aspect-ratio: 1 / 1;
+          }
+          .duu-media--fashion{
+            aspect-ratio: 4 / 5;
+          }
+          .duu-media.ph{
+            background: linear-gradient(135deg, rgba(0,0,0,.06), rgba(0,0,0,.02));
+          }
+          .duu-media-btn{
+            all: unset;
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+          }
+          .duu-media-img{
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+            transition: transform .35s ease;
+          }
+          .duu-card:hover .duu-media-img{
+            transform: scale(1.025);
+          }
+
+          .duu-badge{
+            position: absolute;
+            z-index: 2;
+            top: 12px;
+            left: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: .78rem;
+            font-weight: 900;
+            line-height: 1;
+            box-shadow: 0 6px 16px rgba(0,0,0,.12);
+          }
+          .duu-badge--promo{
+            background: rgba(229,57,53,.95);
+            color: #fff;
+          }
+          .duu-badge--danger{
+            background: rgba(17,17,17,.86);
+            color: #fff;
+          }
+          .duu-count-badge{
+            position: absolute;
+            right: 12px;
+            bottom: 12px;
+            z-index: 2;
+            background: rgba(17,17,17,.72);
+            color: #fff;
+            font-size: .76rem;
+            font-weight: 800;
+            padding: 6px 9px;
+            border-radius: 999px;
+            backdrop-filter: blur(4px);
+          }
+
+          .duu-card-head{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+          }
+          .duu-title-link{
+            color: var(--duu-black);
+            text-decoration: none;
+          }
+          .duu-title-link:hover{
+            color: var(--duu-red);
+          }
+          .duu-title{
+            font-weight: 900;
+            line-height: 1.18;
+            margin: 0;
+            color: var(--duu-black);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            min-height: 2.45em;
+          }
+          .duu-desc{
+            color: rgba(0,0,0,.58);
+            font-size: .88rem;
+            line-height: 1.3;
+            margin: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            min-height: 2.5em;
+          }
+
+          .duu-rating-row{
+            margin-top: 8px;
+          }
+
+          .duu-price-wrap{
+            margin-top: 10px;
+          }
+          .duu-price-row{
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+          .duu-price-main{
+            font-size: 1.05rem;
+            font-weight: 950;
+            color: var(--duu-black);
+            line-height: 1;
+          }
+          .duu-price-old{
+            color: rgba(0,0,0,.42);
+            text-decoration: line-through;
+            font-weight: 800;
+            font-size: .92rem;
+          }
+          .duu-meta-row{
+            margin-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+          }
+
+          .duu-stock-pill,
+          .duu-soft-pill{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            font-size: .78rem;
+            font-weight: 800;
+            border: 1px solid rgba(0,0,0,.08);
+          }
+          .duu-soft-pill{
+            background: rgba(0,0,0,.04);
+            color: rgba(0,0,0,.72);
+          }
+          .duu-stock-pill--success{
+            background: rgba(25,135,84,.08);
+            color: #157347;
+            border-color: rgba(25,135,84,.18);
+          }
+          .duu-stock-pill--warning{
+            background: rgba(255,193,7,.10);
+            color: #7a5a00;
+            border-color: rgba(255,193,7,.26);
+          }
+          .duu-stock-pill--danger{
+            background: rgba(220,53,69,.08);
+            color: #b02a37;
+            border-color: rgba(220,53,69,.18);
+          }
+          .duu-stock-pill--neutral{
+            background: rgba(0,0,0,.04);
+            color: rgba(0,0,0,.72);
+            border-color: rgba(0,0,0,.08);
+          }
+
+          .duu-section-label{
+            font-size: .78rem;
+            font-weight: 900;
+            color: rgba(0,0,0,.64);
+            margin-bottom: 6px;
+          }
+          .duu-variant-wrap{
+            margin-top: 10px;
+          }
+          .duu-select{
+            border-radius: 12px;
+            min-height: 38px;
+          }
+          .duu-select:focus{
+            outline: none !important;
+            box-shadow: 0 0 0 .22rem rgba(255,213,79,.40) !important;
+            border-color: rgba(229,57,53,.28) !important;
+          }
+
+          .duu-actions{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 14px;
+          }
+
+          .btn-duu{
+            background: var(--duu-yellow);
+            color: #1f1f1f;
+            border: none;
+            font-weight: 900;
+            border-radius: 12px;
+          }
+          .btn-duu:hover{ filter: brightness(0.96); }
+
+          .duu-qty{
+            margin-top: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+          }
+          .duu-qty-label{
+            color: rgba(0,0,0,.58);
+            font-size: .82rem;
+            font-weight: 700;
+          }
+
+          .duu-qty-group .btn,
+          .duu-qty-group .btn-light{
+            border-radius: 12px !important;
+            min-width: 40px;
+            font-weight: 900;
+          }
+
+          .duu-footer-note{
+            margin-top: 10px;
+            color: rgba(0,0,0,.54);
+            font-size: .78rem;
+            line-height: 1.2;
           }
 
           .duu-share-pop{
@@ -1219,227 +1196,179 @@ function ProductCardInner({
           .duu-share-item:hover{ background: rgba(0,0,0,.04); }
           .duu-share-sep{ height:1px; background: rgba(0,0,0,.06); }
 
-          @media (max-width: 992px){
-            .duu-fashion-media{ flex:0 0 52%; max-width:52%; }
-            .duu-fashion-img{ min-height:180px; }
-          }
           @media (max-width: 576px){
-            .duu-fashion-row{ flex-direction: column; }
-            .duu-fashion-media{ flex:0 0 auto; max-width:100%; }
-            .duu-fashion-img{ min-height:230px; }
+            .duu-actions{
+              grid-template-columns: 1fr;
+            }
           }
         `}</style>
 
-        {layout === "fashion" ? (
-          <div className="duu-fashion-row">
-            <div className="duu-fashion-media">
-              <div className="position-relative">
-                <CardImageSwiper variant="fashion" minHeight={190} />
+        <CardImage />
 
-                {effectiveStock != null && effectiveStock <= 0 && (
-                  <span className="badge bg-danger position-absolute top-0 start-0 m-2">
-                    En rupture
-                  </span>
-                )}
-
-                {!!effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) && (
-                  <span
-                    className="badge position-absolute top-0 end-0 m-2 text-white"
-                    style={{ background: "var(--duu-red)" }}
-                  >
-                    {effectiveBadgeText}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            <div className="duu-fashion-side">
-              <button
-                className="btn btn-link p-0 text-start"
-                onClick={() => openModal(0)}
-                type="button"
-                style={{ textDecoration: "none" }}
-              >
-                <h3 className="duu-fashion-title">{String(anyP.name || "")}</h3>
-              </button>
-
-              {!!anyP.description && (
-                <button
-                  type="button"
-                  className="duu-mini-desc-btn"
-                  onClick={() => openModal(0)}
-                >
-                  {shortText(String(anyP.description), miniDescMax)}
-                </button>
-              )}
-
-              <div className="mt-2">
-                <ProductRating productId={Number(anyP.id)} />
-              </div>
-
-              <PriceStockLine />
-              <VariantSelector size="sm" />
-
-              <div className="mt-auto d-flex gap-2 pt-3 position-relative">
-                <button
-                  className="btn btn-outline-dark btn-sm flex-fill"
-                  onClick={() => openModal(0)}
-                  type="button"
-                >
-                  Voir
-                </button>
-
-                {qtySelected > 0 ? (
-                  <div className="btn-group btn-group-sm flex-fill" role="group">
-                    <button
-                      className="btn btn-outline-dark"
-                      onClick={handleDecrease}
-                      type="button"
-                    >
-                      −
-                    </button>
-                    <button className="btn btn-light disabled" type="button">
-                      {qtySelected}
-                    </button>
-                    <button
-                      className="btn btn-duu"
-                      onClick={handleAdd}
-                      type="button"
-                      disabled={!canAddNow}
-                    >
-                      +
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className="btn btn-duu btn-sm flex-fill"
-                    onClick={handleAdd}
-                    disabled={!canAddNow}
-                    type="button"
-                  >
-                    + Panier
-                  </button>
-                )}
-              </div>
-
-              {hasVariants && qtyTotal > 0 && (
-                <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
-                  Total dans le panier : <strong>{qtyTotal}</strong>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="position-relative">
-              <CardImageSwiper variant="square" />
-
-              {effectiveStock != null && effectiveStock <= 0 && (
-                <span className="badge bg-danger position-absolute top-0 start-0 m-2">
-                  En rupture
-                </span>
-              )}
-
-              {!!effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) && (
-                <span
-                  className="badge position-absolute top-0 end-0 m-2 text-white"
-                  style={{ background: "var(--duu-red)" }}
-                >
-                  {effectiveBadgeText}
-                </span>
-              )}
-            </div>
-
-            <div className="card-body d-flex flex-column">
-              <h3 className="h6 mb-1">
-                <button
-                  className="btn btn-link p-0 text-start text-dark"
-                  onClick={() => openModal(0)}
-                  type="button"
-                  style={{ textDecoration: "none" }}
-                >
-                  {String(anyP.name || "")}
-                </button>
+        <div className="card-body d-flex flex-column">
+          <div className="duu-card-head">
+            <Link to={productPath} className="duu-title-link">
+              <h3 className={`m-0 ${layout === "fashion" ? "h5" : "h6"} duu-title`}>
+                {String(anyP.name || "")}
               </h3>
+            </Link>
 
-              {!!anyP.description && (
-                <button
-                  type="button"
-                  onClick={() => openModal(0)}
-                  className="btn btn-link p-0 text-start"
-                  style={{
-                    textDecoration: "none",
-                    color: "rgba(0,0,0,.62)",
-                    fontWeight: 600,
-                    fontSize: ".86rem",
-                  }}
-                >
-                  {shortText(String(anyP.description), miniDescMax)}
-                </button>
-              )}
+            {!!anyP.description && (
+              <p className="duu-desc">{shortText(String(anyP.description), miniDescMax)}</p>
+            )}
+          </div>
 
-              <div className="mb-1 mt-1">
-                <ProductRating productId={Number(anyP.id)} />
-              </div>
+          <div className="duu-rating-row">
+            <ProductRating productId={Number(anyP.id)} />
+          </div>
 
-              <PriceStockLine />
-              <VariantSelector size="sm" />
+          <PriceBlock />
+          <VariantSelector />
 
-              <div className="mt-auto d-flex gap-2 pt-3 position-relative">
-                <button
-                  className="btn btn-outline-dark btn-sm flex-fill"
-                  onClick={() => openModal(0)}
-                  type="button"
-                >
-                  Voir
-                </button>
+          <div className="position-relative">
+            <div className="duu-actions">
+              <Link to={productPath} className="btn btn-outline-dark btn-sm">
+                Voir
+              </Link>
 
-                {qtySelected > 0 ? (
-                  <div className="btn-group btn-group-sm flex-fill" role="group">
-                    <button
-                      className="btn btn-outline-dark"
-                      onClick={handleDecrease}
-                      type="button"
-                    >
-                      −
-                    </button>
-                    <button className="btn btn-light disabled" type="button">
-                      {qtySelected}
-                    </button>
-                    <button
-                      className="btn btn-duu"
-                      onClick={handleAdd}
-                      type="button"
-                      disabled={!canAddNow}
-                    >
-                      +
-                    </button>
-                  </div>
-                ) : (
+              {qtySelected > 0 ? (
+                <div className="btn-group btn-group-sm duu-qty-group" role="group">
                   <button
-                    className="btn btn-duu btn-sm flex-fill"
-                    onClick={handleAdd}
-                    disabled={!canAddNow}
+                    className="btn btn-outline-dark"
+                    onClick={handleDecrease}
                     type="button"
                   >
-                    + Panier
+                    −
                   </button>
-                )}
-              </div>
-
-              {hasVariants && qtyTotal > 0 && (
-                <div className="small text-muted mt-2" style={{ lineHeight: 1.1 }}>
-                  Total dans le panier (toutes variantes) : <strong>{qtyTotal}</strong>
+                  <button className="btn btn-light disabled" type="button">
+                    {qtySelected}
+                  </button>
+                  <button
+                    className="btn btn-duu"
+                    onClick={handleAdd}
+                    type="button"
+                    disabled={!canAddNow}
+                  >
+                    +
+                  </button>
                 </div>
+              ) : (
+                <button
+                  className="btn btn-duu btn-sm"
+                  onClick={handleAdd}
+                  disabled={!canAddNow}
+                  type="button"
+                >
+                  + Panier
+                </button>
               )}
             </div>
-          </>
-        )}
+
+            <div className="mt-2">
+              <button
+                className="btn btn-sm btn-outline-secondary w-100"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  shareProduct();
+                }}
+                type="button"
+              >
+                Partager
+              </button>
+            </div>
+
+            {shareMenuOpen && (
+              <div
+                className="duu-share-pop"
+                role="menu"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  className="duu-share-item"
+                  onClick={() => openShareLink(shareLinks.whatsapp)}
+                  type="button"
+                >
+                  WhatsApp
+                </button>
+                <button
+                  className="duu-share-item"
+                  onClick={() => openShareLink(shareLinks.facebook)}
+                  type="button"
+                >
+                  Facebook / Meta
+                </button>
+                <button
+                  className="duu-share-item"
+                  onClick={() => openShareLink(shareLinks.telegram)}
+                  type="button"
+                >
+                  Telegram
+                </button>
+                <button
+                  className="duu-share-item"
+                  onClick={() => openShareLink(shareLinks.x)}
+                  type="button"
+                >
+                  X (Twitter)
+                </button>
+                <button
+                  className="duu-share-item"
+                  onClick={() => openShareLink(shareLinks.linkedin)}
+                  type="button"
+                >
+                  LinkedIn
+                </button>
+                <button
+                  className="duu-share-item"
+                  onClick={() => openShareLink(shareLinks.email)}
+                  type="button"
+                >
+                  Email
+                </button>
+
+                <div className="duu-share-sep" />
+                <button
+                  className="duu-share-item"
+                  onClick={async () => {
+                    await copyShareUrl();
+                    setShareMenuOpen(false);
+                  }}
+                  type="button"
+                >
+                  {copied ? "Lien copié ✅" : "Copier le lien"}
+                </button>
+
+                <div className="duu-share-sep" />
+                {humanUrl ? (
+                  <button
+                    className="duu-share-item"
+                    onClick={() => openShareLink(humanUrl)}
+                    type="button"
+                  >
+                    Ouvrir la page produit
+                  </button>
+                ) : null}
+
+                <div className="duu-share-sep" />
+                <button
+                  className="duu-share-item"
+                  onClick={() => setShareMenuOpen(false)}
+                  type="button"
+                >
+                  Fermer
+                </button>
+              </div>
+            )}
+          </div>
+
+          {hasVariants && qtyTotal > 0 ? (
+            <div className="duu-footer-note">
+              Total dans le panier : <strong>{qtyTotal}</strong>
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      {/* =========================
-       * MODAL
-       * =======================*/}
       {open && (
         <div
           className="modal d-block"
@@ -1449,7 +1378,7 @@ function ProductCardInner({
           aria-modal="true"
         >
           <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div className="modal-content">
+            <div className="modal-content" style={{ borderRadius: 18, border: "1px solid rgba(0,0,0,.06)" }}>
               <div className="modal-header">
                 <h5 className="modal-title">{String(anyP.name || "")}</h5>
                 <button
@@ -1510,8 +1439,8 @@ function ProductCardInner({
                   </div>
 
                   <div className="col-12 col-md-6">
-                    <div className="d-flex align-items-baseline gap-2">
-                      <div className="h5 m-0">Prix:{moneyMAD(displayPrice)}</div>
+                    <div className="d-flex align-items-baseline gap-2 flex-wrap">
+                      <div className="h5 m-0 fw-bold">{moneyMAD(displayPrice)}</div>
                       {effectiveOldPrice != null &&
                         toNum(effectiveOldPrice) > toNum(displayPrice) && (
                           <div
@@ -1526,7 +1455,7 @@ function ProductCardInner({
                         )}
                     </div>
 
-                    {!!effectiveBadgeText && (
+                    {effectiveBadgeText ? (
                       <div className="mt-2">
                         <span
                           className="badge text-white"
@@ -1535,32 +1464,25 @@ function ProductCardInner({
                           {effectiveBadgeText}
                         </span>
                       </div>
-                    )}
+                    ) : null}
 
                     {stockText ? (
                       <div className="mt-2">
                         <span
-                          className={
-                            "badge " +
-                            (effectiveStock != null && effectiveStock <= 0
-                              ? "bg-danger"
-                              : "bg-light text-dark")
-                          }
-                          style={{
-                            border: "1px solid rgba(0,0,0,.10)",
-                            fontWeight: 900,
-                          }}
+                          className={`duu-stock-pill duu-stock-pill--${stockTone}`}
                         >
                           {stockText}
                         </span>
                       </div>
                     ) : null}
 
-                    <div className="mt-2">
+                    <div className="mt-3">
                       <ProductRating productId={Number(anyP.id)} />
                     </div>
 
-                    <VariantSelector size="md" />
+                    <div className="mt-3">
+                      <VariantSelector />
+                    </div>
 
                     <p className="text-muted mt-3 mb-3">
                       {anyP.description
@@ -1578,7 +1500,6 @@ function ProductCardInner({
                         + Ajouter au panier
                       </button>
 
-                      {/* ✅ Partage : mobile (navigator.share) + web (menu) */}
                       <button
                         className="btn btn-outline-secondary"
                         onClick={(e) => {
@@ -1589,97 +1510,13 @@ function ProductCardInner({
                       >
                         Partager
                       </button>
-
-                      {shareMenuOpen && (
-                        <div
-                          className="duu-share-pop"
-                          role="menu"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.whatsapp)}
-                            type="button"
-                          >
-                            WhatsApp
-                          </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.facebook)}
-                            type="button"
-                          >
-                            Facebook / Meta
-                          </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.telegram)}
-                            type="button"
-                          >
-                            Telegram
-                          </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.x)}
-                            type="button"
-                          >
-                            X (Twitter)
-                          </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.linkedin)}
-                            type="button"
-                          >
-                            LinkedIn
-                          </button>
-                          <button
-                            className="duu-share-item"
-                            onClick={() => openShareLink(shareLinks.email)}
-                            type="button"
-                          >
-                            Email
-                          </button>
-
-                          <div className="duu-share-sep" />
-                          <button
-                            className="duu-share-item"
-                            onClick={async () => {
-                              await copyShareUrl();
-                              setShareMenuOpen(false);
-                            }}
-                            type="button"
-                          >
-                            {copied ? "Lien copié ✅" : "Copier le lien"}
-                          </button>
-
-                          <div className="duu-share-sep" />
-                          {humanUrl ? (
-                            <button
-                              className="duu-share-item"
-                              onClick={() => openShareLink(humanUrl)}
-                              type="button"
-                            >
-                              Ouvrir la page produit
-                            </button>
-                          ) : null}
-
-                          <div className="duu-share-sep" />
-                          <button
-                            className="duu-share-item"
-                            onClick={() => setShareMenuOpen(false)}
-                            type="button"
-                          >
-                            Fermer
-                          </button>
-                        </div>
-                      )}
                     </div>
 
-                    {/* ✅ IMPORTANT: on n'affiche PLUS "Aperçu (OG)" */}
-                    {effectiveStock != null && effectiveStock <= 0 && (
+                    {effectiveStock != null && effectiveStock <= 0 ? (
                       <div className="alert alert-warning mt-3 py-2 small mb-0">
                         Produit en rupture de stock.
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1692,6 +1529,9 @@ function ProductCardInner({
                 >
                   Fermer
                 </button>
+                <Link to={productPath} className="btn btn-dark">
+                  Voir la fiche
+                </Link>
               </div>
             </div>
           </div>
@@ -1701,9 +1541,6 @@ function ProductCardInner({
   );
 }
 
-/* =========================
- * React.memo: stop rerenders inutiles (iOS)
- * =======================*/
 function areEqual(prev: Props, next: Props) {
   const prevId = Number((prev.product as any)?.id || 0);
   const nextId = Number((next.product as any)?.id || 0);
