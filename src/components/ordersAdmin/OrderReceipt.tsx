@@ -1,4 +1,3 @@
-// src/components/ordersAdmin/OrderReceipt.tsx
 import { useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { toPng } from "html-to-image";
@@ -15,15 +14,11 @@ import {
 export default function OrderReceipt(props: {
   order: AnyObj;
   hidePrintButton?: boolean;
-
-  // branding
-  logoSrc?: string; // default "/logo.jpeg"
-  shopName?: string; // default "DUUMINI"
-  slogan?: string; // default "Marketplace & Livraison"
+  logoSrc?: string;
+  shopName?: string;
+  slogan?: string;
   hotlinePhone?: string;
-
-  // QR
-  publicWebBase?: string; // ex: "https://duumini.com"
+  publicWebBase?: string;
 }) {
   const {
     order,
@@ -51,14 +46,22 @@ export default function OrderReceipt(props: {
   const phone = contact?.phone || "—";
 
   const address = order?.address || {};
-  const addr =
-    [
-      address?.city || address?.ville,
-      address?.commune,
-      address?.district || address?.quartier,
-    ]
-      .filter(Boolean)
-      .join(" • ") || "—";
+  const city = address?.city || address?.ville || "—";
+  const commune = address?.commune || "—";
+  const district = address?.district || address?.quartier || "—";
+  const addressLine =
+    address?.address_line ||
+    address?.addressLine ||
+    address?.adresse ||
+    address?.address ||
+    address?.street ||
+    "—";
+  const landmark =
+    address?.landmark ||
+    address?.repere ||
+    address?.reference ||
+    address?.note ||
+    null;
 
   const f = normFulfillment(order);
   const fBadge = fulfillmentLabel(f);
@@ -76,7 +79,7 @@ export default function OrderReceipt(props: {
 
   const summary = useMemo(
     () => ({ itemsAmount, deliveryFee, total, duuShare, vendorNet }),
-    [itemsAmount, deliveryFee, total, duuShare, vendorNet],
+    [itemsAmount, deliveryFee, total, duuShare, vendorNet]
   );
 
   function buildVerifyUrl(o: any) {
@@ -85,10 +88,9 @@ export default function OrderReceipt(props: {
       (typeof window !== "undefined" ? window.location.origin : "");
 
     const token = o?.receipt_token ? String(o.receipt_token) : null;
-    if (token) return `${base}/verify/${token}`;
+    if (!token) return base;
 
-    const id = Number(o?.id || 0);
-    return id ? `${base}/orders/${id}` : base;
+    return `${base}/r/${encodeURIComponent(token)}`;
   }
 
   const verifyUrl = useMemo(() => buildVerifyUrl(order), [order, publicWebBase]);
@@ -100,7 +102,9 @@ export default function OrderReceipt(props: {
   }
 
   function waitImages(container: HTMLElement, timeoutMs = 1500) {
-    const imgs = Array.from(container.querySelectorAll("img")) as HTMLImageElement[];
+    const imgs = Array.from(
+      container.querySelectorAll("img")
+    ) as HTMLImageElement[];
     if (!imgs.length) return Promise.resolve();
 
     const waits = imgs.map((img) => {
@@ -130,7 +134,7 @@ export default function OrderReceipt(props: {
     document.body.appendChild(root);
 
     await waitImages(root);
-    await new Promise((r) => setTimeout(r, 60)); // laisse le QR/SVG se peindre
+    await new Promise((r) => setTimeout(r, 60));
 
     document.body.classList.add("duu-printing");
 
@@ -163,7 +167,7 @@ export default function OrderReceipt(props: {
       setSharing(true);
 
       await waitImages(el);
-      await new Promise((r) => setTimeout(r, 60)); // QR render
+      await new Promise((r) => setTimeout(r, 60));
 
       const dataUrl = await toPng(el, {
         cacheBust: true,
@@ -172,14 +176,11 @@ export default function OrderReceipt(props: {
       });
 
       const filename = `Recu-${code}.png`;
-
-      // Convert to File for Web Share
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], filename, { type: "image/png" });
 
       const nav: any = navigator as any;
 
-      // Mobile share sheet -> WhatsApp -> tu choisis le numéro/contact
       if (nav?.share && (!nav?.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({
           title: "Reçu Duumini",
@@ -189,7 +190,6 @@ export default function OrderReceipt(props: {
         return;
       }
 
-      // Fallback desktop: download image
       await downloadDataUrl(dataUrl, filename);
     } finally {
       setSharing(false);
@@ -206,9 +206,8 @@ export default function OrderReceipt(props: {
           --dm-line: rgba(0,0,0,.18);
         }
 
-        /* ===== Ticket caisse (screen) ===== */
         .dm-r-wrap{
-          width: 302px;   /* ~80mm @ 96dpi */
+          width: 302px;
           max-width: 100%;
           margin: 0 auto;
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -247,7 +246,12 @@ export default function OrderReceipt(props: {
           justify-content:center;
           flex: 0 0 auto;
         }
-        .dm-r-logo img{ width:100%; height:100%; object-fit:cover; }
+
+        .dm-r-logo img{
+          width:100%;
+          height:100%;
+          object-fit:cover;
+        }
 
         .dm-r-name{
           font-weight: 1000;
@@ -289,7 +293,12 @@ export default function OrderReceipt(props: {
           padding: 3px 0;
         }
 
-        .dm-r-k{ opacity: .75; font-weight: 800; }
+        .dm-r-k{
+          opacity: .75;
+          font-weight: 800;
+          min-width: 74px;
+        }
+
         .dm-r-v{
           text-align:right;
           font-weight: 900;
@@ -315,7 +324,10 @@ export default function OrderReceipt(props: {
           padding: 6px 0;
           border-top: 1px dotted rgba(0,0,0,.12);
         }
-        .dm-r-item:first-of-type{ border-top:none; }
+
+        .dm-r-item:first-of-type{
+          border-top:none;
+        }
 
         .dm-r-item-name{
           font-weight: 1000;
@@ -323,6 +335,7 @@ export default function OrderReceipt(props: {
           word-break: break-word;
           overflow-wrap: anywhere;
         }
+
         .dm-r-item-sub{
           display:flex;
           justify-content:space-between;
@@ -372,6 +385,7 @@ export default function OrderReceipt(props: {
           justify-content:center;
           flex-wrap: wrap;
         }
+
         .dm-btn{
           border-radius: 12px;
           padding: 10px 12px;
@@ -384,6 +398,7 @@ export default function OrderReceipt(props: {
           width: 100%;
           max-width: 302px;
         }
+
         .dm-btn-ghost{
           border-radius: 12px;
           padding: 10px 12px;
@@ -396,16 +411,18 @@ export default function OrderReceipt(props: {
           width: 100%;
           max-width: 302px;
         }
-        .dm-btn:disabled, .dm-btn-ghost:disabled{
+
+        .dm-btn:disabled,
+        .dm-btn-ghost:disabled{
           opacity: .6;
           cursor: not-allowed;
         }
 
-        /* ===== PRINT ===== */
         @media print{
           body.duu-printing > *:not(#duu-print-root){
             display:none !important;
           }
+
           body.duu-printing #duu-print-root{
             display:block !important;
           }
@@ -428,7 +445,8 @@ export default function OrderReceipt(props: {
             box-shadow: none !important;
           }
 
-          #duu-print-root, #duu-print-root *{
+          #duu-print-root,
+          #duu-print-root *{
             break-inside: avoid;
             page-break-inside: avoid;
           }
@@ -459,7 +477,6 @@ export default function OrderReceipt(props: {
         ) : null}
 
         <div ref={receiptRef} className="dm-r-paper">
-          {/* TOP */}
           <div className="dm-r-top">
             <div className="dm-r-brand">
               <div className="dm-r-logo">
@@ -485,7 +502,6 @@ export default function OrderReceipt(props: {
             </div>
           </div>
 
-          {/* BODY */}
           <div className="dm-r-body">
             <div className="dm-r-row">
               <div className="dm-r-k">Client</div>
@@ -496,9 +512,27 @@ export default function OrderReceipt(props: {
               <div className="dm-r-v">{String(phone)}</div>
             </div>
             <div className="dm-r-row">
-              <div className="dm-r-k">Adresse</div>
-              <div className="dm-r-v">{addr}</div>
+              <div className="dm-r-k">Ville</div>
+              <div className="dm-r-v">{city}</div>
             </div>
+            <div className="dm-r-row">
+              <div className="dm-r-k">Commune</div>
+              <div className="dm-r-v">{commune}</div>
+            </div>
+            <div className="dm-r-row">
+              <div className="dm-r-k">Quartier</div>
+              <div className="dm-r-v">{district}</div>
+            </div>
+            <div className="dm-r-row">
+              <div className="dm-r-k">Adresse</div>
+              <div className="dm-r-v">{addressLine}</div>
+            </div>
+            {landmark ? (
+              <div className="dm-r-row">
+                <div className="dm-r-k">Repère</div>
+                <div className="dm-r-v">{landmark}</div>
+              </div>
+            ) : null}
             <div className="dm-r-row">
               <div className="dm-r-k">Livraison</div>
               <div className="dm-r-v">{fBadge.text}</div>
@@ -510,8 +544,11 @@ export default function OrderReceipt(props: {
 
             {Array.isArray(order?.items) && order.items.length ? (
               order.items.map((it: any, idx: number) => {
-                const name = it.product_name || it.name || `Produit #${it.product_id}`;
-                const variant = [it.variant_size, it.variant_color].filter(Boolean).join(" / ");
+                const name =
+                  it.product_name || it.name || `Produit #${it.product_id}`;
+                const variant = [it.variant_size, it.variant_color]
+                  .filter(Boolean)
+                  .join(" / ");
                 const displayName = variant ? `${name} (${variant})` : name;
 
                 const qty = Number(it.qty || 1);
@@ -531,7 +568,9 @@ export default function OrderReceipt(props: {
                 );
               })
             ) : (
-              <div style={{ padding: "6px 0", opacity: 0.7 }}>Aucun produit.</div>
+              <div style={{ padding: "6px 0", opacity: 0.7 }}>
+                Aucun produit.
+              </div>
             )}
 
             <div className="dm-r-sep" />
@@ -567,7 +606,9 @@ export default function OrderReceipt(props: {
 
             <div className="dm-r-qr">
               <QRCode value={verifyUrl || "https://duumini.com"} size={110} />
-              <div className="dm-r-qrtext">Scanner pour vérifier l’authenticité</div>
+              <div className="dm-r-qrtext">
+                Scanner pour vérifier l’authenticité
+              </div>
             </div>
 
             <div className="dm-r-footer">

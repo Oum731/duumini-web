@@ -40,8 +40,6 @@ export type User = {
   commune?: string | null;
   quartier?: string | null;
   sexe?: Sexe | null;
-
-  // si /api/user/me les renvoie
   shops?: ShopLite[];
   impersonation?: ImpersonationInfo | null;
 };
@@ -56,22 +54,15 @@ export const STORAGE_KEYS = {
   access: "duumini_access",
   refresh: "duumini_refresh",
   user: "duumini_user",
-
-  // impersonation
   imp_access: "duumini_imp_access",
-  imp_meta: "duumini_imp_meta", // JSON { actor_admin_id, impersonate_shop_id }
+  imp_meta: "duumini_imp_meta",
 };
 
-/* =========================
- * Normalisation (align backend)
- * =======================*/
 function normalizeRole(r: any): Role {
   const v = (r ?? "").toString().trim().toUpperCase();
 
-  // ADMIN
   if (v === "ADMIN") return "ADMIN";
 
-  // VENDEUR (backend peut renvoyer VENDOR/SELLER/etc.)
   if (
     v === "VENDEUR" ||
     v === "VENDOR" ||
@@ -83,16 +74,25 @@ function normalizeRole(r: any): Role {
     return "VENDEUR";
   }
 
-  // FOURNISSEUR
-  if (v === "FOURNISSEUR" || v === "SUPPLIER" || v === "FOURNISSEUR_PARTNER") return "FOURNISSEUR";
+  if (
+    v === "FOURNISSEUR" ||
+    v === "SUPPLIER" ||
+    v === "FOURNISSEUR_PARTNER"
+  ) {
+    return "FOURNISSEUR";
+  }
 
-  // RESTAURANT
   if (v === "RESTAURANT") return "RESTAURANT";
 
-  // LIVREUR
-  if (v === "LIVREUR" || v === "DELIVERY" || v === "RIDER" || v === "COURIER") return "LIVREUR";
+  if (
+    v === "LIVREUR" ||
+    v === "DELIVERY" ||
+    v === "RIDER" ||
+    v === "COURIER"
+  ) {
+    return "LIVREUR";
+  }
 
-  // fallback
   return "MEMBER";
 }
 
@@ -115,7 +115,6 @@ function normalizeUser(u: any): User {
   };
 }
 
-/* ===== Helper front: code ville → libellé DB ===== */
 export function mapCityCodeToVille(code?: string | null): string | null {
   if (!code) return null;
   const v = code.toString().trim().toUpperCase();
@@ -124,9 +123,6 @@ export function mapCityCodeToVille(code?: string | null): string | null {
   return null;
 }
 
-/* =========================
- * Impersonation helpers
- * =======================*/
 export function isImpersonating(): boolean {
   return !!localStorage.getItem(STORAGE_KEYS.imp_access);
 }
@@ -140,7 +136,10 @@ export function getImpersonationMeta(): ImpersonationInfo | null {
   }
 }
 
-export function startImpersonation(access_token: string, meta: ImpersonationInfo) {
+export function startImpersonation(
+  access_token: string,
+  meta: ImpersonationInfo
+) {
   localStorage.setItem(STORAGE_KEYS.imp_access, access_token);
   localStorage.setItem(STORAGE_KEYS.imp_meta, JSON.stringify(meta || null));
 }
@@ -150,12 +149,11 @@ export function stopImpersonation() {
   localStorage.removeItem(STORAGE_KEYS.imp_meta);
 }
 
-/* =========================
- * Session helpers
- * =======================*/
 export function getAccessToken(): string | null {
-  // priorité impersonation
-  return localStorage.getItem(STORAGE_KEYS.imp_access) || localStorage.getItem(STORAGE_KEYS.access);
+  return (
+    localStorage.getItem(STORAGE_KEYS.imp_access) ||
+    localStorage.getItem(STORAGE_KEYS.access)
+  );
 }
 
 export function getRefreshToken(): string | null {
@@ -174,12 +172,13 @@ export function getCurrentUser(): User | null {
 }
 
 export function saveSession(data: LoginRes) {
-  // quand on login normal, on sort de l’impersonation
   stopImpersonation();
-
   localStorage.setItem(STORAGE_KEYS.access, data.access_token);
   localStorage.setItem(STORAGE_KEYS.refresh, data.refresh_token);
-  localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(normalizeUser(data.user)));
+  localStorage.setItem(
+    STORAGE_KEYS.user,
+    JSON.stringify(normalizeUser(data.user))
+  );
 }
 
 export function clearSession() {
@@ -196,45 +195,69 @@ function setUserInStorage(user: User) {
 async function parseJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error || (err as any)?.message || res.statusText);
+    throw new Error(
+      (err as any)?.error || (err as any)?.message || res.statusText
+    );
   }
   return res.json() as Promise<T>;
 }
 
-/** Requête avec Authorization + retry auto sur 401 via /auth/refresh */
 export async function authFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
   retry = true
 ): Promise<Response> {
-  const at = getAccessToken();
   const initHeaders: HeadersInit = (init.headers as HeadersInit) || {};
   const hdrs = new Headers(initHeaders);
 
+  const at = getAccessToken();
   if (at) hdrs.set("Authorization", `Bearer ${at}`);
 
-  // ne force Content-Type que si body string
   if (!hdrs.has("Content-Type") && init.body && typeof init.body === "string") {
     hdrs.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(input, { ...init, headers: hdrs, mode: "cors" });
+  let res = await fetch(input, {
+    ...init,
+    headers: hdrs,
+    mode: "cors",
+  });
 
   if (res.status === 401 && retry) {
     try {
       await refresh();
-      return authFetch(input, init, false);
+
+      const retryHeaders = new Headers(initHeaders);
+      const newAt = getAccessToken();
+      if (newAt) retryHeaders.set("Authorization", `Bearer ${newAt}`);
+
+      if (
+        !retryHeaders.has("Content-Type") &&
+        init.body &&
+        typeof init.body === "string"
+      ) {
+        retryHeaders.set("Content-Type", "application/json");
+      }
+
+      res = await fetch(input, {
+        ...init,
+        headers: retryHeaders,
+        mode: "cors",
+      });
     } catch {
       clearSession();
+      throw new Error("Session expirée");
     }
+  }
+
+  if (res.status === 401) {
+    clearSession();
+    throw new Error("Session expirée");
   }
 
   return res;
 }
 
-/* =========================
- * API calls
- * =======================*/
 export async function register(payload: {
   phone: string;
   password: string;
@@ -277,7 +300,6 @@ export async function refresh() {
   const token = getRefreshToken();
   if (!token) throw new Error("No refresh token");
 
-  // si impersonation active, on refresh le token principal uniquement
   const res = await fetch(`${API}/api/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -286,28 +308,28 @@ export async function refresh() {
 
   const data = await parseJson<{ access_token: string }>(res);
 
-  // on met à jour le token principal, sans toucher imp_access
   localStorage.setItem(STORAGE_KEYS.access, data.access_token);
   return data.access_token;
 }
 
-/**
- * me(): lit depuis la DB, met à jour le storage, et renvoie l’utilisateur normalisé
- */
 export async function me(): Promise<User | null> {
-  const res = await authFetch(`${API}/api/user/me`);
-  const u = await parseJson<User | null>(res);
-  if (!u) return null;
+  try {
+    const res = await authFetch(`${API}/api/user/me`);
+    const u = await parseJson<User | null>(res);
+    if (!u) return null;
 
-  const normalized = normalizeUser(u);
-  setUserInStorage(normalized);
-  return normalized;
+    const normalized = normalizeUser(u);
+    setUserInStorage(normalized);
+    return normalized;
+  } catch {
+    clearSession();
+    return null;
+  }
 }
 
 export async function updateProfile(payload: Partial<User>) {
   const cleanPayload: any = { ...payload };
 
-  // sécurité: le front ne doit pas envoyer role
   if ("role" in cleanPayload) delete cleanPayload.role;
   if ("impersonation" in cleanPayload) delete cleanPayload.impersonation;
   if ("shops" in cleanPayload) delete cleanPayload.shops;

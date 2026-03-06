@@ -1,4 +1,3 @@
-// src/components/orders/OrderReceiptTicket.tsx
 import { useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { toPng } from "html-to-image";
@@ -6,23 +5,13 @@ import type { OrderDetail } from "../../services/orders";
 import { getOrderReceiptPdfUrl } from "../../services/orders";
 import { API_BASE } from "../../services/http";
 
-/**
- * ✅ Ticket 80mm Duumini + Print sans pages blanches + Share WhatsApp (image)
- * Install:
- *   npm i react-qr-code html-to-image
- */
-
 type Props = {
   order: OrderDetail;
   slogan?: string;
   hotlinePhone?: string;
   publicWebBase?: string;
-  logoSrc?: string; // default "/logo.jpeg"
-
-  /** affiche bouton PDF (route backend) */
+  logoSrc?: string;
   showPdfButton?: boolean;
-
-  /** texte du bouton share */
   shareLabel?: string;
 };
 
@@ -46,8 +35,15 @@ function pickPaymentMode(method?: string | null) {
   const m = safeUpper(method);
   if (!m) return "—";
   if (m === "CASH" || m === "COD") return "Cash";
-  if (m === "VIREMENT" || m === "BANK_TRANSFER" || m === "BANK" || m === "TRANSFER") return "Virement";
-  if (m === "DEPOT_VENTE" || m === "DEPOT" || m === "CONSIGNMENT") return "Dépôt vente";
+  if (
+    m === "VIREMENT" ||
+    m === "BANK_TRANSFER" ||
+    m === "BANK" ||
+    m === "TRANSFER"
+  )
+    return "Virement";
+  if (m === "DEPOT_VENTE" || m === "DEPOT" || m === "CONSIGNMENT")
+    return "Dépôt vente";
   return m;
 }
 
@@ -76,10 +72,9 @@ function buildVerifyUrl(order: any, publicWebBase?: string) {
     (typeof window !== "undefined" ? window.location.origin : "");
 
   const token = order?.receipt_token ? String(order.receipt_token) : null;
-  if (token) return `${base}/verify/${token}`;
+  if (!token) return base;
 
-  const id = Number(order?.id || 0);
-  return id ? `${base}/orders/${id}` : base;
+  return `${base}/r/${encodeURIComponent(token)}`;
 }
 
 function receiptNumberOf(order: any) {
@@ -103,31 +98,55 @@ export default function OrderReceiptTicket({
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const [sharing, setSharing] = useState(false);
 
-  const currency = String(order?.totals?.currency || order?.currency || "MAD").toUpperCase();
+  const currency = String(
+    order?.totals?.currency || order?.currency || "MAD"
+  ).toUpperCase();
 
   const receiptNumber = receiptNumberOf(order);
   const dateLabel = formatDateFR(order?.created_at);
 
   const contact = order?.contact || (order as any)?.user || null;
-  const fullName = `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim() || "Client";
+  const fullName =
+    `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim() ||
+    "Client";
   const phone = contact?.phone || "—";
 
   const addr = (order as any)?.address || {};
   const city = addr?.city || addr?.ville || "—";
   const commune = addr?.commune || "—";
   const district = addr?.district || addr?.quartier || "—";
+  const addressLine =
+    addr?.address_line ||
+    addr?.addressLine ||
+    addr?.adresse ||
+    addr?.address ||
+    addr?.street ||
+    "—";
+  const landmark =
+    addr?.landmark ||
+    addr?.repere ||
+    addr?.reference ||
+    addr?.note ||
+    null;
 
   const items = Array.isArray(order?.items) ? order.items : [];
 
   const itemsAmount = Number(order?.totals?.items_amount ?? 0);
   const deliveryFee = Number(order?.totals?.delivery_fee ?? 0);
-  const totalAmount = Number(order?.totals?.amount ?? order?.total ?? itemsAmount + deliveryFee);
+  const totalAmount = Number(
+    order?.totals?.amount ?? order?.total ?? itemsAmount + deliveryFee
+  );
 
   const payment = (order as any)?.payment || null;
   const payMode = pickPaymentMode(payment?.method ?? null);
-  const payStatus = pickPayStatus(payment?.status ?? (order as any)?.payment_status ?? null);
+  const payStatus = pickPayStatus(
+    payment?.status ?? (order as any)?.payment_status ?? null
+  );
 
-  const verifyUrl = useMemo(() => buildVerifyUrl(order, publicWebBase), [order, publicWebBase]);
+  const verifyUrl = useMemo(
+    () => buildVerifyUrl(order, publicWebBase),
+    [order, publicWebBase]
+  );
 
   const pdfHref = useMemo(() => {
     const id = Number((order as any)?.id || 0);
@@ -142,7 +161,9 @@ export default function OrderReceiptTicket({
   }
 
   function waitImages(container: HTMLElement, timeoutMs = 1500) {
-    const imgs = Array.from(container.querySelectorAll("img")) as HTMLImageElement[];
+    const imgs = Array.from(
+      container.querySelectorAll("img")
+    ) as HTMLImageElement[];
     if (!imgs.length) return Promise.resolve();
 
     const waits = imgs.map((img) => {
@@ -218,7 +239,6 @@ export default function OrderReceiptTicket({
 
       const nav: any = navigator as any;
 
-      // Mobile share sheet -> WhatsApp -> choisir contact/numéro
       if (nav?.share && (!nav?.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({
           title: "Reçu Duumini",
@@ -228,7 +248,6 @@ export default function OrderReceiptTicket({
         return;
       }
 
-      // Desktop fallback
       await downloadDataUrl(dataUrl, filename);
     } finally {
       setSharing(false);
@@ -247,7 +266,7 @@ export default function OrderReceiptTicket({
         }
 
         .dm-ticket-wrap{
-          width: 302px; /* ~80mm @ 96dpi */
+          width: 302px;
           max-width: 100%;
           margin: 0 auto;
           color: var(--dm-black);
@@ -397,6 +416,7 @@ export default function OrderReceiptTicket({
         .dm-k{
           font-weight: 900;
           color: var(--dm-muted);
+          min-width: 72px;
         }
 
         .dm-v{
@@ -540,7 +560,6 @@ export default function OrderReceiptTicket({
           justify-content:center;
         }
 
-        /* ===== PRINT: éviter pages vides ===== */
         @media print{
           body.duu-printing > *:not(#duu-print-root){
             display:none !important;
@@ -580,7 +599,6 @@ export default function OrderReceiptTicket({
 
       <div className="dm-ticket-wrap">
         <div ref={receiptRef} className="dm-ticket">
-          {/* Header */}
           <div className="dm-header">
             <div className="dm-brand">
               <div className="dm-brand-left">
@@ -589,7 +607,8 @@ export default function OrderReceiptTicket({
                     src={logoSrc}
                     alt="Duumini"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                      (e.currentTarget as HTMLImageElement).style.display =
+                        "none";
                     }}
                   />
                 </div>
@@ -613,9 +632,7 @@ export default function OrderReceiptTicket({
             </div>
           </div>
 
-          {/* Body */}
           <div className="dm-body">
-            {/* Infos */}
             <div className="dm-section">
               <div className="dm-section-title">
                 <span className="dm-dot" /> 🧾 Informations
@@ -630,15 +647,30 @@ export default function OrderReceiptTicket({
                   <div className="dm-v">{phone}</div>
                 </div>
                 <div className="dm-row">
-                  <div className="dm-k">Adresse</div>
-                  <div className="dm-v">
-                    {city} • {commune} • {district}
-                  </div>
+                  <div className="dm-k">Ville</div>
+                  <div className="dm-v">{city}</div>
                 </div>
+                <div className="dm-row">
+                  <div className="dm-k">Commune</div>
+                  <div className="dm-v">{commune}</div>
+                </div>
+                <div className="dm-row">
+                  <div className="dm-k">Quartier</div>
+                  <div className="dm-v">{district}</div>
+                </div>
+                <div className="dm-row">
+                  <div className="dm-k">Adresse</div>
+                  <div className="dm-v">{addressLine}</div>
+                </div>
+                {landmark ? (
+                  <div className="dm-row">
+                    <div className="dm-k">Repère</div>
+                    <div className="dm-v">{landmark}</div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
-            {/* Produits */}
             <div className="dm-section">
               <div className="dm-section-title">
                 <span className="dm-dot" /> 📦 Détails produits
@@ -653,8 +685,11 @@ export default function OrderReceiptTicket({
 
                 {items.length ? (
                   items.map((it: any, idx: number) => {
-                    const name = it.product_name || it.name || `Produit #${it.product_id}`;
-                    const variant = [it.variant_size, it.variant_color].filter(Boolean).join(" / ");
+                    const name =
+                      it.product_name || it.name || `Produit #${it.product_id}`;
+                    const variant = [it.variant_size, it.variant_color]
+                      .filter(Boolean)
+                      .join(" / ");
                     const displayName = variant ? `${name} (${variant})` : name;
 
                     const qty = Number(it.qty || 1);
@@ -665,15 +700,21 @@ export default function OrderReceiptTicket({
                       <div className="dm-tr" key={idx}>
                         <div>
                           <div className="dm-name">{displayName}</div>
-                          <div className="dm-sub">{money(unit, currency)} / unité</div>
+                          <div className="dm-sub">
+                            {money(unit, currency)} / unité
+                          </div>
                         </div>
                         <div className="dm-qty">{qty}</div>
-                        <div className="dm-line">{money(lineTotal, currency)}</div>
+                        <div className="dm-line">
+                          {money(lineTotal, currency)}
+                        </div>
                       </div>
                     );
                   })
                 ) : (
-                  <div style={{ padding: 10, fontSize: 11, opacity: 0.7 }}>Aucun produit.</div>
+                  <div style={{ padding: 10, fontSize: 11, opacity: 0.7 }}>
+                    Aucun produit.
+                  </div>
                 )}
               </div>
 
@@ -694,7 +735,6 @@ export default function OrderReceiptTicket({
               </div>
             </div>
 
-            {/* Paiement */}
             <div className="dm-section">
               <div className="dm-section-title">
                 <span className="dm-dot" /> 💰 Paiement
@@ -711,7 +751,6 @@ export default function OrderReceiptTicket({
               </div>
             </div>
 
-            {/* QR */}
             <div className="dm-section">
               <div className="dm-section-title">
                 <span className="dm-dot" /> 📲 QR Code
@@ -723,25 +762,39 @@ export default function OrderReceiptTicket({
                     <QRCode value={verifyUrl || "https://duumini.com"} size={110} />
                   </div>
                   <div>
-                    <div className="dm-qrtext">Scanner pour vérifier l’authenticité</div>
+                    <div className="dm-qrtext">
+                      Scanner pour vérifier l’authenticité
+                    </div>
                     <div className="dm-qrurl">{verifyUrl}</div>
                   </div>
                 </div>
               </div>
 
-              <div className="dm-footer">Merci pour votre commande — Duumini</div>
+              <div className="dm-footer">
+                Merci pour votre commande — Duumini
+              </div>
 
               <div className="dm-actions dm-no-print">
                 <button className="dm-btn" type="button" onClick={printTicket}>
                   Imprimer
                 </button>
 
-                <button className="dm-btn" type="button" onClick={shareTicketAsImage} disabled={sharing}>
+                <button
+                  className="dm-btn"
+                  type="button"
+                  onClick={shareTicketAsImage}
+                  disabled={sharing}
+                >
                   {sharing ? "Préparation…" : shareLabel}
                 </button>
 
                 {showPdfButton && pdfHref ? (
-                  <a className="dm-btn-outline" href={pdfHref} target="_blank" rel="noreferrer">
+                  <a
+                    className="dm-btn-outline"
+                    href={pdfHref}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     PDF
                   </a>
                 ) : null}

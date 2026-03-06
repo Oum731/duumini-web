@@ -57,22 +57,24 @@ function subToken(p: Product | null | undefined) {
   if (s) return s;
 
   const id = anyP.sub_category_id;
-  if (id != null && String(id).trim() !== "")
+  if (id != null && String(id).trim() !== "") {
     return String(id).trim().toLowerCase();
+  }
 
   return "";
 }
 
 function sectionPathFor(p: Product | null | undefined) {
   const t = subToken(p);
-  if (t === "food" || t.includes("food") || t.includes("alimentation"))
+  if (t === "food" || t.includes("food") || t.includes("alimentation")) {
     return "/african-food";
-  if (t === "fashion" || t.includes("fashion") || t.includes("mode"))
+  }
+  if (t === "fashion" || t.includes("fashion") || t.includes("mode")) {
     return "/fashion";
+  }
   return "/african-market";
 }
 
-/* ===== Share path helpers ===== */
 function safeDecodeURIComponent(x: string) {
   try {
     return decodeURIComponent(x);
@@ -84,11 +86,33 @@ function safeDecodeURIComponent(x: string) {
 function normalizeIdOrSlug(x: string) {
   const v = String(x || "").trim();
   if (!v) return "";
-  const m1 = v.match(/^product\/(.+)$/i);
-  if (m1?.[1]) return m1[1].trim();
-  const m2 = v.match(/\/(share\/product|products)\/([^/?#]+)/i);
-  if (m2?.[2]) return m2[2].trim();
-  return v;
+
+  const clean = v.split("?")[0].split("#")[0].trim();
+
+  if (clean.startsWith("product/")) {
+    return clean.slice("product/".length).trim();
+  }
+
+  const parts = clean.split("/").filter(Boolean);
+
+  const productsIndex = parts.findIndex((p) => {
+    const s = p.toLowerCase();
+    return s === "products" || s === "product";
+  });
+  if (productsIndex >= 0 && parts[productsIndex + 1]) {
+    return parts[productsIndex + 1].trim();
+  }
+
+  const shareIndex = parts.findIndex((p) => p.toLowerCase() === "share");
+  if (
+    shareIndex >= 0 &&
+    parts[shareIndex + 1]?.toLowerCase() === "product" &&
+    parts[shareIndex + 2]
+  ) {
+    return parts[shareIndex + 2].trim();
+  }
+
+  return clean;
 }
 
 function extractSharedProductId(locationSearch: string, locationHash: string) {
@@ -128,7 +152,11 @@ function normPromoType(v: any): PromoDiscountType {
   return s === "AMOUNT" ? "AMOUNT" : "PERCENT";
 }
 
-function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
+function computePromoPrice(
+  price: number,
+  type: PromoDiscountType,
+  value: number
+) {
   const p = Number(price || 0);
   const v = Number(value || 0);
   if (!Number.isFinite(p) || p <= 0) return 0;
@@ -230,7 +258,6 @@ function isVariantOutOfStock(v: UiVariant) {
   return v.stock === 0;
 }
 
-/* ===== Modal infos (description) ===== */
 function InfoModal(props: { title: string; body: string; onClose: () => void }) {
   const { title, body, onClose } = props;
 
@@ -287,15 +314,21 @@ function InfoModal(props: { title: string; body: string; onClose: () => void }) 
   );
 }
 
-/* ===== fetch helper (timeout + abort) ===== */
 async function fetchJSON(url: string, ms = 12000, init?: RequestInit) {
   const controller = new AbortController();
   const t = window.setTimeout(() => controller.abort(), ms);
+
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
-    const ok = res.ok;
-    const data = ok ? await res.json() : null;
-    return { res, ok, data };
+
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+
+    return { res, ok: res.ok, data };
   } finally {
     window.clearTimeout(t);
   }
@@ -375,17 +408,28 @@ export default function ProductView() {
 
         const token = getAccessToken?.();
         if (!token) {
-          if (!stop) setViewerRole((prev) => prev || "GUEST");
+          if (!stop) {
+            setViewerUser(null);
+            setViewerRole("GUEST");
+          }
           return;
         }
 
-        const u = await me();
-        if (!stop && u) {
-          setViewerUser(u);
-          setViewerRole(normalizeViewerRole(u.role));
+        const u = await me().catch(() => null);
+        if (!stop) {
+          if (u) {
+            setViewerUser(u);
+            setViewerRole(normalizeViewerRole(u.role));
+          } else {
+            setViewerUser(null);
+            setViewerRole("GUEST");
+          }
         }
       } catch {
-        if (!stop) setViewerRole((prev) => prev || "GUEST");
+        if (!stop) {
+          setViewerUser(null);
+          setViewerRole("GUEST");
+        }
       }
     })();
 
@@ -420,7 +464,10 @@ export default function ProductView() {
     return out;
   }, [anyP?.cover, anyP?.image, anyP?.images]);
 
-  const coverUrl = useMemo(() => images[galleryIndex] || "", [images, galleryIndex]);
+  const coverUrl = useMemo(
+    () => images[galleryIndex] || "",
+    [images, galleryIndex]
+  );
 
   const productIsActive = useMemo(() => isActiveProduct(product), [product]);
   const sectionPath = useMemo(() => sectionPathFor(product), [product]);
@@ -494,48 +541,35 @@ export default function ProductView() {
       setProduct(null);
 
       try {
-        if (!resolvedIdOrSlug) throw new Error("Produit introuvable");
+        const raw = String(resolvedIdOrSlug || "").trim();
+        if (!raw) throw new Error("Produit introuvable");
 
-        const asId = Number(resolvedIdOrSlug);
-        if (Number.isFinite(asId) && asId > 0) {
+        const isNumericId = /^\d+$/.test(raw);
+
+        if (isNumericId) {
           const r1 = await fetchJSON(
-            `${API_BASE}/api/products/${asId}?variants=1`,
+            `${API_BASE}/api/products/${raw}?variants=1`,
             12000,
             { credentials: "omit" }
           );
+
           if (!stop && r1.ok) {
             setProduct((r1.data as Product) || null);
             return;
           }
+
+          throw new Error("Produit introuvable");
         }
 
         const r2 = await fetchJSON(
-          `${API_BASE}/api/products/slug/${encodeURIComponent(
-            resolvedIdOrSlug
-          )}?variants=1`,
+          `${API_BASE}/api/products/slug/${encodeURIComponent(raw)}?variants=1`,
           12000,
           { credentials: "omit" }
         );
+
         if (!stop && r2.ok) {
           setProduct((r2.data as Product) || null);
           return;
-        }
-
-        const cleaned = String(resolvedIdOrSlug)
-          .split("?")[0]
-          .split("#")[0]
-          .trim();
-        const n2 = Number(cleaned);
-        if (Number.isFinite(n2) && n2 > 0 && cleaned !== resolvedIdOrSlug) {
-          const r3 = await fetchJSON(
-            `${API_BASE}/api/products/${n2}?variants=1`,
-            12000,
-            { credentials: "omit" }
-          );
-          if (!stop && r3.ok) {
-            setProduct((r3.data as Product) || null);
-            return;
-          }
         }
 
         throw new Error("Produit introuvable");
@@ -580,7 +614,8 @@ export default function ProductView() {
         const subId = originSubId || fallbackSubId || 0;
         const catId = originCatId || fallbackCatId || 0;
 
-        const vertical = String(pAny?.vertical || "").trim().toUpperCase() || null;
+        const vertical =
+          String(pAny?.vertical || "").trim().toUpperCase() || null;
 
         const qs = new URLSearchParams();
         qs.set("page", "1");
@@ -634,7 +669,9 @@ export default function ProductView() {
   }, [product, origin]);
 
   const basePriceClient = useMemo(() => {
-    return Number(anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0);
+    return Number(
+      anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0
+    );
   }, [anyP?.price_client, anyP?.client_price, anyP?.price]);
 
   const vendorPrice = useMemo(() => {
@@ -671,7 +708,8 @@ export default function ProductView() {
     }
     setSelectedKey((prev) => {
       if (prev && variants.some((v) => v.key === prev)) return prev;
-      const firstOk = variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
+      const firstOk =
+        variants.find((v) => !isVariantOutOfStock(v)) || variants[0];
       return firstOk?.key || "";
     });
   }, [hasVariants, variants]);
@@ -739,10 +777,17 @@ export default function ProductView() {
   const canAddNow =
     canOrder(viewerRole) &&
     !isOutOfStock &&
-    (!hasVariants || (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
+    (!hasVariants ||
+      (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
-  const showVendorPanel = useMemo(() => canSeeVendorPanel(viewerRole), [viewerRole]);
-  const showSupplierPanel = useMemo(() => canSeeSupplierPanel(viewerRole), [viewerRole]);
+  const showVendorPanel = useMemo(
+    () => canSeeVendorPanel(viewerRole),
+    [viewerRole]
+  );
+  const showSupplierPanel = useMemo(
+    () => canSeeSupplierPanel(viewerRole),
+    [viewerRole]
+  );
 
   const marginVsVendor = useMemo(() => {
     if (!showVendorPanel) return null;
@@ -786,8 +831,7 @@ export default function ProductView() {
       name: pAny.name,
       price: Number(displayPrice || 0),
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product?.id]);
+  }, [product, displayPrice]);
 
   const handleAdd = useCallback(() => {
     if (!product) return;
@@ -819,7 +863,9 @@ export default function ProductView() {
       price: cartPrice,
       quantity: 1,
       currency: "MAD",
-      category: String(pAny?.sub_category_slug || pAny?.sub_category_name || ""),
+      category: String(
+        pAny?.sub_category_slug || pAny?.sub_category_name || ""
+      ),
     });
 
     metaAddToCart({ id: pAny.id, name: pAny.name, price: cartPrice }, 1);
@@ -866,7 +912,10 @@ export default function ProductView() {
           <div className="placeholder col-6 mb-3" style={{ height: 32 }} />
           <div className="row g-4">
             <div className="col-12 col-lg-6">
-              <div className="placeholder w-100 rounded-4" style={{ aspectRatio: "1 / 1" }} />
+              <div
+                className="placeholder w-100 rounded-4"
+                style={{ aspectRatio: "1 / 1" }}
+              />
             </div>
             <div className="col-12 col-lg-3">
               <div className="placeholder col-10 mb-2" />
@@ -875,7 +924,10 @@ export default function ProductView() {
               <div className="placeholder col-9 mb-2" />
             </div>
             <div className="col-12 col-lg-3">
-              <div className="placeholder col-12 mb-2" style={{ height: 220, borderRadius: 18 }} />
+              <div
+                className="placeholder col-12 mb-2"
+                style={{ height: 220, borderRadius: 18 }}
+              />
             </div>
           </div>
         </div>
@@ -899,7 +951,10 @@ export default function ProductView() {
           </Link>
         </div>
 
-        <div className="alert alert-warning d-flex align-items-center" role="alert">
+        <div
+          className="alert alert-warning d-flex align-items-center"
+          role="alert"
+        >
           <span className="me-2">⚠️</span>
           <span>
             {product && !productIsActive
@@ -1199,7 +1254,11 @@ export default function ProductView() {
 
       <div className="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
         <div className="d-flex flex-wrap gap-2">
-          <button className="btn btn-outline-dark" onClick={handleBack} type="button">
+          <button
+            className="btn btn-outline-dark"
+            onClick={handleBack}
+            type="button"
+          >
             ← Retour
           </button>
           <Link to={backPath} className="btn btn-dark">
@@ -1232,11 +1291,15 @@ export default function ProductView() {
               )}
 
               {promoActive ? (
-                <span className="pv-badge pv-badge--promo">PROMO {promoSavedLabel}</span>
+                <span className="pv-badge pv-badge--promo">
+                  PROMO {promoSavedLabel}
+                </span>
               ) : null}
 
               {promoActive && promoFreeDelivery ? (
-                <span className="pv-badge pv-badge--free">🚚 Livraison gratuite</span>
+                <span className="pv-badge pv-badge--free">
+                  🚚 Livraison gratuite
+                </span>
               ) : null}
 
               {images.length > 1 ? (
@@ -1271,7 +1334,9 @@ export default function ProductView() {
                   <button
                     key={`${u}-${i}`}
                     type="button"
-                    className={`pv-thumb ${i === galleryIndex ? "pv-thumb--active" : ""}`}
+                    className={`pv-thumb ${
+                      i === galleryIndex ? "pv-thumb--active" : ""
+                    }`}
                     onClick={() => setGalleryIndex(i)}
                     aria-label={`Voir image ${i + 1}`}
                   >
@@ -1305,7 +1370,11 @@ export default function ProductView() {
                   {stockText || "Disponibilité à confirmer"}
                 </span>
                 {hasVariants ? <span className="pv-pill">Variantes</span> : null}
-                {promoActive ? <span className="pv-pill pv-pill--promo">{promoSavedLabel}</span> : null}
+                {promoActive ? (
+                  <span className="pv-pill pv-pill--promo">
+                    {promoSavedLabel}
+                  </span>
+                ) : null}
               </div>
 
               {hasVariants ? (
@@ -1331,7 +1400,10 @@ export default function ProductView() {
                     <div className="small text-muted mt-2">
                       {selectedVariant.stock != null ? (
                         <span className="me-3">
-                          Reste : <strong>{Math.max(0, Number(selectedVariant.stock))}</strong>
+                          Reste :{" "}
+                          <strong>
+                            {Math.max(0, Number(selectedVariant.stock))}
+                          </strong>
                         </span>
                       ) : null}
 
@@ -1413,8 +1485,16 @@ export default function ProductView() {
               <div>
                 <div className="pv-label">Quantité</div>
                 {qtySelected > 0 ? (
-                  <div className="btn-group pv-qty-group" role="group" aria-label="Quantité panier">
-                    <button className="btn btn-outline-dark" onClick={handleDecrease} type="button">
+                  <div
+                    className="btn-group pv-qty-group"
+                    role="group"
+                    aria-label="Quantité panier"
+                  >
+                    <button
+                      className="btn btn-outline-dark"
+                      onClick={handleDecrease}
+                      type="button"
+                    >
                       −
                     </button>
                     <button className="btn btn-light disabled" type="button">
@@ -1464,11 +1544,13 @@ export default function ProductView() {
               <div className="pt-2 border-top small text-muted d-flex flex-column gap-2">
                 <div>✓ Livraison rapide</div>
                 <div>✓ Paiement à la livraison</div>
-                {promoFreeDelivery ? <div>✓ Livraison gratuite sur cette promo</div> : null}
+                {promoFreeDelivery ? (
+                  <div>✓ Livraison gratuite sur cette promo</div>
+                ) : null}
               </div>
             </div>
 
-            {(showVendorPanel || showSupplierPanel) ? (
+            {showVendorPanel || showSupplierPanel ? (
               <div className="pv-pro-card mt-3">
                 <div className="pv-label mb-2">Infos Pro</div>
 
@@ -1476,7 +1558,9 @@ export default function ProductView() {
                   <div className="small text-muted">
                     <div>
                       Prix vendeur : <strong>{moneyMAD(vendorPrice ?? 0)}</strong>
-                      {vendorPrice == null ? <span className="ms-2">(non défini)</span> : null}
+                      {vendorPrice == null ? (
+                        <span className="ms-2">(non défini)</span>
+                      ) : null}
                     </div>
 
                     {marginVsVendor != null && vendorPrice != null ? (
@@ -1498,14 +1582,23 @@ export default function ProductView() {
                 ) : null}
 
                 {showSupplierPanel ? (
-                  <div className={`small text-muted ${showVendorPanel ? "mt-3 pt-3 border-top" : ""}`}>
+                  <div
+                    className={`small text-muted ${
+                      showVendorPanel ? "mt-3 pt-3 border-top" : ""
+                    }`}
+                  >
                     <div>
                       Stock fournisseur : <strong>{supplierStock ?? 0}</strong>
-                      {supplierStock == null ? <span className="ms-2">(non défini)</span> : null}
+                      {supplierStock == null ? (
+                        <span className="ms-2">(non défini)</span>
+                      ) : null}
                     </div>
                     <div className="mt-1">
-                      Coût wholesale : <strong>{moneyMAD(supplierCost ?? 0)}</strong>
-                      {supplierCost == null ? <span className="ms-2">(non défini)</span> : null}
+                      Coût wholesale :{" "}
+                      <strong>{moneyMAD(supplierCost ?? 0)}</strong>
+                      {supplierCost == null ? (
+                        <span className="ms-2">(non défini)</span>
+                      ) : null}
                     </div>
 
                     {marginVsSupplier != null && supplierCost != null ? (
@@ -1545,7 +1638,11 @@ export default function ProductView() {
               <div key={(p as any).id} className="col-6 col-md-4 col-lg-3">
                 <ProductCard
                   product={p}
-                  layout={String((p as any)?.vertical || "").toUpperCase() === "FASHION" ? "fashion" : "default"}
+                  layout={
+                    String((p as any)?.vertical || "").toUpperCase() === "FASHION"
+                      ? "fashion"
+                      : "default"
+                  }
                 />
               </div>
             ))}

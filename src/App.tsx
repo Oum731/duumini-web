@@ -384,8 +384,8 @@ export default function App() {
                 <Route path="/legal/privacy" element={<PrivacyPolicy />} />
                 <Route path="/legal/terms" element={<Terms />} />
                 <Route path="/legal/returns" element={<ReturnsPolicy />} />
+                <Route path="/verify/:token" element={<PublicReceiptPage />} />
                 <Route path="/r/:token" element={<PublicReceiptPage />} />
-
                 {/* ✅ ADMIN (gardé tel quel) */}
                 <Route path="/admin" element={<ProtectedAdmin />}>
                   <Route element={<AdminShell />}>
