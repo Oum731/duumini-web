@@ -50,8 +50,6 @@ import NotificationBubble from "./components/NotificationBubble";
 
 import { trackPageView } from "./lib/analytics";
 import { trackMetricoolPageView } from "./lib/metricool";
-
-// ✅ META Pixel
 import { metaPageView } from "./lib/metaPixel";
 
 import PromotionsPage from "./pages/PromotionsPage";
@@ -63,12 +61,7 @@ import Fashion from "./pages/Fashion";
 import VendorHome from "./pages/vendor/VendorHome";
 import MyShopPage from "./pages/vendor/MyShopPage";
 
-// ✅ NEW: page gestion produits
 import ManageProductsPage from "./pages/products/ManageProductsPage";
-
-// ✅ NEW GUARDS (à créer)
-// - src/hooks/useViewer.ts
-// - src/components/RequireAuth.tsx
 import RequireAuth from "./components/RequireCaps";
 import { useViewer } from "./hooks/useViewer";
 import PublicReceiptPage from "./pages/PublicReceiptPage";
@@ -86,25 +79,27 @@ function Page({ title }: { title: string }) {
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
+
   useEffect(() => {
-    if ("scrollRestoration" in window.history)
+    if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
+    }
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname, search]);
+
   return null;
 }
 
 function PageViewTracker() {
   const { pathname, search } = useLocation();
+
   useEffect(() => {
     const path = `${pathname}${search || ""}`;
-
     trackPageView(path);
     trackMetricoolPageView();
-
-    // ✅ Meta Pixel (SPA)
     metaPageView(path);
   }, [pathname, search]);
+
   return null;
 }
 
@@ -157,6 +152,7 @@ function GlobalRatingModal(props: {
   function renderStar(idx: number) {
     const activeValue = hover ?? rating ?? 0;
     const isActive = idx <= activeValue;
+
     return (
       <button
         key={idx}
@@ -185,18 +181,18 @@ function GlobalRatingModal(props: {
   }
 
   async function handleSubmit() {
-    if (!rating) return alert("Choisissez d'abord le nombre d'étoiles.");
+    if (!rating) {
+      alert("Choisissez d'abord le nombre d'étoiles.");
+      return;
+    }
     if (saving) return;
 
     setSaving(true);
     setError(null);
     setSuccess(null);
+
     try {
-      await rateProduct(
-        pending.product_id,
-        rating,
-        comment.trim() || undefined,
-      );
+      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch {
@@ -239,18 +235,14 @@ function GlobalRatingModal(props: {
               </p>
 
               <div className="mb-3">
-                <span className="small d-block mb-1 fw-semibold">
-                  Votre note :
-                </span>
+                <span className="small d-block mb-1 fw-semibold">Votre note :</span>
                 <div className="d-flex align-items-center gap-2">
                   {[1, 2, 3, 4, 5].map((i) => renderStar(i))}
                 </div>
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">
-                  Votre avis (optionnel)
-                </label>
+                <label className="form-label small">Votre avis (optionnel)</label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -261,12 +253,8 @@ function GlobalRatingModal(props: {
                 />
               </div>
 
-              {error && (
-                <div className="alert alert-danger py-1 small">{error}</div>
-              )}
-              {success && (
-                <div className="alert alert-success py-1 small">{success}</div>
-              )}
+              {error && <div className="alert alert-danger py-1 small">{error}</div>}
+              {success && <div className="alert alert-success py-1 small">{success}</div>}
             </div>
 
             <div className="modal-footer">
@@ -296,21 +284,26 @@ function GlobalRatingModal(props: {
 
 export default function App() {
   const { user } = useAuth();
-  const [pendingRating, setPendingRating] =
-    useState<PendingProductRating | null>(null);
+  const [pendingRating, setPendingRating] = useState<PendingProductRating | null>(null);
 
   useEffect(() => {
-    if (!user) return void setPendingRating(null);
+    if (!user) {
+      setPendingRating(null);
+      return;
+    }
 
     let cancelled = false;
 
     (async () => {
       try {
         const res = await getPendingProductRating();
-        if (!cancelled)
+        if (!cancelled) {
           setPendingRating((res as PendingProductRating | null) ?? null);
+        }
       } catch {
-        if (!cancelled) setPendingRating(null);
+        if (!cancelled) {
+          setPendingRating(null);
+        }
       }
     })();
 
@@ -345,20 +338,14 @@ export default function App() {
                 <Route path="/cart" element={<CartPage />} />
 
                 <Route path="/african-food" element={<AfricanFood />} />
-                <Route
-                  path="/african-food/:categorySlug"
-                  element={<AfricanFood />}
-                />
+                <Route path="/african-food/:categorySlug" element={<AfricanFood />} />
                 <Route
                   path="/african-food/:categorySlug/:subCategorySlug"
                   element={<AfricanFood />}
                 />
 
                 <Route path="/african-market" element={<AfricanMarket />} />
-                <Route
-                  path="/african-market/:categorySlug"
-                  element={<AfricanMarket />}
-                />
+                <Route path="/african-market/:categorySlug" element={<AfricanMarket />} />
                 <Route
                   path="/african-market/:categorySlug/:subCategorySlug"
                   element={<AfricanMarket />}
@@ -371,10 +358,7 @@ export default function App() {
                   element={<Fashion />}
                 />
 
-                <Route
-                  path="/share/product/:idOrSlug"
-                  element={<ProductView />}
-                />
+                <Route path="/share/product/:idOrSlug" element={<ProductView />} />
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
 
                 <Route path="/top-products" element={<TopProductsPage />} />
@@ -386,72 +370,39 @@ export default function App() {
                 <Route path="/legal/returns" element={<ReturnsPolicy />} />
                 <Route path="/verify/:token" element={<PublicReceiptPage />} />
                 <Route path="/r/:token" element={<PublicReceiptPage />} />
-                {/* ✅ ADMIN (gardé tel quel) */}
+
                 <Route path="/admin" element={<ProtectedAdmin />}>
                   <Route element={<AdminShell />}>
                     <Route index element={<AdminHome />} />
                     <Route path="orders" element={<OrdersAdminPage />} />
-                    <Route
-                      path="products"
-                      element={<ManageProductsPage scope="admin" />}
-                    />
+                    <Route path="products" element={<ManageProductsPage scope="admin" />} />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
-                    <Route
-                      path="promotions"
-                      element={<PromotionsAdminPage />}
-                    />
+                    <Route path="promotions" element={<PromotionsAdminPage />} />
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
                     <Route path="content-ai" element={<ContentAiPage />} />
-                    {/* Aliases FR */}
-                    <Route
-                      path="produits"
-                      element={<Navigate to="/admin/products" replace />}
-                    />
-                    <Route
-                      path="commandes"
-                      element={<Navigate to="/admin/orders" replace />}
-                    />
-                    <Route
-                      path="boutiques"
-                      element={<Navigate to="/admin/shops" replace />}
-                    />
-                    <Route
-                      path="utilisateurs"
-                      element={<Navigate to="/admin/users" replace />}
-                    />
-                    <Route
-                      path="promos"
-                      element={<Navigate to="/admin/promotions" replace />}
-                    />
-                    <Route
-                      path="/admin/reports/sales"
-                      element={<ReportsSalesPage />}
-                    />
-                    <Route
-                      path="/admin/reports/sales/:id"
-                      element={<ReportSalesViewPage />}
-                    />
+                    <Route path="reports/sales" element={<ReportsSalesPage />} />
+                    <Route path="reports/sales/:id" element={<ReportSalesViewPage />} />
+
+                    <Route path="produits" element={<Navigate to="/admin/products" replace />} />
+                    <Route path="commandes" element={<Navigate to="/admin/orders" replace />} />
+                    <Route path="boutiques" element={<Navigate to="/admin/shops" replace />} />
+                    <Route path="utilisateurs" element={<Navigate to="/admin/users" replace />} />
+                    <Route path="promos" element={<Navigate to="/admin/promotions" replace />} />
                   </Route>
                 </Route>
 
-                {/* ✅ PRO (VENDEUR / RESTO / FOURNISSEUR) + ADMIN */}
                 <Route
                   element={
                     <RequireAuth
-                      allow={(v: any) =>
-                        v.caps.canAccessPro || v.caps.canAccessAdmin
-                      }
+                      allow={(v: any) => v.caps.canAccessPro || v.caps.canAccessAdmin}
                       redirectTo="/"
                     />
                   }
                 >
-                  <Route
-                    path="/vendeur"
-                    element={<Navigate to="/ma-boutique" replace />}
-                  />
+                  <Route path="/vendeur" element={<Navigate to="/ma-boutique" replace />} />
 
                   <Route path="/ma-boutique" element={<Outlet />}>
                     <Route index element={<VendorHome />} />
@@ -462,14 +413,8 @@ export default function App() {
                     path="/vendeur/produits"
                     element={<ManageProductsPage scope="vendor" />}
                   />
-                  <Route
-                    path="/vendeur/commandes"
-                    element={<OrdersAdminPage />}
-                  />
-                  <Route
-                    path="/vendeur/promotions"
-                    element={<PromotionsAdminPage />}
-                  />
+                  <Route path="/vendeur/commandes" element={<OrdersAdminPage />} />
+                  <Route path="/vendeur/promotions" element={<PromotionsAdminPage />} />
                 </Route>
 
                 <Route path="*" element={<Page title="Page introuvable" />} />
@@ -481,7 +426,6 @@ export default function App() {
           <ScrollTopButton threshold={380} offsetBottom={84} offsetRight={16} />
           <FloatingCartGuard />
           <Footer />
-
           <NotificationBubble />
 
           {pendingRating && (
