@@ -22,8 +22,6 @@ import ProductForm, {
   promoPriceForAdmin,
 } from "../products/ProductForm";
 
-/* ================= Helpers (page only) ================= */
-
 type AnyObj = Record<string, any>;
 
 type PageInfo = {
@@ -69,7 +67,10 @@ function Modal({
       }}
     >
       <div className="h-100 d-flex align-items-center justify-content-center p-3">
-        <div className="bg-white rounded-4 shadow w-100" style={{ maxWidth: maxW, maxHeight: "92vh", overflow: "hidden" }}>
+        <div
+          className="bg-white rounded-4 shadow w-100"
+          style={{ maxWidth: maxW, maxHeight: "92vh", overflow: "hidden" }}
+        >
           <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom">
             <div className="fw-bold">{title}</div>
             <button className="btn btn-sm btn-outline-secondary" onClick={onClose}>
@@ -81,14 +82,14 @@ function Modal({
             <div className="p-3">{children}</div>
           </div>
 
-          {footer ? <div className="px-3 py-2 border-top d-flex justify-content-end gap-2">{footer}</div> : null}
+          {footer ? (
+            <div className="px-3 py-2 border-top d-flex justify-content-end gap-2">{footer}</div>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
-
-/* ================= Page ================= */
 
 export default function ProductsAdminPage() {
   const [booting, setBooting] = useState(true);
@@ -105,10 +106,11 @@ export default function ProductsAdminPage() {
   const [items, setItems] = useState<FullProduct[]>([]);
   const [pageInfo, setPageInfo] = useState<PageInfo>({
     page: 1,
-    pageSize: 20,
+    pageSize: 100,
     total: 0,
     pages: 1,
   });
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -122,8 +124,8 @@ export default function ProductsAdminPage() {
   const [subCategoryId, setSubCategoryId] = useState<number | "">("");
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(50);
-  const pageSizeOptions = [20, 50, 100, 200, 500];
+  const [pageSize, setPageSize] = useState<number>(100);
+  const pageSizeOptions = [20, 50, 100, 200, 500, 1000];
 
   const [openForm, setOpenForm] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
@@ -151,7 +153,11 @@ export default function ProductsAdminPage() {
 
   const loadCatalogs = useCallback(
     async (vendorMode: boolean) => {
-      const [cats, subs, sh] = await Promise.all([listCategories(), listSubCategories(), loadShops(vendorMode)]);
+      const [cats, subs, sh] = await Promise.all([
+        listCategories(),
+        listSubCategories(),
+        loadShops(vendorMode),
+      ]);
 
       setCategories((unwrap<Category[]>(cats) || []) as Category[]);
 
@@ -169,7 +175,9 @@ export default function ProductsAdminPage() {
       const mappedShops = (sh || []).map((s) => ({ ...s, id: Number(s.id) }));
       setShops(mappedShops);
 
-      if (vendorMode && mappedShops.length === 1) setShopId(Number(mappedShops[0].id));
+      if (vendorMode && mappedShops.length === 1) {
+        setShopId(Number(mappedShops[0].id));
+      }
     },
     [loadShops]
   );
@@ -186,6 +194,7 @@ export default function ProductsAdminPage() {
         const vendorMode =
           String(u?.role || "").toUpperCase() === "VENDOR" ||
           String(u?.role || "").toUpperCase() === "VENDEUR";
+
         await loadCatalogs(vendorMode);
       } catch (e: any) {
         setErr(e?.message || String(e));
@@ -206,14 +215,13 @@ export default function ProductsAdminPage() {
         page,
         pageSize,
         pagesize: pageSize,
-        noCache: 1, // ✅ bypass cache for admin listing
+        noCache: 1,
       };
 
       const qs = String(q || "").trim();
       if (qs) params.q = qs;
 
       if (style) params.vertical = String(style).toUpperCase();
-
       if (shopId !== "") params.shop_id = Number(shopId);
 
       if (active === "1") params.onlyActive = 1;
@@ -225,6 +233,7 @@ export default function ProductsAdminPage() {
         params.category_id = Number(categoryId);
         params.categoryId = Number(categoryId);
       }
+
       if (subCategoryId !== "") {
         params.sub_category_id = Number(subCategoryId);
         params.subCategoryId = Number(subCategoryId);
@@ -235,18 +244,23 @@ export default function ProductsAdminPage() {
 
       const rows = (data?.items || data?.rows || data?.data || data || []) as any[];
 
-      const info: PageInfo =
+      const infoRaw =
         data?.pageInfo ||
-        data?.page_info ||
-        ({
+        data?.page_info || {
           page: toInt(data?.page, page),
-          pageSize: toInt(data?.pageSize ?? data?.page_size ?? data?.pagesize ?? data?.pageInfo?.pageSize, pageSize),
+          pageSize: toInt(
+            data?.pageSize ?? data?.page_size ?? data?.pagesize ?? data?.pageInfo?.pageSize,
+            pageSize
+          ),
           total: toInt(data?.total ?? data?.pageInfo?.total, rows?.length || 0),
           pages: toInt(
-            data?.pages ?? data?.totalPages ?? data?.pageInfo?.totalPages,
+            data?.pages ??
+              data?.totalPages ??
+              data?.pageInfo?.pages ??
+              data?.pageInfo?.totalPages,
             1
           ),
-        } as PageInfo);
+        };
 
       const mapped: FullProduct[] = (rows || []).map((p: any) => ({
         ...(p || {}),
@@ -256,24 +270,34 @@ export default function ProductsAdminPage() {
         sub_category_id: p.sub_category_id != null ? Number(p.sub_category_id) : null,
         price: p.price != null ? Number(p.price) : null,
         stock: p.stock != null ? Number(p.stock) : null,
-        promo_discount_value: p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
+        promo_discount_value:
+          p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
         images: Array.isArray(p.images) ? (p.images as ProductImage[]) : undefined,
       }));
 
       setItems(mapped);
 
-      const total = toInt(info.total, mapped.length);
-      const size = Math.max(1, toInt(info.pageSize, pageSize));
-      const pages = Math.max(1, Math.ceil(total / size));
+      const total = Math.max(0, toInt(infoRaw.total, mapped.length));
+      const size = Math.max(1, toInt(infoRaw.pageSize, pageSize));
+      const pages = Math.max(1, toInt(infoRaw.pages, Math.ceil(total / size)));
+      const currentPage = Math.min(Math.max(1, toInt(infoRaw.page, page)), pages);
 
       setPageInfo({
-        page: toInt(info.page, page),
+        page: currentPage,
         pageSize: size,
         total,
         pages,
       });
+
+      if (currentPage !== page) {
+        setPage(currentPage);
+      }
     } catch (e: any) {
-      const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+      const msg =
+        e?.response?.data?.error ||
+        e?.response?.data?.message ||
+        e?.message ||
+        String(e);
       setErr(msg);
     } finally {
       setLoading(false);
@@ -297,7 +321,8 @@ export default function ProductsAdminPage() {
       sub_category_id: p.sub_category_id != null ? Number(p.sub_category_id) : null,
       price: p.price != null ? Number(p.price) : null,
       stock: p.stock != null ? Number(p.stock) : null,
-      promo_discount_value: p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
+      promo_discount_value:
+        p.promo_discount_value != null ? Number(p.promo_discount_value) : null,
       images: Array.isArray(p.images) ? (p.images as ProductImage[]) : [],
     };
 
@@ -319,7 +344,11 @@ export default function ProductsAdminPage() {
         const full = await loadProductById(id);
         setEditing(full);
       } catch (e: any) {
-        const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+        const msg =
+          e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          e?.message ||
+          String(e);
         setFormErr(msg);
       } finally {
         setFormLoading(false);
@@ -343,7 +372,11 @@ export default function ProductsAdminPage() {
         await api.delete(`/api/products/${p.id}`);
         await fetchProducts();
       } catch (e: any) {
-        const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+        const msg =
+          e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          e?.message ||
+          String(e);
         alert(msg);
       }
     },
@@ -351,7 +384,12 @@ export default function ProductsAdminPage() {
   );
 
   const createOrUpdate = useCallback(
-    async (draft: Draft, files: File[], replaceImages: boolean, variants: VariantDraft[]) => {
+    async (
+      draft: Draft,
+      files: File[],
+      replaceImages: boolean,
+      variants: VariantDraft[]
+    ) => {
       setFormErr(null);
 
       const fd = new FormData();
@@ -407,7 +445,11 @@ export default function ProductsAdminPage() {
         closeForm();
         await fetchProducts();
       } catch (e: any) {
-        const msg = e?.response?.data?.error || e?.response?.data?.message || e?.message || String(e);
+        const msg =
+          e?.response?.data?.error ||
+          e?.response?.data?.message ||
+          e?.message ||
+          String(e);
         setFormErr(msg);
         throw e;
       }
@@ -449,21 +491,30 @@ export default function ProductsAdminPage() {
 
   const shopOptions = useMemo(() => {
     return [...shops].sort((a, b) =>
-      String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" })
+      String(a.name || "").localeCompare(String(b.name || ""), "fr", {
+        sensitivity: "base",
+      })
     );
   }, [shops]);
 
   const categoryOptions = useMemo(() => {
     return [...categories].sort((a, b) =>
-      String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" })
+      String(a.name || "").localeCompare(String(b.name || ""), "fr", {
+        sensitivity: "base",
+      })
     );
   }, [categories]);
 
   const subCategoryOptions = useMemo(() => {
     const cid = categoryId === "" ? 0 : Number(categoryId);
-    const arr = cid ? subCategories.filter((s) => Number(s.category_id) === cid) : subCategories;
+    const arr = cid
+      ? subCategories.filter((s) => Number(s.category_id) === cid)
+      : subCategories;
+
     return [...arr].sort((a, b) =>
-      String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" })
+      String(a.name || "").localeCompare(String(b.name || ""), "fr", {
+        sensitivity: "base",
+      })
     );
   }, [subCategories, categoryId]);
 
@@ -484,7 +535,13 @@ export default function ProductsAdminPage() {
           border-color: rgba(229,57,53,.35) !important;
         }
         .duu-card{ border-radius: 16px; }
-        .duu-thumb{ width:44px; height:44px; object-fit:cover; border-radius: 12px; border:1px solid rgba(0,0,0,.10); }
+        .duu-thumb{
+          width:44px;
+          height:44px;
+          object-fit:cover;
+          border-radius: 12px;
+          border:1px solid rgba(0,0,0,.10);
+        }
       `}</style>
 
       <div className="d-flex align-items-start justify-content-between gap-2 flex-wrap">
@@ -658,7 +715,7 @@ export default function ProductsAdminPage() {
                   setShopId("");
                   setCategoryId("");
                   setSubCategoryId("");
-                  setPageSize(50);
+                  setPageSize(100);
                   setPage(1);
                 }}
               >
@@ -708,7 +765,9 @@ export default function ProductsAdminPage() {
                     const promoPrice = promoPriceForAdmin(p);
                     const activeFlag = isActive(p) === 1;
 
-                    const vertical = String((p as any)?.vertical || "").toUpperCase().trim();
+                    const vertical = String((p as any)?.vertical || "")
+                      .toUpperCase()
+                      .trim();
 
                     const img =
                       (p as any)?.cover ||
@@ -739,13 +798,19 @@ export default function ProductsAdminPage() {
                             {(p as any)?.shop_name ? (
                               <>
                                 {" "}
-                                • <span className="badge text-bg-light border">{(p as any).shop_name}</span>
+                                •{" "}
+                                <span className="badge text-bg-light border">
+                                  {(p as any).shop_name}
+                                </span>
                               </>
                             ) : null}
                             {(p as any)?.sub_category_name ? (
                               <>
                                 {" "}
-                                • <span className="badge text-bg-light border">{(p as any).sub_category_name}</span>
+                                •{" "}
+                                <span className="badge text-bg-light border">
+                                  {(p as any).sub_category_name}
+                                </span>
                               </>
                             ) : null}
                           </div>
@@ -768,22 +833,34 @@ export default function ProductsAdminPage() {
 
                         <td className="p-2">
                           {hasRealPromo(p) ? (
-                            <span className="badge bg-warning text-dark">{promoLabel(p)}</span>
+                            <span className="badge bg-warning text-dark">
+                              {promoLabel(p)}
+                            </span>
                           ) : (
                             <span className="text-muted">—</span>
                           )}
                         </td>
 
                         <td className="p-2">
-                          {activeFlag ? <span className="badge bg-success">Actif</span> : <span className="badge bg-secondary">Off</span>}
+                          {activeFlag ? (
+                            <span className="badge bg-success">Actif</span>
+                          ) : (
+                            <span className="badge bg-secondary">Off</span>
+                          )}
                         </td>
 
                         <td className="p-2 text-end">
                           <div className="d-flex justify-content-end gap-2 flex-wrap">
-                            <button className="btn btn-sm btn-outline-dark" onClick={() => openEdit(Number(p.id))}>
+                            <button
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => openEdit(Number(p.id))}
+                            >
                               Modifier
                             </button>
-                            <button className="btn btn-sm btn-outline-danger" onClick={() => deleteProduct(p)}>
+                            <button
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => deleteProduct(p)}
+                            >
                               Supprimer
                             </button>
                           </div>
@@ -799,7 +876,8 @@ export default function ProductsAdminPage() {
 
         <div className="card-footer bg-white d-flex align-items-center justify-content-between flex-wrap gap-2">
           <div className="small text-muted">
-            Page <b>{page}</b> / <b>{pageInfo.pages}</b> • {pageInfo.total} total • {pageInfo.pageSize}/page
+            Page <b>{page}</b> / <b>{pageInfo.pages}</b> • {pageInfo.total} total •{" "}
+            {pageInfo.pageSize}/page
           </div>
 
           <div className="d-flex gap-2">
@@ -833,6 +911,7 @@ export default function ProductsAdminPage() {
         }
       >
         {formErr ? <div className="alert alert-danger py-2">{formErr}</div> : null}
+
         {formLoading ? (
           <div className="text-muted">Chargement du produit…</div>
         ) : (
