@@ -1,4 +1,3 @@
-// src/pages/products/ManageProductsPage.tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { me } from "../../services/auth";
 import { api, API_BASE } from "../../services/http";
@@ -40,6 +39,13 @@ import ProductForm, {
 type Scope = "admin" | "vendor";
 type Vertical = "FOOD" | "MARKET" | "FASHION";
 
+type PageInfo = {
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+};
+
 function unwrap<T = any>(r: any): T {
   return (r?.data ?? r) as T;
 }
@@ -52,6 +58,11 @@ function asArray(x: any): any[] {
   return [];
 }
 
+function toInt(x: any, fallback = 0) {
+  const n = Number(x);
+  return Number.isFinite(n) ? Math.floor(n) : fallback;
+}
+
 function safeImgUrl(u?: string | null) {
   if (!u) return "";
   const s = String(u).trim();
@@ -61,7 +72,6 @@ function safeImgUrl(u?: string | null) {
   return `${API_BASE}/${s}`;
 }
 
-/** ✅ Vertical robust */
 function normalizeVertical(input: any): Vertical | "" {
   const raw = String(input ?? "").trim().toUpperCase();
   if (!raw) return "";
@@ -171,21 +181,26 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
     roleUp === "BOUTIQUE" ||
     roleUp === "SHOP";
 
-  // catalog
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
 
-  // list UI
   const [items, setItems] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const [pageSize, setPageSize] = useState<number>(100);
+  const pageSizeOptions = [20, 50, 100, 200, 500, 1000];
 
-  // modal create/edit
+  const [pageInfo, setPageInfo] = useState<PageInfo>({
+    page: 1,
+    pageSize: 100,
+    total: 0,
+    pages: 1,
+  });
+
   const [openForm, setOpenForm] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [formErr, setFormErr] = useState<string | null>(null);
@@ -203,9 +218,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         const rows = asArray(unwrap<any>(rMine));
         if (rows.length) return rows as Shop[];
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     const r = await api.get("/api/shops");
     return asArray(unwrap<any>(r)) as Shop[];
@@ -248,8 +261,15 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     setErr(null);
+
     try {
-      const res: any = await listManageProducts({ onlyActive: false });
+      const res: any = await listManageProducts({
+        page,
+        pageSize,
+        onlyActive: false,
+        q: q.trim() || undefined,
+      });
+
       const data = unwrap<any>(res);
       const rows = asArray(data);
 
@@ -258,13 +278,29 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         vertical: verticalFromProduct(p) || p?.vertical || p?.type || p?.style || null,
       }));
 
+      const infoRaw = data?.pageInfo || data?.page_info || {};
+      const total = Math.max(0, toInt(infoRaw.total, mapped.length));
+      const size = Math.max(1, toInt(infoRaw.pageSize, pageSize));
+      const pages = Math.max(1, toInt(infoRaw.pages, Math.ceil(total / size)));
+      const currentPage = Math.min(Math.max(1, toInt(infoRaw.page, page)), pages);
+
       setItems(mapped);
+      setPageInfo({
+        page: currentPage,
+        pageSize: size,
+        total,
+        pages,
+      });
+
+      if (currentPage !== page) {
+        setPage(currentPage);
+      }
     } catch (e: any) {
       setErr(e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, pageSize, q]);
 
   useEffect(() => {
     (async () => {
@@ -284,53 +320,36 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
           uRole === "SHOP";
 
         await loadCatalogs(vendorMode);
-        await refresh();
       } catch (e: any) {
         setErr(e?.message || String(e));
       } finally {
         setBooting(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ---- pagination client side ----
-  const filtered = useMemo(() => {
-    const s = String(q || "").trim().toLowerCase();
-    if (!s) return items || [];
-    return (items || []).filter((p: any) => {
-      const name = String(p?.name || "").toLowerCase();
-      const shop = String(p?.shop_name || p?.shop || "").toLowerCase();
-      const id = String(p?.id || "");
-      const vert = String(verticalFromProduct(p) || p?.vertical || "").toLowerCase();
-      return name.includes(s) || shop.includes(s) || id.includes(s) || vert.includes(s);
-    });
-  }, [items, q]);
-
-  const total = filtered.length;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
+  }, [loadCatalogs, scope]);
 
   useEffect(() => {
-    if (page > pages) setPage(1);
-  }, [pages, page]);
-
-  const start = (page - 1) * pageSize;
-  const pageItems = filtered.slice(start, start + pageSize);
-  const canPrev = page > 1;
-  const canNext = page < pages;
-
-  // ---- CRUD actions ----
-  async function onDelete(id: number) {
-    if (!confirm("Supprimer ce produit ?")) return;
-    await removeProduct(id);
+    if (booting) return;
     refresh();
-  }
+  }, [booting, refresh]);
 
-  async function onToggleActive(p: Product) {
-    const next = isActive(p) ? 0 : 1;
-    await updateProduct((p as any).id, { is_active: next } as any, [], false);
-    refresh();
-  }
+  const onDelete = useCallback(
+    async (id: number) => {
+      if (!confirm("Supprimer ce produit ?")) return;
+      await removeProduct(id);
+      await refresh();
+    },
+    [refresh]
+  );
+
+  const onToggleActive = useCallback(
+    async (p: Product) => {
+      const next = isActive(p) ? 0 : 1;
+      await updateProduct((p as any).id, { is_active: next } as any, [], false);
+      await refresh();
+    },
+    [refresh]
+  );
 
   const loadProductById = useCallback(async (id: number) => {
     const r = await api.get(`/api/products/manage/${id}`);
@@ -384,14 +403,10 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
     setFormLoading(false);
   }, []);
 
-  /**
-   * ✅ FIX: vertical obligatoire (signature identique à ProductForm)
-   */
   const onCreateCategory = useCallback(async (name: string, vertical: Vertical) => {
     const v = normalizeVertical(vertical) as Vertical | "";
     if (!v) throw new Error("vertical required (FOOD|MARKET|FASHION)");
 
-    // ✅ un seul payload suffit (évite double-arg selon implémentation)
     const r = await createCategory({
       name: String(name || "").trim(),
       vertical: v as CategoryVertical,
@@ -409,9 +424,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
     return normalized as Category;
   }, []);
 
-  /**
-   * ✅ FIX: vertical obligatoire (signature identique à ProductForm)
-   */
   const onCreateSubCategory = useCallback(
     async (categoryId: number, name: string, vertical: Vertical) => {
       const v = normalizeVertical(vertical) as Vertical | "";
@@ -451,7 +463,6 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         fd.append(k, String(v));
       };
 
-      // ✅ vertical obligatoire
       const vFromDraft =
         normalizeVertical((draft as any).vertical) || mapDraftStyleToVertical((draft as any).style);
       const vFromEditing = verticalFromProduct(editing as any);
@@ -513,6 +524,9 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
     );
   }
 
+  const canPrev = page > 1;
+  const canNext = page < pageInfo.pages;
+
   return (
     <div className="container-xxl py-4">
       <style>{`
@@ -528,7 +542,9 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
         <div>
           <h1 className="h4 mb-1">{isVendor ? "Mes produits" : "Gestion des produits"}</h1>
-          <div className="text-muted small">{loading ? "Chargement…" : `${total} produit(s)`}</div>
+          <div className="text-muted small">
+            {loading ? "Chargement…" : `${pageInfo.total} produit(s)`}
+          </div>
           {err ? <div className="alert alert-danger py-2 mt-2 mb-0">{err}</div> : null}
         </div>
 
@@ -543,6 +559,23 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
               setPage(1);
             }}
           />
+
+          <select
+            className="form-select"
+            style={{ width: 120 }}
+            value={String(pageSize)}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            {pageSizeOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}/page
+              </option>
+            ))}
+          </select>
+
           <button className="btn btn-dark" onClick={openCreate}>
             + Ajouter
           </button>
@@ -576,14 +609,14 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                     Chargement…
                   </td>
                 </tr>
-              ) : pageItems.length === 0 ? (
+              ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={isVendor ? 7 : 8} className="text-muted p-3">
                     Aucun produit.
                   </td>
                 </tr>
               ) : (
-                pageItems.map((p: any) => {
+                items.map((p: any) => {
                   const base = basePriceForAdmin(p);
                   const rawImg =
                     p?.cover || p?.image || p?.image_url || p?.thumb || p?.images?.[0]?.url || null;
@@ -633,15 +666,24 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
 
                       <td className="text-end" onClick={(e) => e.stopPropagation()}>
                         <div className="d-flex justify-content-end gap-2 flex-wrap">
-                          <button className="btn btn-sm btn-outline-dark" onClick={() => openEdit(Number(p.id))}>
+                          <button
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={() => openEdit(Number(p.id))}
+                          >
                             Modifier
                           </button>
 
-                          <button className="btn btn-sm btn-outline-warning" onClick={() => onToggleActive(p)}>
+                          <button
+                            className="btn btn-sm btn-outline-warning"
+                            onClick={() => onToggleActive(p)}
+                          >
                             {isActive(p) ? "Désactiver" : "Activer"}
                           </button>
 
-                          <button className="btn btn-sm btn-outline-danger" onClick={() => onDelete(p.id)}>
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => onDelete(p.id)}
+                          >
                             Supprimer
                           </button>
                         </div>
@@ -656,7 +698,8 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
 
         <div className="card-footer bg-white d-flex align-items-center justify-content-between flex-wrap gap-2">
           <div className="small text-muted">
-            Page <b>{page}</b> / <b>{pages}</b> • {total} total
+            Page <b>{pageInfo.page}</b> / <b>{pageInfo.pages}</b> • {pageInfo.total} total •{" "}
+            {pageInfo.pageSize}/page
           </div>
 
           <div className="d-flex gap-2">
@@ -669,7 +712,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
             </button>
             <button
               className="btn btn-sm btn-outline-secondary"
-              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+              onClick={() => setPage((p) => Math.min(pageInfo.pages, p + 1))}
               disabled={!canNext || loading}
             >
               Suivant →
