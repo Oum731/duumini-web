@@ -2,20 +2,30 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useViewer } from "../hooks/useViewer";
 
+type RequireAuthProps = {
+  allow?: (viewer: ReturnType<typeof useViewer>) => boolean;
+  redirectTo?: string;
+};
+
 export default function RequireAuth({
   allow,
   redirectTo = "/",
-}: {
-  allow?: (viewer: ReturnType<typeof useViewer>) => boolean;
-  redirectTo?: string;
-}) {
+}: RequireAuthProps) {
   const viewer = useViewer();
-  const loc = useLocation();
+  const location = useLocation();
 
-  if (viewer.loading) return null;
+  if (viewer.loading) {
+    return null;
+  }
 
   if (!viewer.isLogged) {
-    return <Navigate to="/profile?tab=login" replace state={{ from: loc.pathname }} />;
+    return (
+      <Navigate
+        to="/profile?tab=login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
   }
 
   if (allow && !allow(viewer)) {

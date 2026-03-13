@@ -1,4 +1,3 @@
-// src/services/orders.ts
 import { api, API_BASE } from "./http";
 
 /** ✅ Aligné backend: { items, pageInfo } */
@@ -21,6 +20,16 @@ export type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
 /** UI status : inclut PENDING (virement en attente) */
 export type PayStatus = PaymentStatus | "PENDING";
 
+export type AdminDiscountType = "NONE" | "AMOUNT" | "PERCENT";
+
+export type AdminDiscount = {
+  type: AdminDiscountType;
+  value?: number;
+  amount?: number;
+  label?: string | null;
+  by_admin_id?: number | null;
+};
+
 /** ✅ Payment object renvoyé par le backend */
 export type OrderPayment = {
   status: PayStatus;
@@ -37,7 +46,6 @@ export type OrderItemInput = {
   qty: number;
   variant_id?: number | null;
 
-  // UI-only (toléré côté API, ignoré si backend ne l'utilise pas)
   name?: string;
   price?: number;
   variant_key?: string | null;
@@ -49,7 +57,7 @@ export type CreateOrderPayload = {
     first_name?: string;
     last_name?: string;
     name?: string;
-    phone?: string; // ✅ backend accepte aussi contact vide en auth (fallback user)
+    phone?: string;
   };
 
   address?: {
@@ -75,11 +83,10 @@ export type CreateOrderPayload = {
     currency?: string;
   };
 
-  /** ✅ align backend buildPaymentFromPayload() */
   payment?: {
     paid_amount?: number;
-    amount?: number; // alias compat
-    add_amount?: number; // (si tu veux l’utiliser plus tard)
+    amount?: number;
+    add_amount?: number;
     method?:
       | "CASH"
       | "COD"
@@ -89,10 +96,9 @@ export type CreateOrderPayload = {
       | "VIREMENT"
       | string;
     note?: string | null;
-    status?: PaymentStatus; // optionnel, backend recalcule
+    status?: PaymentStatus;
   };
 
-  // compat legacy
   address_city?: string;
   address_commune?: string | null;
   address_district?: string | null;
@@ -102,15 +108,19 @@ export type CreateOrderPayload = {
 
 /** ✅ ADMIN: créer une commande (user OU guest) (backend: POST /api/orders/admin) */
 export type CreateAdminOrderPayload = CreateOrderPayload & {
-  /** ✅ user existant */
   customer_id?: number;
 
-  /** ✅ guest (sans compte) - compat si le front envoie "customer" */
   customer?: {
     first_name?: string;
     last_name?: string;
     name?: string;
     phone?: string;
+  };
+
+  admin_discount?: {
+    type?: AdminDiscountType;
+    value?: number;
+    label?: string | null;
   };
 };
 
@@ -125,18 +135,21 @@ export type CreateOrderResult = {
 
   receipt_number?: string | null;
   receipt_token?: string | null;
+
+  admin_discount?: AdminDiscount | null;
+  totals?: OrderTotals | null;
 };
 
 export type OrderTotals = {
   items_amount?: number;
+  items_subtotal?: number;
+  admin_discount_amount?: number;
+  discounted_items_amount?: number;
   delivery_fee?: number;
   amount?: number;
   currency?: string;
 
-  // ✅ backend mis à jour: duumini_commission
   duumini_commission?: number | null;
-
-  // compat ancien champ (au cas où)
   duumini_amount?: number | null;
 };
 
@@ -162,13 +175,11 @@ export type Order = {
   created_at: string;
   updated_at?: string | null;
 
-  // admin (peut être masqué côté backend)
   commission_duumini?: number | null;
-
-  // list endpoint calc
   items_amount?: number | null;
 
   totals?: OrderTotals | null;
+  admin_discount?: AdminDiscount | null;
 
   payment?: OrderPayment | null;
 
@@ -176,7 +187,6 @@ export type Order = {
   paid_amount?: number | null;
   remaining_amount?: number | null;
 
-  // ✅ reçu
   receipt_number?: string | null;
   receipt_token?: string | null;
 };
@@ -200,7 +210,6 @@ export type OrderItem = {
   name?: string | null;
   price?: number | null;
 
-  // backend join:
   variant_size?: string | null;
   variant_color?: string | null;
   variant_sku?: string | null;
@@ -221,13 +230,17 @@ export type OrderDetail = Order & {
 
   totals?: {
     items_amount: number;
+    items_subtotal?: number;
+    admin_discount_amount?: number;
+    discounted_items_amount?: number;
     delivery_fee: number;
     amount: number;
     currency: string;
     duumini_commission?: number | null;
-    duumini_amount?: number | null; // compat
+    duumini_amount?: number | null;
   };
 
+  admin_discount?: AdminDiscount | null;
   payment?: OrderPayment | null;
 };
 
@@ -235,25 +248,19 @@ export type OrderDetail = Order & {
 export type ListOrdersOptions = {
   page?: number;
   pageSize?: number;
-
-  /** simple status (backend accepte status=OPEN) */
   status?: OrderStatus | "ALL";
-
-  /** multi status (backend accepte statuses=OPEN,DONE) */
   statuses?: OrderStatus[] | null;
-
   mineOnly?: boolean;
   q?: string;
-
   payment_status?: PayStatus | "ALL";
-  pay?: PayStatus | "ALL"; // alias
+  pay?: PayStatus | "ALL";
 };
 
 /* ===== Update payment ===== */
 export type UpdateOrderPaymentPayload = {
   mode?: "SET" | "ADD";
-  paid_amount?: number; // required si SET
-  add_amount?: number; // required si ADD
+  paid_amount?: number;
+  add_amount?: number;
   method?: string;
   note?: string | null;
 };
@@ -266,7 +273,6 @@ export type UpdateOrderPaymentResult = {
   payment: OrderPayment;
 };
 
-/* ===== Helpers ===== */
 function toPositiveInt(v: any, fallback: number) {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return fallback;
@@ -283,7 +289,6 @@ function toNumOrNull(v: any) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** ✅ Normalise un item (tolère plusieurs clés UI) */
 function normalizeItemInput(x: any): OrderItemInput | null {
   if (!x || typeof x !== "object") return null;
 
@@ -305,6 +310,26 @@ function normalizeItemInput(x: any): OrderItemInput | null {
   if (x.variant_label != null) out.variant_label = cleanString(x.variant_label) || null;
 
   return out;
+}
+
+function normalizeAdminDiscountInput(input: any) {
+  const type = String(input?.type || "NONE").trim().toUpperCase() as AdminDiscountType;
+  const value = toNumOrNull(input?.value);
+  const label = cleanString(input?.label) || null;
+
+  if (!["NONE", "AMOUNT", "PERCENT"].includes(type)) {
+    return { type: "NONE" as AdminDiscountType };
+  }
+
+  if (type === "NONE") {
+    return { type: "NONE" as AdminDiscountType };
+  }
+
+  return {
+    type,
+    ...(value != null && value > 0 ? { value } : {}),
+    ...(label ? { label } : {}),
+  };
 }
 
 function normalizeCreatePayload(payload: CreateOrderPayload): CreateOrderPayload {
@@ -341,8 +366,13 @@ function normalizeAdminCreatePayload(
   const customer_id =
     cid == null || cid === "" ? undefined : toPositiveInt(cid, 0) || undefined;
 
-  // ✅ si customer_id absent => guest: le backend utilisera contact/customer
-  return { ...(base as any), ...(customer_id ? { customer_id } : {}) };
+  return {
+    ...(base as any),
+    ...(customer_id ? { customer_id } : {}),
+    ...(payload?.admin_discount
+      ? { admin_discount: normalizeAdminDiscountInput(payload.admin_discount) }
+      : {}),
+  };
 }
 
 function normalizeBase(u?: string | null) {
@@ -356,10 +386,8 @@ export async function listOrders(opts: ListOrdersOptions = {}) {
 
   const query: Record<string, any> = { page, pageSize };
 
-  // simple status
   if (opts.status && opts.status !== "ALL") query.status = opts.status;
 
-  // multi statuses (backend: statuses=OPEN,DONE)
   if (opts.statuses && Array.isArray(opts.statuses) && opts.statuses.length) {
     query.statuses = opts.statuses.join(",");
   }
@@ -402,7 +430,6 @@ export async function createGuestOrder(payload: CreateOrderPayload) {
   );
 }
 
-/** ✅ ADMIN peut passer commande (compte OU invité) */
 export async function createAdminOrder(payload: CreateAdminOrderPayload) {
   return api.post<CreateOrderResult>(
     "/api/orders/admin",
@@ -414,9 +441,6 @@ export async function updateOrderPayment(id: number, payload: UpdateOrderPayment
   return api.put<UpdateOrderPaymentResult>(`/api/orders/${id}/payment`, payload);
 }
 
-/** ✅ Récupérer le PDF reçu (streamed by backend)
- * Important: en dev, évite l’URL relative si pas de proxy Vite.
- */
 export function getOrderReceiptPdfUrl(orderId: number) {
   const base = normalizeBase(API_BASE);
   return base
@@ -424,7 +448,6 @@ export function getOrderReceiptPdfUrl(orderId: number) {
     : `/api/orders/${orderId}/receipt.pdf`;
 }
 
-/** ✅ PDF PUBLIC (sans auth) via token (backend: /api/orders/receipt/:token.pdf) */
 export function getPublicReceiptPdfUrl(token: string) {
   const base = normalizeBase(API_BASE);
   const t = encodeURIComponent(String(token || "").trim());
@@ -432,7 +455,6 @@ export function getPublicReceiptPdfUrl(token: string) {
   return base ? `${base}/api/orders/receipt/${t}.pdf` : `/api/orders/receipt/${t}.pdf`;
 }
 
-/** ✅ Reçu JSON public (backend: /api/orders/receipt/:token) */
 export function getPublicReceiptJsonUrl(token: string) {
   const base = normalizeBase(API_BASE);
   const t = encodeURIComponent(String(token || "").trim());
@@ -440,7 +462,6 @@ export function getPublicReceiptJsonUrl(token: string) {
   return base ? `${base}/api/orders/receipt/${t}` : `/api/orders/receipt/${t}`;
 }
 
-/** ✅ Envoyer le reçu via WhatsApp (admin only) */
 export async function sendReceiptWhatsApp(orderId: number) {
   return api.post<{ ok: true; to: string; pdfUrl: string }>(
     `/api/orders/${orderId}/send-receipt-whatsapp`,

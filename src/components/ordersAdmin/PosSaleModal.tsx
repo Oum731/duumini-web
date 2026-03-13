@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listProducts, type Product, isProductActive } from "../../services/products";
 import {
-  createOrder,
+  createAdminOrder,
   updateOrderStatus,
+  type AdminDiscountType,
   type OrderStatus,
   type PaymentStatus,
 } from "../../services/orders";
@@ -13,7 +14,6 @@ type AnyObj = Record<string, any>;
 type Props = {
   open: boolean;
   onClose: () => void;
-  /** appelé après création (ex: refresh liste) */
   onCreated?: () => void | Promise<void>;
 };
 
@@ -27,6 +27,12 @@ const mad = (n?: number | null) =>
 function numSafe(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function clampMoney(n: number) {
+  const x = Number(n || 0);
+  if (!Number.isFinite(x) || x <= 0) return 0;
+  return +x.toFixed(2);
 }
 
 function toInputNumberValue(n: number) {
@@ -44,7 +50,6 @@ function computeRemaining(total: number, paid: number) {
   return Math.max(0, t - p);
 }
 
-/** ✅ Align backend orders.ts: PaymentStatus = "PAID" | "UNPAID" | "PARTIAL" */
 function computePayStatus(total: number, paid: number): PaymentStatus {
   const t = Math.max(0, numSafe(total));
   const p = Math.max(0, Math.min(numSafe(paid), t));
@@ -94,37 +99,56 @@ function hasPromo(p: Product): boolean {
   return Number.isFinite(promoNum) && promoNum > 0 && promoNum < base;
 }
 
+function computeAdminDiscountAmount(
+  itemsSubtotal: number,
+  discountType: AdminDiscountType,
+  discountValue: number
+) {
+  const subtotal = Math.max(0, numSafe(itemsSubtotal));
+  const value = Math.max(0, numSafe(discountValue));
+
+  if (subtotal <= 0 || value <= 0 || discountType === "NONE") return 0;
+
+  let amount = 0;
+  if (discountType === "AMOUNT") amount = value;
+  else if (discountType === "PERCENT") amount = subtotal * (value / 100);
+
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (amount > subtotal) amount = subtotal;
+
+  return clampMoney(amount);
+}
+
 /**
  * ✅ POS / Vente sur place
  * - Charge tous les produits (pagination)
  * - Option: inclure produits cachés (is_active=0)
  * - Panier + qty
  * - Saisie paiement
+ * - Réduction admin
  * - Crée une commande "sur place"
  *
- * ✅ Align backend orders.ts:
- * - delivery.mode: "SIMPLE" (PICKUP n'existe pas dans ton type backend)
- * - fee: 0
- * - payment.status: "PAID" | "UNPAID" | "PARTIAL"
- * - payment.paid_amount
+ * ✅ Important:
+ * - On passe par createAdminOrder() pour supporter admin_discount côté backend
+ * - customer_id facultatif, guest autorisé via contact.phone
  */
 export default function PosSaleModal({ open, onClose, onCreated }: Props) {
-  // client (facultatif)
   const [cFirst, setCFirst] = useState("");
   const [cLast, setCLast] = useState("");
   const [cPhone, setCPhone] = useState("");
 
-  // panier
   const [basket, setBasket] = useState<{ product: Product; qty: number }[]>([]);
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [markDone, setMarkDone] = useState(true);
 
-  // catalogue
+  const [discountType, setDiscountType] = useState<AdminDiscountType>("NONE");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [discountLabel, setDiscountLabel] = useState<string>("");
+
   const [search, setSearch] = useState("");
   const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
   const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">("NAME");
 
-  // ✅ produits cachés
   const [includeHidden, setIncludeHidden] = useState(false);
 
   const [searchLoading, setSearchLoading] = useState(false);
@@ -134,9 +158,21 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
   const [saving, setSaving] = useState(false);
 
-  const basketTotal = useMemo(() => {
+  const basketItemsTotal = useMemo(() => {
     return basket.reduce((s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0), 0);
   }, [basket]);
+
+  const adminDiscountAmount = useMemo(() => {
+    return computeAdminDiscountAmount(basketItemsTotal, discountType, discountValue);
+  }, [basketItemsTotal, discountType, discountValue]);
+
+  const discountedItemsTotal = useMemo(() => {
+    return Math.max(0, clampMoney(basketItemsTotal - adminDiscountAmount));
+  }, [basketItemsTotal, adminDiscountAmount]);
+
+  const basketTotal = useMemo(() => {
+    return discountedItemsTotal;
+  }, [discountedItemsTotal]);
 
   const paidClamped = useMemo(() => {
     const t = Math.max(0, numSafe(basketTotal));
@@ -149,8 +185,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
   useEffect(() => {
     if (paidClamped !== amountPaid) setAmountPaid(paidClamped);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paidClamped]);
+  }, [paidClamped, amountPaid]);
 
   const reset = useCallback(() => {
     setSearch("");
@@ -165,6 +200,10 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setBasket([]);
     setAmountPaid(0);
 
+    setDiscountType("NONE");
+    setDiscountValue(0);
+    setDiscountLabel("");
+
     setCFirst("");
     setCLast("");
     setCPhone("");
@@ -173,7 +212,6 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setSaving(false);
   }, []);
 
-  // reset quand on ferme
   useEffect(() => {
     if (!open) reset();
   }, [open, reset]);
@@ -207,6 +245,9 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     if (!window.confirm("Vider le panier ?")) return;
     setBasket([]);
     setAmountPaid(0);
+    setDiscountType("NONE");
+    setDiscountValue(0);
+    setDiscountLabel("");
   }
 
   const loadAllProducts = useCallback(async () => {
@@ -226,8 +267,6 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       let totalExpected = Infinity;
 
       while (!ac.signal.aborted) {
-        // ✅ listProducts(...) a "onlyActive" (par défaut true)
-        // -> includeHidden = true => onlyActive=false (si backend support)
         const res = await listProducts({
           page,
           pageSize: pageSizeAll,
@@ -251,13 +290,10 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
       if (ac.signal.aborted) return;
 
-      // de-dupe
       const map = new Map<number, Product>();
       all.forEach((p) => map.set(p.id, p));
 
       const merged = Array.from(map.values());
-
-      // ✅ sécurité: si backend ignore onlyActive=false, on applique le filtre côté front
       const finalList = includeHidden ? merged : merged.filter((p) => isProductActive(p));
       setResults(finalList);
     } catch (e: any) {
@@ -305,38 +341,53 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       return;
     }
 
+    if (discountType !== "NONE" && discountValue <= 0) {
+      alert("Entre une valeur de réduction valide.");
+      return;
+    }
+
     const total = Math.max(0, numSafe(basketTotal));
     const paid = paidClamped;
     const remain = computeRemaining(total, paid);
     const status = computePayStatus(total, paid);
+
+    const normalizedPhone = String(cPhone || "").trim();
 
     const itemsPayload = basket.map((b) => {
       const unit = getProductUnitPrice(b.product);
       return {
         product_id: b.product.id,
         qty: b.qty,
-        // UI-only (pas grave, backend normalizer accepte)
         name: b.product.name,
         price: Number(unit || 0),
       };
     });
 
     const payload = {
-      contact:
-        cFirst || cLast || cPhone
-          ? { first_name: cFirst || "", last_name: cLast || "", phone: cPhone || "" }
-          : {},
+      contact: {
+        first_name: cFirst || "Client",
+        last_name: cLast || "POS",
+        phone: normalizedPhone || "+0000000000",
+      },
 
-      address: { ville: "Casablanca", commune: "Sur place", quartier: "Boutique", gps: null },
+      address: {
+        ville: "Casablanca",
+        commune: "Sur place",
+        quartier: "Boutique",
+        gps: null,
+      },
 
-      // ✅ align backend: PAS "PICKUP" ici
-      delivery: { mode: "SIMPLE" as const, fee: 0, currency: "MAD" as const },
+      delivery: {
+        mode: "SIMPLE" as const,
+        fee: 0,
+        currency: "MAD" as const,
+      },
 
       items: itemsPayload,
 
       totals: {
         items_count: itemsPayload.reduce((s, it) => s + (Number(it.qty) || 0), 0),
-        items_amount: total,
+        items_amount: Math.max(0, numSafe(basketItemsTotal)),
         delivery_fee: 0,
         amount: total,
         currency: "MAD",
@@ -346,13 +397,22 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
         method: "CASH",
         note: `Vente sur place | ${status} | payé=${paid} | reste=${remain}`,
         paid_amount: paid,
-        status, // ✅ PaymentStatus
+        status,
       },
+
+      admin_discount:
+        discountType === "NONE"
+          ? { type: "NONE" as const }
+          : {
+              type: discountType,
+              value: Math.max(0, numSafe(discountValue)),
+              label: discountLabel.trim() || "Réduction POS",
+            },
     };
 
     try {
       setSaving(true);
-      const created = await createOrder(payload as any);
+      const created = await createAdminOrder(payload as any);
 
       if (markDone && created?.id) {
         await updateOrderStatus(created.id, "DONE" as OrderStatus);
@@ -383,7 +443,6 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
           <div className="modal-body pos-body">
             <div className="row g-3 pos-grid">
-              {/* Catalogue */}
               <div className="col-12 col-lg-7 pos-col">
                 <div className="card border-0 shadow-sm h-100">
                   <div className="card-body d-flex flex-column">
@@ -509,7 +568,6 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                 </div>
               </div>
 
-              {/* Panier */}
               <div className="col-12 col-lg-5 pos-col">
                 <div className="card border-0 shadow-sm h-100">
                   <div className="card-body d-flex flex-column">
@@ -528,6 +586,26 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                     </div>
 
                     <div className="pos-summary mt-2">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span className="text-muted">Sous-total produits</span>
+                        <span className="fw-semibold">{mad(basketItemsTotal)}</span>
+                      </div>
+
+                      {discountType !== "NONE" && (
+                        <>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="text-muted">
+                              Réduction {discountType === "PERCENT" ? `(${discountValue || 0}%)` : ""}
+                            </span>
+                            <span className="fw-semibold text-danger">- {mad(adminDiscountAmount)}</span>
+                          </div>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="text-muted">Total net</span>
+                            <span className="fw-semibold">{mad(discountedItemsTotal)}</span>
+                          </div>
+                        </>
+                      )}
+
                       <div className="d-flex justify-content-between align-items-center">
                         <span className="text-muted">Total</span>
                         <span className="fw-semibold">{mad(basketTotal)}</span>
@@ -612,6 +690,52 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
                     <hr className="my-3" />
 
+                    <div className="row g-2">
+                      <div className="col-12 col-md-4">
+                        <h6 className="mb-2">Type réduction</h6>
+                        <select
+                          className="form-select"
+                          value={discountType}
+                          onChange={(e) => setDiscountType(e.target.value as AdminDiscountType)}
+                          disabled={saving}
+                        >
+                          <option value="NONE">Aucune</option>
+                          <option value="AMOUNT">Montant</option>
+                          <option value="PERCENT">Pourcentage</option>
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <h6 className="mb-2">Valeur</h6>
+                        <input
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="form-control"
+                          value={toInputNumberValue(discountValue)}
+                          onChange={(e) => setDiscountValue(fromInputNumberValue(e.target.value))}
+                          disabled={saving || discountType === "NONE"}
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <h6 className="mb-2">Libellé</h6>
+                        <input
+                          className="form-control"
+                          placeholder="Ex: Remise POS"
+                          value={discountLabel}
+                          onChange={(e) => setDiscountLabel(e.target.value)}
+                          disabled={saving || discountType === "NONE"}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="small text-muted mt-1">
+                      La réduction admin s’applique sur les produits uniquement.
+                    </div>
+
+                    <hr className="my-3" />
+
                     <h6 className="mb-2">Montant payé</h6>
                     <input
                       type="number"
@@ -648,7 +772,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                       <div className="col-12">
                         <input
                           className="form-control"
-                          placeholder="Téléphone (+212…)"
+                          placeholder="Téléphone (+212...)"
                           value={cPhone}
                           onChange={(e) => setCPhone(e.target.value)}
                           disabled={saving}

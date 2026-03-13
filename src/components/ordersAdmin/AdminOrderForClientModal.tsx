@@ -1,9 +1,9 @@
-// src/components/ordersAdmin/AdminOrderForClientModal.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listProducts, type Product, isProductActive } from "../../services/products";
 import {
   createAdminOrder,
   updateOrderStatus,
+  type AdminDiscountType,
   type OrderStatus,
   type PaymentStatus,
 } from "../../services/orders";
@@ -73,6 +73,12 @@ function fromInputNumberValue(v: string) {
   if (v.trim() === "") return 0;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function clampMoney(n: number) {
+  const x = Number(n || 0);
+  if (!Number.isFinite(x) || x <= 0) return 0;
+  return +x.toFixed(2);
 }
 
 function computeRemaining(total: number, paid: number) {
@@ -245,6 +251,26 @@ function mapAdminUserToClient(u: AdminUser): ClientLite {
   };
 }
 
+function computeAdminDiscountAmount(
+  itemsSubtotal: number,
+  discountType: AdminDiscountType,
+  discountValue: number
+) {
+  const subtotal = Math.max(0, numSafe(itemsSubtotal));
+  const value = Math.max(0, numSafe(discountValue));
+
+  if (subtotal <= 0 || value <= 0 || discountType === "NONE") return 0;
+
+  let amount = 0;
+  if (discountType === "AMOUNT") amount = value;
+  else if (discountType === "PERCENT") amount = subtotal * (value / 100);
+
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (amount > subtotal) amount = subtotal;
+
+  return clampMoney(amount);
+}
+
 export default function AdminOrderForClientModal({ open, onClose, onCreated }: Props) {
   const [selectedClient, setSelectedClient] = useState<ClientLite | null>(null);
 
@@ -258,6 +284,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   const [deliveryMode, setDeliveryMode] = useState<
     "SIMPLE" | "EXPRESS" | "CITY" | "CASABLANCA" | "PROMO_FREE"
   >("SIMPLE");
+
+  const [discountType, setDiscountType] = useState<AdminDiscountType>("NONE");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [discountLabel, setDiscountLabel] = useState<string>("");
 
   const [clientCity, setClientCity] = useState<string>("");
   const [clientDistrict, setClientDistrict] = useState<string>("");
@@ -283,9 +313,17 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     return basket.reduce((s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0), 0);
   }, [basket]);
 
+  const adminDiscountAmount = useMemo(() => {
+    return computeAdminDiscountAmount(basketItemsTotal, discountType, discountValue);
+  }, [basketItemsTotal, discountType, discountValue]);
+
+  const discountedItemsTotal = useMemo(() => {
+    return Math.max(0, clampMoney(basketItemsTotal - adminDiscountAmount));
+  }, [basketItemsTotal, adminDiscountAmount]);
+
   const basketTotal = useMemo(() => {
-    return Math.max(0, numSafe(basketItemsTotal)) + Math.max(0, numSafe(deliveryFee));
-  }, [basketItemsTotal, deliveryFee]);
+    return Math.max(0, numSafe(discountedItemsTotal)) + Math.max(0, numSafe(deliveryFee));
+  }, [discountedItemsTotal, deliveryFee]);
 
   const paidClamped = useMemo(() => {
     const t = Math.max(0, numSafe(basketTotal));
@@ -323,6 +361,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
     setDeliveryFee(0);
     setDeliveryMode("SIMPLE");
+
+    setDiscountType("NONE");
+    setDiscountValue(0);
+    setDiscountLabel("");
 
     setClientCity("");
     setClientDistrict("");
@@ -376,6 +418,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     if (!window.confirm("Vider le panier ?")) return;
     setBasket([]);
     setAmountPaid(0);
+    setDiscountType("NONE");
+    setDiscountValue(0);
+    setDiscountLabel("");
   }
 
   const loadAllProducts = useCallback(async () => {
@@ -550,6 +595,11 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       }
     }
 
+    if (discountType !== "NONE" && discountValue <= 0) {
+      alert("Entre une valeur de réduction valide.");
+      return;
+    }
+
     const total = Math.max(0, numSafe(basketTotal));
     const paid = paidClamped;
     const remain = computeRemaining(total, paid);
@@ -609,6 +659,14 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
         paid_amount: paid,
         status,
       },
+      admin_discount:
+        discountType === "NONE"
+          ? { type: "NONE" }
+          : {
+              type: discountType,
+              value: Math.max(0, numSafe(discountValue)),
+              label: discountLabel.trim() || undefined,
+            },
     };
 
     try {
@@ -638,7 +696,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
             <div className="d-flex flex-column">
               <h5 className="modal-title mb-0">Commander pour un client</h5>
               <div className="text-muted small">
-                Choisis le client, ajoute les produits, puis crée la commande
+                Choisis le client, ajoute les produits, applique une réduction si besoin, puis crée la commande
               </div>
             </div>
             <button className="btn-close" onClick={onClose} disabled={saving} />
@@ -899,6 +957,22 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         <span className="text-muted">Articles</span>
                         <span className="fw-semibold">{mad(basketItemsTotal)}</span>
                       </div>
+
+                      {discountType !== "NONE" && (
+                        <>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="text-muted">
+                              Réduction {discountType === "PERCENT" ? `(${discountValue || 0}%)` : ""}
+                            </span>
+                            <span className="fw-semibold text-danger">- {mad(adminDiscountAmount)}</span>
+                          </div>
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="text-muted">Sous-total net</span>
+                            <span className="fw-semibold">{mad(discountedItemsTotal)}</span>
+                          </div>
+                        </>
+                      )}
+
                       <div className="d-flex justify-content-between align-items-center">
                         <span className="text-muted">Livraison</span>
                         <span className="fw-semibold">{mad(deliveryFee)}</span>
@@ -1033,6 +1107,54 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                           disabled={saving}
                         />
                       </div>
+                    </div>
+
+                    <hr className="my-3" />
+
+                    <div className="row g-2">
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Type réduction</label>
+                        <select
+                          className="form-select"
+                          value={discountType}
+                          onChange={(e) => setDiscountType((e.target as HTMLSelectElement).value as AdminDiscountType)}
+                          disabled={saving}
+                        >
+                          <option value="NONE">Aucune</option>
+                          <option value="AMOUNT">Montant</option>
+                          <option value="PERCENT">Pourcentage</option>
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">
+                          Valeur {discountType === "PERCENT" ? "(%)" : "(MAD)"}
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="form-control"
+                          value={toInputNumberValue(discountValue)}
+                          onChange={(e) => setDiscountValue(fromInputNumberValue((e.target as HTMLInputElement).value))}
+                          disabled={saving || discountType === "NONE"}
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Libellé réduction</label>
+                        <input
+                          className="form-control"
+                          value={discountLabel}
+                          onChange={(e) => setDiscountLabel((e.target as HTMLInputElement).value)}
+                          disabled={saving || discountType === "NONE"}
+                          placeholder="Ex: Geste commercial"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="small text-muted mt-1">
+                      La réduction admin s’applique sur les produits uniquement, pas sur la livraison.
                     </div>
 
                     <hr className="my-3" />
