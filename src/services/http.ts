@@ -1,4 +1,3 @@
-// src/services/http.ts
 import { refresh as doRefresh, getAccessToken, clearSession } from "./auth";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -6,25 +5,14 @@ export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type HttpConfig = {
   method?: HttpMethod;
   headers?: Record<string, string>;
-  /** Corps de requête (objets -> JSON.stringify, FormData gardé tel quel) */
   body?: any;
-  /** Paramètres de requête (ajoutés à l'URL) */
   query?: Record<string, string | number | boolean | null | undefined>;
-  /** Timeout en ms (par défaut 20s) */
   timeout?: number;
-  /** Forcer no-auth même si un token existe */
   noAuth?: boolean;
-  /** Inclure cookies (si besoin) */
   credentials?: RequestCredentials;
-  params?: Record<string, any>; // ✅ alias
-
-  /** ✅ AbortController support (pour autocomplete / cancel request) */
+  params?: Record<string, any>;
   signal?: AbortSignal;
-
-  /** ✅ Ville forcée pour cette requête (override localStorage) */
   city?: string | null;
-
-  /** ✅ Ne pas envoyer la ville sur cette requête */
   noCity?: boolean;
 };
 
@@ -45,16 +33,10 @@ export class HttpError extends Error {
   }
 }
 
-/* =========================
- * ✅ API_BASE robuste
- * - Dev: fallback sur origin (vite proxy possible)
- * - Prod: JAMAIS fallback sur www.duumini.com par erreur
- * =======================*/
 const ENV_API =
   (import.meta as any).env?.VITE_API_BASE?.toString().trim().replace(/\/+$/, "") ||
   "";
 
-/** ⚠️ Mets ici ton vrai backend prod si VITE_API_BASE n'est pas défini */
 const DEFAULT_PROD_API = "https://duumini-api.onrender.com";
 
 function safeDefaultApiBase() {
@@ -62,34 +44,33 @@ function safeDefaultApiBase() {
   const isLocal = host === "localhost" || host === "127.0.0.1";
 
   if (isLocal) return window.location.origin.replace(/\/+$/, "");
-
-  // Prod: fallback sûr vers l'API (pas le front)
   return DEFAULT_PROD_API.replace(/\/+$/, "");
 }
 
 export const API_BASE = ENV_API || safeDefaultApiBase();
 
-/** Construit l'URL absolue + query params */
-function buildUrl(path: string, query?: HttpConfig["query"]): string {
+function buildUrl(
+  path: string,
+  query?: Record<string, string | number | boolean | null | undefined>
+): string {
   const url = path.startsWith("http")
     ? new URL(path)
     : new URL(API_BASE + (path.startsWith("/") ? path : `/${path}`));
 
   if (query) {
     Object.entries(query).forEach(([k, v]) => {
-      if (v === undefined || v === null) return;
+      if (v === undefined || v === null || v === "") return;
       url.searchParams.set(k, String(v));
     });
   }
+
   return url.toString();
 }
 
-/** Détermine si le body est du FormData */
 function isFormData(x: any): x is FormData {
   return typeof FormData !== "undefined" && x instanceof FormData;
 }
 
-/** Parse la réponse selon le Content-Type */
 async function parseResponse<T>(res: Response): Promise<T> {
   const ctype = res.headers.get("content-type") || "";
   if (!ctype) return undefined as unknown as T;
@@ -97,11 +78,10 @@ async function parseResponse<T>(res: Response): Promise<T> {
   if (ctype.includes("application/json")) {
     return (await res.json()) as T;
   }
-  const text = await res.text();
-  return text as T;
+
+  return (await res.text()) as T;
 }
 
-/** Combine 2 AbortSignals (si le navigateur le supporte) */
 function mergeSignals(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined {
   if (!a) return b;
   if (!b) return a;
@@ -120,7 +100,6 @@ function mergeSignals(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined
   return controller.signal;
 }
 
-/** Fetch avec timeout dédié + support signal externe */
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -142,7 +121,6 @@ async function fetchWithTimeout(
   }
 }
 
-/** Lecture safe de la ville globale */
 function readCityFromStorage(): string | null {
   try {
     const v = localStorage.getItem("duumini_city");
@@ -153,9 +131,6 @@ function readCityFromStorage(): string | null {
   }
 }
 
-/**
- * Client HTTP générique avec retry/refresh auto sur 401
- */
 export async function http<T = unknown>(
   path: string,
   config: HttpConfig = {}
@@ -165,12 +140,13 @@ export async function http<T = unknown>(
     headers = {},
     body,
     query,
+    params,
     timeout = 20000,
     noAuth = false,
-    credentials,
+    credentials = "include",
     signal,
-    city,     // ✅ override ville
-    noCity,   // ✅ désactiver ville
+    city,
+    noCity,
   } = config;
 
   const hdrs: Record<string, string> = {
@@ -178,27 +154,34 @@ export async function http<T = unknown>(
     ...headers,
   };
 
-  // ✅ Ville globale envoyée automatiquement (sans répétition dans les pages)
   if (!noCity) {
     const cityToSend =
-      typeof city !== "undefined" ? (city ? String(city).trim() : null) : readCityFromStorage();
+      typeof city !== "undefined"
+        ? city
+          ? String(city).trim()
+          : null
+        : readCityFromStorage();
 
     if (cityToSend) {
       hdrs["X-Duumini-City"] = cityToSend;
     }
   }
 
-  // Auth bearer si token dispo (utilise la même source que auth.ts)
   const token = noAuth ? null : getAccessToken();
-  const finalQuery: HttpConfig["query"] = { ...(query || {}) };
 
   if (token && !hdrs.Authorization) {
     hdrs.Authorization = `Bearer ${token}`;
   }
 
+  const finalQuery: Record<string, any> = {
+    ...(query || {}),
+    ...(params || {}),
+  };
+
   const url = buildUrl(path, finalQuery);
 
   let finalBody: BodyInit | undefined = undefined;
+
   if (body !== undefined && body !== null) {
     if (isFormData(body)) {
       finalBody = body;
@@ -249,25 +232,25 @@ export async function http<T = unknown>(
     try {
       payload = await parseResponse<HttpErrorPayload>(res);
     } catch {
-      /* ignore */
+      // ignore
     }
+
     const msg =
       payload?.error ||
       payload?.message ||
       `HTTP ${res.status} ${res.statusText}`;
+
     throw new HttpError(res.status, msg, payload);
   }
 
   return parseResponse<T>(res);
 }
 
-/* ===========================
- * Helpers pratiques (api.*)
- * =========================== */
 export const api = {
   get<T = unknown>(path: string, cfg?: Omit<HttpConfig, "method" | "body">) {
     return http<T>(path, { ...cfg, method: "GET" });
   },
+
   post<T = unknown>(
     path: string,
     body?: any,
@@ -275,6 +258,7 @@ export const api = {
   ) {
     return http<T>(path, { ...cfg, method: "POST", body });
   },
+
   put<T = unknown>(
     path: string,
     body?: any,
@@ -282,6 +266,7 @@ export const api = {
   ) {
     return http<T>(path, { ...cfg, method: "PUT", body });
   },
+
   patch<T = unknown>(
     path: string,
     body?: any,
@@ -289,11 +274,11 @@ export const api = {
   ) {
     return http<T>(path, { ...cfg, method: "PATCH", body });
   },
+
   delete<T = unknown>(path: string, cfg?: Omit<HttpConfig, "method" | "body">) {
     return http<T>(path, { ...cfg, method: "DELETE" });
   },
 
-  /** Upload multipart (FormData) */
   upload<T = unknown>(
     path: string,
     form: FormData,
