@@ -124,8 +124,8 @@ export async function listSalesReports(
   if (params.to) query.to = String(params.to).slice(0, 19);
 
   const r = await api.get("/api/reports/sales", {
-    params: query,
-  });
+  query,
+});
 
   const body = unwrap<any>(r);
 
