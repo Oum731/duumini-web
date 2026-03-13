@@ -21,9 +21,7 @@ function fmtDate(value?: string | null) {
   const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
   const d = new Date(normalized);
 
-  if (Number.isNaN(d.getTime())) {
-    return raw;
-  }
+  if (Number.isNaN(d.getTime())) return raw;
 
   return d.toLocaleString("fr-FR", {
     year: "numeric",
@@ -252,19 +250,9 @@ export default function ReportsSalesPage() {
       setError(null);
 
       try {
-        console.log("[ReportsSalesPage] queryParams =", queryParams);
-
         const r = await listSalesReports(queryParams);
-
         if (!mounted) return;
-
-        const nextItems = Array.isArray(r?.items) ? r.items : [];
-        console.log(
-          "[ReportsSalesPage] result types =",
-          nextItems.slice(0, 10).map((x) => x.period_type)
-        );
-
-        setItems(nextItems);
+        setItems(Array.isArray(r?.items) ? r.items : []);
       } catch (e: any) {
         if (!mounted) return;
         setItems([]);
