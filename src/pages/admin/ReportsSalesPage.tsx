@@ -18,12 +18,17 @@ function fmtDate(value?: string | null) {
   const raw = String(value).trim();
   if (!raw) return "—";
 
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [y, m, d] = raw.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
   const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
-  const d = new Date(normalized);
+  const dt = new Date(normalized);
 
-  if (Number.isNaN(d.getTime())) return raw;
+  if (Number.isNaN(dt.getTime())) return raw;
 
-  return d.toLocaleString("fr-FR", {
+  return dt.toLocaleString("fr-FR", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -35,14 +40,6 @@ function fmtDate(value?: string | null) {
 
 function safeErrorMessage(e: any) {
   return e?.response?.data?.error || e?.message || "Erreur";
-}
-
-function toSqlStart(dateStr: string) {
-  return `${dateStr} 00:00:00`;
-}
-
-function toSqlEnd(dateStr: string) {
-  return `${dateStr} 23:59:59`;
 }
 
 function getDateFromWeekValue(weekValue: string) {
@@ -133,43 +130,43 @@ function buildQueryParams(args: {
   let to: string | undefined;
 
   if (type === "DAILY") {
-    if (fromDay) from = toSqlStart(fromDay);
-    if (toDay) to = toSqlEnd(toDay);
+    if (fromDay) from = fromDay;
+    if (toDay) to = toDay;
   }
 
   if (type === "WEEKLY") {
     if (fromWeek) {
       const r = getDateFromWeekValue(fromWeek);
-      if (r) from = toSqlStart(formatDateOnly(r.start));
+      if (r) from = formatDateOnly(r.start);
     }
 
     if (toWeek) {
       const r = getDateFromWeekValue(toWeek);
-      if (r) to = toSqlEnd(formatDateOnly(r.end));
+      if (r) to = formatDateOnly(r.end);
     }
   }
 
   if (type === "MONTHLY") {
     if (fromMonth) {
       const r = getMonthRange(fromMonth);
-      if (r) from = toSqlStart(formatDateOnly(r.start));
+      if (r) from = formatDateOnly(r.start);
     }
 
     if (toMonth) {
       const r = getMonthRange(toMonth);
-      if (r) to = toSqlEnd(formatDateOnly(r.end));
+      if (r) to = formatDateOnly(r.end);
     }
   }
 
   if (type === "YEARLY") {
     if (fromYear) {
       const r = getYearRange(fromYear);
-      if (r) from = toSqlStart(r.start);
+      if (r) from = r.start;
     }
 
     if (toYear) {
       const r = getYearRange(toYear);
-      if (r) to = toSqlEnd(r.end);
+      if (r) to = r.end;
     }
   }
 
@@ -254,7 +251,6 @@ export default function ReportsSalesPage() {
         if (!mounted) return;
 
         const nextItems = Array.isArray(r?.items) ? r.items : [];
-
         const safeTypedItems = nextItems.filter((x) => x.period_type === type);
 
         setItems(safeTypedItems);

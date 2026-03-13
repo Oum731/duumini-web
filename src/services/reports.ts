@@ -118,10 +118,10 @@ export async function listSalesReports(
 ): Promise<ListSalesReportsResponse> {
   const query: Record<string, any> = {};
 
-  if (params.type) query.type = params.type;
-  if (params.currency) query.currency = params.currency;
-  if (params.from) query.from = params.from;
-  if (params.to) query.to = params.to;
+  if (params.type) query.type = String(params.type).toUpperCase();
+  if (params.currency) query.currency = String(params.currency).toUpperCase();
+  if (params.from) query.from = String(params.from).slice(0, 19);
+  if (params.to) query.to = String(params.to).slice(0, 19);
 
   const r = await api.get("/api/reports/sales", {
     params: query,
@@ -149,11 +149,11 @@ export async function runSalesReport(
   payload: RunSalesReportPayload
 ): Promise<RunSalesReportResponse> {
   const body: Record<string, any> = {
-    period_type: payload.period_type,
+    period_type: String(payload.period_type).toUpperCase(),
   };
 
   if (payload.date) body.date = payload.date;
-  if (payload.currency) body.currency = payload.currency;
+  if (payload.currency) body.currency = String(payload.currency).toUpperCase();
 
   const r = await api.post("/api/reports/sales/run", body);
   return unwrap<RunSalesReportResponse>(r);
