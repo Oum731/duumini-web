@@ -12,12 +12,27 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function fmtDate(iso?: string) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso);
-  if (String(iso).length <= 10) return d.toLocaleDateString("fr-FR");
-  return d.toLocaleString("fr-FR");
+function fmtDate(value?: string | null) {
+  if (!value) return "—";
+
+  const raw = String(value).trim();
+  if (!raw) return "—";
+
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const d = new Date(normalized);
+
+  if (Number.isNaN(d.getTime())) {
+    return raw;
+  }
+
+  return d.toLocaleString("fr-FR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function safeErrorMessage(e: any) {
@@ -41,6 +56,7 @@ function getDateFromWeekValue(weekValue: string) {
 
   const jan4 = new Date(year, 0, 4);
   const day = jan4.getDay() || 7;
+
   const monday = new Date(jan4);
   monday.setDate(jan4.getDate() - day + 1 + (week - 1) * 7);
   monday.setHours(0, 0, 0, 0);
@@ -82,6 +98,14 @@ function getYearRange(yearValue: string) {
   };
 }
 
+function typeLabel(t?: ReportType | string) {
+  if (t === "DAILY") return "Jour";
+  if (t === "WEEKLY") return "Semaine";
+  if (t === "MONTHLY") return "Mois";
+  if (t === "YEARLY") return "Année";
+  return String(t || "—");
+}
+
 function buildQueryParams(args: {
   type: ReportType;
   currency: string;
@@ -120,6 +144,7 @@ function buildQueryParams(args: {
       const r = getDateFromWeekValue(fromWeek);
       if (r) from = toSqlStart(formatDateOnly(r.start));
     }
+
     if (toWeek) {
       const r = getDateFromWeekValue(toWeek);
       if (r) to = toSqlEnd(formatDateOnly(r.end));
@@ -131,6 +156,7 @@ function buildQueryParams(args: {
       const r = getMonthRange(fromMonth);
       if (r) from = toSqlStart(formatDateOnly(r.start));
     }
+
     if (toMonth) {
       const r = getMonthRange(toMonth);
       if (r) to = toSqlEnd(formatDateOnly(r.end));
@@ -142,6 +168,7 @@ function buildQueryParams(args: {
       const r = getYearRange(fromYear);
       if (r) from = toSqlStart(r.start);
     }
+
     if (toYear) {
       const r = getYearRange(toYear);
       if (r) to = toSqlEnd(r.end);
@@ -175,6 +202,21 @@ export default function ReportsSalesPage() {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<SalesReport[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  function resetFilters() {
+    setFromDay("");
+    setToDay("");
+    setFromWeek("");
+    setToWeek("");
+    setFromMonth("");
+    setToMonth("");
+    setFromYear("");
+    setToYear("");
+  }
+
+  useEffect(() => {
+    resetFilters();
+  }, [type]);
 
   const queryParams = useMemo(() => {
     return buildQueryParams({
@@ -210,9 +252,19 @@ export default function ReportsSalesPage() {
       setError(null);
 
       try {
+        console.log("[ReportsSalesPage] queryParams =", queryParams);
+
         const r = await listSalesReports(queryParams);
+
         if (!mounted) return;
-        setItems(r?.items ?? []);
+
+        const nextItems = Array.isArray(r?.items) ? r.items : [];
+        console.log(
+          "[ReportsSalesPage] result types =",
+          nextItems.slice(0, 10).map((x) => x.period_type)
+        );
+
+        setItems(nextItems);
       } catch (e: any) {
         if (!mounted) return;
         setItems([]);
@@ -227,17 +279,6 @@ export default function ReportsSalesPage() {
       mounted = false;
     };
   }, [queryParams]);
-
-  function resetFilters() {
-    setFromDay("");
-    setToDay("");
-    setFromWeek("");
-    setToWeek("");
-    setFromMonth("");
-    setToMonth("");
-    setFromYear("");
-    setToYear("");
-  }
 
   function renderPeriodFilters() {
     if (type === "DAILY") {
@@ -371,13 +412,7 @@ export default function ReportsSalesPage() {
               >
                 {TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {t === "DAILY"
-                      ? "Jour"
-                      : t === "WEEKLY"
-                        ? "Semaine"
-                        : t === "MONTHLY"
-                          ? "Mois"
-                          : "Année"}
+                    {typeLabel(t)}
                   </option>
                 ))}
               </select>
@@ -438,13 +473,7 @@ export default function ReportsSalesPage() {
                     <td>#{r.id}</td>
                     <td>
                       <span className="badge text-bg-dark">
-                        {r.period_type === "DAILY"
-                          ? "Jour"
-                          : r.period_type === "WEEKLY"
-                            ? "Semaine"
-                            : r.period_type === "MONTHLY"
-                              ? "Mois"
-                              : "Année"}
+                        {typeLabel(r.period_type)}
                       </span>
                     </td>
                     <td>
@@ -458,7 +487,7 @@ export default function ReportsSalesPage() {
                       </div>
                     </td>
                     <td>{r.currency}</td>
-                    <td>{fmtDate(r.created_at || undefined)}</td>
+                    <td>{fmtDate(r.created_at)}</td>
                     <td className="text-end">
                       <Link
                         className="btn btn-sm btn-primary"
