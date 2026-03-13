@@ -1,5 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Plus, Trash2, Pencil, RefreshCcw } from "lucide-react";
+import {
+  Download,
+  Plus,
+  Trash2,
+  Pencil,
+  RefreshCcw,
+  Wallet,
+  Tag,
+  CalendarDays,
+  CreditCard,
+  FileText,
+} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -72,7 +83,7 @@ function exportCsv(filename: string, rows: Array<Record<string, any>>) {
       headers
         .map((h) => {
           const raw = row[h] == null ? "" : String(row[h]);
-          return `"${raw.replace(/"/g, '""')}"`
+          return `"${raw.replace(/"/g, '""')}"`;
         })
         .join(";")
     ),
@@ -96,9 +107,7 @@ type FormState = {
   amount: string;
   expense_date: string;
   payment_method: string;
-  reference: string;
   status: ExpenseStatus;
-  receipt_url: string;
 };
 
 function emptyForm(): FormState {
@@ -116,14 +125,51 @@ function emptyForm(): FormState {
     amount: "",
     expense_date: `${yyyy}-${mm}-${dd}`,
     payment_method: "cash",
-    reference: "",
     status: "PAID",
-    receipt_url: "",
   };
 }
 
-const PAYMENTS = ["", "cash", "card", "bank", "mobile_money", "other"];
+const PAYMENTS = ["cash", "card", "bank", "mobile_money", "other"];
 const STATUS_OPTIONS: ExpenseStatus[] = ["PAID", "PENDING"];
+
+function SectionIcon({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="mb-4 flex items-start gap-3">
+      <div className="rounded-2xl bg-[rgba(255,210,74,0.14)] p-3 text-[#d39a00]">
+        {icon}
+      </div>
+      <div>
+        <h2 className="text-lg font-bold text-base-content">{title}</h2>
+        {subtitle ? (
+          <p className="mt-1 text-sm text-base-content/65">{subtitle}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function FieldLabel({
+  icon,
+  children,
+}: {
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-base-content/80">
+      {icon}
+      <span>{children}</span>
+    </label>
+  );
+}
 
 export default function ExpensesPage() {
   const [items, setItems] = useState<Expense[]>([]);
@@ -142,7 +188,7 @@ export default function ExpensesPage() {
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [newCategory, setNewCategory] = useState("");
-  const [newCategoryColor, setNewCategoryColor] = useState("#2563eb");
+  const [newCategoryColor, setNewCategoryColor] = useState("#f4b400");
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -189,7 +235,7 @@ export default function ExpensesPage() {
     setError("");
 
     try {
-      const [catRes, listRes, summaryRes, groupedRes, byCatRes] = await Promise.all([
+      const results = await Promise.allSettled([
         listExpenseCategories(),
         listExpenses(params),
         getExpensesSummary({
@@ -218,35 +264,75 @@ export default function ExpensesPage() {
         }),
       ]);
 
-      setCategories(Array.isArray(catRes?.items) ? catRes.items : []);
-      setItems(Array.isArray(listRes?.items) ? listRes.items : []);
-      setPageInfo(
-        listRes?.pageInfo || {
-          page,
+      const [catRes, listRes, summaryRes, groupedRes, byCatRes] = results;
+
+      if (catRes.status === "fulfilled") {
+        setCategories(Array.isArray(catRes.value?.items) ? catRes.value.items : []);
+      } else {
+        setCategories([]);
+      }
+
+      if (listRes.status === "fulfilled") {
+        setItems(Array.isArray(listRes.value?.items) ? listRes.value.items : []);
+        setPageInfo(
+          listRes.value?.pageInfo || {
+            page,
+            pageSize,
+            total: 0,
+            pages: 1,
+          }
+        );
+      } else {
+        setItems([]);
+        setPageInfo({
+          page: 1,
           pageSize,
           total: 0,
           pages: 1,
-        }
-      );
-      setSummary({
-        today: Number(summaryRes?.today || 0),
-        week: Number(summaryRes?.week || 0),
-        month: Number(summaryRes?.month || 0),
-        year: Number(summaryRes?.year || 0),
-        filtered_total: Number(summaryRes?.filtered_total || 0),
-      });
-      setGrouped(
-        Array.isArray(groupedRes?.items)
-          ? groupedRes.items.map((x) => ({
-              period: x.period,
-              total: Number(x.total || 0),
-            }))
-          : []
-      );
-      setByCategory(Array.isArray(byCatRes?.items) ? byCatRes.items : []);
-    } catch (e: any) {
-      setError(safeErrorMessage(e));
-      setItems([]);
+        });
+        setError(
+          listRes.reason?.response?.data?.error ||
+            listRes.reason?.message ||
+            "Erreur serveur lors du chargement des dépenses."
+        );
+      }
+
+      if (summaryRes.status === "fulfilled") {
+        setSummary({
+          today: Number(summaryRes.value?.today || 0),
+          week: Number(summaryRes.value?.week || 0),
+          month: Number(summaryRes.value?.month || 0),
+          year: Number(summaryRes.value?.year || 0),
+          filtered_total: Number(summaryRes.value?.filtered_total || 0),
+        });
+      } else {
+        setSummary({
+          today: 0,
+          week: 0,
+          month: 0,
+          year: 0,
+          filtered_total: 0,
+        });
+      }
+
+      if (groupedRes.status === "fulfilled") {
+        setGrouped(
+          Array.isArray(groupedRes.value?.items)
+            ? groupedRes.value.items.map((x: any) => ({
+                period: x.period,
+                total: Number(x.total || 0),
+              }))
+            : []
+        );
+      } else {
+        setGrouped([]);
+      }
+
+      if (byCatRes.status === "fulfilled") {
+        setByCategory(Array.isArray(byCatRes.value?.items) ? byCatRes.value.items : []);
+      } else {
+        setByCategory([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -279,7 +365,7 @@ export default function ExpensesPage() {
         category_name: created.name,
       }));
       setNewCategory("");
-      setNewCategoryColor("#2563eb");
+      setNewCategoryColor("#f4b400");
     } catch (e: any) {
       setError(safeErrorMessage(e));
     } finally {
@@ -301,15 +387,13 @@ export default function ExpensesPage() {
         amount: Number(form.amount || 0),
         expense_date: form.expense_date,
         payment_method: form.payment_method || null,
-        reference: form.reference.trim() || null,
         status: form.status,
-        receipt_url: form.receipt_url.trim() || null,
       };
 
       if (editing && form.id) {
-        await updateExpense(form.id, payload);
+        await updateExpense(form.id, payload as any);
       } else {
-        await createExpense(payload);
+        await createExpense(payload as any);
       }
 
       setForm(emptyForm());
@@ -331,10 +415,8 @@ export default function ExpensesPage() {
       description: item.description || "",
       amount: String(Number(item.amount || 0)),
       expense_date: toInputDate(item.expense_date),
-      payment_method: item.payment_method || "",
-      reference: item.reference || "",
+      payment_method: item.payment_method || "cash",
       status: item.status || "PAID",
-      receipt_url: item.receipt_url || "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -373,19 +455,36 @@ export default function ExpensesPage() {
   return (
     <div className="min-h-screen bg-base-100 p-4 md:p-6">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-base-content">Dépenses</h1>
-              <p className="mt-1 text-sm text-base-content/70">
-                Suivi quotidien, hebdomadaire, mensuel et annuel des dépenses.
-              </p>
+        <div
+          className="overflow-hidden rounded-[28px] border border-black/5 shadow-sm"
+          style={{
+            background:
+              "linear-gradient(135deg, #111111 0%, #1c1c1c 58%, #252525 100%)",
+          }}
+        >
+          <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between md:p-6">
+            <div className="flex items-start gap-4">
+              <div
+                className="rounded-3xl p-3"
+                style={{
+                  background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                  color: "#111",
+                }}
+              >
+                <Wallet size={26} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-white">Dépenses</h1>
+                <p className="mt-1 text-sm text-white/70">
+                  Suivi quotidien, hebdomadaire, mensuel et annuel des dépenses.
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                className="btn btn-outline"
+                className="btn border-0 bg-white text-black hover:bg-white/90"
                 onClick={() => {
                   setForm(emptyForm());
                   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -395,14 +494,21 @@ export default function ExpensesPage() {
                 Nouvelle dépense
               </button>
 
-              <button type="button" className="btn btn-ghost" onClick={loadAll}>
+              <button
+                type="button"
+                className="btn btn-ghost text-white hover:bg-white/10"
+                onClick={loadAll}
+              >
                 <RefreshCcw size={16} />
                 Actualiser
               </button>
 
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn border-0 text-black"
+                style={{
+                  background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                }}
                 onClick={() =>
                   exportCsv(
                     `depenses_${new Date().toISOString().slice(0, 10)}.csv`,
@@ -427,52 +533,55 @@ export default function ExpensesPage() {
         </div>
 
         {!!error && (
-          <div className="alert alert-error shadow-sm">
+          <div className="alert border-0 bg-red-50 text-red-700 shadow-sm">
             <span>{error}</span>
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-            <div className="text-sm text-base-content/60">Aujourd’hui</div>
-            <div className="mt-2 text-2xl font-bold">{mad(summary.today)}</div>
-          </div>
-          <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-            <div className="text-sm text-base-content/60">Cette semaine</div>
-            <div className="mt-2 text-2xl font-bold">{mad(summary.week)}</div>
-          </div>
-          <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-            <div className="text-sm text-base-content/60">Ce mois</div>
-            <div className="mt-2 text-2xl font-bold">{mad(summary.month)}</div>
-          </div>
-          <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-            <div className="text-sm text-base-content/60">Cette année</div>
-            <div className="mt-2 text-2xl font-bold">{mad(summary.year)}</div>
-          </div>
-          <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-            <div className="text-sm text-base-content/60">Total filtré</div>
-            <div className="mt-2 text-2xl font-bold">{mad(summary.filtered_total)}</div>
-          </div>
+          {[
+            { label: "Aujourd’hui", value: summary.today },
+            { label: "Cette semaine", value: summary.week },
+            { label: "Ce mois", value: summary.month },
+            { label: "Cette année", value: summary.year },
+            { label: "Total filtré", value: summary.filtered_total },
+          ].map((card) => (
+            <div
+              key={card.label}
+              className="rounded-[24px] border border-black/5 bg-white p-5 shadow-sm"
+            >
+              <div className="text-sm font-medium text-base-content/55">{card.label}</div>
+              <div className="mt-2 text-2xl font-bold text-base-content">{mad(card.value)}</div>
+            </div>
+          ))}
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
-          <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold">
-                {editing ? "Modifier la dépense" : "Ajouter une dépense"}
-              </h2>
-              {editing && (
-                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setForm(emptyForm())}>
+          <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
+            <SectionIcon
+              icon={<FileText size={22} />}
+              title={editing ? "Modifier une dépense" : "Ajouter une dépense"}
+              subtitle="Enregistre une charge rapidement avec une présentation plus claire et plus professionnelle."
+            />
+
+            {editing && (
+              <div className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Modification en cours.
+                <button
+                  type="button"
+                  className="ml-2 font-semibold underline"
+                  onClick={() => setForm(emptyForm())}
+                >
                   Annuler
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
-            <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Catégorie</label>
+            <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+              <div className="rounded-[22px] border border-black/5 bg-[rgba(255,210,74,0.06)] p-4">
+                <FieldLabel icon={<Tag size={16} />}>Catégorie principale</FieldLabel>
                 <select
-                  className="select select-bordered w-full"
+                  className="select select-bordered w-full bg-white"
                   value={form.category_id || ""}
                   onChange={(e) => {
                     const id = Number(e.target.value || 0);
@@ -484,81 +593,85 @@ export default function ExpensesPage() {
                     }));
                   }}
                 >
-                  <option value="">Sélectionner</option>
+                  <option value="">Sélectionner une catégorie</option>
                   {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
                     </option>
                   ))}
                 </select>
-              </div>
 
-              <div className="rounded-2xl border border-dashed border-base-300 p-3">
-                <div className="mb-2 text-sm font-medium">Créer une nouvelle catégorie</div>
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_100px_auto]">
+                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_110px_auto]">
                   <input
-                    className="input input-bordered"
+                    className="input input-bordered bg-white"
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    placeholder="Ex: Fournitures"
+                    placeholder="Créer une nouvelle catégorie"
                   />
                   <input
                     type="color"
-                    className="input input-bordered h-12 w-full p-1"
+                    className="input input-bordered h-12 w-full bg-white p-1"
                     value={newCategoryColor}
                     onChange={(e) => setNewCategoryColor(e.target.value)}
                   />
                   <button
                     type="button"
-                    className={`btn btn-outline ${creatingCategory ? "btn-disabled" : ""}`}
+                    className="btn border-0 text-black"
+                    style={{
+                      background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                    }}
                     onClick={handleCreateCategory}
                     disabled={creatingCategory}
                   >
-                    {creatingCategory ? "..." : "Ajouter"}
+                    {creatingCategory ? "Ajout..." : "Ajouter"}
                   </button>
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium">Libellé</label>
-                <input
-                  className="input input-bordered w-full"
-                  value={form.label}
-                  onChange={(e) => setFormField("label", e.target.value)}
-                  required
-                  placeholder="Ex: Achat sachets"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium">Description</label>
-                <textarea
-                  className="textarea textarea-bordered w-full"
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setFormField("description", e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Montant</label>
+                  <FieldLabel icon={<FileText size={16} />}>Libellé</FieldLabel>
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="input input-bordered w-full"
-                    value={form.amount}
-                    onChange={(e) => setFormField("amount", e.target.value)}
+                    className="input input-bordered w-full bg-white"
+                    value={form.label}
+                    onChange={(e) => setFormField("label", e.target.value)}
                     required
+                    placeholder="Ex: Achat sachets d’emballage"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Date</label>
+                  <FieldLabel>Description</FieldLabel>
+                  <textarea
+                    className="textarea textarea-bordered w-full bg-white"
+                    rows={4}
+                    value={form.description}
+                    onChange={(e) => setFormField("description", e.target.value)}
+                    placeholder="Détail complémentaire sur la dépense..."
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <FieldLabel icon={<Wallet size={16} />}>Montant</FieldLabel>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="input input-bordered w-full bg-white"
+                    value={form.amount}
+                    onChange={(e) => setFormField("amount", e.target.value)}
+                    required
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <FieldLabel icon={<CalendarDays size={16} />}>Date</FieldLabel>
                   <input
                     type="date"
-                    className="input input-bordered w-full"
+                    className="input input-bordered w-full bg-white"
                     value={form.expense_date}
                     onChange={(e) => setFormField("expense_date", e.target.value)}
                     required
@@ -568,24 +681,24 @@ export default function ExpensesPage() {
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Paiement</label>
+                  <FieldLabel icon={<CreditCard size={16} />}>Mode de paiement</FieldLabel>
                   <select
-                    className="select select-bordered w-full"
+                    className="select select-bordered w-full bg-white"
                     value={form.payment_method}
                     onChange={(e) => setFormField("payment_method", e.target.value)}
                   >
                     {PAYMENTS.map((x) => (
                       <option key={x} value={x}>
-                        {x || "—"}
+                        {x}
                       </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Statut</label>
+                  <FieldLabel>Statut</FieldLabel>
                   <select
-                    className="select select-bordered w-full"
+                    className="select select-bordered w-full bg-white"
                     value={form.status}
                     onChange={(e) => setFormField("status", e.target.value as ExpenseStatus)}
                   >
@@ -598,66 +711,57 @@ export default function ExpensesPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium">Référence</label>
-                <input
-                  className="input input-bordered w-full"
-                  value={form.reference}
-                  onChange={(e) => setFormField("reference", e.target.value)}
-                  placeholder="Ex: DEP-001"
-                />
+              <div className="rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-base-content/65">
+                La référence est générée automatiquement par le système lors de l’enregistrement.
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium">Justificatif URL</label>
-                <input
-                  className="input input-bordered w-full"
-                  value={form.receipt_url}
-                  onChange={(e) => setFormField("receipt_url", e.target.value)}
-                  placeholder="https://..."
-                />
-              </div>
-
-              <button type="submit" className="btn btn-primary" disabled={saving}>
+              <button
+                type="submit"
+                className="btn border-0 text-black"
+                style={{
+                  background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                }}
+                disabled={saving}
+              >
                 {saving ? "Enregistrement..." : editing ? "Mettre à jour" : "Ajouter la dépense"}
               </button>
             </form>
           </div>
 
           <div className="flex flex-col gap-6">
-            <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold">Filtres</h2>
-                </div>
+            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
+              <SectionIcon
+                icon={<Tag size={22} />}
+                title="Filtres"
+                subtitle="Affiche rapidement les dépenses par période, catégorie, statut et mode de paiement."
+              />
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-ghost"
-                    onClick={() => {
-                      setFilters({
-                        from: "",
-                        to: "",
-                        category_id: "",
-                        status: "",
-                        payment_method: "",
-                        q: "",
-                      });
-                      setPage(1);
-                    }}
-                  >
-                    Réinitialiser
-                  </button>
-                </div>
+              <div className="mb-4 flex justify-end">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => {
+                    setFilters({
+                      from: "",
+                      to: "",
+                      category_id: "",
+                      status: "",
+                      payment_method: "",
+                      q: "",
+                    });
+                    setPage(1);
+                  }}
+                >
+                  Réinitialiser
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Du</label>
+                  <FieldLabel>Du</FieldLabel>
                   <input
                     type="date"
-                    className="input input-bordered w-full"
+                    className="input input-bordered w-full bg-white"
                     value={filters.from}
                     onChange={(e) => {
                       setFilters((p) => ({ ...p, from: e.target.value }));
@@ -667,10 +771,10 @@ export default function ExpensesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Au</label>
+                  <FieldLabel>Au</FieldLabel>
                   <input
                     type="date"
-                    className="input input-bordered w-full"
+                    className="input input-bordered w-full bg-white"
                     value={filters.to}
                     onChange={(e) => {
                       setFilters((p) => ({ ...p, to: e.target.value }));
@@ -680,9 +784,9 @@ export default function ExpensesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Catégorie</label>
+                  <FieldLabel>Catégorie</FieldLabel>
                   <select
-                    className="select select-bordered w-full"
+                    className="select select-bordered w-full bg-white"
                     value={filters.category_id}
                     onChange={(e) => {
                       setFilters((p) => ({ ...p, category_id: e.target.value }));
@@ -699,9 +803,9 @@ export default function ExpensesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Statut</label>
+                  <FieldLabel>Statut</FieldLabel>
                   <select
-                    className="select select-bordered w-full"
+                    className="select select-bordered w-full bg-white"
                     value={filters.status}
                     onChange={(e) => {
                       setFilters((p) => ({ ...p, status: e.target.value }));
@@ -718,44 +822,45 @@ export default function ExpensesPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Paiement</label>
+                  <FieldLabel>Paiement</FieldLabel>
                   <select
-                    className="select select-bordered w-full"
+                    className="select select-bordered w-full bg-white"
                     value={filters.payment_method}
                     onChange={(e) => {
                       setFilters((p) => ({ ...p, payment_method: e.target.value }));
                       setPage(1);
                     }}
                   >
+                    <option value="">Tous</option>
                     {PAYMENTS.map((x) => (
                       <option key={x} value={x}>
-                        {x || "Tous"}
+                        {x}
                       </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Recherche</label>
+                  <FieldLabel>Recherche</FieldLabel>
                   <input
-                    className="input input-bordered w-full"
+                    className="input input-bordered w-full bg-white"
                     value={filters.q}
                     onChange={(e) => {
                       setFilters((p) => ({ ...p, q: e.target.value }));
                       setPage(1);
                     }}
-                    placeholder="libellé, réf..."
+                    placeholder="libellé, référence..."
                   />
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
-              <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+              <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-lg font-bold">Évolution des dépenses</h2>
                   <select
-                    className="select select-bordered select-sm"
+                    className="select select-bordered select-sm bg-white"
                     value={chartPeriod}
                     onChange={(e) => setChartPeriod(e.target.value as any)}
                   >
@@ -773,13 +878,13 @@ export default function ExpensesPage() {
                       <XAxis dataKey="period" />
                       <YAxis />
                       <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
-                      <Bar dataKey="total" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#f4b400" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+              <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <h2 className="text-lg font-bold">Répartition par catégorie</h2>
                 </div>
@@ -789,7 +894,7 @@ export default function ExpensesPage() {
                     <PieChart>
                       <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} label>
                         {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color || undefined} />
+                          <Cell key={`cell-${index}`} fill={entry.color || "#f4b400"} />
                         ))}
                       </Pie>
                       <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
@@ -799,7 +904,10 @@ export default function ExpensesPage() {
 
                 <div className="mt-4 flex flex-col gap-2">
                   {byCategory.map((x, idx) => (
-                    <div key={`${x.category_name}-${idx}`} className="flex items-center justify-between rounded-2xl bg-base-200 px-3 py-2 text-sm">
+                    <div
+                      key={`${x.category_name}-${idx}`}
+                      className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 text-sm"
+                    >
                       <div className="flex items-center gap-2">
                         <span
                           className="inline-block h-3 w-3 rounded-full"
@@ -814,7 +922,7 @@ export default function ExpensesPage() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm">
+            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
               <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <h2 className="text-lg font-bold">Liste des dépenses</h2>
                 <div className="text-sm text-base-content/70">
@@ -823,7 +931,7 @@ export default function ExpensesPage() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-base-300">
+              <div className="overflow-x-auto rounded-2xl border border-black/5">
                 <table className="table table-zebra">
                   <thead>
                     <tr>
@@ -878,14 +986,22 @@ export default function ExpensesPage() {
                           <td className="font-semibold">{mad(item.amount)}</td>
                           <td>{item.payment_method || "—"}</td>
                           <td>
-                            <span className={`badge ${item.status === "PAID" ? "badge-success" : "badge-warning"}`}>
+                            <span
+                              className={`badge ${
+                                item.status === "PAID" ? "badge-success" : "badge-warning"
+                              }`}
+                            >
                               {item.status}
                             </span>
                           </td>
                           <td>{item.reference || "—"}</td>
                           <td>
                             <div className="flex justify-end gap-2">
-                              <button type="button" className="btn btn-sm btn-outline" onClick={() => handleEdit(item)}>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline"
+                                onClick={() => handleEdit(item)}
+                              >
                                 <Pencil size={15} />
                               </button>
                               <button
@@ -911,7 +1027,7 @@ export default function ExpensesPage() {
 
                 <div className="flex items-center gap-2">
                   <select
-                    className="select select-bordered select-sm"
+                    className="select select-bordered select-sm bg-white"
                     value={pageSize}
                     onChange={(e) => {
                       setPageSize(Number(e.target.value || 20));
