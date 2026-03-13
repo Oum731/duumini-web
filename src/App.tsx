@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Outlet, useLocation, Navigate } from "react-router-dom";
 
@@ -14,6 +13,7 @@ import AdminHome from "./pages/AdminHome";
 import OrdersAdminPage from "./pages/admin/OrdersAdminPage";
 import ShopsAdminPage from "./pages/admin/ShopsAdminPage";
 import UsersAdminPage from "./pages/admin/UsersAdminPage";
+import ExpensesPage from "./pages/admin/ExpensesPage";
 
 import AiToolsAdminPage from "./pages/admin/AiToolsAdminPage";
 import ContentAiPage from "./pages/admin/ContentAiPage";
@@ -378,6 +378,7 @@ export default function App() {
                     <Route path="products" element={<ManageProductsPage scope="admin" />} />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
+                    <Route path="expenses" element={<ExpensesPage />} />
                     <Route path="promotions" element={<PromotionsAdminPage />} />
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
@@ -391,6 +392,7 @@ export default function App() {
                     <Route path="boutiques" element={<Navigate to="/admin/shops" replace />} />
                     <Route path="utilisateurs" element={<Navigate to="/admin/users" replace />} />
                     <Route path="promos" element={<Navigate to="/admin/promotions" replace />} />
+                    <Route path="depenses" element={<Navigate to="/admin/expenses" replace />} />
                   </Route>
                 </Route>
 
