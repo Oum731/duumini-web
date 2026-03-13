@@ -16,7 +16,6 @@ export type Expense = {
   payment_method?: string | null;
   reference?: string | null;
   status: ExpenseStatus;
-  receipt_url?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -67,9 +66,7 @@ export type SaveExpensePayload = {
   amount: number;
   expense_date: string;
   payment_method?: string | null;
-  reference?: string | null;
   status?: ExpenseStatus;
-  receipt_url?: string | null;
 };
 
 export async function listExpenses(params?: Record<string, any>) {
