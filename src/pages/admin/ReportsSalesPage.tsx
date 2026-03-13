@@ -252,7 +252,12 @@ export default function ReportsSalesPage() {
       try {
         const r = await listSalesReports(queryParams);
         if (!mounted) return;
-        setItems(Array.isArray(r?.items) ? r.items : []);
+
+        const nextItems = Array.isArray(r?.items) ? r.items : [];
+
+        const safeTypedItems = nextItems.filter((x) => x.period_type === type);
+
+        setItems(safeTypedItems);
       } catch (e: any) {
         if (!mounted) return;
         setItems([]);
@@ -266,7 +271,7 @@ export default function ReportsSalesPage() {
     return () => {
       mounted = false;
     };
-  }, [queryParams]);
+  }, [queryParams, type]);
 
   function renderPeriodFilters() {
     if (type === "DAILY") {
