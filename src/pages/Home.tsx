@@ -1,7 +1,12 @@
 // src/pages/Home.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, SlidersHorizontal } from "lucide-react";
+import {
+  ChevronRight,
+  Package,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 
 import InstallPWA from "../components/InstallPWA";
@@ -44,14 +49,15 @@ function OfflineBanner() {
   }, []);
 
   if (online) return null;
+
   return (
-    <div className="alert alert-warning rounded-0 text-center small m-0">
+    <div className="alert alert-warning rounded-0 text-center small m-0 fw-semibold">
       Vous êtes hors-ligne.
     </div>
   );
 }
 
-/* ===== Mini product card (carrousel) ===== */
+/* ===== Mini product card ===== */
 function MiniCard({
   product,
   href,
@@ -64,17 +70,17 @@ function MiniCard({
   const anyP = product as any;
   const image = anyP.cover || anyP.image || anyP.images?.[0]?.url || null;
   const name = anyP.name ?? "Produit";
-  const price = anyP.price_client ?? anyP.price ?? 0;
+  const price = anyP.promo_price_client ?? anyP.price_client ?? anyP.price ?? 0;
 
   return (
     <Link
       to={href}
       className="text-reset text-decoration-none d-inline-block home-mini-link"
-      style={{ width: 184 }}
+      style={{ width: 190 }}
       title={hint ? `${name} — Voir toute la catégorie` : name}
     >
-      <div className="card border-0 shadow-sm overflow-hidden home-mini-card">
-        <div style={{ height: 136 }} className="bg-light position-relative">
+      <article className="home-mini-card">
+        <div className="home-mini-media">
           {image ? (
             <img
               src={imgUrl(image)}
@@ -89,24 +95,20 @@ function MiniCard({
             </div>
           )}
 
-          <span className="home-mini-badge position-absolute top-0 end-0 m-2">
-            Voir
-          </span>
+          <span className="home-mini-badge">Voir</span>
         </div>
 
-        <div className="card-body p-2 p-sm-3">
-          <div className="small fw-semibold text-truncate">{name}</div>
-          <div className="small home-mini-price">{moneyMAD(price)}</div>
-          {hint ? (
-            <div className="small text-muted text-truncate">{hint}</div>
-          ) : null}
+        <div className="home-mini-body">
+          <div className="home-mini-name">{name}</div>
+          <div className="home-mini-price">{moneyMAD(price)}</div>
+          {hint ? <div className="home-mini-hint">{hint}</div> : null}
         </div>
-      </div>
+      </article>
     </Link>
   );
 }
 
-/* ===== Carrousel horizontal (scroll-snap) + auto-scroll ===== */
+/* ===== Horizontal carousel ===== */
 function AutoCarousel({
   items,
   itemHref,
@@ -132,7 +134,7 @@ function AutoCarousel({
       const node = ref.current;
       if (!node) return;
 
-      const step = 196;
+      const step = 204;
       const max = node.scrollWidth - node.clientWidth;
 
       if (node.scrollLeft >= max - 8) {
@@ -163,20 +165,9 @@ function AutoCarousel({
 
   return (
     <>
-      <div
-        ref={ref}
-        style={{
-          display: "flex",
-          gap: 12,
-          overflowX: "auto",
-          paddingBottom: 6,
-          scrollSnapType: "x mandatory",
-          WebkitOverflowScrolling: "touch",
-        }}
-        className="duu-track"
-      >
+      <div ref={ref} className="duu-track">
         {items.map((p) => (
-          <div key={(p as any).id} style={{ scrollSnapAlign: "start" }}>
+          <div key={(p as any).id} className="duu-track-item">
             <MiniCard
               product={p}
               href={itemHref(p)}
@@ -185,12 +176,6 @@ function AutoCarousel({
           </div>
         ))}
       </div>
-
-      <style>{`
-        .duu-track::-webkit-scrollbar{ height: 8px; }
-        .duu-track::-webkit-scrollbar-thumb{ background: rgba(0,0,0,.18); border-radius: 10px; }
-        .duu-track::-webkit-scrollbar-track{ background: rgba(0,0,0,.06); border-radius: 10px; }
-      `}</style>
     </>
   );
 }
@@ -210,15 +195,15 @@ function groupByCategoryId(items: Product[]) {
 function pickSectionVariant(i: number) {
   const v = i % 3;
   if (v === 0) return "yellow";
-  if (v === 1) return "red";
+  if (v === 1) return "white";
   return "dark";
 }
 
-type Vertical = "FOOD" | "MARKET" | "FASHION";
+type Vertical = "MARKET";
 
 export default function Home() {
   const navigate = useNavigate();
-  const [activeVertical, setActiveVertical] = useState<Vertical>("FOOD");
+  const [activeVertical] = useState<Vertical>("MARKET");
 
   const results = useQueries({
     queries: [
@@ -233,17 +218,6 @@ export default function Home() {
         staleTime: 10 * 60 * 1000,
       },
       {
-        queryKey: ["homeProducts", "african-food"],
-        queryFn: () =>
-          listProducts({
-            page: 1,
-            pageSize: 240,
-            channel: "african-food",
-            onlyActive: true,
-          } as any),
-        staleTime: 3 * 60 * 1000,
-      },
-      {
         queryKey: ["homeProducts", "african-market"],
         queryFn: () =>
           listProducts({
@@ -254,45 +228,23 @@ export default function Home() {
           } as any),
         staleTime: 3 * 60 * 1000,
       },
-      {
-        queryKey: ["homeProducts", "fashion"],
-        queryFn: () =>
-          listProducts({
-            page: 1,
-            pageSize: 240,
-            vertical: "FASHION",
-            onlyActive: true,
-          } as any),
-        staleTime: 3 * 60 * 1000,
-      },
     ],
   });
 
   const catsQ = results[0];
   const subsQ = results[1];
-  const foodQ = results[2];
-  const marketQ = results[3];
-  const fashionQ = results[4];
+  const marketQ = results[2];
 
-  const loading =
-    catsQ.isLoading ||
-    subsQ.isLoading ||
-    foodQ.isLoading ||
-    marketQ.isLoading ||
-    fashionQ.isLoading;
+  const loading = catsQ.isLoading || subsQ.isLoading || marketQ.isLoading;
 
   const err =
     (catsQ.error as any)?.message ||
     (subsQ.error as any)?.message ||
-    (foodQ.error as any)?.message ||
     (marketQ.error as any)?.message ||
-    (fashionQ.error as any)?.message ||
     null;
 
   const categories = (catsQ.data?.items || []) as Category[];
-  const food = (foodQ.data?.items || []) as Product[];
   const market = (marketQ.data?.items || []) as Product[];
-  const fashion = (fashionQ.data?.items || []) as Product[];
 
   const [activeCategoryId, setActiveCategoryId] = useState<number | null>(null);
   const [activeSubCategoryId, setActiveSubCategoryId] = useState<number | null>(
@@ -305,27 +257,21 @@ export default function Home() {
     return m;
   }, [categories]);
 
-  const foodByCat = useMemo(() => groupByCategoryId(food), [food]);
   const marketByCat = useMemo(() => groupByCategoryId(market), [market]);
-  const fashionByCat = useMemo(() => groupByCategoryId(fashion), [fashion]);
 
-  function rootForVertical(v: Vertical) {
-    if (v === "FASHION") return "/fashion";
-    if (v === "FOOD") return "/african-food";
+  function rootForVertical() {
     return "/african-market";
   }
-  function routeForCategorySlug(v: Vertical, catSlug: string) {
-    return `${rootForVertical(v)}/${catSlug}`;
-  }
-  function routeForSubSlug(v: Vertical, catSlug: string, subSlug: string) {
-    return `${rootForVertical(v)}/${catSlug}/${subSlug}`;
+
+  function routeForCategorySlug(catSlug: string) {
+    return `${rootForVertical()}/${catSlug}`;
   }
 
-  const activeMap = useMemo(() => {
-    if (activeVertical === "FASHION") return fashionByCat;
-    if (activeVertical === "FOOD") return foodByCat;
-    return marketByCat;
-  }, [activeVertical, fashionByCat, foodByCat, marketByCat]);
+  function routeForSubSlug(catSlug: string, subSlug: string) {
+    return `${rootForVertical()}/${catSlug}/${subSlug}`;
+  }
+
+  const activeMap = useMemo(() => marketByCat, [marketByCat]);
 
   const categoryIdsWithProducts = useMemo(() => {
     const set = new Set<number>();
@@ -346,8 +292,8 @@ export default function Home() {
     const cid = Number(anyP.category_id || 0);
     const cat = cid ? categoriesById[cid] : null;
     const catSlug = String((cat as any)?.slug || "").trim();
-    if (cid && catSlug) return routeForCategorySlug(activeVertical, catSlug);
-    return rootForVertical(activeVertical);
+    if (cid && catSlug) return routeForCategorySlug(catSlug);
+    return rootForVertical();
   }
 
   function hintForProduct(p: Product) {
@@ -355,55 +301,57 @@ export default function Home() {
     const cid = Number(anyP.category_id || 0);
     const cat = cid ? categoriesById[cid] : null;
     const name = String((cat as any)?.name || "").trim();
-    return name ? `Catégorie: ${name}` : null;
+    return name ? `Catégorie : ${name}` : null;
   }
 
-  const heroTitle = useMemo(() => {
-    if (activeVertical === "FOOD")
-      return "Découvre les meilleurs produits Food";
-    if (activeVertical === "MARKET") return "";
-    return "Trouve les nouveautés Fashion";
-  }, [activeVertical]);
-
-  const heroSubtitle = useMemo(() => {
-    if (activeVertical === "FOOD") {
-      return "Plats, sauces, boissons et spécialités africaines à portée de main.";
-    }
-    if (activeVertical === "MARKET") {
-      return "";
-    }
-    return "Mode, tailles, couleurs et tendances pour tous les styles.";
-  }, [activeVertical]);
-
   return (
-    <div className="pb-4" style={{ background: "#f8f9fa" }}>
+    <div className="home-page">
       <style>{`
-        .home-wrap{
+        .home-page{
           background:
-            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.18), transparent 60%),
-            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.12), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.06), transparent 55%),
             #f8f9fa;
           min-height: 100%;
         }
 
+        .home-shell{
+          padding-bottom: 32px;
+        }
+
         .home-hero{
-          border-radius: 22px;
+          border-radius: 26px;
           border: 1px solid rgba(0,0,0,.08);
           background:
-            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
-            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
-            #fff;
-          box-shadow: 0 10px 26px rgba(0,0,0,.05);
-          padding: 18px;
+            linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.94));
+          box-shadow: 0 18px 40px rgba(0,0,0,.05);
+          padding: 20px;
+          overflow: hidden;
+          position: relative;
+        }
+
+        .home-hero::before{
+          content:"";
+          position:absolute;
+          inset:0;
+          background:
+            radial-gradient(420px 220px at 10% 0%, rgba(var(--duu-yellow-rgb),.18), transparent 60%),
+            radial-gradient(320px 220px at 95% 20%, rgba(var(--duu-red-rgb),.10), transparent 55%);
+          pointer-events:none;
+        }
+
+        .home-hero-inner{
+          position: relative;
+          z-index: 1;
         }
 
         .home-kicker{
           display:inline-flex;
           align-items:center;
-          gap: 8px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(var(--duu-yellow-rgb), .20);
+          gap:8px;
+          padding:7px 12px;
+          border-radius:999px;
+          background: rgba(var(--duu-yellow-rgb), .16);
           border: 1px solid rgba(0,0,0,.08);
           font-weight: 900;
           color: var(--duu-black);
@@ -413,70 +361,101 @@ export default function Home() {
         .home-title{
           color: var(--duu-black);
           font-weight: 950;
-          letter-spacing: -.02em;
+          letter-spacing: -.03em;
+          line-height: 1.05;
+          margin: 0;
         }
 
         .home-subtitle{
           color: rgba(0,0,0,.62);
           font-weight: 600;
-          line-height: 1.45;
+          line-height: 1.55;
+          margin: 0;
+          max-width: 760px;
         }
 
-        .seg{
+        .home-badges{
           display:flex;
+          flex-wrap:wrap;
           gap:10px;
+          margin-top: 16px;
+        }
+
+        .home-badge{
+          display:inline-flex;
+          align-items:center;
+          gap:8px;
+          border-radius:999px;
+          background:#fff;
+          border:1px solid rgba(0,0,0,.08);
+          padding:8px 12px;
+          font-size:.84rem;
+          font-weight:800;
+          color: var(--duu-black);
+          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+        }
+
+        .home-top-actions{
+          display:flex;
           flex-wrap:wrap;
           align-items:center;
-          margin-top: 14px;
+          gap:10px;
+          margin-top: 18px;
         }
-        .seg .btn{
-          border-radius: 999px;
-          font-weight: 900;
-          padding: 8px 14px;
+
+        .home-market-pill{
+          border-radius:999px !important;
+          font-weight:900 !important;
+          padding:10px 16px !important;
+          box-shadow: 0 10px 20px rgba(0,0,0,.08);
         }
 
         .soft-action{
-          border: 1px solid rgba(0,0,0,.12);
+          border: 1px solid rgba(0,0,0,.10);
           border-radius: 999px;
-          padding: 8px 12px;
+          padding: 10px 14px;
           font-weight: 900;
-          background: rgba(255,255,255,.75);
+          background: #fff;
           text-decoration: none;
           color: var(--duu-black);
           white-space: nowrap;
           display:inline-flex;
           align-items:center;
           gap: 6px;
+          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+          transition: .18s ease;
         }
         .soft-action:hover{
-          color: var(--duu-red);
-          border-color: rgba(0,0,0,.20);
+          color: var(--duu-black);
+          transform: translateY(-1px);
+          border-color: rgba(0,0,0,.16);
         }
 
         .home-toolbar{
-          margin-top: 14px;
+          margin-top: 18px;
           display:flex;
           align-items:center;
-          justify-content:flex-end;
+          justify-content:flex-start;
         }
 
         .duu-filter-btn .btn,
         .duu-filter-btn .dropdown > .btn,
         .duu-filter-btn > .btn{
-          border-color: rgba(0,0,0,.16) !important;
+          border-color: rgba(0,0,0,.10) !important;
           color: var(--duu-black) !important;
-          background: rgba(255,255,255,.96) !important;
+          background: #fff !important;
           font-weight: 900;
-          border-radius: 14px !important;
-          min-height: 42px;
-          padding: 9px 12px !important;
+          border-radius: 16px !important;
+          min-height: 46px;
+          padding: 10px 14px !important;
+          box-shadow: 0 8px 18px rgba(0,0,0,.04);
         }
         .duu-filter-btn .btn:hover,
         .duu-filter-btn .dropdown > .btn:hover,
         .duu-filter-btn > .btn:hover{
-          border-color: rgba(0,0,0,.28) !important;
-          color: var(--duu-red) !important;
-          background: rgba(255,255,255,.99) !important;
+          border-color: rgba(0,0,0,.18) !important;
+          background: #fff !important;
+          color: var(--duu-black) !important;
         }
         .duu-filter-btn .btn:focus,
         .duu-filter-btn .dropdown > .btn:focus,
@@ -486,25 +465,18 @@ export default function Home() {
         .duu-filter-btn > .btn:focus-visible{
           outline: none !important;
           box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb),.35) !important;
-          background: rgba(255,255,255,.99) !important;
-          color: var(--duu-black) !important;
-        }
-        .duu-filter-btn .btn:active,
-        .duu-filter-btn .dropdown > .btn:active,
-        .duu-filter-btn > .btn:active{
-          background: rgba(var(--duu-yellow-rgb),.20) !important;
-          color: var(--duu-black) !important;
         }
 
         .filter-icon{
-          width: 42px;
-          height: 42px;
-          border-radius: 14px;
+          width: 46px;
+          height: 46px;
+          border-radius: 16px;
           border: 1px solid rgba(0,0,0,.10);
-          background: rgba(255,255,255,.94);
+          background: #fff;
           display:flex;
           align-items:center;
           justify-content:center;
+          box-shadow: 0 8px 18px rgba(0,0,0,.04);
         }
 
         .home-mini-link{
@@ -513,189 +485,262 @@ export default function Home() {
         .home-mini-link:hover{
           transform: translateY(-2px);
         }
+
         .home-mini-card{
-          border-radius: 18px;
+          border-radius: 20px;
           border: 1px solid rgba(0,0,0,.06);
+          background: #fff;
+          overflow: hidden;
+          box-shadow: 0 12px 24px rgba(0,0,0,.05);
         }
+
+        .home-mini-media{
+          position: relative;
+          height: 154px;
+          background: #f5f5f5;
+          overflow: hidden;
+        }
+
         .home-mini-badge{
+          position: absolute;
+          top: 10px;
+          right: 10px;
           display:inline-flex;
           align-items:center;
           justify-content:center;
           border-radius: 999px;
           padding: 6px 10px;
-          background: rgba(17,17,17,.72);
+          background: rgba(17,17,17,.78);
           color: #fff;
           font-weight: 800;
-          font-size: .78rem;
+          font-size: .76rem;
+          backdrop-filter: blur(4px);
         }
+
+        .home-mini-body{
+          padding: 14px;
+        }
+
+        .home-mini-name{
+          color: var(--duu-black);
+          font-weight: 800;
+          line-height: 1.25;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          min-height: 2.5em;
+          font-size: .92rem;
+        }
+
         .home-mini-price{
           color: var(--duu-black);
-          font-weight: 900;
+          font-weight: 950;
+          margin-top: 8px;
+          font-size: .95rem;
+        }
+
+        .home-mini-hint{
+          color: rgba(0,0,0,.50);
+          font-size: .78rem;
+          margin-top: 4px;
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .duu-track{
+          display: flex;
+          gap: 14px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+          scroll-snap-type: x mandatory;
+          -webkit-overflow-scrolling: touch;
+        }
+        .duu-track-item{
+          scroll-snap-align: start;
+        }
+        .duu-track::-webkit-scrollbar{ height: 8px; }
+        .duu-track::-webkit-scrollbar-thumb{
+          background: rgba(0,0,0,.16);
+          border-radius: 999px;
+        }
+        .duu-track::-webkit-scrollbar-track{
+          background: rgba(0,0,0,.05);
+          border-radius: 999px;
         }
 
         .sec{
-          border-radius: 20px;
+          border-radius: 22px;
           border: 1px solid rgba(0,0,0,.08);
           background: #fff;
           overflow: hidden;
-          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+          box-shadow: 0 14px 28px rgba(0,0,0,.05);
         }
+
         .sec-head{
-          padding: 14px 16px;
+          padding: 16px 18px;
           border-bottom: 1px solid rgba(0,0,0,.06);
           display:flex;
           align-items:center;
           justify-content:space-between;
-          gap: 10px;
+          gap: 12px;
         }
+
         .head-yellow{
-          background: linear-gradient(90deg, rgba(var(--duu-yellow-rgb),.40), rgba(var(--duu-yellow-rgb),.08));
+          background: linear-gradient(90deg, rgba(var(--duu-yellow-rgb),.26), rgba(var(--duu-yellow-rgb),.06));
         }
-        .head-red{
-          background: linear-gradient(90deg, rgba(var(--duu-red-rgb),.16), rgba(var(--duu-red-rgb),.05));
+        .head-white{
+          background: linear-gradient(90deg, rgba(0,0,0,.04), rgba(0,0,0,.015));
         }
         .head-dark{
-          background: linear-gradient(90deg, rgba(17,17,17,.11), rgba(17,17,17,.04));
+          background: linear-gradient(90deg, rgba(17,17,17,.08), rgba(17,17,17,.03));
         }
 
         .sec-title{
           font-weight: 950;
           color: var(--duu-black);
+          font-size: 1.02rem;
+          line-height: 1.2;
         }
         .sec-sub{
           color: rgba(0,0,0,.56);
-          font-size: .88rem;
-          margin-top: 2px;
+          font-size: .86rem;
+          margin-top: 3px;
+          font-weight: 600;
+        }
+
+        .sec-body{
+          padding: 16px;
         }
 
         .home-empty{
-          border-radius: 20px;
+          border-radius: 22px;
           border: 1px dashed rgba(0,0,0,.12);
-          background: rgba(255,255,255,.7);
+          background: rgba(255,255,255,.75);
+          padding: 54px 18px;
+          text-align:center;
+          color: rgba(0,0,0,.55);
+          font-weight: 700;
+        }
+
+        @media (min-width: 992px){
+          .home-hero{
+            padding: 26px;
+          }
+          .home-title{
+            font-size: 2.5rem;
+          }
+        }
+
+        @media (max-width: 991.98px){
+          .home-title{
+            font-size: 2rem;
+          }
+        }
+
+        @media (max-width: 575.98px){
+          .home-shell{
+            padding-bottom: 20px;
+          }
+          .home-hero{
+            border-radius: 22px;
+            padding: 16px;
+          }
+          .home-title{
+            font-size: 1.8rem;
+          }
+          .home-subtitle{
+            font-size: .95rem;
+          }
+          .home-mini-link{
+            width: 172px !important;
+          }
+          .home-mini-media{
+            height: 146px;
+          }
+          .sec-head{
+            padding: 14px 14px;
+          }
+          .sec-body{
+            padding: 14px;
+          }
         }
       `}</style>
 
-      <div className="home-wrap pb-4">
+      <div className="home-shell">
         <OfflineBanner />
 
         <section className="container pt-3">
           <InstallPWA />
 
           <div className="home-hero">
-            <div className="d-flex flex-column gap-2">
-              <div className="home-kicker">✨ DUUMINI</div>
+            <div className="home-hero-inner">
+              <div className="d-flex flex-column gap-2">
+               
 
-              {(heroTitle || heroSubtitle) && (
-                <div className="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3">
-                  <div className="min-w-0">
-                    {heroTitle ? (
-                      <h1 className="h3 mb-1 home-title">{heroTitle}</h1>
-                    ) : null}
-                    {heroSubtitle ? (
-                      <div className="home-subtitle">{heroSubtitle}</div>
-                    ) : null}
-                  </div>
-                </div>
-              )}
+          
+ 
 
-              <div className="seg">
-                <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (activeVertical === "FOOD"
-                      ? "btn-dark"
-                      : "btn-outline-dark")
-                  }
-                  onClick={() => {
-                    setActiveVertical("FOOD");
-                    setActiveCategoryId(null);
-                    setActiveSubCategoryId(null);
-                  }}
-                >
-                  🍽️ Food
-                </button>
-                <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (activeVertical === "MARKET"
-                      ? "btn-dark"
-                      : "btn-outline-dark")
-                  }
-                  onClick={() => {
-                    setActiveVertical("MARKET");
-                    setActiveCategoryId(null);
-                    setActiveSubCategoryId(null);
-                  }}
-                >
-                  🛒 Market
-                </button>
-                <button
-                  type="button"
-                  className={
-                    "btn " +
-                    (activeVertical === "FASHION"
-                      ? "btn-dark"
-                      : "btn-outline-dark")
-                  }
-                  onClick={() => {
-                    setActiveVertical("FASHION");
-                    setActiveCategoryId(null);
-                    setActiveSubCategoryId(null);
-                  }}
-                >
-                  👕 Fashion
-                </button>
-
-                <Link
-                  to={rootForVertical(activeVertical)}
-                  className="soft-action ms-auto"
-                >
-                  Voir tout <ChevronRight size={14} />
-                </Link>
-              </div>
-
-              <div className="home-toolbar">
-                <div className="duu-filter-btn d-flex align-items-center gap-2">
-                  <span className="filter-icon" aria-hidden="true">
-                    <SlidersHorizontal size={18} />
+                <div className="home-badges">
+                  <span className="home-badge">
+                    <Package size={16} />
+                    Produits sélectionnés
                   </span>
+                  <span className="home-badge">
+                    <ShieldCheck size={16} />
+                    Achat simple et fiable
+                  </span>
+                </div>
 
-                  <CategoriesMenu
-                    title="Filtrer"
-                    variant="auto"
-                    activeCategoryId={activeCategoryId}
-                    activeSubCategoryId={activeSubCategoryId}
-                    onSelectCategory={(c) => {
-                      setActiveCategoryId(c.id);
-                      setActiveSubCategoryId(null);
-                      navigate(
-                        routeForCategorySlug(
-                          activeVertical,
-                          String((c as any).slug || ""),
-                        ),
-                      );
-                    }}
-                    onSelectSubCategory={(s) => {
-                      const sid = Number((s as any).id || 0);
-                      const cid = Number((s as any).category_id || 0);
-                      setActiveSubCategoryId(sid || null);
-                      setActiveCategoryId(cid || null);
+                <div className="home-top-actions">
+                  <button
+                    type="button"
+                    className="btn btn-dark home-market-pill"
+                    disabled
+                    style={{ cursor: "default", opacity: 1 }}
+                  >
+                    🛒 Market
+                  </button>
 
-                      const cat = categoriesById[cid];
-                      const catSlug = String((cat as any)?.slug || "");
-                      if (!catSlug) return;
+                  <Link to={rootForVertical()} className="soft-action">
+                    Voir tout <ChevronRight size={15} />
+                  </Link>
+                </div>
 
-                      navigate(
-                        routeForSubSlug(
-                          activeVertical,
-                          catSlug,
-                          String((s as any).slug || ""),
-                        ),
-                      );
-                    }}
-                  />
+                <div className="home-toolbar">
+                  <div className="duu-filter-btn d-flex align-items-center gap-2">
+                    <span className="filter-icon" aria-hidden="true">
+                      <SlidersHorizontal size={18} />
+                    </span>
+
+                    <CategoriesMenu
+                      title="Filtrer les catégories"
+                      variant="auto"
+                      activeCategoryId={activeCategoryId}
+                      activeSubCategoryId={activeSubCategoryId}
+                      onSelectCategory={(c) => {
+                        setActiveCategoryId(c.id);
+                        setActiveSubCategoryId(null);
+                        navigate(routeForCategorySlug(String((c as any).slug || "")));
+                      }}
+                      onSelectSubCategory={(s) => {
+                        const sid = Number((s as any).id || 0);
+                        const cid = Number((s as any).category_id || 0);
+                        setActiveSubCategoryId(sid || null);
+                        setActiveCategoryId(cid || null);
+
+                        const cat = categoriesById[cid];
+                        const catSlug = String((cat as any)?.slug || "");
+                        if (!catSlug) return;
+
+                        navigate(
+                          routeForSubSlug(catSlug, String((s as any).slug || "")),
+                        );
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -714,9 +759,7 @@ export default function Home() {
                 onClick={() => {
                   catsQ.refetch();
                   subsQ.refetch();
-                  foodQ.refetch();
                   marketQ.refetch();
-                  fashionQ.refetch();
                 }}
               >
                 Réessayer
@@ -743,14 +786,14 @@ export default function Home() {
                 const headClass =
                   v === "yellow"
                     ? "head-yellow"
-                    : v === "red"
-                      ? "head-red"
+                    : v === "white"
+                      ? "head-white"
                       : "head-dark";
 
                 const catSlug = String((cat as any).slug || "");
                 const mainLink = catSlug
-                  ? routeForCategorySlug(activeVertical, catSlug)
-                  : rootForVertical(activeVertical);
+                  ? routeForCategorySlug(catSlug)
+                  : rootForVertical();
 
                 return (
                   <div key={`${activeVertical}-${cid}`} className="sec">
@@ -760,11 +803,7 @@ export default function Home() {
                           {(cat as any).name}
                         </div>
                         <div className="sec-sub">
-                          {activeVertical === "FOOD"
-                            ? "Food"
-                            : activeVertical === "MARKET"
-                              ? "Market"
-                              : "Fashion"}
+                          Une sélection de produits à découvrir
                         </div>
                       </div>
 
@@ -773,12 +812,12 @@ export default function Home() {
                       </Link>
                     </div>
 
-                    <div className="p-3">
+                    <div className="sec-body">
                       <AutoCarousel
                         items={items}
                         itemHref={itemHrefForProduct}
                         itemHint={hintForProduct}
-                        autoMs={2500}
+                        autoMs={2600}
                       />
                     </div>
                   </div>
@@ -786,14 +825,8 @@ export default function Home() {
               })}
 
               {!categoryIdsWithProducts.length && (
-                <div className="home-empty text-center text-muted py-5">
-                  Aucun produit{" "}
-                  {activeVertical === "FOOD"
-                    ? "Food"
-                    : activeVertical === "MARKET"
-                      ? "Market"
-                      : "Fashion"}{" "}
-                  pour le moment.
+                <div className="home-empty">
+                  Aucun produit Market pour le moment.
                 </div>
               )}
             </div>

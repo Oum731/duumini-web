@@ -357,20 +357,8 @@ function normalizeViewerRole(role?: AuthRole | null): ViewerRole {
   return "GUEST";
 }
 
-function canSeeVendorPanel(vr: ViewerRole) {
-  return vr === "VENDEUR" || vr === "RESTAURANT" || vr === "ADMIN";
-}
-function canSeeSupplierPanel(vr: ViewerRole) {
-  return vr === "FOURNISSEUR" || vr === "ADMIN";
-}
 function canOrder(vr: ViewerRole) {
   return vr !== "FOURNISSEUR" && vr !== "LIVREUR";
-}
-
-function nnum(x: any): number | null {
-  if (x == null || x === "") return null;
-  const n = Number(x);
-  return Number.isFinite(n) ? n : null;
 }
 
 export default function ProductView() {
@@ -487,13 +475,6 @@ export default function ProductView() {
     const originSubCategoryId =
       Number(from.subCategoryId ?? from.sub_category_id ?? 0) || 0;
 
-    const originCategorySlug = String(
-      from.categorySlug ?? from.category_slug ?? ""
-    ).trim();
-    const originSubCategorySlug = String(
-      from.subCategorySlug ?? from.sub_category_slug ?? ""
-    ).trim();
-
     const originSectionPath = String(
       from.sectionPath ?? from.section_path ?? ""
     ).trim();
@@ -505,8 +486,6 @@ export default function ProductView() {
     return {
       categoryId: originCategoryId || null,
       subCategoryId: originSubCategoryId || null,
-      categorySlug: originCategorySlug || null,
-      subCategorySlug: originSubCategorySlug || null,
       sectionPath: originSectionPath || null,
       listPath: originListPath || null,
       label: originLabel || null,
@@ -634,8 +613,8 @@ export default function ProductView() {
         const items: Product[] = Array.isArray(data?.items)
           ? data.items
           : Array.isArray(data)
-          ? data
-          : [];
+            ? data
+            : [];
 
         const rel = items
           .filter((x) => isActiveProduct(x))
@@ -650,8 +629,8 @@ export default function ProductView() {
             (subId
               ? "Plus de produits de la même sous-catégorie"
               : catId
-              ? "Plus de produits de la même catégorie"
-              : "Vous aimerez aussi");
+                ? "Plus de produits de la même catégorie"
+                : "Vous aimerez aussi");
 
           setRelatedTitle(label);
         }
@@ -673,23 +652,6 @@ export default function ProductView() {
       anyP?.price_client ?? anyP?.client_price ?? anyP?.price ?? 0
     );
   }, [anyP?.price_client, anyP?.client_price, anyP?.price]);
-
-  const vendorPrice = useMemo(() => {
-    const v = nnum(anyP?.vendor_price);
-    return v == null ? null : v;
-  }, [anyP?.vendor_price]);
-
-  const supplierCost = useMemo(() => {
-    const v = nnum(
-      anyP?.supplier_cost ?? anyP?.price_wholesale ?? anyP?.cost_price
-    );
-    return v == null ? null : v;
-  }, [anyP?.supplier_cost, anyP?.price_wholesale, anyP?.cost_price]);
-
-  const supplierStock = useMemo(() => {
-    const v = nnum(anyP?.supplier_stock ?? anyP?.stock_qty ?? anyP?.supplier_qty);
-    return v == null ? null : v;
-  }, [anyP?.supplier_stock, anyP?.stock_qty, anyP?.supplier_qty]);
 
   const stock = useMemo(() => {
     const s = anyP?.stock;
@@ -780,49 +742,6 @@ export default function ProductView() {
     (!hasVariants ||
       (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
-  const showVendorPanel = useMemo(
-    () => canSeeVendorPanel(viewerRole),
-    [viewerRole]
-  );
-  const showSupplierPanel = useMemo(
-    () => canSeeSupplierPanel(viewerRole),
-    [viewerRole]
-  );
-
-  const marginVsVendor = useMemo(() => {
-    if (!showVendorPanel) return null;
-    if (vendorPrice == null) return null;
-    const m = Number(displayPrice || 0) - Number(vendorPrice || 0);
-    if (!Number.isFinite(m)) return null;
-    return m;
-  }, [displayPrice, showVendorPanel, vendorPrice]);
-
-  const marginVsSupplier = useMemo(() => {
-    if (!showSupplierPanel) return null;
-    if (supplierCost == null) return null;
-    const m = Number(displayPrice || 0) - Number(supplierCost || 0);
-    if (!Number.isFinite(m)) return null;
-    return m;
-  }, [displayPrice, showSupplierPanel, supplierCost]);
-
-  const stockText = useMemo(() => {
-    if (selectedVariant?.stock != null) {
-      if (selectedVariant.stock <= 0) return "En rupture";
-      return `Reste: ${selectedVariant.stock}`;
-    }
-    if (stock == null) return "";
-    if (stock <= 0) return "En rupture";
-    return `Disponible: ${stock}`;
-  }, [selectedVariant, stock]);
-
-  const stockTone = useMemo(() => {
-    const s = selectedVariant?.stock ?? stock;
-    if (s == null) return "neutral";
-    if (s <= 0) return "danger";
-    if (s <= 5) return "warning";
-    return "success";
-  }, [selectedVariant, stock]);
-
   useEffect(() => {
     if (!product) return;
     const pAny: any = product;
@@ -871,30 +790,6 @@ export default function ProductView() {
     metaAddToCart({ id: pAny.id, name: pAny.name, price: cartPrice }, 1);
   }, [add, canAddNow, displayPrice, hasVariants, product, selectedVariant]);
 
-  const handleDecrease = useCallback(() => {
-    if (!product) return;
-    if (!qtySelected) return;
-
-    const cartPrice = Number(displayPrice || 0);
-
-    add(product, -1, {
-      variant:
-        hasVariants && selectedVariant
-          ? {
-              variant_id: selectedVariant.id,
-              variant_key: selectedVariant.key,
-              label: selectedVariant.label,
-              price: cartPrice,
-            }
-          : {
-              variant_id: null,
-              variant_key: "default",
-              label: null,
-              price: cartPrice,
-            },
-    });
-  }, [add, displayPrice, hasVariants, product, qtySelected, selectedVariant]);
-
   const nextImage = useCallback(() => {
     if (!images.length) return;
     setGalleryIndex((i) => (i + 1) % images.length);
@@ -917,17 +812,11 @@ export default function ProductView() {
                 style={{ aspectRatio: "1 / 1" }}
               />
             </div>
-            <div className="col-12 col-lg-3">
+            <div className="col-12 col-lg-6">
               <div className="placeholder col-10 mb-2" />
               <div className="placeholder col-8 mb-2" />
               <div className="placeholder col-12 mb-2" />
               <div className="placeholder col-9 mb-2" />
-            </div>
-            <div className="col-12 col-lg-3">
-              <div
-                className="placeholder col-12 mb-2"
-                style={{ height: 220, borderRadius: 18 }}
-              />
             </div>
           </div>
         </div>
@@ -1096,9 +985,6 @@ export default function ProductView() {
         }
 
         .pv-info-card,
-        .pv-buy-card,
-        .pv-pro-card,
-        .pv-desc-card,
         .pv-related-card{
           background: #fff;
           border: 1px solid rgba(0,0,0,.08);
@@ -1106,11 +992,9 @@ export default function ProductView() {
           box-shadow: 0 10px 22px rgba(0,0,0,.04);
         }
 
-        .pv-info-card,
-        .pv-buy-card,
-        .pv-pro-card,
-        .pv-desc-card{
-          padding: 16px;
+        .pv-info-card{
+          padding: 18px;
+          height: 100%;
         }
 
         .pv-kicker{
@@ -1139,7 +1023,7 @@ export default function ProductView() {
           flex-wrap: wrap;
         }
         .pv-price-main{
-          font-size: 1.9rem;
+          font-size: 2rem;
           font-weight: 950;
           line-height: 1;
           color: var(--duu-black);
@@ -1151,11 +1035,6 @@ export default function ProductView() {
           font-size: 1rem;
         }
 
-        .pv-pill-row{
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
         .pv-pill{
           display: inline-flex;
           align-items: center;
@@ -1172,21 +1051,6 @@ export default function ProductView() {
           background: rgba(229,57,53,.08);
           color: var(--duu-red,#E53935);
           border-color: rgba(229,57,53,.18);
-        }
-        .pv-pill--success{
-          background: rgba(25,135,84,.08);
-          color: #157347;
-          border-color: rgba(25,135,84,.18);
-        }
-        .pv-pill--warning{
-          background: rgba(255,193,7,.10);
-          color: #7a5a00;
-          border-color: rgba(255,193,7,.25);
-        }
-        .pv-pill--danger{
-          background: rgba(220,53,69,.08);
-          color: #b02a37;
-          border-color: rgba(220,53,69,.18);
         }
 
         .pv-label{
@@ -1206,34 +1070,9 @@ export default function ProductView() {
           border-color: rgba(229,57,53,.22) !important;
         }
 
-        .pv-buy-card{
-          position: sticky;
-          top: 88px;
-        }
-
-        .pv-buy-price{
-          font-size: 1.55rem;
-          font-weight: 950;
-          line-height: 1;
-          color: var(--duu-black);
-        }
-        .pv-buy-old{
-          text-decoration: line-through;
-          color: rgba(0,0,0,.42);
-          font-weight: 800;
-          font-size: .95rem;
-        }
-
-        .pv-qty-group .btn,
-        .pv-qty-group .btn-light{
-          border-radius: 12px !important;
-          min-width: 42px;
-          font-weight: 900;
-        }
-
         .pv-desc{
           color: rgba(0,0,0,.66);
-          line-height: 1.55;
+          line-height: 1.6;
           margin: 0;
         }
 
@@ -1241,13 +1080,21 @@ export default function ProductView() {
           padding: 14px;
         }
 
+        .pv-main-actions{
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+
+        .pv-main-actions .btn{
+          border-radius: 14px;
+          min-height: 48px;
+          font-weight: 900;
+        }
+
         @media (max-width: 991.98px){
-          .pv-buy-card{
-            position: static;
-            top: auto;
-          }
           .pv-price-main{
-            font-size: 1.65rem;
+            font-size: 1.7rem;
           }
         }
       `}</style>
@@ -1347,11 +1194,11 @@ export default function ProductView() {
             ) : null}
           </div>
 
-          <div className="col-12 col-lg-3">
-            <div className="pv-info-card h-100 d-flex flex-column gap-3">
+          <div className="col-12 col-lg-6">
+            <div className="pv-info-card d-flex flex-column gap-3">
               <div>
                 <div className="pv-kicker mb-2">{badge}</div>
-                <h1 className="h3 pv-title">{title}</h1>
+                <h1 className="h2 pv-title">{title}</h1>
               </div>
 
               <div>
@@ -1365,17 +1212,11 @@ export default function ProductView() {
                 ) : null}
               </div>
 
-              <div className="pv-pill-row">
-                <span className={`pv-pill pv-pill--${stockTone}`}>
-                  {stockText || "Disponibilité à confirmer"}
-                </span>
-                {hasVariants ? <span className="pv-pill">Variantes</span> : null}
-                {promoActive ? (
-                  <span className="pv-pill pv-pill--promo">
-                    {promoSavedLabel}
-                  </span>
-                ) : null}
-              </div>
+              {promoActive ? (
+                <div>
+                  <span className="pv-pill pv-pill--promo">{promoSavedLabel}</span>
+                </div>
+              ) : null}
 
               {hasVariants ? (
                 <div>
@@ -1396,41 +1237,6 @@ export default function ProductView() {
                     ))}
                   </select>
 
-                  {selectedVariant ? (
-                    <div className="small text-muted mt-2">
-                      {selectedVariant.stock != null ? (
-                        <span className="me-3">
-                          Reste :{" "}
-                          <strong>
-                            {Math.max(0, Number(selectedVariant.stock))}
-                          </strong>
-                        </span>
-                      ) : null}
-
-                      {selectedVariant.price != null && !promoActive ? (
-                        <span>
-                          Prix : <strong>{moneyMAD(selectedVariant.price)}</strong>
-                        </span>
-                      ) : null}
-
-                      {promoActive ? (
-                        <span>
-                          Prix : <strong>{moneyMAD(displayPrice)}</strong>
-                          <span
-                            style={{
-                              textDecoration: "line-through",
-                              color: "rgba(0,0,0,.45)",
-                              fontWeight: 800,
-                              marginLeft: 6,
-                            }}
-                          >
-                            {moneyMAD(regularPrice)}
-                          </span>
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : null}
-
                   {selectedVariant && isVariantOutOfStock(selectedVariant) ? (
                     <div className="alert alert-warning mt-2 py-2 small mb-0">
                       Cette variante est en rupture.
@@ -1439,14 +1245,14 @@ export default function ProductView() {
                 </div>
               ) : null}
 
-              <div className="pv-desc-card mt-auto">
+              <div>
                 <div className="pv-label">Description</div>
                 {desc ? (
                   <>
                     <p className="pv-desc">
-                      {desc.length > 220 ? shortText(desc, 220) : desc}
+                      {desc.length > 280 ? shortText(desc, 280) : desc}
                     </p>
-                    {desc.length > 220 ? (
+                    {desc.length > 280 ? (
                       <button
                         type="button"
                         className="btn btn-link p-0 mt-2 text-decoration-none"
@@ -1460,166 +1266,28 @@ export default function ProductView() {
                   <p className="pv-desc">Aucune description fournie.</p>
                 )}
               </div>
-            </div>
-          </div>
 
-          <div className="col-12 col-lg-3">
-            <div className="pv-buy-card d-flex flex-column gap-3">
-              <div className="pv-buy-price">{moneyMAD(displayPrice)}</div>
-
-              {promoActive ? (
-                <div className="pv-buy-old">{moneyMAD(regularPrice)}</div>
-              ) : null}
-
-              <div className="pv-pill-row">
-                <span className={`pv-pill pv-pill--${stockTone}`}>
-                  {isOutOfStock ? "En rupture" : "Disponible"}
-                </span>
-                {!canOrder(viewerRole) ? (
-                  <span className="pv-pill pv-pill--warning">
-                    Commande désactivée pour ce rôle
-                  </span>
-                ) : null}
-              </div>
-
-              <div>
-                <div className="pv-label">Quantité</div>
-                {qtySelected > 0 ? (
-                  <div
-                    className="btn-group pv-qty-group"
-                    role="group"
-                    aria-label="Quantité panier"
-                  >
-                    <button
-                      className="btn btn-outline-dark"
-                      onClick={handleDecrease}
-                      type="button"
-                    >
-                      −
-                    </button>
-                    <button className="btn btn-light disabled" type="button">
-                      {qtySelected}
-                    </button>
-                    <button
-                      className="btn btn-duu"
-                      onClick={handleAdd}
-                      type="button"
-                      disabled={!canAddNow}
-                    >
-                      +
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className="btn btn-duu w-100"
-                    onClick={handleAdd}
-                    disabled={!canAddNow}
-                    type="button"
-                  >
-                    + Ajouter au panier
-                  </button>
-                )}
-              </div>
-
-              {qtySelected > 0 ? (
+              <div className="pv-main-actions pt-2">
                 <button
-                  className="btn btn-duu"
+                  className="btn btn-duu flex-grow-1"
                   onClick={handleAdd}
                   disabled={!canAddNow}
                   type="button"
                 >
-                  Ajouter encore
+                  + Ajouter au panier
                 </button>
+
+                <Link to={backPath} className="btn btn-outline-dark">
+                  Continuer mes achats
+                </Link>
+              </div>
+
+              {qtySelected > 0 ? (
+                <div className="small text-muted">
+                  Déjà dans le panier : <strong>{qtySelected}</strong>
+                </div>
               ) : null}
-
-              <button
-                type="button"
-                className="btn btn-outline-dark"
-                onClick={() => setInfoOpen(true)}
-                disabled={!desc}
-              >
-                Voir la description
-              </button>
-
-              <div className="pt-2 border-top small text-muted d-flex flex-column gap-2">
-                <div>✓ Livraison rapide</div>
-                <div>✓ Paiement à la livraison</div>
-                {promoFreeDelivery ? (
-                  <div>✓ Livraison gratuite sur cette promo</div>
-                ) : null}
-              </div>
             </div>
-
-            {showVendorPanel || showSupplierPanel ? (
-              <div className="pv-pro-card mt-3">
-                <div className="pv-label mb-2">Infos Pro</div>
-
-                {showVendorPanel ? (
-                  <div className="small text-muted">
-                    <div>
-                      Prix vendeur : <strong>{moneyMAD(vendorPrice ?? 0)}</strong>
-                      {vendorPrice == null ? (
-                        <span className="ms-2">(non défini)</span>
-                      ) : null}
-                    </div>
-
-                    {marginVsVendor != null && vendorPrice != null ? (
-                      <div className="mt-1">
-                        Marge (client − vendeur) :{" "}
-                        <strong
-                          style={{
-                            color:
-                              marginVsVendor >= 0
-                                ? "inherit"
-                                : "var(--duu-red,#E53935)",
-                          }}
-                        >
-                          {moneyMAD(marginVsVendor)}
-                        </strong>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {showSupplierPanel ? (
-                  <div
-                    className={`small text-muted ${
-                      showVendorPanel ? "mt-3 pt-3 border-top" : ""
-                    }`}
-                  >
-                    <div>
-                      Stock fournisseur : <strong>{supplierStock ?? 0}</strong>
-                      {supplierStock == null ? (
-                        <span className="ms-2">(non défini)</span>
-                      ) : null}
-                    </div>
-                    <div className="mt-1">
-                      Coût wholesale :{" "}
-                      <strong>{moneyMAD(supplierCost ?? 0)}</strong>
-                      {supplierCost == null ? (
-                        <span className="ms-2">(non défini)</span>
-                      ) : null}
-                    </div>
-
-                    {marginVsSupplier != null && supplierCost != null ? (
-                      <div className="mt-1">
-                        Marge (client − wholesale) :{" "}
-                        <strong
-                          style={{
-                            color:
-                              marginVsSupplier >= 0
-                                ? "inherit"
-                                : "var(--duu-red,#E53935)",
-                          }}
-                        >
-                          {moneyMAD(marginVsSupplier)}
-                        </strong>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </div>
       </div>

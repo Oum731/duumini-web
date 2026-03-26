@@ -1,5 +1,5 @@
-// src/components/CategoriesMenu.tsx
 import { useEffect, useMemo, useState } from "react";
+import { ChevronRight, X } from "lucide-react";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
 
@@ -12,8 +12,6 @@ type Props = {
   onSelectSubCategory?: (sub: SubCategory) => void;
   title?: string;
   variant?: "auto" | "drawer" | "dropdown";
-
-  /** Filtrer selon la page */
   scope?: PageScope;
 };
 
@@ -28,10 +26,9 @@ function scopeToVertical(scope: PageScope): "" | "FOOD" | "MARKET" | "FASHION" {
   return "";
 }
 
-function scopeToCategorySlugFallback(scope: PageScope): "" | "african-food" | "african-market" | "fashion" | "food" | "market" {
-  // ⚠️ adapte si tes slugs categories sont exactement "food/market/fashion"
-  // ou "african-food/african-market/fashion".
-  // Ici on accepte les 2.
+function scopeToCategorySlugFallback(
+  scope: PageScope,
+): "" | "african-food" | "african-market" | "fashion" | "food" | "market" {
   if (scope === "african-food") return "food";
   if (scope === "african-market") return "market";
   if (scope === "fashion") return "fashion";
@@ -43,7 +40,7 @@ export default function CategoriesMenu({
   activeSubCategoryId = null,
   onSelectCategory,
   onSelectSubCategory,
-  title = "Filtrer",
+  title = "Filtres",
   variant = "auto",
   scope = "all",
 }: Props) {
@@ -52,7 +49,6 @@ export default function CategoriesMenu({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // drawer
   const [open, setOpen] = useState(false);
   const [openCatId, setOpenCatId] = useState<number | null>(activeCategoryId);
 
@@ -77,13 +73,10 @@ export default function CategoriesMenu({
     loadAll();
   }, []);
 
-  // reset quand scope change
   useEffect(() => {
     setOpenCatId(activeCategoryId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope]);
+  }, [scope, activeCategoryId]);
 
-  // auto => dropdown desktop, drawer mobile
   const ui: "drawer" | "dropdown" = useMemo(() => {
     if (variant === "drawer" || variant === "dropdown") return variant;
     if (typeof window === "undefined") return "drawer";
@@ -96,11 +89,6 @@ export default function CategoriesMenu({
     return m;
   }, [cats]);
 
-  /**
-   * ✅ Filtrage par scope (robuste):
-   * 1) Si sub.vertical existe -> on filtre dessus (FOOD/MARKET/FASHION)
-   * 2) Sinon fallback: on filtre par slug de catégorie (category_slug join si présent, sinon depuis catsById)
-   */
   const filteredSubs = useMemo(() => {
     const wantedVertical = scopeToVertical(scope);
     if (!wantedVertical) return subs || [];
@@ -156,15 +144,6 @@ export default function CategoriesMenu({
     return map;
   }, [filteredSubs]);
 
-  useEffect(() => {
-    if (!activeCategoryId) return;
-    const exists = catsFiltered.some((c) => c.id === Number(activeCategoryId));
-    if (!exists) {
-      setOpenCatId(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catsFiltered]);
-
   function toggleCategory(catId: number) {
     setOpenCatId((prev) => (prev === catId ? null : catId));
   }
@@ -180,12 +159,20 @@ export default function CategoriesMenu({
   }
 
   function CategoryList() {
-    if (loading) return <div className="text-muted small">Chargement…</div>;
-    if (err) return <div className="alert alert-danger py-2 mb-0">{err}</div>;
-    if (!catsFiltered.length) return <div className="text-muted small">Aucune catégorie.</div>;
+    if (loading) {
+      return <div className="text-muted small">Chargement…</div>;
+    }
+
+    if (err) {
+      return <div className="alert alert-danger py-2 mb-0">{err}</div>;
+    }
+
+    if (!catsFiltered.length) {
+      return <div className="text-muted small">Aucune catégorie.</div>;
+    }
 
     return (
-      <div className="d-flex flex-column gap-2">
+      <div className="d-flex flex-column">
         {catsFiltered.map((c) => {
           const isOpen = openCatId === c.id;
           const isActive = Number(activeCategoryId || 0) === c.id;
@@ -194,44 +181,56 @@ export default function CategoriesMenu({
           return (
             <div
               key={c.id}
-              className="border rounded overflow-hidden"
-              style={{ borderColor: "rgba(0,0,0,.12)" }}
+              className="border-bottom"
+              style={{ borderColor: "rgba(17,17,17,.08)" }}
             >
               <button
                 type="button"
-                className="btn w-100 text-start d-flex align-items-center justify-content-between"
+                className="w-100 border-0 bg-white d-flex align-items-center justify-content-between text-start px-3 py-3"
                 onClick={() => {
                   toggleCategory(c.id);
                   handlePickCategory(c);
                 }}
                 style={{
-                  background: isActive ? "var(--duu-yellow)" : "#fff",
                   color: "var(--duu-black)",
-                  border: "none",
+                  fontWeight: isActive ? 800 : 600,
                 }}
               >
-                <span className="fw-semibold text-truncate">{c.name}</span>
-                <span className="small" style={{ color: "rgba(0,0,0,.55)", marginLeft: 12 }}>
-                  {isOpen ? "—" : "+"}
-                </span>
+                <span className="text-truncate pe-3">{c.name}</span>
+                <ChevronRight
+                  size={18}
+                  style={{
+                    color: isActive || isOpen ? "var(--duu-black)" : "rgba(17,17,17,.45)",
+                    transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
+                    transition: "transform .18s ease",
+                    flexShrink: 0,
+                  }}
+                />
               </button>
 
               {isOpen && (
-                <div className="p-2" style={{ background: "rgba(0,0,0,.02)" }}>
+                <div
+                  className="px-3 pb-3"
+                  style={{ background: "rgba(255,208,0,.08)" }}
+                >
                   {children.length ? (
-                    <div className="d-flex flex-column gap-1">
+                    <div className="d-flex flex-column gap-2 pt-1">
                       {children.map((s) => {
-                        const isSubActive = Number(activeSubCategoryId || 0) === Number((s as any).id);
+                        const sid = Number((s as any).id || 0);
+                        const isSubActive = Number(activeSubCategoryId || 0) === sid;
+
                         return (
                           <button
-                            key={Number((s as any).id)}
+                            key={sid}
                             type="button"
-                            className="btn btn-sm text-start"
+                            className="border-0 rounded-3 text-start px-3 py-2"
                             onClick={() => handlePickSub(s)}
                             style={{
-                              background: isSubActive ? "var(--duu-red)" : "#fff",
+                              background: isSubActive ? "var(--duu-black)" : "#fff",
                               color: isSubActive ? "#fff" : "var(--duu-black)",
-                              border: "1px solid rgba(0,0,0,.12)",
+                              fontWeight: isSubActive ? 700 : 500,
+                              border: "1px solid rgba(17,17,17,.08)",
+                              boxShadow: "0 2px 8px rgba(0,0,0,.04)",
                             }}
                           >
                             {s.name}
@@ -240,7 +239,7 @@ export default function CategoriesMenu({
                       })}
                     </div>
                   ) : (
-                    <div className="text-muted small">Aucune sous-catégorie.</div>
+                    <div className="small text-muted pt-2">Aucune sous-catégorie.</div>
                   )}
                 </div>
               )}
@@ -251,85 +250,131 @@ export default function CategoriesMenu({
     );
   }
 
-  // ======= Dropdown (desktop) =======
   if (ui === "dropdown") {
     return (
       <div className="dropdown">
         <button
-          className="btn btn-outline-dark dropdown-toggle"
+          className="btn"
           type="button"
           data-bs-toggle="dropdown"
           aria-expanded="false"
-          style={{ borderColor: "rgba(0,0,0,.25)", color: "var(--duu-black)" }}
+          style={{
+            background: "var(--duu-yellow)",
+            color: "var(--duu-black)",
+            border: "none",
+            fontWeight: 800,
+            borderRadius: 14,
+            padding: "10px 16px",
+          }}
         >
           {title}
         </button>
 
         <div
-          className="dropdown-menu p-2"
+          className="dropdown-menu p-0 overflow-hidden"
           style={{
-            width: 340,
+            width: 360,
             maxHeight: 520,
-            overflow: "auto",
-            borderColor: "rgba(0,0,0,.12)",
+            overflowY: "auto",
+            border: "1px solid rgba(17,17,17,.08)",
+            borderRadius: 18,
+            boxShadow: "0 14px 40px rgba(0,0,0,.12)",
           }}
         >
+          <div
+            className="px-3 py-3 fw-bold"
+            style={{
+              background: "var(--duu-black)",
+              color: "#fff",
+              letterSpacing: ".02em",
+            }}
+          >
+            {title}
+          </div>
           <CategoryList />
         </div>
       </div>
     );
   }
 
-  // ======= Drawer (mobile) — gauche -> droite =======
   return (
     <>
       <button
         type="button"
-        className="btn btn-outline-dark"
+        className="btn"
         onClick={() => setOpen(true)}
-        style={{ borderColor: "rgba(0,0,0,.25)", color: "var(--duu-black)" }}
+        style={{
+          background: "var(--duu-yellow)",
+          color: "var(--duu-black)",
+          border: "none",
+          fontWeight: 800,
+          borderRadius: 14,
+          padding: "10px 16px",
+        }}
       >
         {title}
       </button>
 
       <div
-        className={"position-fixed top-0 start-0 w-100 h-100 " + (open ? "d-block" : "d-none")}
-        style={{ background: "rgba(0,0,0,.45)", zIndex: 1040 }}
+        className={open ? "position-fixed top-0 start-0 w-100 h-100 d-block" : "d-none"}
+        style={{
+          background: "rgba(0,0,0,.45)",
+          zIndex: 1040,
+          backdropFilter: "blur(2px)",
+        }}
         onClick={() => setOpen(false)}
       />
 
       <div
         className="position-fixed top-0 start-0 h-100 bg-white shadow"
         style={{
-          width: "min(92vw, 380px)",
+          width: "100%",
+          maxWidth: 420,
           zIndex: 1050,
           transform: open ? "translateX(0)" : "translateX(-110%)",
-          transition: "transform .22s ease",
+          transition: "transform .24s ease",
           willChange: "transform",
+          overflow: "hidden",
         }}
         role="dialog"
         aria-modal="true"
       >
-        <div className="d-flex align-items-center justify-content-between border-bottom p-3">
-          <div className="fw-bold" style={{ color: "var(--duu-black)" }}>
-            {title}
-          </div>
-          <button
-            type="button"
-            className="btn btn-sm"
-            onClick={() => setOpen(false)}
+        <div
+          className="d-flex align-items-center justify-content-between px-3"
+          style={{
+            height: 78,
+            background: "var(--duu-black)",
+            color: "#fff",
+          }}
+        >
+          <div
+            className="fw-bold text-uppercase"
             style={{
-              background: "var(--duu-yellow)",
-              border: "none",
-              color: "var(--duu-black)",
-              fontWeight: 700,
+              fontSize: "1.05rem",
+              letterSpacing: ".03em",
             }}
           >
-            Fermer
+            Toutes les catégories
+          </div>
+
+          <button
+            type="button"
+            className="border-0 bg-transparent p-0 d-inline-flex align-items-center justify-content-center"
+            onClick={() => setOpen(false)}
+            aria-label="Fermer"
+            style={{ color: "#fff" }}
+          >
+            <X size={34} />
           </button>
         </div>
 
-        <div className="p-3" style={{ overflowY: "auto", height: "calc(100% - 62px)" }}>
+        <div
+          style={{
+            height: "calc(100% - 78px)",
+            overflowY: "auto",
+            background: "#fff",
+          }}
+        >
           <CategoryList />
         </div>
       </div>
