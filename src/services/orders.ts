@@ -62,8 +62,11 @@ export type CreateOrderPayload = {
 
   address?: {
     ville?: string;
+    city?: string;
     commune?: string;
     quartier?: string | null;
+    district?: string | null;
+    address_line?: string | null;
     gps?: { lat: number; lng: number } | null;
   };
 
@@ -106,7 +109,6 @@ export type CreateOrderPayload = {
   address_gps_lng?: number | null;
 };
 
-/** ✅ ADMIN: créer une commande (user OU guest) (backend: POST /api/orders/admin) */
 export type CreateAdminOrderPayload = CreateOrderPayload & {
   customer_id?: number;
 
@@ -115,6 +117,11 @@ export type CreateAdminOrderPayload = CreateOrderPayload & {
     last_name?: string;
     name?: string;
     phone?: string;
+    ville?: string;
+    city?: string;
+    commune?: string;
+    quartier?: string | null;
+    district?: string | null;
   };
 
   admin_discount?: {

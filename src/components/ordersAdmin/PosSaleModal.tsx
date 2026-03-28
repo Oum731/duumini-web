@@ -119,23 +119,16 @@ function computeAdminDiscountAmount(
   return clampMoney(amount);
 }
 
-/**
- * ✅ POS / Vente sur place
- * - Charge tous les produits (pagination)
- * - Option: inclure produits cachés (is_active=0)
- * - Panier + qty
- * - Saisie paiement
- * - Réduction admin
- * - Crée une commande "sur place"
- *
- * ✅ Important:
- * - On passe par createAdminOrder() pour supporter admin_discount côté backend
- * - customer_id facultatif, guest autorisé via contact.phone
- */
 export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [cFirst, setCFirst] = useState("");
   const [cLast, setCLast] = useState("");
   const [cPhone, setCPhone] = useState("");
+
+  const [cCity, setCCity] = useState("");
+  const [cCommune, setCCommune] = useState("");
+  const [cDistrict, setCDistrict] = useState("");
+  const [cAddress, setCAddress] = useState("");
+  const [cLandmark, setCLandmark] = useState("");
 
   const [basket, setBasket] = useState<{ product: Product; qty: number }[]>([]);
   const [amountPaid, setAmountPaid] = useState<number>(0);
@@ -207,8 +200,14 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setCFirst("");
     setCLast("");
     setCPhone("");
-    setMarkDone(true);
 
+    setCCity("");
+    setCCommune("");
+    setCDistrict("");
+    setCAddress("");
+    setCLandmark("");
+
+    setMarkDone(true);
     setSaving(false);
   }, []);
 
@@ -232,7 +231,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setBasket((prev) =>
       prev
         .map((x) => (x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x))
-        .filter((x) => x.qty > 0),
+        .filter((x) => x.qty > 0)
     );
   }
 
@@ -341,6 +340,11 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       return;
     }
 
+    if (!cCity || cCity.trim() === "") {
+      alert("La ville du client est obligatoire.");
+      return;
+    }
+
     if (discountType !== "NONE" && discountValue <= 0) {
       alert("Entre une valeur de réduction valide.");
       return;
@@ -368,12 +372,21 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
         first_name: cFirst || "Client",
         last_name: cLast || "POS",
         phone: normalizedPhone || "+0000000000",
+        city: cCity || null,
+        commune: cCommune || null,
+        district: cDistrict || null,
+        address_line: cAddress || null,
+        landmark: cLandmark || null,
       },
 
       address: {
-        ville: "Casablanca",
-        commune: "Sur place",
-        quartier: "Boutique",
+        city: cCity || null,
+        ville: cCity || null,
+        commune: cCommune || null,
+        district: cDistrict || null,
+        quartier: cDistrict || null,
+        address_line: cAddress || null,
+        landmark: cLandmark || null,
         gps: null,
       },
 
@@ -749,7 +762,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
                     <hr className="my-3" />
 
-                    <h6 className="mb-2">Client (facultatif)</h6>
+                    <h6 className="mb-2">Client</h6>
                     <div className="row g-2">
                       <div className="col-12 col-sm-6">
                         <input
@@ -760,6 +773,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           disabled={saving}
                         />
                       </div>
+
                       <div className="col-12 col-sm-6">
                         <input
                           className="form-control"
@@ -769,12 +783,63 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           disabled={saving}
                         />
                       </div>
+
                       <div className="col-12">
                         <input
                           className="form-control"
                           placeholder="Téléphone (+212...)"
                           value={cPhone}
                           onChange={(e) => setCPhone(e.target.value)}
+                          disabled={saving}
+                        />
+                      </div>
+
+                      <div className="col-12 col-sm-6">
+                        <input
+                          className="form-control"
+                          placeholder="Ville *"
+                          value={cCity}
+                          onChange={(e) => setCCity(e.target.value)}
+                          disabled={saving}
+                        />
+                      </div>
+
+                      <div className="col-12 col-sm-6">
+                        <input
+                          className="form-control"
+                          placeholder="Commune"
+                          value={cCommune}
+                          onChange={(e) => setCCommune(e.target.value)}
+                          disabled={saving}
+                        />
+                      </div>
+
+                      <div className="col-12 col-sm-6">
+                        <input
+                          className="form-control"
+                          placeholder="Quartier"
+                          value={cDistrict}
+                          onChange={(e) => setCDistrict(e.target.value)}
+                          disabled={saving}
+                        />
+                      </div>
+
+                      <div className="col-12 col-sm-6">
+                        <input
+                          className="form-control"
+                          placeholder="Adresse"
+                          value={cAddress}
+                          onChange={(e) => setCAddress(e.target.value)}
+                          disabled={saving}
+                        />
+                      </div>
+
+                      <div className="col-12">
+                        <input
+                          className="form-control"
+                          placeholder="Repère"
+                          value={cLandmark}
+                          onChange={(e) => setCLandmark(e.target.value)}
                           disabled={saving}
                         />
                       </div>

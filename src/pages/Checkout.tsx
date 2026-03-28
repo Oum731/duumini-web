@@ -16,8 +16,6 @@ import {
   type CityCode,
 } from "../context/LocationContext";
 import { api } from "../services/http";
-
-// ✅ Meta Pixel (version simple)
 import { metaInitiateCheckout, metaPurchase } from "../lib/metaPixel";
 
 const FocusAndLoadingStyle = () => (
@@ -78,11 +76,20 @@ const FocusAndLoadingStyle = () => (
       padding:.75rem;
       background:rgba(255,255,255,.6);
     }
+
+    .gps-box{
+      border:1px dashed rgba(0,0,0,.16);
+      border-radius:12px;
+      padding:.75rem;
+      background:#fffdf4;
+    }
   `}</style>
 );
 
 type LocationSuggestion = { value: string; count?: number };
 type ItemsEnvelope<T> = { items: T[] };
+type FulfillmentMode = "DELIVERY" | "PICKUP" | "EXPEDITION";
+type PaymentMethod = "COD" | "BANK_TRANSFER";
 
 function normalizeSuggestionItems(input: any): LocationSuggestion[] {
   const arr = input?.items ?? input ?? [];
@@ -137,6 +144,7 @@ async function trackLocationSuggestion(
 function normToken(x: any) {
   return String(x ?? "").trim().toLowerCase();
 }
+
 function productSubToken(p: any) {
   const bySlug = normToken(p?.sub_category_slug);
   if (bySlug) return bySlug;
@@ -149,6 +157,7 @@ function productSubToken(p: any) {
 
   return "";
 }
+
 function isFoodLike(p: any) {
   const t = productSubToken(p);
   if (t) return t === "food" || t.includes("food") || t.includes("alimentation");
@@ -172,10 +181,12 @@ function cityLabelFromCode(city?: string | null) {
   const found = CITY_OPTIONS.find((c) => c.code === city);
   return found?.label || "";
 }
+
 function isCasablanca(label: string) {
   const s = String(label || "").trim().toLowerCase();
   return s.includes("casa");
 }
+
 function computeDeliveryFeeByCity(cityText: string) {
   if (!cityText) return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
   if (isCasablanca(cityText)) return DELIVERY_RULES.CASABLANCA_FEE;
@@ -185,14 +196,17 @@ function computeDeliveryFeeByCity(cityText: string) {
 function getLineVariantKey(l: any) {
   return String(l?.variant?.variant_key || "default").trim() || "default";
 }
+
 function getLineVariantLabel(l: any) {
   return String(l?.variant?.label || "").trim();
 }
+
 function getLineVariantId(l: any) {
   const id = l?.variant?.variant_id ?? null;
   const n = id == null ? 0 : Number(id) || 0;
   return n > 0 ? n : null;
 }
+
 function lineKey(l: any) {
   const lid = String(l?.line_id || "").trim();
   if (lid) return lid;
@@ -209,8 +223,121 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
   return debounced;
 }
 
-type FulfillmentMode = "DELIVERY" | "PICKUP" | "EXPEDITION";
-type PaymentMethod = "COD" | "BANK_TRANSFER";
+function normalizeCityName(input?: string | null) {
+  const v = String(input || "").trim();
+  if (!v) return "";
+  return v
+    .replace(/\bprovince\b/gi, "")
+    .replace(/\bprefecture\b/gi, "")
+    .replace(/\bpréfecture\b/gi, "")
+    .replace(/\bregion\b/gi, "")
+    .replace(/\brégion\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cityCodeFromText(input?: string | null): CityCode | null {
+  const v = normalizeCityName(input).toLowerCase();
+  if (!v) return null;
+
+  const direct = CITY_OPTIONS.find((c) => c.code.toLowerCase() === v);
+  if (direct) return direct.code as CityCode;
+
+  const byLabel = CITY_OPTIONS.find((c) => c.label.toLowerCase() === v);
+  if (byLabel) return byLabel.code as CityCode;
+
+  const fuzzy = CITY_OPTIONS.find((c) => {
+    const label = c.label.toLowerCase();
+    const code = c.code.toLowerCase();
+    return label.includes(v) || v.includes(label) || code.includes(v) || v.includes(code);
+  });
+  if (fuzzy) return fuzzy.code as CityCode;
+
+  if (v.includes("casa")) return "CASABLANCA" as CityCode;
+  if (v.includes("marr")) return "MARRAKECH" as CityCode;
+
+  return null;
+}
+
+function parseGpsInput(raw?: string | null) {
+  const txt = String(raw || "").trim();
+  if (!txt) return null;
+
+  const clean = txt.replace(/\s+/g, " ");
+
+  let m = clean.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (m) {
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+
+  m = clean.match(/q=(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i);
+  if (m) {
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+
+  m = clean.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i);
+  if (m) {
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+
+  const nums = clean.match(/-?\d+(?:\.\d+)?/g);
+  if (nums && nums.length >= 2) {
+    const lat = Number(nums[0]);
+    const lng = Number(nums[1]);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+
+  return null;
+}
+
+async function reverseGeocodeCity(lat: number, lng: number, signal?: AbortSignal) {
+  const url =
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2` +
+    `&lat=${encodeURIComponent(String(lat))}` +
+    `&lon=${encodeURIComponent(String(lng))}` +
+    `&zoom=10&addressdetails=1`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    signal,
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) throw new Error("Reverse geocoding failed");
+
+  const data = await res.json();
+  const addr = data?.address || {};
+
+  const city =
+    addr?.city ||
+    addr?.town ||
+    addr?.municipality ||
+    addr?.county ||
+    addr?.state_district ||
+    addr?.state ||
+    "";
+
+  const commune =
+    addr?.suburb ||
+    addr?.borough ||
+    addr?.city_district ||
+    addr?.municipality ||
+    "";
+
+  return {
+    city: normalizeCityName(city),
+    commune: normalizeCityName(commune),
+    raw: data,
+  };
+}
 
 export default function CheckoutPage() {
   const nav = useNavigate();
@@ -219,13 +346,6 @@ export default function CheckoutPage() {
 
   const { city, setCity, isReady } = useLocationCity();
   const cityLabel = useMemo(() => cityLabelFromCode(city), [city]);
-
-  const cityText = useMemo(() => {
-    const a = String(cityLabel || "").trim();
-    if (a) return a;
-    const b = String(city || "").trim();
-    return b;
-  }, [cityLabel, city]);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -238,21 +358,23 @@ export default function CheckoutPage() {
 
   const [phone, setPhone] = useState("");
 
+  const [cityInput, setCityInput] = useState("");
+  const [cityTouched, setCityTouched] = useState(false);
+  const [cityManuallyEdited, setCityManuallyEdited] = useState(false);
+
   const [commune, setCommune] = useState<string>("");
   const [communeOther, setCommuneOther] = useState("");
   const [quartier, setQuartier] = useState("");
 
-  const [communeSuggestions, setCommuneSuggestions] = useState<LocationSuggestion[]>(
-    []
-  );
-  const [quartierSuggestions, setQuartierSuggestions] = useState<LocationSuggestion[]>(
-    []
-  );
+  const [communeSuggestions, setCommuneSuggestions] = useState<LocationSuggestion[]>([]);
+  const [quartierSuggestions, setQuartierSuggestions] = useState<LocationSuggestion[]>([]);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
 
   const [useGps, setUseGps] = useState(false);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsErr, setGpsErr] = useState<string | null>(null);
+  const [gpsInput, setGpsInput] = useState("");
+  const [gpsLoadingCity, setGpsLoadingCity] = useState(false);
 
   const [loadingGps, setLoadingGps] = useState(false);
   const [loadingRefill, setLoadingRefill] = useState(false);
@@ -266,6 +388,20 @@ export default function CheckoutPage() {
 
   const [fulfillment, setFulfillment] = useState<FulfillmentMode>("DELIVERY");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
+
+  const autoCityInitRef = useRef(false);
+  const reverseAbortRef = useRef<AbortController | null>(null);
+  const metaInitDoneRef = useRef(false);
+
+  useEffect(() => {
+    const next = String(cityLabel || city || "").trim();
+    if (!next) return;
+    if (!cityManuallyEdited) {
+      setCityInput(next);
+    }
+  }, [cityLabel, city, cityManuallyEdited]);
+
+  const cityText = useMemo(() => String(cityInput || "").trim(), [cityInput]);
 
   const hasPromoInCart = useMemo(() => {
     return (lines || []).some((l: any) => {
@@ -319,30 +455,115 @@ export default function CheckoutPage() {
 
   const canSubmit = lines.length > 0 && hasName && validPhone && addressOk;
 
+  const applyCoordsAndAutoCity = useCallback(
+    async (
+      nextCoords: { lat: number; lng: number },
+      opts?: { updateUseGps?: boolean; autofillCity?: boolean; autofillCommune?: boolean }
+    ) => {
+      const updateUseGps = opts?.updateUseGps !== false;
+      const autofillCity = opts?.autofillCity !== false;
+      const autofillCommune = opts?.autofillCommune !== false;
+
+      setGpsErr(null);
+      setCoords(nextCoords);
+      setGpsInput(`${nextCoords.lat}, ${nextCoords.lng}`);
+      if (updateUseGps) setUseGps(true);
+
+      if (!autofillCity) return;
+
+      try {
+        reverseAbortRef.current?.abort();
+      } catch {}
+
+      const ac = new AbortController();
+      reverseAbortRef.current = ac;
+
+      try {
+        setGpsLoadingCity(true);
+        const geo = await reverseGeocodeCity(nextCoords.lat, nextCoords.lng, ac.signal);
+        const detectedCity = String(geo?.city || "").trim();
+        const detectedCommune = String(geo?.commune || "").trim();
+
+        if (detectedCity) {
+          setCityTouched(true);
+          setCityManuallyEdited(false);
+          setCityInput(detectedCity);
+          const code = cityCodeFromText(detectedCity);
+          if (code) setCity(code);
+        }
+
+        if (autofillCommune && detectedCommune && !communeVal) {
+          setCommune(detectedCommune);
+          setCommuneOther("");
+        }
+      } catch {
+        if (!ac.signal.aborted) {
+          setGpsErr("Position détectée, mais la ville n’a pas pu être retrouvée automatiquement.");
+        }
+      } finally {
+        if (!ac.signal.aborted) setGpsLoadingCity(false);
+      }
+    },
+    [setCity, communeVal]
+  );
+
   const askGps = useCallback(() => {
     setGpsErr(null);
     setLoadingGps(true);
+
     if (!("geolocation" in navigator)) {
       setGpsErr("La géolocalisation n’est pas supportée par ce navigateur.");
       setLoadingGps(false);
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setUseGps(true);
-        setLoadingGps(false);
+      async (pos) => {
+        const nextCoords = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
+        try {
+          await applyCoordsAndAutoCity(nextCoords, {
+            updateUseGps: true,
+            autofillCity: true,
+            autofillCommune: true,
+          });
+        } finally {
+          setLoadingGps(false);
+        }
       },
-      (err) => {
+      (error) => {
         setGpsErr(
-          err?.message ||
+          error?.message ||
             "Impossible d’obtenir la position (permission refusée ou indisponible)."
         );
         setLoadingGps(false);
       },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
     );
-  }, []);
+  }, [applyCoordsAndAutoCity]);
+
+  const applyPastedGps = useCallback(async () => {
+    const parsed = parseGpsInput(gpsInput);
+    if (!parsed) {
+      setGpsErr("Coordonnées invalides. Format attendu : 5.3600, -4.0083");
+      return;
+    }
+
+    if (Math.abs(parsed.lat) > 90 || Math.abs(parsed.lng) > 180) {
+      setGpsErr("Coordonnées invalides.");
+      return;
+    }
+
+    setGpsErr(null);
+    await applyCoordsAndAutoCity(parsed, {
+      updateUseGps: true,
+      autofillCity: true,
+      autofillCommune: true,
+    });
+  }, [gpsInput, applyCoordsAndAutoCity]);
 
   useEffect(() => {
     let alive = true;
@@ -356,6 +577,7 @@ export default function CheckoutPage() {
     }
 
     setLoading(true);
+
     (async () => {
       try {
         const u = await me();
@@ -366,14 +588,15 @@ export default function CheckoutPage() {
           setLastName((u as any).last_name || "");
           setPhone(normalizePhoneInput((u as any).phone || ""));
 
-          const profileCityRaw = String((u as any).city || (u as any).ville || "")
-            .trim()
-            .toLowerCase();
+          const profileCityRaw = normalizeCityName(
+            String((u as any).city || (u as any).ville || "")
+          );
 
-          if (!city) {
-            if (profileCityRaw.includes("casa")) setCity("CASABLANCA" as CityCode);
-            else if (profileCityRaw.includes("marr")) setCity("MARRAKECH" as CityCode);
-            else if (profileCityRaw) setCity(profileCityRaw as any);
+          if (!cityTouched && profileCityRaw) {
+            setCityManuallyEdited(false);
+            setCityInput(profileCityRaw);
+            const profileCode = cityCodeFromText(profileCityRaw);
+            if (profileCode) setCity(profileCode);
           }
 
           const c = String((u as any).commune || "").trim();
@@ -398,18 +621,52 @@ export default function CheckoutPage() {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasToken, location.pathname, isReady]);
+  }, [hasToken, location.pathname, isReady, cityTouched, setCity]);
+
+  useEffect(() => {
+    if (!isReady) return;
+    if (autoCityInitRef.current) return;
+    if (cityTouched) return;
+    if (String(cityInput || "").trim()) return;
+    if (!("geolocation" in navigator)) return;
+
+    autoCityInitRef.current = true;
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          await applyCoordsAndAutoCity(
+            { lat: pos.coords.latitude, lng: pos.coords.longitude },
+            { updateUseGps: false, autofillCity: true, autofillCommune: false }
+          );
+        } catch {}
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 7000, maximumAge: 300000 }
+    );
+  }, [isReady, cityTouched, cityInput, applyCoordsAndAutoCity]);
 
   const refillFromProfile = useCallback(async () => {
     try {
       setErr(null);
       setLoadingRefill(true);
+
       const u = await me();
       if (u) {
         setFirstName((u as any).first_name || "");
         setLastName((u as any).last_name || "");
         setPhone(normalizePhoneInput((u as any).phone || ""));
+
+        const profileCityRaw = normalizeCityName(
+          String((u as any).city || (u as any).ville || "")
+        );
+        if (profileCityRaw) {
+          setCityTouched(true);
+          setCityManuallyEdited(false);
+          setCityInput(profileCityRaw);
+          const code = cityCodeFromText(profileCityRaw);
+          if (code) setCity(code);
+        }
 
         const c = String((u as any).commune || "").trim();
         const q = String((u as any).quartier || "").trim();
@@ -429,7 +686,7 @@ export default function CheckoutPage() {
     } finally {
       setLoadingRefill(false);
     }
-  }, []);
+  }, [setCity]);
 
   const communeCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
   const quartierCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
@@ -442,14 +699,10 @@ export default function CheckoutPage() {
 
     const v = debouncedCityText;
     if (!v) return;
-
     if (fulfillment !== "DELIVERY") return;
 
     setQuartier("");
     setQuartierSuggestions([]);
-    setUseGps(false);
-    setCoords(null);
-    setGpsErr(null);
 
     const cached = communeCacheRef.current.get(v);
     if (cached) {
@@ -461,6 +714,7 @@ export default function CheckoutPage() {
     try {
       communesAbortRef.current?.abort();
     } catch {}
+
     const ac = new AbortController();
     communesAbortRef.current = ac;
 
@@ -508,6 +762,7 @@ export default function CheckoutPage() {
     try {
       quartiersAbortRef.current?.abort();
     } catch {}
+
     const ac = new AbortController();
     quartiersAbortRef.current = ac;
 
@@ -533,8 +788,26 @@ export default function CheckoutPage() {
     };
   }, [debouncedCityText, debouncedCommuneVal, fulfillment]);
 
-  // ✅ Meta Pixel InitiateCheckout (version simple) : 1 seule fois
-  const metaInitDoneRef = useRef(false);
+  useEffect(() => {
+    const onCitySelected = (ev: Event) => {
+      const custom = ev as CustomEvent<{ code?: string; label?: string; value?: string }>;
+      const code = String(custom.detail?.code || "").trim();
+      const label = String(custom.detail?.label || custom.detail?.value || "").trim();
+
+      if (code) setCity(code as CityCode);
+      if (label) {
+        setCityTouched(true);
+        setCityManuallyEdited(false);
+        setCityInput(label);
+      }
+    };
+
+    window.addEventListener("city:selected", onCitySelected as EventListener);
+    return () => {
+      window.removeEventListener("city:selected", onCitySelected as EventListener);
+    };
+  }, [setCity]);
+
   useEffect(() => {
     if (metaInitDoneRef.current) return;
     if (!isReady || loading) return;
@@ -673,7 +946,6 @@ export default function CheckoutPage() {
         ? numericId.toString(36).toUpperCase()
         : String(orderId ?? "").toUpperCase();
 
-      // ✅ Analytics (GTM/GA/Metricool etc)
       try {
         trackPurchase({
           orderId: orderId ?? displayCode,
@@ -703,7 +975,6 @@ export default function CheckoutPage() {
         });
       } catch {}
 
-      // ✅ Meta Pixel Purchase (version simple) : 1 seul argument
       try {
         metaPurchase({
           product_ids: lines.map((l: any) => Number(l.id)),
@@ -941,7 +1212,7 @@ export default function CheckoutPage() {
               onClick={() => window.dispatchEvent(new Event("city:open"))}
               title="Changer la ville"
             >
-              Changer de ville
+              Choisir dans la liste
             </button>
 
             {hasPromoInCart && <span className="badge text-bg-warning">Promo active</span>}
@@ -995,6 +1266,7 @@ export default function CheckoutPage() {
                       placeholder="Prénom"
                     />
                   </div>
+
                   <div className="col-12 col-md-6">
                     <label className="form-label">Nom</label>
                     <input
@@ -1029,17 +1301,32 @@ export default function CheckoutPage() {
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input className="form-control" value={cityText || ""} disabled />
+                      <input
+                        className="form-control"
+                        value={cityInput}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setCityTouched(true);
+                          setCityManuallyEdited(true);
+                          setCityInput(v);
+
+                          const code = cityCodeFromText(v);
+                          if (code) setCity(code);
+                        }}
+                        placeholder="Ville auto-détectée ou saisie manuelle"
+                      />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
                         onClick={() => window.dispatchEvent(new Event("city:open"))}
-                        title="Changer la ville"
+                        title="Choisir dans la liste"
                       >
-                        Changer
+                        Liste
                       </button>
                     </div>
-                    <div className="form-text">La ville peut être modifiée à tout moment.</div>
+                    <div className="form-text">
+                      Ville détectée automatiquement si la localisation est autorisée.
+                    </div>
                   </div>
 
                   {fulfillment === "DELIVERY" && (
@@ -1067,6 +1354,57 @@ export default function CheckoutPage() {
                         </div>
                       ) : (
                         <div className="row g-3">
+                          <div className="col-12">
+                            <div className="gps-box">
+                              <div className="d-flex flex-wrap justify-content-between gap-2 align-items-center">
+                                <div>
+                                  <div className="fw-semibold">Localisation GPS</div>
+                                  <div className="small text-muted">
+                                    Autorisez la position ou collez vos coordonnées GPS.
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-dark"
+                                  onClick={askGps}
+                                  disabled={loadingGps}
+                                  aria-busy={loadingGps}
+                                >
+                                  {loadingGps ? "Détection…" : "Utiliser ma position"}
+                                </button>
+                              </div>
+
+                              <div className="row g-2 mt-1">
+                                <div className="col-12 col-md-8">
+                                  <input
+                                    className="form-control"
+                                    value={gpsInput}
+                                    onChange={(e) => setGpsInput(e.target.value)}
+                                    placeholder="Ex: 5.3600, -4.0083 ou lien Google Maps"
+                                  />
+                                </div>
+                                <div className="col-12 col-md-4 d-grid">
+                                  <button
+                                    type="button"
+                                    className="btn btn-outline-dark"
+                                    onClick={applyPastedGps}
+                                    disabled={!gpsInput.trim() || gpsLoadingCity}
+                                  >
+                                    {gpsLoadingCity ? "Analyse…" : "Coller GPS"}
+                                  </button>
+                                </div>
+                              </div>
+
+                              {coords && (
+                                <div className="small text-success mt-2">
+                                  Coordonnées actives : {coords.lat}, {coords.lng}
+                                </div>
+                              )}
+                              {gpsErr && <div className="form-text text-danger mt-1">{gpsErr}</div>}
+                            </div>
+                          </div>
+
                           <div className="col-12 col-md-6">
                             <label className="form-label">Commune</label>
                             <select
@@ -1074,10 +1412,6 @@ export default function CheckoutPage() {
                               value={commune || "__other__"}
                               onChange={(e) => {
                                 const v = e.target.value;
-                                setUseGps(false);
-                                setCoords(null);
-                                setGpsErr(null);
-
                                 setQuartier("");
                                 setQuartierSuggestions([]);
 
@@ -1108,12 +1442,14 @@ export default function CheckoutPage() {
                             )}
 
                             <div className="form-text">
-                              {loadingSuggest ? "Chargement suggestions…" : "Choisissez une commune ou saisissez-la."}
+                              {loadingSuggest
+                                ? "Chargement suggestions…"
+                                : "Choisissez une commune ou saisissez-la."}
                             </div>
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label">Quartier</label>
+                            <label className="form-label">Quartier / repère</label>
                             {!useGps ? (
                               <>
                                 <input
@@ -1133,34 +1469,19 @@ export default function CheckoutPage() {
                                 </div>
                               </>
                             ) : (
-                              <div className="alert alert-info d-flex justify-content-between align-items-center">
+                              <div className="alert alert-info d-flex justify-content-between align-items-center mb-0">
                                 <span>Localisation GPS activée.</span>
                                 <button
                                   className="btn btn-sm btn-outline-dark"
                                   type="button"
                                   onClick={() => {
                                     setUseGps(false);
-                                    setCoords(null);
                                   }}
                                 >
-                                  Changer
+                                  Revenir à la saisie
                                 </button>
                               </div>
                             )}
-
-                            {!useGps && (
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-dark mt-2"
-                                onClick={askGps}
-                                disabled={loadingGps}
-                                aria-busy={loadingGps}
-                              >
-                                {loadingGps ? "Activation…" : "Utiliser ma position"}
-                              </button>
-                            )}
-
-                            {gpsErr && <div className="form-text text-danger">{gpsErr}</div>}
                           </div>
 
                           <div className="col-12 d-flex flex-wrap gap-2 align-items-center justify-content-between">
@@ -1228,39 +1549,86 @@ export default function CheckoutPage() {
                   <div className="col-12 col-md-6">
                     <label className="form-label">Ville</label>
                     <div className="d-flex gap-2">
-                      <input className="form-control" value={cityText || ""} disabled />
+                      <input
+                        className="form-control"
+                        value={cityInput}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setCityTouched(true);
+                          setCityManuallyEdited(true);
+                          setCityInput(v);
+
+                          const code = cityCodeFromText(v);
+                          if (code) setCity(code);
+                        }}
+                        placeholder="Ville auto-détectée ou saisie manuelle"
+                      />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
                         onClick={() => window.dispatchEvent(new Event("city:open"))}
-                        title="Changer la ville"
+                        title="Choisir dans la liste"
                       >
-                        Changer
+                        Liste
                       </button>
                     </div>
-                    <div className="form-text">La ville peut être modifiée à tout moment.</div>
+                    <div className="form-text">
+                      Ville détectée automatiquement si la localisation est autorisée.
+                    </div>
                   </div>
 
                   {fulfillment === "DELIVERY" && (
                     <div className="col-12">
-                      <label className="form-label d-flex align-items-center justify-content-between">
-                        <span>Adresse complète / Localisation</span>
-                        <span className="small">
-                          {useGps && coords ? (
-                            <span className="text-success">GPS activé</span>
-                          ) : (
+                      <label className="form-label">Adresse complète / Localisation</label>
+
+                      <div className="gps-box mb-3">
+                        <div className="d-flex flex-wrap justify-content-between gap-2 align-items-center">
+                          <div>
+                            <div className="fw-semibold">GPS automatique ou manuel</div>
+                            <div className="small text-muted">
+                              Vous pouvez autoriser la localisation ou coller des coordonnées GPS.
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={askGps}
+                            disabled={loadingGps}
+                            aria-busy={loadingGps}
+                          >
+                            {loadingGps ? "Détection…" : "Utiliser ma position"}
+                          </button>
+                        </div>
+
+                        <div className="row g-2 mt-1">
+                          <div className="col-12 col-md-8">
+                            <input
+                              className="form-control"
+                              value={gpsInput}
+                              onChange={(e) => setGpsInput(e.target.value)}
+                              placeholder="Ex: 5.3600, -4.0083 ou lien Google Maps"
+                            />
+                          </div>
+                          <div className="col-12 col-md-4 d-grid">
                             <button
                               type="button"
-                              className="btn btn-sm btn-outline-dark"
-                              onClick={askGps}
-                              disabled={loadingGps}
-                              aria-busy={loadingGps}
+                              className="btn btn-outline-dark"
+                              onClick={applyPastedGps}
+                              disabled={!gpsInput.trim() || gpsLoadingCity}
                             >
-                              {loadingGps ? "Activation…" : "Utiliser ma position"}
+                              {gpsLoadingCity ? "Analyse…" : "Coller GPS"}
                             </button>
-                          )}
-                        </span>
-                      </label>
+                          </div>
+                        </div>
+
+                        {coords && (
+                          <div className="small text-success mt-2">
+                            Coordonnées actives : {coords.lat}, {coords.lng}
+                          </div>
+                        )}
+                        {gpsErr && <div className="form-text text-danger mt-1">{gpsErr}</div>}
+                      </div>
 
                       {!useGps ? (
                         <>
@@ -1271,7 +1639,6 @@ export default function CheckoutPage() {
                             value={guestAddress}
                             onChange={(e) => setGuestAddress(e.target.value)}
                           />
-                          {gpsErr && <div className="form-text text-danger mt-1">{gpsErr}</div>}
                           <div className="form-text">Adresse complète ou GPS.</div>
                         </>
                       ) : (
@@ -1283,13 +1650,11 @@ export default function CheckoutPage() {
                               type="button"
                               onClick={() => {
                                 setUseGps(false);
-                                setCoords(null);
                               }}
                             >
-                              Changer
+                              Revenir à la saisie
                             </button>
                           </div>
-                          {gpsErr && <div className="form-text text-danger">{gpsErr}</div>}
                           <div className="form-text">Précisions optionnelles :</div>
                           <textarea
                             className="form-control mt-2"

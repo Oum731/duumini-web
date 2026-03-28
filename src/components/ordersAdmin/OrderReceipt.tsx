@@ -10,6 +10,39 @@ import {
   normFulfillment,
   fulfillmentLabel,
 } from "./orderUtils";
+import { useAuth } from "../../context/AuthContext";
+
+function safeUpper(v: any) {
+  return String(v || "").trim().toUpperCase();
+}
+
+function num(v: any, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function reductionLabel(adminDiscount: any, currency = "MAD") {
+  const type = safeUpper(adminDiscount?.type);
+  const value = num(adminDiscount?.value, 0);
+
+  if (!value || type === "NONE") return "—";
+  if (type === "PERCENT") return `${value}%`;
+  if (type === "AMOUNT") return `${value} ${currency}`;
+  return "—";
+}
+
+function viewerRoleLabel(role: string) {
+  if (role === "ADMIN") return "ADMIN";
+  if (role === "VENDEUR" || role === "VENDOR") return "VENDEUR";
+  return "CLIENT";
+}
+
+function money(n?: number | null, currency = "MAD") {
+  return `${Number(n || 0).toLocaleString("fr-FR", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  })} ${currency}`;
+}
 
 export default function OrderReceipt(props: {
   order: AnyObj;
@@ -30,8 +63,15 @@ export default function OrderReceipt(props: {
     publicWebBase,
   } = props;
 
+  const { user, isImpersonating } = useAuth();
+
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const [sharing, setSharing] = useState(false);
+
+  const viewerRole = safeUpper(user?.role);
+  const isAdmin = viewerRole === "ADMIN";
+  const isVendor = viewerRole === "VENDEUR" || viewerRole === "VENDOR";
+  const isSimpleUser = !isAdmin && !isVendor;
 
   const code = getOrderDisplayCode(order);
   const created = order?.created_at
@@ -56,19 +96,38 @@ export default function OrderReceipt(props: {
     address?.address ||
     address?.street ||
     "—";
-  const landmark =
-    address?.landmark ||
-    address?.repere ||
-    address?.reference ||
-    address?.note ||
-    null;
 
   const f = normFulfillment(order);
   const fBadge = fulfillmentLabel(f);
 
   const { itemsAmount, deliveryFee, total, duuShare, vendorNet } =
     computeOrderAmounts(order);
+
   const pay = getPaymentFromOrder(order);
+
+  const currency = String(
+    order?.totals?.currency || order?.currency || "MAD"
+  ).toUpperCase();
+
+  const totals = order?.totals || {};
+  const adminDiscount = order?.admin_discount || {};
+
+  const itemsSubtotal = num(totals?.items_subtotal, itemsAmount);
+
+  const discountAmount = num(
+    adminDiscount?.amount,
+    totals?.admin_discount_amount
+  );
+
+  const discountedItemsAmount = num(
+    totals?.discounted_items_amount,
+    Math.max(0, itemsSubtotal - discountAmount)
+  );
+
+  const displayDeliveryFee = num(totals?.delivery_fee, deliveryFee);
+  const displayTotal = num(totals?.amount, total);
+
+  const discountText = reductionLabel(adminDiscount, currency);
 
   const paymentLine = [
     pay?.method ? `Méthode: ${String(pay.method)}` : null,
@@ -78,9 +137,48 @@ export default function OrderReceipt(props: {
     .join(" • ");
 
   const summary = useMemo(
-    () => ({ itemsAmount, deliveryFee, total, duuShare, vendorNet }),
-    [itemsAmount, deliveryFee, total, duuShare, vendorNet]
+    () => ({
+      itemsSubtotal,
+      discountAmount,
+      discountedItemsAmount,
+      deliveryFee: displayDeliveryFee,
+      total: displayTotal,
+      duuShare,
+      vendorNet,
+    }),
+    [
+      itemsSubtotal,
+      discountAmount,
+      discountedItemsAmount,
+      displayDeliveryFee,
+      displayTotal,
+      duuShare,
+      vendorNet,
+    ]
   );
+
+  const vendorCompany = order?.vendor_company || order?.shop || {};
+  const companyLegalName =
+    vendorCompany?.legal_name ||
+    vendorCompany?.company_name ||
+    vendorCompany?.name ||
+    shopName;
+  const companyCommercialName =
+    vendorCompany?.commercial_name || vendorCompany?.trade_name || null;
+  const companyAddress =
+    vendorCompany?.address_line ||
+    vendorCompany?.address ||
+    vendorCompany?.adresse ||
+    "—";
+  const companyCity = vendorCompany?.city || vendorCompany?.ville || "—";
+  const companyIce = vendorCompany?.ice || vendorCompany?.ICE || "—";
+  const companyPhone = vendorCompany?.phone || hotlinePhone || "—";
+  const companyEmail = vendorCompany?.email || "—";
+
+  const tvaRate = num(order?.tax_rate, 20);
+  const totalHT = Math.max(0, summary.discountedItemsAmount);
+  const totalTVA = +(totalHT * (tvaRate / 100)).toFixed(2);
+  const totalTTC = +(totalHT + totalTVA + summary.deliveryFee).toFixed(2);
 
   function buildVerifyUrl(o: any) {
     const base =
@@ -175,7 +273,7 @@ export default function OrderReceipt(props: {
         backgroundColor: "#ffffff",
       });
 
-      const filename = `Recu-${code}.png`;
+      const filename = `${isVendor ? "Facture" : "Recu"}-${code}.png`;
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], filename, { type: "image/png" });
 
@@ -183,8 +281,8 @@ export default function OrderReceipt(props: {
 
       if (nav?.share && (!nav?.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({
-          title: "Reçu Duumini",
-          text: "Reçu.",
+          title: isVendor ? "Facture vendeur" : "Reçu Duumini",
+          text: isVendor ? "Facture vendeur." : "Reçu.",
           files: [file],
         });
         return;
@@ -204,13 +302,16 @@ export default function OrderReceipt(props: {
           --dm-black:#111111;
           --dm-muted: rgba(17,17,17,.65);
           --dm-line: rgba(0,0,0,.18);
+          --dm-danger:#d92d20;
+          --dm-success:#0f8f4f;
+          --dm-info:#0b6bcb;
         }
 
         .dm-r-wrap{
-          width: 302px;
+          width: ${isVendor ? "760px" : "302px"};
           max-width: 100%;
           margin: 0 auto;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          font-family: Arial, Helvetica, sans-serif;
           color: #111;
         }
 
@@ -235,8 +336,8 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-logo{
-          width: 44px;
-          height: 44px;
+          width: 54px;
+          height: 54px;
           border-radius: 10px;
           overflow:hidden;
           border: 1px solid rgba(0,0,0,.14);
@@ -254,16 +355,16 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-name{
-          font-weight: 1000;
+          font-weight: 900;
           letter-spacing: 1px;
-          font-size: 16px;
+          font-size: 18px;
           text-align:center;
           line-height: 1.1;
         }
 
         .dm-r-slogan{
-          font-size: 10px;
-          font-weight: 800;
+          font-size: 11px;
+          font-weight: 700;
           opacity: .8;
           text-align:center;
           margin-top: 2px;
@@ -271,40 +372,90 @@ export default function OrderReceipt(props: {
           overflow-wrap: anywhere;
         }
 
+        .dm-r-role{
+          margin-top: 8px;
+          display:flex;
+          justify-content:center;
+        }
+
+        .dm-r-role-badge{
+          display:inline-flex;
+          align-items:center;
+          justify-content:center;
+          padding: 4px 8px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 900;
+          border: 1px solid rgba(0,0,0,.1);
+          background: #fff8d6;
+          color: #111;
+        }
+
         .dm-r-meta{
           margin-top: 10px;
-          font-size: 10px;
-          font-weight: 800;
-          line-height: 1.35;
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1.5;
           text-align:center;
-          word-break: break-word;
-          overflow-wrap: anywhere;
         }
 
         .dm-r-body{
-          padding: 10px 12px 12px;
-          font-size: 10px;
+          padding: 12px;
+          font-size: 12px;
+        }
+
+        .dm-r-invoice-head{
+          display:grid;
+          grid-template-columns: 1.3fr 1fr;
+          gap: 16px;
+          margin-bottom: 12px;
+        }
+
+        .dm-r-card{
+          border: 1px solid rgba(0,0,0,.12);
+          border-radius: 12px;
+          padding: 10px;
+        }
+
+        .dm-r-card-title{
+          font-size: 11px;
+          font-weight: 900;
+          text-transform: uppercase;
+          margin-bottom: 8px;
+          color: #222;
         }
 
         .dm-r-row{
           display:flex;
           justify-content:space-between;
           gap: 8px;
-          padding: 3px 0;
+          padding: 4px 0;
         }
 
         .dm-r-k{
           opacity: .75;
-          font-weight: 800;
-          min-width: 74px;
+          font-weight: 700;
+          min-width: 90px;
         }
 
         .dm-r-v{
           text-align:right;
-          font-weight: 900;
-          max-width: 190px;
+          font-weight: 800;
+          max-width: 100%;
           word-break: break-word;
           overflow-wrap: anywhere;
+        }
+
+        .dm-r-v-danger{
+          color: var(--dm-danger);
+        }
+
+        .dm-r-v-success{
+          color: var(--dm-success);
+        }
+
+        .dm-r-v-info{
+          color: var(--dm-info);
         }
 
         .dm-r-sep{
@@ -313,15 +464,15 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-items-title{
-          font-weight: 1000;
+          font-weight: 900;
           letter-spacing: .6px;
-          font-size: 10px;
-          margin-bottom: 6px;
+          font-size: 11px;
+          margin-bottom: 8px;
           text-transform: uppercase;
         }
 
         .dm-r-item{
-          padding: 6px 0;
+          padding: 7px 0;
           border-top: 1px dotted rgba(0,0,0,.12);
         }
 
@@ -330,8 +481,8 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-item-name{
-          font-weight: 1000;
-          line-height: 1.2;
+          font-weight: 900;
+          line-height: 1.25;
           word-break: break-word;
           overflow-wrap: anywhere;
         }
@@ -341,18 +492,48 @@ export default function OrderReceipt(props: {
           justify-content:space-between;
           gap: 8px;
           margin-top: 2px;
-          opacity: .85;
-          font-weight: 800;
+          opacity: .9;
+          font-weight: 700;
+        }
+
+        .dm-r-table{
+          width:100%;
+          border-collapse: collapse;
+          margin-top: 8px;
+        }
+
+        .dm-r-table th,
+        .dm-r-table td{
+          border:1px solid rgba(0,0,0,.12);
+          padding:8px 6px;
+          font-size:12px;
+        }
+
+        .dm-r-table th{
+          background:#fafafa;
+          text-align:left;
+          font-weight:900;
+        }
+
+        .dm-r-table td.num{
+          text-align:right;
+          font-weight:800;
         }
 
         .dm-r-total{
           display:flex;
           justify-content:space-between;
           gap: 8px;
-          font-size: 12px;
-          font-weight: 1000;
+          font-size: 14px;
+          font-weight: 900;
           letter-spacing: .3px;
           margin-top: 6px;
+        }
+
+        .dm-r-totals-box{
+          margin-left:auto;
+          width:100%;
+          max-width:320px;
         }
 
         .dm-r-qr{
@@ -364,7 +545,7 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-qrtext{
-          font-weight: 900;
+          font-weight: 800;
           opacity: .85;
           text-align:center;
         }
@@ -374,7 +555,7 @@ export default function OrderReceipt(props: {
           padding-top: 8px;
           border-top: 1px dashed var(--dm-line);
           text-align:center;
-          font-weight: 900;
+          font-weight: 800;
           opacity: .8;
         }
 
@@ -389,27 +570,27 @@ export default function OrderReceipt(props: {
         .dm-btn{
           border-radius: 12px;
           padding: 10px 12px;
-          font-weight: 1000;
+          font-weight: 900;
           font-size: 12px;
           cursor:pointer;
           border: 1px solid var(--dm-black);
           background: var(--dm-black);
           color: var(--dm-yellow);
           width: 100%;
-          max-width: 302px;
+          max-width: 320px;
         }
 
         .dm-btn-ghost{
           border-radius: 12px;
           padding: 10px 12px;
-          font-weight: 1000;
+          font-weight: 900;
           font-size: 12px;
           cursor:pointer;
           border: 1px solid rgba(0,0,0,.16);
           background: #fff;
           color: var(--dm-black);
           width: 100%;
-          max-width: 302px;
+          max-width: 320px;
         }
 
         .dm-btn:disabled,
@@ -427,7 +608,7 @@ export default function OrderReceipt(props: {
             display:block !important;
           }
 
-          @page { size: 80mm auto; margin: 4mm; }
+          @page { size: A4; margin: 10mm; }
 
           *{
             -webkit-print-color-adjust: exact !important;
@@ -435,20 +616,14 @@ export default function OrderReceipt(props: {
           }
 
           #duu-print-root{
-            width: 80mm !important;
-            max-width: 80mm !important;
+            width: 100% !important;
+            max-width: 100% !important;
           }
 
           #duu-print-root .dm-r-paper{
             border: none !important;
             border-radius: 0 !important;
             box-shadow: none !important;
-          }
-
-          #duu-print-root,
-          #duu-print-root *{
-            break-inside: avoid;
-            page-break-inside: avoid;
           }
 
           #duu-print-root .dm-no-print{
@@ -461,7 +636,7 @@ export default function OrderReceipt(props: {
         {!hidePrintButton ? (
           <div className="dm-actions dm-no-print">
             <button className="dm-btn" type="button" onClick={printTicket}>
-              Imprimer le reçu (80mm)
+              {isVendor ? "Imprimer la facture vendeur" : "Imprimer le reçu"}
             </button>
 
             <button
@@ -469,7 +644,6 @@ export default function OrderReceipt(props: {
               type="button"
               onClick={shareTicketAsImage}
               disabled={sharing}
-              title="Ouvre le menu Partager du téléphone (WhatsApp, etc.)"
             >
               {sharing ? "Préparation…" : "Partager WhatsApp (image)"}
             </button>
@@ -490,116 +664,281 @@ export default function OrderReceipt(props: {
               </div>
             </div>
 
-            <div className="dm-r-name">{shopName}</div>
+            <div className="dm-r-name">
+              {isVendor ? (companyCommercialName || companyLegalName) : shopName}
+            </div>
             <div className="dm-r-slogan">{slogan}</div>
+
+            <div className="dm-r-role">
+              <span className="dm-r-role-badge">
+                Vue {viewerRoleLabel(viewerRole)}
+                {isImpersonating ? " • IMPERSONATION" : ""}
+              </span>
+            </div>
 
             <div className="dm-r-meta">
               <div>
-                <b>REÇU</b> • #{code}
+                <b>{isVendor ? "FACTURE" : "REÇU"}</b> • #{code}
               </div>
               <div>{created}</div>
-              {!!hotlinePhone && <div>Hotline: {hotlinePhone}</div>}
+              {!isVendor && !!hotlinePhone && <div>Hotline: {hotlinePhone}</div>}
             </div>
           </div>
 
           <div className="dm-r-body">
-            <div className="dm-r-row">
-              <div className="dm-r-k">Client</div>
-              <div className="dm-r-v">{fullName}</div>
-            </div>
-            <div className="dm-r-row">
-              <div className="dm-r-k">Téléphone</div>
-              <div className="dm-r-v">{String(phone)}</div>
-            </div>
-            <div className="dm-r-row">
-              <div className="dm-r-k">Ville</div>
-              <div className="dm-r-v">{city}</div>
-            </div>
-            <div className="dm-r-row">
-              <div className="dm-r-k">Commune</div>
-              <div className="dm-r-v">{commune}</div>
-            </div>
-            <div className="dm-r-row">
-              <div className="dm-r-k">Quartier</div>
-              <div className="dm-r-v">{district}</div>
-            </div>
-            <div className="dm-r-row">
-              <div className="dm-r-k">Adresse</div>
-              <div className="dm-r-v">{addressLine}</div>
-            </div>
-            {landmark ? (
-              <div className="dm-r-row">
-                <div className="dm-r-k">Repère</div>
-                <div className="dm-r-v">{landmark}</div>
-              </div>
-            ) : null}
-            <div className="dm-r-row">
-              <div className="dm-r-k">Livraison</div>
-              <div className="dm-r-v">{fBadge.text}</div>
-            </div>
+            {isVendor ? (
+              <>
+                <div className="dm-r-invoice-head">
+                  <div className="dm-r-card">
+                    <div className="dm-r-card-title">Entreprise</div>
+                    <div><b>{companyLegalName}</b></div>
+                    {companyCommercialName ? <div>{companyCommercialName}</div> : null}
+                    <div>{companyAddress}</div>
+                    <div>{companyCity}</div>
+                    <div>ICE : {companyIce}</div>
+                    <div>Tél : {companyPhone}</div>
+                    <div>Email : {companyEmail}</div>
+                  </div>
 
-            <div className="dm-r-sep" />
-
-            <div className="dm-r-items-title">Détails produits</div>
-
-            {Array.isArray(order?.items) && order.items.length ? (
-              order.items.map((it: any, idx: number) => {
-                const name =
-                  it.product_name || it.name || `Produit #${it.product_id}`;
-                const variant = [it.variant_size, it.variant_color]
-                  .filter(Boolean)
-                  .join(" / ");
-                const displayName = variant ? `${name} (${variant})` : name;
-
-                const qty = Number(it.qty || 1);
-                const unit = Number(it.unit_price || it.price || 0);
-                const lineTotal = qty * unit;
-
-                return (
-                  <div className="dm-r-item" key={idx}>
-                    <div className="dm-r-item-name">{displayName}</div>
-                    <div className="dm-r-item-sub">
-                      <div>
-                        {mad(unit)} × {qty}
-                      </div>
-                      <div style={{ fontWeight: 1000 }}>{mad(lineTotal)}</div>
+                  <div className="dm-r-card">
+                    <div className="dm-r-card-title">Facturation</div>
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Facture N°</div>
+                      <div className="dm-r-v">{code}</div>
+                    </div>
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Date</div>
+                      <div className="dm-r-v">{created}</div>
+                    </div>
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Client</div>
+                      <div className="dm-r-v">{fullName}</div>
+                    </div>
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Téléphone</div>
+                      <div className="dm-r-v">{String(phone)}</div>
+                    </div>
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Ville</div>
+                      <div className="dm-r-v">{city}</div>
+                    </div>
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Adresse</div>
+                      <div className="dm-r-v">{addressLine}</div>
                     </div>
                   </div>
-                );
-              })
+                </div>
+
+                <div className="dm-r-items-title">Produits facturés</div>
+
+                <table className="dm-r-table">
+                  <thead>
+                    <tr>
+                      <th>Désignation</th>
+                      <th>Qté</th>
+                      <th>PU HT</th>
+                      <th>Montant HT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.isArray(order?.items) && order.items.length ? (
+                      order.items.map((it: any, idx: number) => {
+                        const name =
+                          it.product_name || it.name || `Produit #${it.product_id}`;
+                        const variant = [it.variant_size, it.variant_color]
+                          .filter(Boolean)
+                          .join(" / ");
+                        const displayName = variant ? `${name} (${variant})` : name;
+
+                        const qty = Number(it.qty || 1);
+                        const unit = Number(it.unit_price || it.price || 0);
+                        const lineTotal = +(qty * unit).toFixed(2);
+
+                        return (
+                          <tr key={idx}>
+                            <td>{displayName}</td>
+                            <td className="num">{qty}</td>
+                            <td className="num">{money(unit, currency)}</td>
+                            <td className="num">{money(lineTotal, currency)}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={4}>Aucun produit.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                <div className="dm-r-sep" />
+
+                <div className="dm-r-totals-box">
+                  <div className="dm-r-row">
+                    <div className="dm-r-k">Total H.T</div>
+                    <div className="dm-r-v">{money(totalHT, currency)}</div>
+                  </div>
+
+                  {summary.discountAmount > 0 ? (
+                    <>
+                      <div className="dm-r-row">
+                        <div className="dm-r-k">Type réduction</div>
+                        <div className="dm-r-v">{discountText}</div>
+                      </div>
+                      <div className="dm-r-row">
+                        <div className="dm-r-k">Réduction</div>
+                        <div className="dm-r-v dm-r-v-danger">
+                          - {money(summary.discountAmount, currency)}
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
+                  <div className="dm-r-row">
+                    <div className="dm-r-k">TVA {tvaRate}%</div>
+                    <div className="dm-r-v">{money(totalTVA, currency)}</div>
+                  </div>
+
+                  <div className="dm-r-row">
+                    <div className="dm-r-k">Livraison</div>
+                    <div className="dm-r-v">{money(summary.deliveryFee, currency)}</div>
+                  </div>
+
+                  <div className="dm-r-total">
+                    <div>TOTAL T.T.C</div>
+                    <div>{money(totalTTC, currency)}</div>
+                  </div>
+
+                  <div className="dm-r-row" style={{ marginTop: 8 }}>
+                    <div className="dm-r-k">Règlement</div>
+                    <div className="dm-r-v">{paymentLine || "—"}</div>
+                  </div>
+                </div>
+              </>
             ) : (
-              <div style={{ padding: "6px 0", opacity: 0.7 }}>
-                Aucun produit.
-              </div>
+              <>
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Client</div>
+                  <div className="dm-r-v">{fullName}</div>
+                </div>
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Téléphone</div>
+                  <div className="dm-r-v">{String(phone)}</div>
+                </div>
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Ville</div>
+                  <div className="dm-r-v">{city}</div>
+                </div>
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Commune</div>
+                  <div className="dm-r-v">{commune}</div>
+                </div>
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Quartier</div>
+                  <div className="dm-r-v">{district}</div>
+                </div>
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Adresse</div>
+                  <div className="dm-r-v">{addressLine}</div>
+                </div>
+
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Livraison</div>
+                  <div className="dm-r-v">{fBadge.text}</div>
+                </div>
+
+                <div className="dm-r-sep" />
+
+                <div className="dm-r-items-title">Détails produits</div>
+
+                {Array.isArray(order?.items) && order.items.length ? (
+                  order.items.map((it: any, idx: number) => {
+                    const name =
+                      it.product_name || it.name || `Produit #${it.product_id}`;
+                    const variant = [it.variant_size, it.variant_color]
+                      .filter(Boolean)
+                      .join(" / ");
+                    const displayName = variant ? `${name} (${variant})` : name;
+
+                    const qty = Number(it.qty || 1);
+                    const unit = Number(it.unit_price || it.price || 0);
+                    const lineTotal = qty * unit;
+
+                    return (
+                      <div className="dm-r-item" key={idx}>
+                        <div className="dm-r-item-name">{displayName}</div>
+                        <div className="dm-r-item-sub">
+                          <div>
+                            {mad(unit)} × {qty}
+                          </div>
+                          <div style={{ fontWeight: 900 }}>{mad(lineTotal)}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div style={{ padding: "6px 0", opacity: 0.7 }}>
+                    Aucun produit.
+                  </div>
+                )}
+
+                <div className="dm-r-sep" />
+
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Sous-total</div>
+                  <div className="dm-r-v">{mad(summary.itemsSubtotal)}</div>
+                </div>
+
+                {summary.discountAmount > 0 ? (
+                  <>
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Type réduction</div>
+                      <div className="dm-r-v">{discountText}</div>
+                    </div>
+
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Réduction</div>
+                      <div className="dm-r-v dm-r-v-danger">
+                        - {mad(summary.discountAmount)}
+                      </div>
+                    </div>
+
+                    <div className="dm-r-row">
+                      <div className="dm-r-k">Après réduction</div>
+                      <div className="dm-r-v dm-r-v-success">
+                        {mad(summary.discountedItemsAmount)}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Livraison</div>
+                  <div className="dm-r-v">{mad(summary.deliveryFee)}</div>
+                </div>
+
+                <div className="dm-r-total">
+                  <div>TOTAL</div>
+                  <div>{mad(summary.total)}</div>
+                </div>
+
+                <div className="dm-r-sep" />
+
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Paiement</div>
+                  <div className="dm-r-v">{paymentLine || "—"}</div>
+                </div>
+              </>
             )}
 
-            <div className="dm-r-sep" />
-
-            <div className="dm-r-row">
-              <div className="dm-r-k">Sous-total</div>
-              <div className="dm-r-v">{mad(summary.itemsAmount)}</div>
-            </div>
-            <div className="dm-r-row">
-              <div className="dm-r-k">Livraison</div>
-              <div className="dm-r-v">{mad(summary.deliveryFee)}</div>
-            </div>
-
-            <div className="dm-r-total">
-              <div>TOTAL</div>
-              <div>{mad(summary.total)}</div>
-            </div>
-
-            <div className="dm-r-sep" />
-
-            <div className="dm-r-row">
-              <div className="dm-r-k">Paiement</div>
-              <div className="dm-r-v">{paymentLine || "—"}</div>
-            </div>
             {pay?.note ? (
-              <div className="dm-r-row">
-                <div className="dm-r-k">Note</div>
-                <div className="dm-r-v">{String(pay.note)}</div>
-              </div>
+              <>
+                <div className="dm-r-sep" />
+                <div className="dm-r-row">
+                  <div className="dm-r-k">Note</div>
+                  <div className="dm-r-v">{String(pay.note)}</div>
+                </div>
+              </>
             ) : null}
 
             <div className="dm-r-sep" />
@@ -612,10 +951,21 @@ export default function OrderReceipt(props: {
             </div>
 
             <div className="dm-r-footer">
-              Merci pour votre commande — Duumini
-              <div style={{ marginTop: 6, fontSize: 9, opacity: 0.7 }}>
-                • Net vendeur: {mad(summary.vendorNet)}
-              </div>
+              {isVendor
+                ? "Facture vendeur — Duumini"
+                : "Merci pour votre commande — Duumini"}
+
+              {(isVendor || isAdmin) && (
+                <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+                  • Net vendeur: {mad(summary.vendorNet)}
+                </div>
+              )}
+
+              {isAdmin && (
+                <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+                  • Part Duumini: {mad(summary.duuShare)}
+                </div>
+              )}
             </div>
           </div>
         </div>

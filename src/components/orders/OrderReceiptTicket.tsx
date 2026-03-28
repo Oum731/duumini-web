@@ -1,3 +1,4 @@
+// src/components/ordersAdmin/OrderReceipt.tsx
 import { useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { toPng } from "html-to-image";
@@ -26,6 +27,11 @@ function safeUpper(v: any) {
   return String(v || "").trim().toUpperCase();
 }
 
+function num(v: any, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function money(n?: number | null, currency = "MAD") {
   const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
   return `${v.toFixed(2)} ${currency}`;
@@ -40,10 +46,12 @@ function pickPaymentMode(method?: string | null) {
     m === "BANK_TRANSFER" ||
     m === "BANK" ||
     m === "TRANSFER"
-  )
+  ) {
     return "Virement";
-  if (m === "DEPOT_VENTE" || m === "DEPOT" || m === "CONSIGNMENT")
+  }
+  if (m === "DEPOT_VENTE" || m === "DEPOT" || m === "CONSIGNMENT") {
     return "Dépôt vente";
+  }
   return m;
 }
 
@@ -86,7 +94,17 @@ function receiptNumberOf(order: any) {
   return id ? `DM-${y}-${String(id).padStart(6, "0")}` : "DM-—";
 }
 
-export default function OrderReceiptTicket({
+function reductionLabel(adminDiscount: any, currency: string) {
+  const type = safeUpper(adminDiscount?.type);
+  const value = num(adminDiscount?.value, 0);
+
+  if (!value || type === "NONE") return "—";
+  if (type === "PERCENT") return `${value}%`;
+  if (type === "AMOUNT") return `${value} ${currency}`;
+  return "—";
+}
+
+export default function OrderReceipt({
   order,
   slogan = "Les goûts de ton pays, partout où tu te trouves",
   hotlinePhone = "",
@@ -105,9 +123,10 @@ export default function OrderReceiptTicket({
   const receiptNumber = receiptNumberOf(order);
   const dateLabel = formatDateFR(order?.created_at);
 
-  const contact = order?.contact || (order as any)?.user || null;
+  const contact = (order as any)?.contact || (order as any)?.user || null;
   const fullName =
     `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim() ||
+    contact?.name ||
     "Client";
   const phone = contact?.phone || "—";
 
@@ -120,7 +139,6 @@ export default function OrderReceiptTicket({
     addr?.addressLine ||
     addr?.adresse ||
     addr?.address ||
-    addr?.street ||
     "—";
   const landmark =
     addr?.landmark ||
@@ -129,15 +147,56 @@ export default function OrderReceiptTicket({
     addr?.note ||
     null;
 
-  const items = Array.isArray(order?.items) ? order.items : [];
-
-  const itemsAmount = Number(order?.totals?.items_amount ?? 0);
-  const deliveryFee = Number(order?.totals?.delivery_fee ?? 0);
-  const totalAmount = Number(
-    order?.totals?.amount ?? order?.total ?? itemsAmount + deliveryFee
+  const deliveryMode = safeUpper(
+    (order as any)?.delivery?.mode ||
+      (order as any)?.delivery_mode ||
+      (order as any)?.fulfillment ||
+      ""
   );
 
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const totals: any = (order as any)?.totals || {};
+  const adminDiscount: any = (order as any)?.admin_discount || {};
   const payment = (order as any)?.payment || null;
+
+  const itemsSubtotal = num(
+    totals?.items_subtotal,
+    items.reduce((sum: number, it: any) => {
+      const qty = num(it?.qty, 1);
+      const baseUnit = num(it?.base_unit_price ?? it?.unit_price ?? it?.price, 0);
+      return sum + qty * baseUnit;
+    }, 0)
+  );
+
+  const discountAmount = num(
+    adminDiscount?.amount,
+    totals?.admin_discount_amount
+  );
+
+  const discountText = reductionLabel(adminDiscount, currency);
+
+  const discountedItemsAmount = num(
+    totals?.discounted_items_amount,
+    Math.max(0, itemsSubtotal - discountAmount)
+  );
+
+  const deliveryFee = num(totals?.delivery_fee, 0);
+
+  const totalAmount = num(
+    totals?.amount ?? (order as any)?.total,
+    discountedItemsAmount + deliveryFee
+  );
+
+  const paidAmount = num(
+    payment?.paid_amount ?? (order as any)?.paid_amount,
+    0
+  );
+
+  const remainingAmount = num(
+    payment?.remaining_amount ?? (order as any)?.remaining_amount,
+    Math.max(0, totalAmount - paidAmount)
+  );
+
   const payMode = pickPaymentMode(payment?.method ?? null);
   const payStatus = pickPayStatus(
     payment?.status ?? (order as any)?.payment_status ?? null
@@ -263,6 +322,8 @@ export default function OrderReceiptTicket({
           --dm-black: #111111;
           --dm-border:#EEEEEE;
           --dm-muted: rgba(17,17,17,.65);
+          --dm-danger:#d92d20;
+          --dm-success:#0f8f4f;
         }
 
         .dm-ticket-wrap{
@@ -416,7 +477,7 @@ export default function OrderReceiptTicket({
         .dm-k{
           font-weight: 900;
           color: var(--dm-muted);
-          min-width: 72px;
+          min-width: 86px;
         }
 
         .dm-v{
@@ -424,8 +485,11 @@ export default function OrderReceiptTicket({
           text-align:right;
           word-break: break-word;
           overflow-wrap:anywhere;
-          max-width: 190px;
+          max-width: 180px;
         }
+
+        .dm-v-danger{ color: var(--dm-danger); }
+        .dm-v-success{ color: var(--dm-success); }
 
         .dm-table{
           border:1px solid var(--dm-border);
@@ -480,9 +544,11 @@ export default function OrderReceiptTicket({
         .dm-total{
           display:flex;
           justify-content:space-between;
-          margin-top: 6px;
+          margin-top: 8px;
           font-size: 13px;
           font-weight: 1000;
+          padding-top: 6px;
+          border-top: 1px dashed rgba(0,0,0,.18);
         }
 
         .dm-qr{
@@ -607,8 +673,7 @@ export default function OrderReceiptTicket({
                     src={logoSrc}
                     alt="Duumini"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display =
-                        "none";
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
                     }}
                   />
                 </div>
@@ -668,6 +733,12 @@ export default function OrderReceiptTicket({
                     <div className="dm-v">{landmark}</div>
                   </div>
                 ) : null}
+                {deliveryMode ? (
+                  <div className="dm-row">
+                    <div className="dm-k">Livraison</div>
+                    <div className="dm-v">{deliveryMode}</div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -692,8 +763,8 @@ export default function OrderReceiptTicket({
                       .join(" / ");
                     const displayName = variant ? `${name} (${variant})` : name;
 
-                    const qty = Number(it.qty || 1);
-                    const unit = Number(it.unit_price || it.price || 0);
+                    const qty = num(it?.qty, 1);
+                    const unit = num(it?.unit_price ?? it?.price, 0);
                     const lineTotal = qty * unit;
 
                     return (
@@ -701,13 +772,11 @@ export default function OrderReceiptTicket({
                         <div>
                           <div className="dm-name">{displayName}</div>
                           <div className="dm-sub">
-                            {money(unit, currency)} / unité
+                            {money(unit, currency)} × {qty}
                           </div>
                         </div>
                         <div className="dm-qty">{qty}</div>
-                        <div className="dm-line">
-                          {money(lineTotal, currency)}
-                        </div>
+                        <div className="dm-line">{money(lineTotal, currency)}</div>
                       </div>
                     );
                   })
@@ -720,11 +789,35 @@ export default function OrderReceiptTicket({
 
               <div className="dm-totals">
                 <div className="dm-row">
-                  <div className="dm-k">Sous-total produits</div>
-                  <div className="dm-v">{money(itemsAmount, currency)}</div>
+                  <div className="dm-k">Sous-total</div>
+                  <div className="dm-v">{money(itemsSubtotal, currency)}</div>
                 </div>
+
+                {discountAmount > 0 && (
+                  <>
+                    <div className="dm-row">
+                      <div className="dm-k">Réduction</div>
+                      <div className="dm-v dm-v-danger">{discountText}</div>
+                    </div>
+
+                    <div className="dm-row">
+                      <div className="dm-k">Montant réduit</div>
+                      <div className="dm-v dm-v-danger">
+                        - {money(discountAmount, currency)}
+                      </div>
+                    </div>
+
+                    <div className="dm-row">
+                      <div className="dm-k">Après réduction</div>
+                      <div className="dm-v dm-v-success">
+                        {money(discountedItemsAmount, currency)}
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 <div className="dm-row">
-                  <div className="dm-k">Frais de livraison</div>
+                  <div className="dm-k">Livraison</div>
                   <div className="dm-v">{money(deliveryFee, currency)}</div>
                 </div>
 
@@ -741,13 +834,27 @@ export default function OrderReceiptTicket({
               </div>
               <div className="dm-card">
                 <div className="dm-row">
-                  <div className="dm-k">Mode</div>
+                  <div className="dm-k">Méthode</div>
                   <div className="dm-v">{payMode}</div>
                 </div>
                 <div className="dm-row">
-                  <div className="dm-k">Statut paiement</div>
+                  <div className="dm-k">Statut</div>
                   <div className="dm-v">{payStatus}</div>
                 </div>
+                <div className="dm-row">
+                  <div className="dm-k">Payé</div>
+                  <div className="dm-v">{money(paidAmount, currency)}</div>
+                </div>
+                <div className="dm-row">
+                  <div className="dm-k">Reste</div>
+                  <div className="dm-v">{money(remainingAmount, currency)}</div>
+                </div>
+                {payment?.note ? (
+                  <div className="dm-row">
+                    <div className="dm-k">Note</div>
+                    <div className="dm-v">{String(payment.note)}</div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
