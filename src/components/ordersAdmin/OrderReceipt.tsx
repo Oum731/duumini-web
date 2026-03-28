@@ -71,7 +71,8 @@ export default function OrderReceipt(props: {
   const viewerRole = safeUpper(user?.role);
   const isAdmin = viewerRole === "ADMIN";
   const isVendor = viewerRole === "VENDEUR" || viewerRole === "VENDOR";
-  const isSimpleUser = !isAdmin && !isVendor;
+  const isVendorView = isAdmin || isVendor;
+  const isSimpleUser = !isVendorView;
 
   const code = getOrderDisplayCode(order);
   const created = order?.created_at
@@ -273,7 +274,7 @@ export default function OrderReceipt(props: {
         backgroundColor: "#ffffff",
       });
 
-      const filename = `${isVendor ? "Facture" : "Recu"}-${code}.png`;
+      const filename = `${isVendorView ? "Facture" : "Recu"}-${code}.png`;
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], filename, { type: "image/png" });
 
@@ -281,8 +282,8 @@ export default function OrderReceipt(props: {
 
       if (nav?.share && (!nav?.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({
-          title: isVendor ? "Facture vendeur" : "Reçu Duumini",
-          text: isVendor ? "Facture vendeur." : "Reçu.",
+          title: isVendorView ? "Facture vendeur" : "Reçu Duumini",
+          text: isVendorView ? "Facture vendeur." : "Reçu.",
           files: [file],
         });
         return;
@@ -308,7 +309,7 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-wrap{
-          width: ${isVendor ? "760px" : "302px"};
+          width: ${isSimpleUser ? "302px" : "760px"};
           max-width: 100%;
           margin: 0 auto;
           font-family: Arial, Helvetica, sans-serif;
@@ -636,7 +637,7 @@ export default function OrderReceipt(props: {
         {!hidePrintButton ? (
           <div className="dm-actions dm-no-print">
             <button className="dm-btn" type="button" onClick={printTicket}>
-              {isVendor ? "Imprimer la facture vendeur" : "Imprimer le reçu"}
+              {isVendorView ? "Imprimer la facture vendeur" : "Imprimer le reçu"}
             </button>
 
             <button
@@ -665,7 +666,7 @@ export default function OrderReceipt(props: {
             </div>
 
             <div className="dm-r-name">
-              {isVendor ? (companyCommercialName || companyLegalName) : shopName}
+              {isVendorView ? (companyCommercialName || companyLegalName) : shopName}
             </div>
             <div className="dm-r-slogan">{slogan}</div>
 
@@ -678,15 +679,15 @@ export default function OrderReceipt(props: {
 
             <div className="dm-r-meta">
               <div>
-                <b>{isVendor ? "FACTURE" : "REÇU"}</b> • #{code}
+                <b>{isVendorView ? "FACTURE" : "REÇU"}</b> • #{code}
               </div>
               <div>{created}</div>
-              {!isVendor && !!hotlinePhone && <div>Hotline: {hotlinePhone}</div>}
+              {isSimpleUser && !!hotlinePhone && <div>Hotline: {hotlinePhone}</div>}
             </div>
           </div>
 
           <div className="dm-r-body">
-            {isVendor ? (
+            {isVendorView ? (
               <>
                 <div className="dm-r-invoice-head">
                   <div className="dm-r-card">
@@ -951,11 +952,11 @@ export default function OrderReceipt(props: {
             </div>
 
             <div className="dm-r-footer">
-              {isVendor
+              {isVendorView
                 ? "Facture vendeur — Duumini"
                 : "Merci pour votre commande — Duumini"}
 
-              {(isVendor || isAdmin) && (
+              {isVendorView && (
                 <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
                   • Net vendeur: {mad(summary.vendorNet)}
                 </div>
