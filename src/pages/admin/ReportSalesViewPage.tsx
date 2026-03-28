@@ -89,6 +89,35 @@ export default function ReportSalesViewPage() {
     return Array.isArray(details?.payment_breakdown) ? details.payment_breakdown : [];
   }, [details]);
 
+  const grossItemsAmount = useMemo(() => {
+    return num(
+      details?.gross_items_amount ??
+        details?.gross_products_amount ??
+        details?.items_subtotal
+    );
+  }, [details]);
+
+  const adminDiscountAmount = useMemo(() => {
+    return num(
+      details?.admin_discount_amount ??
+        details?.discount_amount ??
+        details?.reduction_amount
+    );
+  }, [details]);
+
+  const netItemsAmount = useMemo(() => {
+    const direct = num(
+      details?.net_items_amount ??
+        details?.discounted_items_amount
+    );
+    if (direct > 0) return direct;
+
+    const reportItems = num(report?.items_amount);
+    if (reportItems > 0) return reportItems;
+
+    return Math.max(0, grossItemsAmount - adminDiscountAmount);
+  }, [details, report, grossItemsAmount, adminDiscountAmount]);
+
   const paidAmount = useMemo(() => {
     if (!report) return 0;
 
@@ -108,11 +137,7 @@ export default function ReportSalesViewPage() {
 
     if (paymentBreakdown.length) {
       return paymentBreakdown.reduce((sum: number, row: any) => {
-        const status = String(row?.payment_status || "").toUpperCase();
-        if (["PAID", "PARTIAL", "PARTIALLY_PAID"].includes(status)) {
-          return sum + num(row?.amount);
-        }
-        return sum;
+        return sum + num(row?.paid_amount);
       }, 0);
     }
 
@@ -153,7 +178,9 @@ export default function ReportSalesViewPage() {
       ``,
       `Résumé des ventes`,
       `- Nombre de commandes : ${report.orders_count ?? 0}`,
-      `- Montant produits : ${money(report.items_amount, report.currency)}`,
+      `- Montant produits brut : ${money(grossItemsAmount, report.currency)}`,
+      `- Réduction admin : ${money(adminDiscountAmount, report.currency)}`,
+      `- Montant produits net : ${money(netItemsAmount, report.currency)}`,
       `- Livraison : ${money(report.delivery_amount, report.currency)}`,
       `- Total ventes : ${money(report.total_amount, report.currency)}`,
       ``,
@@ -164,7 +191,14 @@ export default function ReportSalesViewPage() {
       ``,
       `Merci d’utiliser Duumini`,
     ].join("\n");
-  }, [report, paidAmount, remainingAmount]);
+  }, [
+    report,
+    grossItemsAmount,
+    adminDiscountAmount,
+    netItemsAmount,
+    paidAmount,
+    remainingAmount,
+  ]);
 
   const getReceiptFileName = () => {
     if (!report) return "duumini-rapport.png";
@@ -919,8 +953,20 @@ export default function ReportSalesViewPage() {
                   </div>
 
                   <div className="line-row">
-                    <div className="line-label">Montant produits</div>
-                    <div className="line-value">{money(report.items_amount, report.currency)}</div>
+                    <div className="line-label">Montant produits brut</div>
+                    <div className="line-value">{money(grossItemsAmount, report.currency)}</div>
+                  </div>
+
+                  <div className="line-row">
+                    <div className="line-label">Réduction admin</div>
+                    <div className="line-value warn">
+                      {money(adminDiscountAmount, report.currency)}
+                    </div>
+                  </div>
+
+                  <div className="line-row">
+                    <div className="line-label">Montant produits net</div>
+                    <div className="line-value">{money(netItemsAmount, report.currency)}</div>
                   </div>
 
                   <div className="line-row">
@@ -938,8 +984,8 @@ export default function ReportSalesViewPage() {
                   <div className="section-title">Résumé financier</div>
 
                   <div className="line-row">
-                    <div className="line-label">Montant produits</div>
-                    <div className="line-value">{money(report.items_amount, report.currency)}</div>
+                    <div className="line-label">Produits nets</div>
+                    <div className="line-value">{money(netItemsAmount, report.currency)}</div>
                   </div>
 
                   <div className="line-row">
@@ -1007,7 +1053,8 @@ export default function ReportSalesViewPage() {
                         <tr>
                           <th>Statut</th>
                           <th>Commandes</th>
-                          <th>Montant</th>
+                          <th>Montant total</th>
+                          <th>Montant payé</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1016,6 +1063,7 @@ export default function ReportSalesViewPage() {
                             <td>{row?.payment_status || "—"}</td>
                             <td>{Number(row?.cnt || 0)}</td>
                             <td>{money(row?.amount, report.currency)}</td>
+                            <td>{money(row?.paid_amount, report.currency)}</td>
                           </tr>
                         ))}
                       </tbody>
