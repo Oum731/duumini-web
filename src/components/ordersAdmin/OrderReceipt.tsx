@@ -207,7 +207,6 @@ export default function OrderReceipt(props: {
     vendorCompany?.ice || vendorCompany?.ICE || "002641145000090";
 
   const companyPhone = vendorCompany?.phone || hotlinePhone || "";
-
   const companyEmail = vendorCompany?.email || "";
 
   const totalHT = Math.max(0, summary.discountedItemsAmount);
@@ -339,6 +338,16 @@ export default function OrderReceipt(props: {
     }
   }
 
+  const receiptRows = [
+    { label: "Client", value: fullName },
+    { label: "Téléphone", value: String(phone) },
+    { label: "Ville", value: city },
+    { label: "Commune", value: commune },
+    { label: "Quartier", value: district },
+    { label: "Adresse", value: addressLine },
+    { label: "Livraison", value: fBadge.text },
+  ];
+
   return (
     <>
       <style>{`
@@ -356,7 +365,7 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-wrap{
-          width:${isVendorView ? "860px" : "360px"};
+          width:${isVendorView ? "1000px" : "1000px"};
           max-width:100%;
           margin:0 auto;
           font-family:Inter, Arial, Helvetica, sans-serif;
@@ -366,43 +375,42 @@ export default function OrderReceipt(props: {
         .dm-r-paper{
           background:#fff;
           border:1px solid rgba(17,17,17,.06);
-          border-radius:20px;
+          border-radius:14px;
           overflow:hidden;
-          box-shadow:0 16px 42px rgba(17,17,17,.08);
+          box-shadow:0 8px 24px rgba(17,17,17,.06);
         }
 
         .dm-r-topbar{
-          height:6px;
+          height:4px;
           background:linear-gradient(90deg, #FFD000 0%, #FFE04D 50%, #FFD000 100%);
         }
 
         .dm-r-header{
-          padding:22px 26px 18px;
+          padding:12px 16px 10px;
           border-bottom:1px solid var(--dm-line);
           background:
-            radial-gradient(circle at top left, rgba(255,208,0,.10), transparent 28%),
+            radial-gradient(circle at top left, rgba(255,208,0,.09), transparent 28%),
             linear-gradient(180deg, #fff 0%, #fcfcfd 100%);
         }
 
         .dm-r-head-main{
-          display:flex;
-          justify-content:space-between;
-          align-items:flex-start;
-          gap:18px;
+          display:grid;
+          grid-template-columns:1fr auto;
+          gap:12px;
+          align-items:start;
         }
 
         .dm-r-brand{
           display:flex;
-          gap:14px;
+          gap:10px;
           align-items:flex-start;
-          flex:1;
           min-width:0;
         }
 
         .dm-r-logo{
-          width:60px;
-          height:60px;
-          border-radius:16px;
+          width:44px;
+          height:44px;
+          border-radius:10px;
           overflow:hidden;
           border:1px solid rgba(0,0,0,.08);
           background:#fff;
@@ -410,7 +418,6 @@ export default function OrderReceipt(props: {
           align-items:center;
           justify-content:center;
           flex:0 0 auto;
-          box-shadow:0 4px 12px rgba(0,0,0,.06);
         }
 
         .dm-r-logo img{
@@ -424,73 +431,86 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-name{
-          font-size:28px;
+          font-size:18px;
           font-weight:900;
           line-height:1;
-          letter-spacing:.4px;
+          letter-spacing:.3px;
         }
 
         .dm-r-slogan{
-          margin-top:6px;
+          margin-top:4px;
           color:var(--dm-muted);
-          font-size:13px;
-          font-weight:600;
-          line-height:1.4;
+          font-size:10px;
+          font-weight:700;
+          line-height:1.3;
           word-break:break-word;
           overflow-wrap:anywhere;
         }
 
         .dm-r-meta{
           text-align:right;
-          min-width:220px;
+          min-width:200px;
         }
 
         .dm-r-badge{
           display:inline-flex;
           align-items:center;
           justify-content:center;
-          padding:6px 11px;
+          padding:4px 8px;
           border-radius:999px;
           background:var(--dm-yellow-soft);
           border:1px solid rgba(17,17,17,.06);
           color:#2D2A1F;
-          font-size:11px;
+          font-size:10px;
           font-weight:900;
-          margin-bottom:10px;
+          margin-bottom:6px;
         }
 
         .dm-r-doc-title{
-          font-size:28px;
+          font-size:18px;
           font-weight:900;
-          letter-spacing:.8px;
+          letter-spacing:.5px;
           line-height:1;
         }
 
         .dm-r-doc-sub{
-          margin-top:6px;
+          margin-top:4px;
           color:var(--dm-muted);
-          font-size:13px;
+          font-size:10px;
           font-weight:700;
-          line-height:1.45;
+          line-height:1.35;
         }
 
         .dm-r-body{
-          padding:24px 26px 26px;
-          font-size:13px;
+          padding:12px 16px 14px;
+          font-size:11px;
         }
 
-        .dm-r-stack-top{
+        .dm-r-grid-2{
           display:grid;
-          grid-template-columns:1fr;
-          gap:14px;
-          margin-bottom:18px;
+          grid-template-columns:1fr 1fr;
+          gap:10px;
+          margin-bottom:10px;
+        }
+
+        .dm-r-grid-main{
+          display:grid;
+          grid-template-columns:minmax(0, 1.35fr) minmax(290px, .9fr);
+          gap:10px;
+          align-items:start;
+        }
+
+        .dm-r-side-stack{
+          display:grid;
+          gap:10px;
         }
 
         .dm-r-panel{
           border:1px solid var(--dm-line);
-          border-radius:16px;
+          border-radius:10px;
           background:#fff;
-          padding:16px;
+          padding:10px 11px;
+          min-width:0;
         }
 
         .dm-r-panel-soft{
@@ -498,29 +518,29 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-panel-title{
-          font-size:11px;
+          font-size:9px;
           text-transform:uppercase;
-          letter-spacing:1px;
+          letter-spacing:.9px;
           color:var(--dm-muted);
           font-weight:900;
-          margin-bottom:12px;
+          margin-bottom:7px;
         }
 
         .dm-r-company-name{
-          font-size:18px;
+          font-size:14px;
           font-weight:900;
           line-height:1.2;
         }
 
         .dm-r-company-lines{
           display:grid;
-          gap:7px;
-          margin-top:12px;
+          gap:4px;
+          margin-top:8px;
         }
 
         .dm-r-company-line{
-          font-size:13px;
-          line-height:1.45;
+          font-size:11px;
+          line-height:1.3;
           color:#222;
           font-weight:600;
           word-break:break-word;
@@ -529,13 +549,13 @@ export default function OrderReceipt(props: {
 
         .dm-r-info-list{
           display:grid;
-          gap:10px;
+          gap:6px;
         }
 
         .dm-r-info-row{
           display:grid;
-          grid-template-columns:120px 1fr;
-          gap:10px;
+          grid-template-columns:90px 1fr;
+          gap:8px;
           align-items:start;
         }
 
@@ -560,7 +580,7 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-section{
-          margin-top:16px;
+          margin-top:10px;
         }
 
         .dm-r-section:first-child{
@@ -568,17 +588,17 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-section-title{
-          font-size:12px;
+          font-size:10px;
           font-weight:900;
           text-transform:uppercase;
-          letter-spacing:.9px;
-          margin-bottom:10px;
+          letter-spacing:.7px;
+          margin-bottom:6px;
           color:#202020;
         }
 
         .dm-r-table-wrap{
           border:1px solid var(--dm-line);
-          border-radius:16px;
+          border-radius:10px;
           overflow:hidden;
           background:#fff;
         }
@@ -590,7 +610,7 @@ export default function OrderReceipt(props: {
 
         .dm-r-table th,
         .dm-r-table td{
-          padding:12px;
+          padding:7px 8px;
           border-bottom:1px solid var(--dm-line);
           vertical-align:middle;
         }
@@ -598,7 +618,7 @@ export default function OrderReceipt(props: {
         .dm-r-table th{
           background:#FAFAFB;
           text-align:left;
-          font-size:12px;
+          font-size:10px;
           font-weight:900;
           color:#202020;
         }
@@ -608,8 +628,9 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-table td{
-          font-size:13px;
+          font-size:10.5px;
           font-weight:700;
+          line-height:1.25;
         }
 
         .dm-r-table td.num{
@@ -620,43 +641,37 @@ export default function OrderReceipt(props: {
 
         .dm-r-line-name{
           font-weight:900;
-          line-height:1.35;
+          line-height:1.25;
         }
 
-        .dm-r-totals-wrap{
-          margin-top:16px;
-          display:flex;
-          justify-content:flex-end;
+        .dm-r-totals{
+          width:100%;
+          border:1px solid var(--dm-line);
+          border-radius:10px;
+          overflow:hidden;
+          background:#fff;
         }
 
-        ..dm-r-totals{
-  width:100%;
-  max-width:420px;
-  border:1px solid var(--dm-line);
-  border-radius:16px;
-  overflow:hidden;
-  background:#fff;
-}
         .dm-r-totals-head{
           background:#FAFAFB;
-          padding:12px 14px;
-          font-size:11px;
+          padding:8px 10px;
+          font-size:9px;
           text-transform:uppercase;
-          letter-spacing:.9px;
+          letter-spacing:.7px;
           color:var(--dm-muted);
           font-weight:900;
           border-bottom:1px solid var(--dm-line);
         }
 
-       .dm-r-total-row{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
-  gap:16px;
-  padding:12px 16px;
-  border-bottom:1px solid var(--dm-line);
-  font-size:13px;
-}
+        .dm-r-total-row{
+          display:flex;
+          justify-content:space-between;
+          align-items:flex-start;
+          gap:10px;
+          padding:8px 10px;
+          border-bottom:1px solid var(--dm-line);
+          font-size:10.5px;
+        }
 
         .dm-r-total-row:last-child{
           border-bottom:none;
@@ -668,13 +683,13 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-total-row .value{
-  text-align:right;
-  font-weight:900;
-  max-width:240px;
-  white-space:normal;
-  word-break:break-word;
-  overflow-wrap:anywhere;
-}
+          text-align:right;
+          font-weight:900;
+          max-width:180px;
+          white-space:normal;
+          word-break:break-word;
+          overflow-wrap:anywhere;
+        }
 
         .dm-r-total-row-strong{
           background:#FFFDF2;
@@ -682,92 +697,55 @@ export default function OrderReceipt(props: {
 
         .dm-r-total-row-strong .label,
         .dm-r-total-row-strong .value{
-          font-size:16px;
+          font-size:12px;
           font-weight:900;
           color:#111;
         }
 
         .dm-r-note-box{
           border:1px dashed var(--dm-line-dark);
-          border-radius:16px;
+          border-radius:10px;
           background:#fff;
-          padding:14px 16px;
+          padding:9px 10px;
         }
 
         .dm-r-note-title{
-          font-size:11px;
+          font-size:9px;
           text-transform:uppercase;
-          letter-spacing:.8px;
+          letter-spacing:.7px;
           color:var(--dm-muted);
           font-weight:900;
-          margin-bottom:8px;
+          margin-bottom:5px;
         }
 
         .dm-r-note-body{
-          font-size:13px;
-          line-height:1.55;
+          font-size:10.5px;
+          line-height:1.35;
           font-weight:700;
           color:#2F2F2F;
           white-space:pre-wrap;
           word-break:break-word;
         }
 
-        .dm-r-client-list{
+        .dm-r-mini-grid{
           display:grid;
-          gap:9px;
+          grid-template-columns:1fr 1fr 1fr;
+          gap:6px 12px;
         }
 
-        .dm-r-client-row{
+        .dm-r-mini-row{
           display:grid;
-          grid-template-columns:105px 1fr;
-          gap:10px;
+          grid-template-columns:72px 1fr;
+          gap:6px;
           align-items:start;
-        }
-
-        .dm-r-divider{
-          height:1px;
-          background:var(--dm-line);
-          margin:16px 0;
-        }
-
-        .dm-r-items-title{
-          font-weight:900;
-          letter-spacing:.7px;
-          font-size:12px;
-          margin-bottom:10px;
-          text-transform:uppercase;
-        }
-
-        .dm-r-item{
-          padding:10px 0;
-          border-top:1px solid var(--dm-line);
-        }
-
-        .dm-r-item:first-of-type{
-          border-top:none;
-        }
-
-        .dm-r-item-name{
-          font-weight:900;
-          line-height:1.35;
-          word-break:break-word;
-          overflow-wrap:anywhere;
-        }
-
-        .dm-r-item-sub{
-          display:flex;
-          justify-content:space-between;
-          gap:10px;
-          margin-top:5px;
-          font-weight:800;
-          color:#333;
+          min-width:0;
         }
 
         .dm-r-payment-box{
           border:1px solid var(--dm-line);
-          border-radius:16px;
+          border-radius:10px;
           background:#FCFCFD;
-          padding:14px 16px;
+          padding:9px 10px;
         }
 
         .dm-r-payment-line{
@@ -775,7 +753,7 @@ export default function OrderReceipt(props: {
           justify-content:space-between;
           align-items:flex-start;
           gap:10px;
-          font-size:13px;
+          font-size:10.5px;
         }
 
         .dm-r-payment-line .left{
@@ -790,29 +768,21 @@ export default function OrderReceipt(props: {
         }
 
         .dm-r-bottom{
-          margin-top:18px;
+          margin-top:10px;
           display:grid;
-          grid-template-columns:1fr 150px;
-          gap:16px;
+          grid-template-columns:1fr 88px;
+          gap:10px;
           align-items:end;
         }
 
         .dm-r-footer{
           border-top:1px solid var(--dm-line);
-          padding-top:14px;
+          padding-top:8px;
         }
 
         .dm-r-footer-main{
-          font-size:14px;
+          font-size:11px;
           font-weight:900;
-        }
-
-        .dm-r-footer-sub{
-          margin-top:6px;
-          font-size:12px;
-          color:var(--dm-muted);
-          font-weight:700;
-          line-height:1.5;
         }
 
         .dm-r-qr{
@@ -820,23 +790,23 @@ export default function OrderReceipt(props: {
           flex-direction:column;
           align-items:center;
           justify-content:center;
-          gap:8px;
+          gap:5px;
           border:1px solid var(--dm-line);
-          border-radius:16px;
-          padding:12px;
+          border-radius:10px;
+          padding:7px;
           background:#fff;
         }
 
         .dm-r-qrtext{
-          font-size:11px;
-          line-height:1.35;
+          font-size:8.5px;
+          line-height:1.2;
           text-align:center;
           color:var(--dm-muted);
           font-weight:800;
         }
 
         .dm-actions{
-          margin-bottom:12px;
+          margin-bottom:10px;
           display:flex;
           gap:8px;
           justify-content:center;
@@ -844,30 +814,29 @@ export default function OrderReceipt(props: {
         }
 
         .dm-btn{
-          border-radius:14px;
-          padding:11px 14px;
+          border-radius:12px;
+          padding:10px 13px;
           font-weight:900;
-          font-size:13px;
+          font-size:12px;
           cursor:pointer;
           border:1px solid var(--dm-black);
           background:var(--dm-black);
           color:var(--dm-yellow);
           width:100%;
-          max-width:320px;
-          box-shadow:0 8px 20px rgba(17,17,17,.12);
+          max-width:280px;
         }
 
         .dm-btn-ghost{
-          border-radius:14px;
-          padding:11px 14px;
+          border-radius:12px;
+          padding:10px 13px;
           font-weight:900;
-          font-size:13px;
+          font-size:12px;
           cursor:pointer;
           border:1px solid rgba(0,0,0,.12);
           background:#fff;
           color:var(--dm-black);
           width:100%;
-          max-width:320px;
+          max-width:280px;
         }
 
         .dm-btn:disabled,
@@ -876,54 +845,55 @@ export default function OrderReceipt(props: {
           cursor:not-allowed;
         }
 
-        @media (max-width: 780px){
+        @media (max-width: 900px){
           .dm-r-wrap{
             width:100%;
           }
 
-          .dm-r-header{
-            padding:18px 16px 16px;
-          }
-
-          .dm-r-body{
-            padding:16px;
+          .dm-r-grid-2,
+          .dm-r-grid-main,
+          .dm-r-mini-grid,
+          .dm-r-bottom{
+            grid-template-columns:1fr;
           }
 
           .dm-r-head-main{
-            flex-direction:column;
-            align-items:stretch;
+            grid-template-columns:1fr;
           }
 
           .dm-r-meta{
             text-align:left;
             min-width:0;
           }
+        }
 
-          .dm-r-bottom{
-            grid-template-columns:1fr;
+        @media (max-width: 640px){
+          .dm-r-header{
+            padding:12px;
+          }
+
+          .dm-r-body{
+            padding:12px;
+          }
+
+          .dm-r-name,
+          .dm-r-doc-title{
+            font-size:16px;
           }
 
           .dm-r-table th,
           .dm-r-table td{
-            padding:10px 8px;
-            font-size:12px;
+            padding:6px;
           }
 
           .dm-r-info-row,
-          .dm-r-client-row{
-            grid-template-columns:96px 1fr;
+          .dm-r-mini-row{
+            grid-template-columns:78px 1fr;
           }
 
-          .dm-r-name{
-            font-size:24px;
-          }
-
-          .dm-r-doc-title{
-            font-size:24px;
-          }
-
-          .dm-r-totals{
-            max-width:100%;
+          .dm-r-logo{
+            width:40px;
+            height:40px;
           }
         }
 
@@ -937,8 +907,12 @@ export default function OrderReceipt(props: {
           }
 
           @page{
-            size:A4;
-            margin:10mm;
+            size:A4 portrait;
+            margin:8mm;
+          }
+
+          html, body{
+            background:#fff !important;
           }
 
           *{
@@ -964,6 +938,37 @@ export default function OrderReceipt(props: {
           #duu-print-root .dm-r-wrap{
             width:100% !important;
             max-width:100% !important;
+          }
+
+          #duu-print-root .dm-r-header{
+            padding:10px 12px 8px !important;
+          }
+
+          #duu-print-root .dm-r-body{
+            padding:10px 12px 10px !important;
+            font-size:10px !important;
+          }
+
+          #duu-print-root .dm-r-grid-2,
+          #duu-print-root .dm-r-grid-main{
+            gap:8px !important;
+          }
+
+          #duu-print-root .dm-r-panel,
+          #duu-print-root .dm-r-payment-box,
+          #duu-print-root .dm-r-note-box,
+          #duu-print-root .dm-r-totals{
+            break-inside:avoid;
+            page-break-inside:avoid;
+          }
+
+          #duu-print-root .dm-r-table-wrap{
+            break-inside:auto;
+            page-break-inside:auto;
+          }
+
+          #duu-print-root .dm-r-bottom{
+            margin-top:8px !important;
           }
         }
       `}</style>
@@ -1006,7 +1011,7 @@ export default function OrderReceipt(props: {
                 </div>
 
                 <div className="dm-r-brand-text">
-                  
+                  <div className="dm-r-name">{shopName}</div>
                   <div className="dm-r-slogan">{slogan}</div>
                 </div>
               </div>
@@ -1039,10 +1044,9 @@ export default function OrderReceipt(props: {
           <div className="dm-r-body">
             {isVendorView ? (
               <>
-                <div className="dm-r-stack-top">
+                <div className="dm-r-grid-2">
                   <div className="dm-r-panel">
                     <div className="dm-r-panel-title">Entreprise</div>
-
                     <div className="dm-r-company-name">{companyLegalName}</div>
 
                     {companyInfoRows.length ? (
@@ -1064,27 +1068,22 @@ export default function OrderReceipt(props: {
                         <div className="dm-r-k">Facture N°</div>
                         <div className="dm-r-v">{code}</div>
                       </div>
-
                       <div className="dm-r-info-row">
                         <div className="dm-r-k">Date</div>
                         <div className="dm-r-v">{created}</div>
                       </div>
-
                       <div className="dm-r-info-row">
                         <div className="dm-r-k">Client</div>
                         <div className="dm-r-v">{fullName}</div>
                       </div>
-
                       <div className="dm-r-info-row">
                         <div className="dm-r-k">Téléphone</div>
                         <div className="dm-r-v">{String(phone)}</div>
                       </div>
-
                       <div className="dm-r-info-row">
                         <div className="dm-r-k">Ville</div>
                         <div className="dm-r-v">{city}</div>
                       </div>
-
                       <div className="dm-r-info-row">
                         <div className="dm-r-k">Adresse</div>
                         <div className="dm-r-v">{addressLine}</div>
@@ -1093,131 +1092,131 @@ export default function OrderReceipt(props: {
                   </div>
                 </div>
 
-                <div className="dm-r-section">
-                  <div className="dm-r-section-title">Produits facturés</div>
+                <div className="dm-r-grid-main">
+                  <div className="dm-r-section" style={{ marginTop: 0 }}>
+                    <div className="dm-r-section-title">Produits facturés</div>
 
-                  <div className="dm-r-table-wrap">
-                    <table className="dm-r-table">
-                      <thead>
-                        <tr>
-                          <th>Désignation</th>
-                          <th>Qté</th>
-                          <th>PU</th>
-                          <th>Montant</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Array.isArray(order?.items) && order.items.length ? (
-                          order.items.map((it: any, idx: number) => {
-                            const name =
-                              it.product_name ||
-                              it.name ||
-                              `Produit #${it.product_id}`;
-                            const variant = [it.variant_size, it.variant_color]
-                              .filter(Boolean)
-                              .join(" / ");
-                            const displayName = variant
-                              ? `${name} (${variant})`
-                              : name;
-
-                            const qty = Number(it.qty || 1);
-                            const unit = Number(it.unit_price || it.price || 0);
-                            const lineTotal = +(qty * unit).toFixed(2);
-
-                            return (
-                              <tr key={idx}>
-                                <td>
-                                  <div className="dm-r-line-name">
-                                    {displayName}
-                                  </div>
-                                </td>
-                                <td className="num">{qty}</td>
-                                <td className="num">{money(unit, currency)}</td>
-                                <td className="num">
-                                  {money(lineTotal, currency)}
-                                </td>
-                              </tr>
-                            );
-                          })
-                        ) : (
+                    <div className="dm-r-table-wrap">
+                      <table className="dm-r-table">
+                        <thead>
                           <tr>
-                            <td colSpan={4}>Aucun produit.</td>
+                            <th>Désignation</th>
+                            <th>Qté</th>
+                            <th>PU</th>
+                            <th>Montant</th>
                           </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                        </thead>
+                        <tbody>
+                          {Array.isArray(order?.items) && order.items.length ? (
+                            order.items.map((it: any, idx: number) => {
+                              const name =
+                                it.product_name ||
+                                it.name ||
+                                `Produit #${it.product_id}`;
+                              const variant = [it.variant_size, it.variant_color]
+                                .filter(Boolean)
+                                .join(" / ");
+                              const displayName = variant
+                                ? `${name} (${variant})`
+                                : name;
 
-                <div className="dm-r-totals-wrap">
-                  <div className="dm-r-totals">
-                    <div className="dm-r-totals-head">Résumé financier</div>
+                              const qty = Number(it.qty || 1);
+                              const unit = Number(it.unit_price || it.price || 0);
+                              const lineTotal = +(qty * unit).toFixed(2);
 
-                    <div className="dm-r-total-row">
-                      <div className="label">Sous-total</div>
-                      <div className="value">
-                        {money(summary.itemsSubtotal, currency)}
-                      </div>
-                    </div>
-
-                    {summary.discountAmount > 0 ? (
-                      <>
-                        <div className="dm-r-total-row">
-                          <div className="label">Type réduction</div>
-                          <div className="value">{discountText}</div>
-                        </div>
-
-                        <div className="dm-r-total-row">
-                          <div className="label">Réduction</div>
-                          <div className="value dm-r-v-danger">
-                            - {money(summary.discountAmount, currency)}
-                          </div>
-                        </div>
-
-                        <div className="dm-r-total-row">
-                          <div className="label">Après réduction</div>
-                          <div className="value dm-r-v-success">
-                            {money(summary.discountedItemsAmount, currency)}
-                          </div>
-                        </div>
-                      </>
-                    ) : null}
-
-                    <div className="dm-r-total-row">
-                      <div className="label">Livraison</div>
-                      <div className="value">
-                        {money(summary.deliveryFee, currency)}
-                      </div>
-                    </div>
-
-                    <div className="dm-r-total-row dm-r-total-row-strong">
-                      <div className="label">TOTAL TTC</div>
-                      <div className="value">{money(totalTTC, currency)}</div>
-                    </div>
-
-                    <div className="dm-r-total-row">
-                      <div className="label">Règlement</div>
-                      <div className="value">{paymentLine || "—"}</div>
+                              return (
+                                <tr key={idx}>
+                                  <td>
+                                    <div className="dm-r-line-name">
+                                      {displayName}
+                                    </div>
+                                  </td>
+                                  <td className="num">{qty}</td>
+                                  <td className="num">{money(unit, currency)}</td>
+                                  <td className="num">
+                                    {money(lineTotal, currency)}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={4}>Aucun produit.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                </div>
 
-                <div className="dm-r-section">
-                  {pay?.note ? (
-                    <div className="dm-r-note-box">
-                      <div className="dm-r-note-title">Note</div>
-                      <div className="dm-r-note-body">{String(pay.note)}</div>
-                    </div>
-                  ) : (
-                    <div className="dm-r-note-box">
-                      <div className="dm-r-note-title">Informations</div>
-                      <div className="dm-r-note-body">
-                        Document généré automatiquement par Duumini.
-                        {"\n"}
-                        TVA non appliquée pour le moment.
+                  <div className="dm-r-side-stack">
+                    <div className="dm-r-totals">
+                      <div className="dm-r-totals-head">Résumé financier</div>
+
+                      <div className="dm-r-total-row">
+                        <div className="label">Sous-total</div>
+                        <div className="value">
+                          {money(summary.itemsSubtotal, currency)}
+                        </div>
+                      </div>
+
+                      {summary.discountAmount > 0 ? (
+                        <>
+                          <div className="dm-r-total-row">
+                            <div className="label">Type réduction</div>
+                            <div className="value">{discountText}</div>
+                          </div>
+
+                          <div className="dm-r-total-row">
+                            <div className="label">Réduction</div>
+                            <div className="value dm-r-v-danger">
+                              - {money(summary.discountAmount, currency)}
+                            </div>
+                          </div>
+
+                          <div className="dm-r-total-row">
+                            <div className="label">Après réduction</div>
+                            <div className="value dm-r-v-success">
+                              {money(summary.discountedItemsAmount, currency)}
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+
+                      <div className="dm-r-total-row">
+                        <div className="label">Livraison</div>
+                        <div className="value">
+                          {money(summary.deliveryFee, currency)}
+                        </div>
+                      </div>
+
+                      <div className="dm-r-total-row dm-r-total-row-strong">
+                        <div className="label">TOTAL TTC</div>
+                        <div className="value">{money(totalTTC, currency)}</div>
+                      </div>
+
+                      <div className="dm-r-total-row">
+                        <div className="label">Règlement</div>
+                        <div className="value">{paymentLine || "—"}</div>
                       </div>
                     </div>
-                  )}
+
+                    {pay?.note ? (
+                      <div className="dm-r-note-box">
+                        <div className="dm-r-note-title">Note</div>
+                        <div className="dm-r-note-body">{String(pay.note)}</div>
+                      </div>
+                    ) : (
+                      <div className="dm-r-note-box">
+                        <div className="dm-r-note-title">Informations</div>
+                        <div className="dm-r-note-body">
+                          Document généré automatiquement par Duumini.
+                          {"\n"}
+                          TVA non appliquée pour le moment.
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             ) : (
@@ -1225,140 +1224,129 @@ export default function OrderReceipt(props: {
                 <div className="dm-r-panel dm-r-panel-soft">
                   <div className="dm-r-panel-title">Informations client</div>
 
-                  <div className="dm-r-client-list">
-                    <div className="dm-r-client-row">
-                      <div className="dm-r-k">Client</div>
-                      <div className="dm-r-v">{fullName}</div>
-                    </div>
-                    <div className="dm-r-client-row">
-                      <div className="dm-r-k">Téléphone</div>
-                      <div className="dm-r-v">{String(phone)}</div>
-                    </div>
-                    <div className="dm-r-client-row">
-                      <div className="dm-r-k">Ville</div>
-                      <div className="dm-r-v">{city}</div>
-                    </div>
-                    <div className="dm-r-client-row">
-                      <div className="dm-r-k">Commune</div>
-                      <div className="dm-r-v">{commune}</div>
-                    </div>
-                    <div className="dm-r-client-row">
-                      <div className="dm-r-k">Quartier</div>
-                      <div className="dm-r-v">{district}</div>
-                    </div>
-                    <div className="dm-r-client-row">
-                      <div className="dm-r-k">Adresse</div>
-                      <div className="dm-r-v">{addressLine}</div>
-                    </div>
-                    <div className="dm-r-client-row">
-                      <div className="dm-r-k">Livraison</div>
-                      <div className="dm-r-v">{fBadge.text}</div>
-                    </div>
+                  <div className="dm-r-mini-grid">
+                    {receiptRows.map((row) => (
+                      <div className="dm-r-mini-row" key={row.label}>
+                        <div className="dm-r-k">{row.label}</div>
+                        <div className="dm-r-v">{row.value}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                <div className="dm-r-section">
-                  <div className="dm-r-items-title">Détails produits</div>
+                <div className="dm-r-grid-main" style={{ marginTop: 10 }}>
+                  <div className="dm-r-section" style={{ marginTop: 0 }}>
+                    <div className="dm-r-section-title">Détails produits</div>
 
-                  {Array.isArray(order?.items) && order.items.length ? (
-                    order.items.map((it: any, idx: number) => {
-                      const name =
-                        it.product_name ||
-                        it.name ||
-                        `Produit #${it.product_id}`;
-                      const variant = [it.variant_size, it.variant_color]
-                        .filter(Boolean)
-                        .join(" / ");
-                      const displayName = variant
-                        ? `${name} (${variant})`
-                        : name;
+                    <div className="dm-r-table-wrap">
+                      <table className="dm-r-table">
+                        <thead>
+                          <tr>
+                            <th>Produit</th>
+                            <th>Qté</th>
+                            <th>PU</th>
+                            <th>Montant</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Array.isArray(order?.items) && order.items.length ? (
+                            order.items.map((it: any, idx: number) => {
+                              const name =
+                                it.product_name ||
+                                it.name ||
+                                `Produit #${it.product_id}`;
+                              const variant = [it.variant_size, it.variant_color]
+                                .filter(Boolean)
+                                .join(" / ");
+                              const displayName = variant
+                                ? `${name} (${variant})`
+                                : name;
 
-                      const qty = Number(it.qty || 1);
-                      const unit = Number(it.unit_price || it.price || 0);
-                      const lineTotal = qty * unit;
+                              const qty = Number(it.qty || 1);
+                              const unit = Number(it.unit_price || it.price || 0);
+                              const lineTotal = +(qty * unit).toFixed(2);
 
-                      return (
-                        <div className="dm-r-item" key={idx}>
-                          <div className="dm-r-item-name">{displayName}</div>
-                          <div className="dm-r-item-sub">
-                            <div>
-                              {mad(unit)} × {qty}
-                            </div>
-                            <div style={{ fontWeight: 900 }}>
-                              {mad(lineTotal)}
+                              return (
+                                <tr key={idx}>
+                                  <td>
+                                    <div className="dm-r-line-name">
+                                      {displayName}
+                                    </div>
+                                  </td>
+                                  <td className="num">{qty}</td>
+                                  <td className="num">{mad(unit)}</td>
+                                  <td className="num">{mad(lineTotal)}</td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={4}>Aucun produit.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="dm-r-side-stack">
+                    <div className="dm-r-totals">
+                      <div className="dm-r-totals-head">Résumé</div>
+
+                      <div className="dm-r-total-row">
+                        <div className="label">Sous-total</div>
+                        <div className="value">{mad(summary.itemsSubtotal)}</div>
+                      </div>
+
+                      {summary.discountAmount > 0 ? (
+                        <>
+                          <div className="dm-r-total-row">
+                            <div className="label">Type réduction</div>
+                            <div className="value">{discountText}</div>
+                          </div>
+
+                          <div className="dm-r-total-row">
+                            <div className="label">Réduction</div>
+                            <div className="value dm-r-v-danger">
+                              - {mad(summary.discountAmount)}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div style={{ padding: "6px 0", opacity: 0.7 }}>
-                      Aucun produit.
-                    </div>
-                  )}
-                </div>
 
-                <div className="dm-r-divider" />
-
-                <div className="dm-r-totals">
-                  <div className="dm-r-totals-head">Résumé</div>
-
-                  <div className="dm-r-total-row">
-                    <div className="label">Sous-total</div>
-                    <div className="value">{mad(summary.itemsSubtotal)}</div>
-                  </div>
-
-                  {summary.discountAmount > 0 ? (
-                    <>
-                      <div className="dm-r-total-row">
-                        <div className="label">Type réduction</div>
-                        <div className="value">{discountText}</div>
-                      </div>
+                          <div className="dm-r-total-row">
+                            <div className="label">Après réduction</div>
+                            <div className="value dm-r-v-success">
+                              {mad(summary.discountedItemsAmount)}
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
 
                       <div className="dm-r-total-row">
-                        <div className="label">Réduction</div>
-                        <div className="value dm-r-v-danger">
-                          - {mad(summary.discountAmount)}
-                        </div>
+                        <div className="label">Livraison</div>
+                        <div className="value">{mad(summary.deliveryFee)}</div>
                       </div>
 
-                      <div className="dm-r-total-row">
-                        <div className="label">Après réduction</div>
-                        <div className="value dm-r-v-success">
-                          {mad(summary.discountedItemsAmount)}
-                        </div>
+                      <div className="dm-r-total-row dm-r-total-row-strong">
+                        <div className="label">TOTAL</div>
+                        <div className="value">{mad(summary.total)}</div>
                       </div>
-                    </>
-                  ) : null}
+                    </div>
 
-                  <div className="dm-r-total-row">
-                    <div className="label">Livraison</div>
-                    <div className="value">{mad(summary.deliveryFee)}</div>
-                  </div>
+                    <div className="dm-r-payment-box">
+                      <div className="dm-r-payment-line">
+                        <div className="left">Paiement</div>
+                        <div className="right">{paymentLine || "—"}</div>
+                      </div>
+                    </div>
 
-                  <div className="dm-r-total-row dm-r-total-row-strong">
-                    <div className="label">TOTAL</div>
-                    <div className="value">{mad(summary.total)}</div>
+                    {pay?.note ? (
+                      <div className="dm-r-note-box">
+                        <div className="dm-r-note-title">Note</div>
+                        <div className="dm-r-note-body">{String(pay.note)}</div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-
-                <div className="dm-r-section">
-                  <div className="dm-r-payment-box">
-                    <div className="dm-r-payment-line">
-                      <div className="left">Paiement</div>
-                      <div className="right">{paymentLine || "—"}</div>
-                    </div>
-                  </div>
-                </div>
-
-                {pay?.note ? (
-                  <div className="dm-r-section">
-                    <div className="dm-r-note-box">
-                      <div className="dm-r-note-title">Note</div>
-                      <div className="dm-r-note-body">{String(pay.note)}</div>
-                    </div>
-                  </div>
-                ) : null}
               </>
             )}
 
@@ -1366,19 +1354,17 @@ export default function OrderReceipt(props: {
               <div className="dm-r-footer">
                 <div className="dm-r-footer-main">
                   {isVendorView
-                    ? "Facture vendeur — Duumini"
+                    ? "Reçu — Duumini"
                     : "Merci pour votre commande — Duumini"}
                 </div>
-
-                
               </div>
 
               <div className="dm-r-qr">
-                <QRCode value={verifyUrl || "https://duumini.com"} size={105} />
+                <QRCode value={verifyUrl || "https://duumini.com"} size={58} />
                 <div className="dm-r-qrtext">
                   Vérification
                   <br />
-                  d’authenticité
+                  authenticité
                 </div>
               </div>
             </div>
