@@ -10,6 +10,11 @@ import {
   CalendarDays,
   CreditCard,
   FileText,
+  Search,
+  X,
+  Layers3,
+  ArrowLeft,
+  ArrowRight,
 } from "lucide-react";
 import {
   BarChart,
@@ -70,7 +75,14 @@ function toInputDate(v?: string | null) {
 }
 
 function safeErrorMessage(e: any) {
-  return e?.response?.data?.error || e?.message || "Erreur";
+  return (
+    e?.payload?.error ||
+    e?.payload?.message ||
+    e?.response?.data?.error ||
+    e?.response?.data?.message ||
+    e?.message ||
+    "Erreur"
+  );
 }
 
 function exportCsv(filename: string, rows: Array<Record<string, any>>) {
@@ -96,6 +108,16 @@ function exportCsv(filename: string, rows: Array<Record<string, any>>) {
   a.download = filename;
   a.click();
   window.URL.revokeObjectURL(url);
+}
+
+function paymentLabel(v?: string | null) {
+  const x = String(v || "").toLowerCase();
+  if (x === "cash") return "Espèces";
+  if (x === "card") return "Carte";
+  if (x === "bank") return "Banque";
+  if (x === "mobile_money") return "Mobile Money";
+  if (x === "other") return "Autre";
+  return v || "—";
 }
 
 type FormState = {
@@ -142,7 +164,7 @@ function SectionIcon({
   subtitle?: string;
 }) {
   return (
-    <div className="mb-4 flex items-start gap-3">
+    <div className="mb-5 flex items-start gap-3">
       <div className="rounded-2xl bg-[rgba(255,210,74,0.14)] p-3 text-[#d39a00]">
         {icon}
       </div>
@@ -168,6 +190,21 @@ function FieldLabel({
       {icon}
       <span>{children}</span>
     </label>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="rounded-[24px] border border-black/5 bg-white p-5 shadow-sm">
+      <div className="text-sm font-medium text-base-content/55">{label}</div>
+      <div className="mt-2 text-2xl font-bold text-base-content">{mad(value)}</div>
+    </div>
   );
 }
 
@@ -235,7 +272,7 @@ export default function ExpensesPage() {
     setError("");
 
     try {
-      const results = await Promise.allSettled([
+      const [catRes, listRes, summaryRes, groupedRes, byCatRes] = await Promise.all([
         listExpenseCategories(),
         listExpenses(params),
         getExpensesSummary({
@@ -264,75 +301,48 @@ export default function ExpensesPage() {
         }),
       ]);
 
-      const [catRes, listRes, summaryRes, groupedRes, byCatRes] = results;
-
-      if (catRes.status === "fulfilled") {
-        setCategories(Array.isArray(catRes.value?.items) ? catRes.value.items : []);
-      } else {
-        setCategories([]);
-      }
-
-      if (listRes.status === "fulfilled") {
-        setItems(Array.isArray(listRes.value?.items) ? listRes.value.items : []);
-        setPageInfo(
-          listRes.value?.pageInfo || {
-            page,
-            pageSize,
-            total: 0,
-            pages: 1,
-          }
-        );
-      } else {
-        setItems([]);
-        setPageInfo({
-          page: 1,
-          pageSize,
-          total: 0,
-          pages: 1,
-        });
-        setError(
-          listRes.reason?.response?.data?.error ||
-            listRes.reason?.message ||
-            "Erreur serveur lors du chargement des dépenses."
-        );
-      }
-
-      if (summaryRes.status === "fulfilled") {
-        setSummary({
-          today: Number(summaryRes.value?.today || 0),
-          week: Number(summaryRes.value?.week || 0),
-          month: Number(summaryRes.value?.month || 0),
-          year: Number(summaryRes.value?.year || 0),
-          filtered_total: Number(summaryRes.value?.filtered_total || 0),
-        });
-      } else {
-        setSummary({
-          today: 0,
-          week: 0,
-          month: 0,
-          year: 0,
-          filtered_total: 0,
-        });
-      }
-
-      if (groupedRes.status === "fulfilled") {
-        setGrouped(
-          Array.isArray(groupedRes.value?.items)
-            ? groupedRes.value.items.map((x: any) => ({
-                period: x.period,
-                total: Number(x.total || 0),
-              }))
-            : []
-        );
-      } else {
-        setGrouped([]);
-      }
-
-      if (byCatRes.status === "fulfilled") {
-        setByCategory(Array.isArray(byCatRes.value?.items) ? byCatRes.value.items : []);
-      } else {
-        setByCategory([]);
-      }
+      setCategories(Array.isArray(catRes) ? catRes : (catRes as any)?.items || []);
+      setItems(Array.isArray(listRes?.items) ? listRes.items : []);
+      setPageInfo({
+        page: Number(listRes?.pageInfo?.page || page),
+        pageSize: Number(listRes?.pageInfo?.pageSize || pageSize),
+        total: Number(listRes?.pageInfo?.total || 0),
+        pages: Number(listRes?.pageInfo?.pages || 1),
+      });
+      setSummary({
+        today: Number(summaryRes?.today || 0),
+        week: Number(summaryRes?.week || 0),
+        month: Number(summaryRes?.month || 0),
+        year: Number(summaryRes?.year || 0),
+        filtered_total: Number(summaryRes?.filtered_total || 0),
+      });
+      setGrouped(
+        Array.isArray(groupedRes?.items)
+          ? groupedRes.items.map((x: any) => ({
+              period: String(x?.period || "—"),
+              total: Number(x?.total || 0),
+            }))
+          : []
+      );
+      setByCategory(Array.isArray(byCatRes?.items) ? byCatRes.items : []);
+    } catch (e: any) {
+      setItems([]);
+      setGrouped([]);
+      setByCategory([]);
+      setSummary({
+        today: 0,
+        week: 0,
+        month: 0,
+        year: 0,
+        filtered_total: 0,
+      });
+      setPageInfo({
+        page: 1,
+        pageSize,
+        total: 0,
+        pages: 1,
+      });
+      setError(safeErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -346,6 +356,10 @@ export default function ExpensesPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function resetForm() {
+    setForm(emptyForm());
+  }
+
   async function handleCreateCategory() {
     if (!newCategory.trim()) return;
 
@@ -357,12 +371,16 @@ export default function ExpensesPage() {
         color: newCategoryColor || null,
       });
 
-      const nextCats = [...categories, created].sort((a, b) => a.name.localeCompare(b.name));
+      const createdObj = (created as any)?.data || created;
+      const nextCats = [...categories, createdObj].sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""))
+      );
+
       setCategories(nextCats);
       setForm((prev) => ({
         ...prev,
-        category_id: created.id,
-        category_name: created.name,
+        category_id: createdObj.id,
+        category_name: createdObj.name,
       }));
       setNewCategory("");
       setNewCategoryColor("#f4b400");
@@ -390,13 +408,18 @@ export default function ExpensesPage() {
         status: form.status,
       };
 
+      if (!payload.label) throw new Error("Le libellé est obligatoire.");
+      if (!payload.category_id && !payload.category_name) {
+        throw new Error("La catégorie est obligatoire.");
+      }
+
       if (editing && form.id) {
         await updateExpense(form.id, payload as any);
       } else {
         await createExpense(payload as any);
       }
 
-      setForm(emptyForm());
+      resetForm();
       setPage(1);
       await loadAll();
     } catch (e: any) {
@@ -416,19 +439,20 @@ export default function ExpensesPage() {
       amount: String(Number(item.amount || 0)),
       expense_date: toInputDate(item.expense_date),
       payment_method: item.payment_method || "cash",
-      status: item.status || "PAID",
+      status: (item.status || "PAID") as ExpenseStatus,
     });
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function handleDelete(id: number) {
-    if (!window.confirm("Supprimer cette dépense ?")) return;
+    if (!window.confirm("Voulez-vous vraiment annuler/supprimer cette dépense ?")) return;
 
     setDeletingId(id);
     setError("");
     try {
       await deleteExpense(id);
-      if (form.id === id) setForm(emptyForm());
+      if (form.id === id) resetForm();
       await loadAll();
     } catch (e: any) {
       setError(safeErrorMessage(e));
@@ -445,7 +469,7 @@ export default function ExpensesPage() {
   const pieData = useMemo(
     () =>
       byCategory.map((x) => ({
-        name: x.category_name,
+        name: x.category_name || "Sans catégorie",
         value: Number(x.total || 0),
         color: x.color || undefined,
       })),
@@ -453,16 +477,16 @@ export default function ExpensesPage() {
   );
 
   return (
-    <div className="min-h-screen bg-base-100 p-4 md:p-6">
+    <div className="min-h-screen bg-[#f7f7f7] p-4 md:p-6">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
         <div
-          className="overflow-hidden rounded-[28px] border border-black/5 shadow-sm"
+          className="overflow-hidden rounded-[30px] border border-black/5 shadow-sm"
           style={{
             background:
-              "linear-gradient(135deg, #111111 0%, #1c1c1c 58%, #252525 100%)",
+              "linear-gradient(135deg, #111111 0%, #1b1b1b 55%, #2a2a2a 100%)",
           }}
         >
-          <div className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between md:p-6">
+          <div className="flex flex-col gap-5 p-5 md:flex-row md:items-center md:justify-between md:p-7">
             <div className="flex items-start gap-4">
               <div
                 className="rounded-3xl p-3"
@@ -471,12 +495,13 @@ export default function ExpensesPage() {
                   color: "#111",
                 }}
               >
-                <Wallet size={26} />
+                <Wallet size={28} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Dépenses</h1>
-                <p className="mt-1 text-sm text-white/70">
-                  Suivi quotidien, hebdomadaire, mensuel et annuel des dépenses.
+                <h1 className="text-2xl font-bold text-white md:text-3xl">Gestion des dépenses</h1>
+                <p className="mt-1 max-w-2xl text-sm text-white/70">
+                  Suivi, consultation, modification et annulation des dépenses avec tableau,
+                  filtres et statistiques.
                 </p>
               </div>
             </div>
@@ -486,7 +511,7 @@ export default function ExpensesPage() {
                 type="button"
                 className="btn border-0 bg-white text-black hover:bg-white/90"
                 onClick={() => {
-                  setForm(emptyForm());
+                  resetForm();
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
               >
@@ -518,7 +543,7 @@ export default function ExpensesPage() {
                       libelle: x.label,
                       description: x.description || "",
                       montant: x.amount,
-                      paiement: x.payment_method || "",
+                      paiement: paymentLabel(x.payment_method),
                       statut: x.status,
                       reference: x.reference || "",
                     }))
@@ -538,97 +563,88 @@ export default function ExpensesPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {[
-            { label: "Aujourd’hui", value: summary.today },
-            { label: "Cette semaine", value: summary.week },
-            { label: "Ce mois", value: summary.month },
-            { label: "Cette année", value: summary.year },
-            { label: "Total filtré", value: summary.filtered_total },
-          ].map((card) => (
-            <div
-              key={card.label}
-              className="rounded-[24px] border border-black/5 bg-white p-5 shadow-sm"
-            >
-              <div className="text-sm font-medium text-base-content/55">{card.label}</div>
-              <div className="mt-2 text-2xl font-bold text-base-content">{mad(card.value)}</div>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          <SummaryCard label="Aujourd’hui" value={summary.today} />
+          <SummaryCard label="Cette semaine" value={summary.week} />
+          <SummaryCard label="Ce mois" value={summary.month} />
+          <SummaryCard label="Cette année" value={summary.year} />
+          <SummaryCard label="Total filtré" value={summary.filtered_total} />
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
-          <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-            <SectionIcon
-              icon={<FileText size={22} />}
-              title={editing ? "Modifier une dépense" : "Ajouter une dépense"}
-              subtitle="Enregistre une charge rapidement avec une présentation plus claire et plus professionnelle."
-            />
+          <div className="space-y-6">
+            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
+              <SectionIcon
+                icon={<FileText size={22} />}
+                title={editing ? "Modifier une dépense" : "Ajouter une dépense"}
+                subtitle="Formulaire propre et rapide pour créer ou mettre à jour une dépense."
+              />
 
-            {editing && (
-              <div className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                Modification en cours.
-                <button
-                  type="button"
-                  className="ml-2 font-semibold underline"
-                  onClick={() => setForm(emptyForm())}
-                >
-                  Annuler
-                </button>
-              </div>
-            )}
-
-            <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
-              <div className="rounded-[22px] border border-black/5 bg-[rgba(255,210,74,0.06)] p-4">
-                <FieldLabel icon={<Tag size={16} />}>Catégorie principale</FieldLabel>
-                <select
-                  className="select select-bordered w-full bg-white"
-                  value={form.category_id || ""}
-                  onChange={(e) => {
-                    const id = Number(e.target.value || 0);
-                    const cat = categories.find((c) => c.id === id);
-                    setForm((prev) => ({
-                      ...prev,
-                      category_id: id || null,
-                      category_name: cat?.name || "",
-                    }));
-                  }}
-                >
-                  <option value="">Sélectionner une catégorie</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_110px_auto]">
-                  <input
-                    className="input input-bordered bg-white"
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    placeholder="Créer une nouvelle catégorie"
-                  />
-                  <input
-                    type="color"
-                    className="input input-bordered h-12 w-full bg-white p-1"
-                    value={newCategoryColor}
-                    onChange={(e) => setNewCategoryColor(e.target.value)}
-                  />
+              {editing && (
+                <div className="mb-4 flex items-center justify-between rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <span>Modification en cours.</span>
                   <button
                     type="button"
-                    className="btn border-0 text-black"
-                    style={{
-                      background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
-                    }}
-                    onClick={handleCreateCategory}
-                    disabled={creatingCategory}
+                    className="inline-flex items-center gap-2 font-semibold underline"
+                    onClick={resetForm}
                   >
-                    {creatingCategory ? "Ajout..." : "Ajouter"}
+                    <X size={14} />
+                    Annuler la modification
                   </button>
                 </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-1 gap-4">
+              <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+                <div className="rounded-[22px] border border-black/5 bg-[rgba(255,210,74,0.06)] p-4">
+                  <FieldLabel icon={<Tag size={16} />}>Catégorie principale</FieldLabel>
+                  <select
+                    className="select select-bordered w-full bg-white"
+                    value={form.category_id || ""}
+                    onChange={(e) => {
+                      const id = Number(e.target.value || 0);
+                      const cat = categories.find((c) => c.id === id);
+                      setForm((prev) => ({
+                        ...prev,
+                        category_id: id || null,
+                        category_name: cat?.name || "",
+                      }));
+                    }}
+                  >
+                    <option value="">Sélectionner une catégorie</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_110px_auto]">
+                    <input
+                      className="input input-bordered bg-white"
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                      placeholder="Créer une nouvelle catégorie"
+                    />
+                    <input
+                      type="color"
+                      className="input input-bordered h-12 w-full bg-white p-1"
+                      value={newCategoryColor}
+                      onChange={(e) => setNewCategoryColor(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn border-0 text-black"
+                      style={{
+                        background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                      }}
+                      onClick={handleCreateCategory}
+                      disabled={creatingCategory}
+                    >
+                      {creatingCategory ? "Ajout..." : "Ajouter"}
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <FieldLabel icon={<FileText size={16} />}>Libellé</FieldLabel>
                   <input
@@ -636,7 +652,7 @@ export default function ExpensesPage() {
                     value={form.label}
                     onChange={(e) => setFormField("label", e.target.value)}
                     required
-                    placeholder="Ex: Achat sachets d’emballage"
+                    placeholder="Ex: Achat emballages"
                   />
                 </div>
 
@@ -650,82 +666,143 @@ export default function ExpensesPage() {
                     placeholder="Détail complémentaire sur la dépense..."
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <FieldLabel icon={<Wallet size={16} />}>Montant</FieldLabel>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="input input-bordered w-full bg-white"
-                    value={form.amount}
-                    onChange={(e) => setFormField("amount", e.target.value)}
-                    required
-                    placeholder="0.00"
-                  />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <FieldLabel icon={<Wallet size={16} />}>Montant</FieldLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="input input-bordered w-full bg-white"
+                      value={form.amount}
+                      onChange={(e) => setFormField("amount", e.target.value)}
+                      required
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  <div>
+                    <FieldLabel icon={<CalendarDays size={16} />}>Date</FieldLabel>
+                    <input
+                      type="date"
+                      className="input input-bordered w-full bg-white"
+                      value={form.expense_date}
+                      onChange={(e) => setFormField("expense_date", e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <FieldLabel icon={<CalendarDays size={16} />}>Date</FieldLabel>
-                  <input
-                    type="date"
-                    className="input input-bordered w-full bg-white"
-                    value={form.expense_date}
-                    onChange={(e) => setFormField("expense_date", e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <FieldLabel icon={<CreditCard size={16} />}>Mode de paiement</FieldLabel>
+                    <select
+                      className="select select-bordered w-full bg-white"
+                      value={form.payment_method}
+                      onChange={(e) => setFormField("payment_method", e.target.value)}
+                    >
+                      {PAYMENTS.map((x) => (
+                        <option key={x} value={x}>
+                          {paymentLabel(x)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <FieldLabel icon={<CreditCard size={16} />}>Mode de paiement</FieldLabel>
-                  <select
-                    className="select select-bordered w-full bg-white"
-                    value={form.payment_method}
-                    onChange={(e) => setFormField("payment_method", e.target.value)}
+                  <div>
+                    <FieldLabel>Statut</FieldLabel>
+                    <select
+                      className="select select-bordered w-full bg-white"
+                      value={form.status}
+                      onChange={(e) => setFormField("status", e.target.value as ExpenseStatus)}
+                    >
+                      {STATUS_OPTIONS.map((x) => (
+                        <option key={x} value={x}>
+                          {x}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-base-content/65">
+                  La référence est générée automatiquement par le système.
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <button
+                    type="submit"
+                    className="btn flex-1 border-0 text-black"
+                    style={{
+                      background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                    }}
+                    disabled={saving}
                   >
-                    {PAYMENTS.map((x) => (
-                      <option key={x} value={x}>
-                        {x}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    {saving
+                      ? "Enregistrement..."
+                      : editing
+                      ? "Mettre à jour la dépense"
+                      : "Ajouter la dépense"}
+                  </button>
 
-                <div>
-                  <FieldLabel>Statut</FieldLabel>
-                  <select
-                    className="select select-bordered w-full bg-white"
-                    value={form.status}
-                    onChange={(e) => setFormField("status", e.target.value as ExpenseStatus)}
-                  >
-                    {STATUS_OPTIONS.map((x) => (
-                      <option key={x} value={x}>
-                        {x}
-                      </option>
-                    ))}
-                  </select>
+                  {editing && (
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={resetForm}
+                    >
+                      Annuler
+                    </button>
+                  )}
                 </div>
+              </form>
+            </div>
+
+            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
+              <SectionIcon
+                icon={<Layers3 size={22} />}
+                title="Répartition par catégorie"
+                subtitle="Vue rapide des catégories qui consomment le plus."
+              />
+
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} label>
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || "#f4b400"} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
 
-              <div className="rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-base-content/65">
-                La référence est générée automatiquement par le système lors de l’enregistrement.
+              <div className="mt-4 flex flex-col gap-2">
+                {byCategory.length === 0 ? (
+                  <div className="rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-base-content/60">
+                    Aucune donnée disponible.
+                  </div>
+                ) : (
+                  byCategory.map((x, idx) => (
+                    <div
+                      key={`${x.category_name}-${idx}`}
+                      className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-3 w-3 rounded-full"
+                          style={{ backgroundColor: x.color || "#94a3b8" }}
+                        />
+                        <span>{x.category_name || "Sans catégorie"}</span>
+                      </div>
+                      <strong>{mad(x.total)}</strong>
+                    </div>
+                  ))
+                )}
               </div>
-
-              <button
-                type="submit"
-                className="btn border-0 text-black"
-                style={{
-                  background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
-                }}
-                disabled={saving}
-              >
-                {saving ? "Enregistrement..." : editing ? "Mettre à jour" : "Ajouter la dépense"}
-              </button>
-            </form>
+            </div>
           </div>
 
           <div className="flex flex-col gap-6">
@@ -733,7 +810,7 @@ export default function ExpensesPage() {
               <SectionIcon
                 icon={<Tag size={22} />}
                 title="Filtres"
-                subtitle="Affiche rapidement les dépenses par période, catégorie, statut et mode de paiement."
+                subtitle="Recherche rapide par période, catégorie, statut et mode de paiement."
               />
 
               <div className="mb-4 flex justify-end">
@@ -834,14 +911,14 @@ export default function ExpensesPage() {
                     <option value="">Tous</option>
                     {PAYMENTS.map((x) => (
                       <option key={x} value={x}>
-                        {x}
+                        {paymentLabel(x)}
                       </option>
                     ))}
                   </select>
                 </div>
 
                 <div>
-                  <FieldLabel>Recherche</FieldLabel>
+                  <FieldLabel icon={<Search size={16} />}>Recherche</FieldLabel>
                   <input
                     className="input input-bordered w-full bg-white"
                     value={filters.q}
@@ -849,82 +926,55 @@ export default function ExpensesPage() {
                       setFilters((p) => ({ ...p, q: e.target.value }));
                       setPage(1);
                     }}
-                    placeholder="libellé, référence..."
+                    placeholder="Libellé, référence, description..."
                   />
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 2xl:grid-cols-2">
-              <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
+            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
                   <h2 className="text-lg font-bold">Évolution des dépenses</h2>
-                  <select
-                    className="select select-bordered select-sm bg-white"
-                    value={chartPeriod}
-                    onChange={(e) => setChartPeriod(e.target.value as any)}
-                  >
-                    <option value="day">Jour</option>
-                    <option value="week">Semaine</option>
-                    <option value="month">Mois</option>
-                    <option value="year">Année</option>
-                  </select>
+                  <p className="text-sm text-base-content/60">
+                    Suivi graphique selon la période choisie.
+                  </p>
                 </div>
 
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={grouped}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="period" />
-                      <YAxis />
-                      <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
-                      <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#f4b400" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <select
+                  className="select select-bordered select-sm bg-white"
+                  value={chartPeriod}
+                  onChange={(e) => setChartPeriod(e.target.value as any)}
+                >
+                  <option value="day">Jour</option>
+                  <option value="week">Semaine</option>
+                  <option value="month">Mois</option>
+                  <option value="year">Année</option>
+                </select>
               </div>
 
-              <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-                <div className="mb-4">
-                  <h2 className="text-lg font-bold">Répartition par catégorie</h2>
-                </div>
-
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} label>
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color || "#f4b400"} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="mt-4 flex flex-col gap-2">
-                  {byCategory.map((x, idx) => (
-                    <div
-                      key={`${x.category_name}-${idx}`}
-                      className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 text-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="inline-block h-3 w-3 rounded-full"
-                          style={{ backgroundColor: x.color || "#94a3b8" }}
-                        />
-                        <span>{x.category_name}</span>
-                      </div>
-                      <strong>{mad(x.total)}</strong>
-                    </div>
-                  ))}
-                </div>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={grouped}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" />
+                    <YAxis />
+                    <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
+                    <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#f4b400" />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
             <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
               <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <h2 className="text-lg font-bold">Liste des dépenses</h2>
+                <div>
+                  <h2 className="text-lg font-bold">Tableau des dépenses</h2>
+                  <p className="text-sm text-base-content/60">
+                    Liste récupérée depuis l’API avec actions de modification et d’annulation.
+                  </p>
+                </div>
+
                 <div className="text-sm text-base-content/70">
                   Total visible: <strong>{mad(totalVisible)}</strong> — Total filtré:{" "}
                   <strong>{mad(summary.filtered_total)}</strong>
@@ -932,12 +982,13 @@ export default function ExpensesPage() {
               </div>
 
               <div className="overflow-x-auto rounded-2xl border border-black/5">
-                <table className="table table-zebra">
-                  <thead>
-                    <tr>
+                <table className="table">
+                  <thead className="bg-neutral-50">
+                    <tr className="text-sm text-base-content/70">
                       <th>Date</th>
                       <th>Catégorie</th>
                       <th>Libellé</th>
+                      <th>Description</th>
                       <th>Montant</th>
                       <th>Paiement</th>
                       <th>Statut</th>
@@ -948,15 +999,15 @@ export default function ExpensesPage() {
                   <tbody>
                     {loading && (
                       <tr>
-                        <td colSpan={8} className="text-center">
-                          Chargement...
+                        <td colSpan={9} className="py-8 text-center text-base-content/60">
+                          Chargement des dépenses...
                         </td>
                       </tr>
                     )}
 
                     {!loading && items.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="text-center text-base-content/60">
+                        <td colSpan={9} className="py-8 text-center text-base-content/60">
                           Aucune dépense trouvée.
                         </td>
                       </tr>
@@ -964,8 +1015,9 @@ export default function ExpensesPage() {
 
                     {!loading &&
                       items.map((item) => (
-                        <tr key={item.id}>
-                          <td>{fmtDate(item.expense_date)}</td>
+                        <tr key={item.id} className="hover">
+                          <td className="whitespace-nowrap">{fmtDate(item.expense_date)}</td>
+
                           <td>
                             <div className="flex items-center gap-2">
                               <span
@@ -975,16 +1027,23 @@ export default function ExpensesPage() {
                               <span>{item.category_name || "—"}</span>
                             </div>
                           </td>
-                          <td>
-                            <div className="font-medium">{item.label}</div>
-                            {item.description ? (
-                              <div className="max-w-xs truncate text-xs text-base-content/60">
-                                {item.description}
-                              </div>
-                            ) : null}
+
+                          <td className="min-w-[180px]">
+                            <div className="font-semibold text-base-content">{item.label || "—"}</div>
                           </td>
-                          <td className="font-semibold">{mad(item.amount)}</td>
-                          <td>{item.payment_method || "—"}</td>
+
+                          <td className="max-w-[240px]">
+                            <div className="truncate text-sm text-base-content/65">
+                              {item.description || "—"}
+                            </div>
+                          </td>
+
+                          <td className="whitespace-nowrap font-semibold">{mad(item.amount)}</td>
+
+                          <td className="whitespace-nowrap">
+                            {paymentLabel(item.payment_method)}
+                          </td>
+
                           <td>
                             <span
                               className={`badge ${
@@ -994,23 +1053,30 @@ export default function ExpensesPage() {
                               {item.status}
                             </span>
                           </td>
-                          <td>{item.reference || "—"}</td>
+
+                          <td className="whitespace-nowrap text-sm text-base-content/70">
+                            {item.reference || "—"}
+                          </td>
+
                           <td>
                             <div className="flex justify-end gap-2">
                               <button
                                 type="button"
                                 className="btn btn-sm btn-outline"
                                 onClick={() => handleEdit(item)}
+                                title="Modifier"
                               >
                                 <Pencil size={15} />
                               </button>
+
                               <button
                                 type="button"
                                 className="btn btn-sm btn-error btn-outline"
                                 disabled={deletingId === item.id}
                                 onClick={() => handleDelete(item.id)}
+                                title="Annuler / supprimer"
                               >
-                                <Trash2 size={15} />
+                                {deletingId === item.id ? "..." : <Trash2 size={15} />}
                               </button>
                             </div>
                           </td>
@@ -1025,7 +1091,7 @@ export default function ExpensesPage() {
                   Page {pageInfo.page} / {Math.max(1, pageInfo.pages)} — {pageInfo.total} élément(s)
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <select
                     className="select select-bordered select-sm bg-white"
                     value={pageSize}
@@ -1047,6 +1113,7 @@ export default function ExpensesPage() {
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                   >
+                    <ArrowLeft size={15} />
                     Précédent
                   </button>
 
@@ -1057,6 +1124,7 @@ export default function ExpensesPage() {
                     onClick={() => setPage((p) => Math.min(pageInfo.pages, p + 1))}
                   >
                     Suivant
+                    <ArrowRight size={15} />
                   </button>
                 </div>
               </div>

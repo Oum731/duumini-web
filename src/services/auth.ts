@@ -1,5 +1,4 @@
-// src/services/auth.ts
-const API = (import.meta as any).env?.VITE_API_BASE || "";
+import { API_BASE } from "./http";
 
 export type Role =
   | "MEMBER"
@@ -49,6 +48,8 @@ type LoginRes = {
   refresh_token: string;
   user: User;
 };
+
+const API = API_BASE;
 
 export const STORAGE_KEYS = {
   access: "duumini_access",
@@ -105,6 +106,15 @@ function normalizeSexe(s: any): Sexe | null {
   return null;
 }
 
+export function getImpersonationMeta(): ImpersonationInfo | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.imp_meta);
+    return raw ? (JSON.parse(raw) as ImpersonationInfo) : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeUser(u: any): User {
   if (!u) return u;
   return {
@@ -125,15 +135,6 @@ export function mapCityCodeToVille(code?: string | null): string | null {
 
 export function isImpersonating(): boolean {
   return !!localStorage.getItem(STORAGE_KEYS.imp_access);
-}
-
-export function getImpersonationMeta(): ImpersonationInfo | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.imp_meta);
-    return raw ? (JSON.parse(raw) as ImpersonationInfo) : null;
-  } catch {
-    return null;
-  }
 }
 
 export function startImpersonation(
@@ -162,6 +163,7 @@ export function getRefreshToken(): string | null {
 
 export function getCurrentUser(): User | null {
   const raw = localStorage.getItem(STORAGE_KEYS.user);
+
   try {
     const parsed = raw ? (JSON.parse(raw) as User) : null;
     if (!parsed) return null;
@@ -202,6 +204,49 @@ async function parseJson<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+let refreshPromise: Promise<string> | null = null;
+
+export async function refresh() {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const token = getRefreshToken();
+    if (!token) {
+      clearSession();
+      throw new Error("No refresh token");
+    }
+
+    const res = await fetch(`${API}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: token }),
+      mode: "cors",
+      credentials: "include",
+    });
+
+    if (!res.ok) {
+      clearSession();
+      throw new Error("Refresh failed");
+    }
+
+    const data = await res.json().catch(() => null);
+
+    if (!data?.access_token) {
+      clearSession();
+      throw new Error("Invalid refresh response");
+    }
+
+    localStorage.setItem(STORAGE_KEYS.access, data.access_token);
+    return data.access_token as string;
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
 export async function authFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -221,15 +266,15 @@ export async function authFetch(
     ...init,
     headers: hdrs,
     mode: "cors",
+    credentials: init.credentials || "include",
   });
 
   if (res.status === 401 && retry) {
     try {
-      await refresh();
+      const newToken = await refresh();
 
       const retryHeaders = new Headers(initHeaders);
-      const newAt = getAccessToken();
-      if (newAt) retryHeaders.set("Authorization", `Bearer ${newAt}`);
+      if (newToken) retryHeaders.set("Authorization", `Bearer ${newToken}`);
 
       if (
         !retryHeaders.has("Content-Type") &&
@@ -243,6 +288,7 @@ export async function authFetch(
         ...init,
         headers: retryHeaders,
         mode: "cors",
+        credentials: init.credentials || "include",
       });
     } catch {
       clearSession();
@@ -272,7 +318,10 @@ export async function register(payload: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    mode: "cors",
+    credentials: "include",
   });
+
   return parseJson<{ ok: true }>(res);
 }
 
@@ -281,6 +330,8 @@ export async function login(phone: string, password: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ phone, password }),
+    mode: "cors",
+    credentials: "include",
   });
 
   const data = await parseJson<LoginRes>(res);
@@ -290,33 +341,25 @@ export async function login(phone: string, password: string) {
 
 export async function logout() {
   try {
-    await fetch(`${API}/api/auth/logout`, { method: "POST" });
+    await fetch(`${API}/api/auth/logout`, {
+      method: "POST",
+      mode: "cors",
+      credentials: "include",
+    });
   } finally {
     clearSession();
   }
-}
-
-export async function refresh() {
-  const token = getRefreshToken();
-  if (!token) throw new Error("No refresh token");
-
-  const res = await fetch(`${API}/api/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: token }),
-  });
-
-  const data = await parseJson<{ access_token: string }>(res);
-
-  localStorage.setItem(STORAGE_KEYS.access, data.access_token);
-  return data.access_token;
 }
 
 export async function me(): Promise<User | null> {
   try {
     const res = await authFetch(`${API}/api/user/me`);
     const u = await parseJson<User | null>(res);
-    if (!u) return null;
+
+    if (!u) {
+      clearSession();
+      return null;
+    }
 
     const normalized = normalizeUser(u);
     setUserInStorage(normalized);

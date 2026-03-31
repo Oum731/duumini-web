@@ -26,6 +26,7 @@ export type HttpErrorPayload = {
 export class HttpError extends Error {
   status: number;
   payload?: HttpErrorPayload;
+
   constructor(status: number, message: string, payload?: HttpErrorPayload) {
     super(message);
     this.status = status;
@@ -73,6 +74,7 @@ function isFormData(x: any): x is FormData {
 
 async function parseResponse<T>(res: Response): Promise<T> {
   const ctype = res.headers.get("content-type") || "";
+
   if (!ctype) return undefined as unknown as T;
 
   if (ctype.includes("application/json")) {
@@ -87,15 +89,15 @@ function mergeSignals(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined
   if (!b) return a;
 
   const controller = new AbortController();
-  const anyAbort = () => controller.abort();
+  const abort = () => controller.abort();
 
   if (a.aborted || b.aborted) {
     controller.abort();
     return controller.signal;
   }
 
-  a.addEventListener("abort", anyAbort, { once: true });
-  b.addEventListener("abort", anyAbort, { once: true });
+  a.addEventListener("abort", abort, { once: true });
+  b.addEventListener("abort", abort, { once: true });
 
   return controller.signal;
 }
@@ -108,7 +110,6 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeout);
-
   const mergedSignal = mergeSignals(signal, controller.signal);
 
   try {
@@ -129,6 +130,17 @@ function readCityFromStorage(): string | null {
   } catch {
     return null;
   }
+}
+
+let refreshPromise: Promise<string> | null = null;
+
+async function ensureFreshAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = doRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
 }
 
 export async function http<T = unknown>(
@@ -168,7 +180,6 @@ export async function http<T = unknown>(
   }
 
   const token = noAuth ? null : getAccessToken();
-
   if (token && !hdrs.Authorization) {
     hdrs.Authorization = `Bearer ${token}`;
   }
@@ -180,7 +191,7 @@ export async function http<T = unknown>(
 
   const url = buildUrl(path, finalQuery);
 
-  let finalBody: BodyInit | undefined = undefined;
+  let finalBody: BodyInit | undefined;
 
   if (body !== undefined && body !== null) {
     if (isFormData(body)) {
@@ -209,26 +220,38 @@ export async function http<T = unknown>(
 
     if (res.status === 401 && !noAuth) {
       try {
-        await doRefresh();
-        const newToken = getAccessToken();
-        if (newToken) {
-          hdrs.Authorization = `Bearer ${newToken}`;
+        const newToken = await ensureFreshAccessToken();
+
+        if (!newToken) {
+          throw new Error("No token after refresh");
         }
+
+        hdrs.Authorization = `Bearer ${newToken}`;
         res = await fetchWithTimeout(url, makeInit(), timeout, signal);
       } catch {
         clearSession();
+        throw new HttpError(401, "Session expirée");
       }
     }
   } catch (e: any) {
+    if (e instanceof HttpError) throw e;
+
     const msg =
       e?.name === "AbortError"
         ? "Requête annulée"
         : e?.message || "Erreur réseau";
+
     throw new HttpError(0, msg);
+  }
+
+  if (res.status === 401 && !noAuth) {
+    clearSession();
+    throw new HttpError(401, "Session expirée");
   }
 
   if (!res.ok) {
     let payload: HttpErrorPayload | undefined;
+
     try {
       payload = await parseResponse<HttpErrorPayload>(res);
     } catch {
