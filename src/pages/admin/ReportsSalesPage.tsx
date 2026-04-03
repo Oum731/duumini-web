@@ -12,6 +12,11 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
+function toNumber(v: any, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 function fmtDate(value?: string | null) {
   if (!value) return "—";
 
@@ -199,8 +204,121 @@ function parseDetailsJson(value: any) {
   }
 }
 
-function sumBy(items: SalesReport[], getter: (x: SalesReport) => number) {
+function sumBy<T>(items: T[], getter: (x: T) => number) {
   return items.reduce((acc, item) => acc + getter(item), 0);
+}
+
+function pickFirstFiniteNumber(...values: any[]) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function normalizeReportRow(r: SalesReport) {
+  const details = parseDetailsJson((r as any).details_json) || {};
+
+  const deliveryAmount = Math.max(
+    0,
+    pickFirstFiniteNumber(
+      details.delivery_amount,
+      (r as any).delivery_amount,
+      0
+    ) ?? 0
+  );
+
+  const discountAmount = Math.max(
+    0,
+    pickFirstFiniteNumber(
+      details.admin_discount_amount,
+      details.discount_amount,
+      details.discount,
+      (r as any).admin_discount_amount,
+      0
+    ) ?? 0
+  );
+
+  const grossCandidate = Math.max(
+    0,
+    pickFirstFiniteNumber(
+      details.gross_items_amount,
+      details.items_gross_amount
+    ) ?? 0
+  );
+
+  const netCandidate = Math.max(
+    0,
+    pickFirstFiniteNumber(
+      details.net_items_amount,
+      details.items_net_amount,
+      (r as any).items_amount
+    ) ?? 0
+  );
+
+  let grossItemsAmount = grossCandidate;
+  let netItemsAmount = netCandidate;
+
+  if (grossItemsAmount <= 0 && netItemsAmount > 0) {
+    grossItemsAmount = netItemsAmount + discountAmount;
+  }
+
+  if (netItemsAmount <= 0 && grossItemsAmount > 0) {
+    netItemsAmount = Math.max(0, grossItemsAmount - discountAmount);
+  }
+
+  if (grossItemsAmount > 0 && netItemsAmount > grossItemsAmount) {
+    grossItemsAmount = netItemsAmount + discountAmount;
+  }
+
+  if (grossItemsAmount <= 0 && netItemsAmount <= 0) {
+    const fallbackTotal = Math.max(
+      0,
+      pickFirstFiniteNumber((r as any).total_amount, 0) ?? 0
+    );
+    netItemsAmount = Math.max(0, fallbackTotal - deliveryAmount);
+    grossItemsAmount = netItemsAmount + discountAmount;
+  }
+
+  const totalSalesAmount = netItemsAmount;
+
+  const paidAmount = Math.max(
+    0,
+    pickFirstFiniteNumber(
+      details.paid_amount,
+      (r as any).paid_amount,
+      0
+    ) ?? 0
+  );
+
+  const remainingAmount = Math.max(0, totalSalesAmount - paidAmount);
+
+  const commissionAmount = Math.max(
+    0,
+    pickFirstFiniteNumber(
+      details.duumini_commission,
+      (r as any).duumini_commission,
+      0
+    ) ?? 0
+  );
+
+  const paymentBreakdown = Array.isArray(details.payment_breakdown)
+    ? details.payment_breakdown
+    : [];
+
+  return {
+    ...r,
+    _details: details,
+    _gross_items_amount: grossItemsAmount,
+    _admin_discount_amount: discountAmount,
+    _net_items_amount: netItemsAmount,
+    _delivery_amount: deliveryAmount,
+    _total_sales_amount: totalSalesAmount,
+    _paid_amount: paidAmount,
+    _remaining_amount: remainingAmount,
+    _commission_amount: commissionAmount,
+    _payment_breakdown: paymentBreakdown,
+  };
 }
 
 export default function ReportsSalesPage() {
@@ -295,63 +413,49 @@ export default function ReportsSalesPage() {
   }, [queryParams, type]);
 
   const enrichedItems = useMemo(() => {
-    return items.map((r) => {
-      const details = parseDetailsJson((r as any).details_json);
-      const grossItemsAmount = Number(details?.gross_items_amount || 0);
-      const adminDiscountAmount = Number(details?.admin_discount_amount || 0);
-      const netItemsAmount =
-        Number(details?.net_items_amount || r.items_amount || 0);
-      const paidAmount = Number(details?.paid_amount || 0);
-      const remainingAmount = Number(details?.remaining_amount || 0);
-      const paymentBreakdown = Array.isArray(details?.payment_breakdown)
-        ? details.payment_breakdown
-        : [];
-
-      return {
-        ...r,
-        _details: details,
-        _gross_items_amount: grossItemsAmount,
-        _admin_discount_amount: adminDiscountAmount,
-        _net_items_amount: netItemsAmount,
-        _paid_amount: paidAmount,
-        _remaining_amount: remainingAmount,
-        _payment_breakdown: paymentBreakdown,
-      };
-    });
+    return items.map(normalizeReportRow);
   }, [items]);
 
   const summary = useMemo(() => {
     const reportsCount = enrichedItems.length;
-    const ordersCount = sumBy(enrichedItems, (x) => Number(x.orders_count || 0));
+
+    const ordersCount = sumBy(enrichedItems, (x: any) =>
+      toNumber(x.orders_count || 0)
+    );
+
     const grossItemsAmount = sumBy(
       enrichedItems,
-      (x: any) => Number(x._gross_items_amount || 0)
+      (x: any) => toNumber(x._gross_items_amount)
     );
+
     const adminDiscountAmount = sumBy(
       enrichedItems,
-      (x: any) => Number(x._admin_discount_amount || 0)
+      (x: any) => toNumber(x._admin_discount_amount)
     );
+
     const netItemsAmount = sumBy(
       enrichedItems,
-      (x: any) => Number(x._net_items_amount || x.items_amount || 0)
+      (x: any) => toNumber(x._net_items_amount)
     );
+
     const deliveryAmount = sumBy(
       enrichedItems,
-      (x) => Number(x.delivery_amount || 0)
+      (x: any) => toNumber(x._delivery_amount)
     );
-    const totalAmount = sumBy(enrichedItems, (x) => Number(x.total_amount || 0));
+
+    const totalAmount = netItemsAmount;
+
     const commissionAmount = sumBy(
       enrichedItems,
-      (x) => Number(x.duumini_commission || 0)
+      (x: any) => toNumber(x._commission_amount)
     );
+
     const paidAmount = sumBy(
       enrichedItems,
-      (x: any) => Number(x._paid_amount || 0)
+      (x: any) => toNumber(x._paid_amount)
     );
-    const remainingAmount = sumBy(
-      enrichedItems,
-      (x: any) => Number(x._remaining_amount || 0)
-    );
+
+    const remainingAmount = Math.max(0, totalAmount - paidAmount);
 
     return {
       reportsCount,
@@ -574,7 +678,7 @@ export default function ReportsSalesPage() {
                     {fmtMoney(summary.totalAmount, currency)}
                   </div>
                   <div className="small text-muted mt-1">
-                    Produits nets + livraison
+                    Produits nets (hors livraison)
                   </div>
                 </div>
               </div>
@@ -687,8 +791,9 @@ export default function ReportsSalesPage() {
                   <th className="text-end">Cmdes</th>
                   <th className="text-end">Brut</th>
                   <th className="text-end">Réduc.</th>
+                  <th className="text-end">Produits nets</th>
                   <th className="text-end">Livraison</th>
-                  <th className="text-end">Total</th>
+                  <th className="text-end">Total ventes</th>
                   <th className="text-end">Payé</th>
                   <th className="text-end">Reste</th>
                   <th className="text-end">Commission</th>
@@ -714,18 +819,21 @@ export default function ReportsSalesPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="text-end">{Number(r.orders_count || 0)}</td>
+                    <td className="text-end">{toNumber(r.orders_count)}</td>
                     <td className="text-end">
                       {fmtMoney(r._gross_items_amount, r.currency)}
                     </td>
                     <td className="text-end text-danger">
                       {fmtMoney(r._admin_discount_amount, r.currency)}
                     </td>
+                    <td className="text-end fw-semibold">
+                      {fmtMoney(r._net_items_amount, r.currency)}
+                    </td>
                     <td className="text-end">
-                      {fmtMoney(r.delivery_amount, r.currency)}
+                      {fmtMoney(r._delivery_amount, r.currency)}
                     </td>
                     <td className="text-end fw-semibold">
-                      {fmtMoney(r.total_amount, r.currency)}
+                      {fmtMoney(r._total_sales_amount, r.currency)}
                     </td>
                     <td className="text-end text-success">
                       {fmtMoney(r._paid_amount, r.currency)}
@@ -734,7 +842,7 @@ export default function ReportsSalesPage() {
                       {fmtMoney(r._remaining_amount, r.currency)}
                     </td>
                     <td className="text-end">
-                      {fmtMoney(r.duumini_commission, r.currency)}
+                      {fmtMoney(r._commission_amount, r.currency)}
                     </td>
                     <td className="text-end">
                       <Link

@@ -1,6 +1,7 @@
 import { api } from "./http";
 
 export type ExpenseCategory = {
+  data: ExpenseCategory;
   id: number;
   shop_id?: number | null;
   name: string;

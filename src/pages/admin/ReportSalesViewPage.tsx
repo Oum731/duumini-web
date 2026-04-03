@@ -969,11 +969,7 @@ export default function ReportSalesViewPage() {
                     <div className="line-value">{money(netItemsAmount, report.currency)}</div>
                   </div>
 
-                  <div className="line-row">
-                    <div className="line-label">Livraison</div>
-                    <div className="line-value">{money(report.delivery_amount, report.currency)}</div>
-                  </div>
-
+                  
                   <div className="line-row">
                     <div className="line-label">Total ventes</div>
                     <div className="line-value">{money(report.total_amount, report.currency)}</div>
@@ -988,10 +984,7 @@ export default function ReportSalesViewPage() {
                     <div className="line-value">{money(netItemsAmount, report.currency)}</div>
                   </div>
 
-                  <div className="line-row">
-                    <div className="line-label">Montant livraison</div>
-                    <div className="line-value">{money(report.delivery_amount, report.currency)}</div>
-                  </div>
+                  
 
                   <div className="line-row">
                     <div className="line-label">Commission Duumini</div>
