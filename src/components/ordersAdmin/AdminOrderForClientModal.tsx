@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listProducts, type Product, isProductActive } from "../../services/products";
+import {
+  listProducts,
+  type Product,
+  isProductActive,
+} from "../../services/products";
 import {
   createAdminOrder,
   updateOrderStatus,
@@ -149,7 +153,11 @@ function getProductUnitPrice(p: Product): number {
   const base = anyP.price ?? 0;
 
   const promoNum = Number(promo);
-  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity)) {
+  if (
+    Number.isFinite(promoNum) &&
+    promoNum > 0 &&
+    promoNum < Number(base || Infinity)
+  ) {
     return promoNum;
   }
 
@@ -185,11 +193,17 @@ function clientLabel(c: ClientLite) {
 }
 
 function normalizePhoneKey(phone?: string | null) {
-  return String(phone || "").trim().replace(/\s+/g, "");
+  return String(phone || "")
+    .trim()
+    .replace(/\s+/g, "");
 }
 
 function normalizeCustomerRole(value?: string | null): "CLIENT" | "VENDEUR" {
-  return String(value || "").trim().toUpperCase() === "VENDEUR" ? "VENDEUR" : "CLIENT";
+  return String(value || "")
+    .trim()
+    .toUpperCase() === "VENDEUR"
+    ? "VENDEUR"
+    : "CLIENT";
 }
 
 function dedupeClients(list: ClientLite[]) {
@@ -198,7 +212,11 @@ function dedupeClients(list: ClientLite[]) {
   for (const c of list) {
     const id = Number(c.id || 0);
     const phone = normalizePhoneKey(c.phone);
-    const key = phone ? `P:${phone}` : id > 0 ? `U:${id}` : `X:${Math.random()}`;
+    const key = phone
+      ? `P:${phone}`
+      : id > 0
+        ? `U:${id}`
+        : `X:${Math.random()}`;
 
     const prev = byKey.get(key);
     if (!prev) {
@@ -253,7 +271,8 @@ function mapAdminUserToClient(u: AdminUser): ClientLite {
     phone: anyU?.phone ?? anyU?.tel ?? null,
     role: anyU?.role ?? (hasAccount ? "CLIENT" : "GUEST"),
     ville: anyU?.ville ?? anyU?.city ?? anyU?.customer_city ?? null,
-    quartier: anyU?.quartier ?? anyU?.district ?? anyU?.customer_district ?? null,
+    quartier:
+      anyU?.quartier ?? anyU?.district ?? anyU?.customer_district ?? null,
     commercial_name: anyU?.commercial_name ?? anyU?.nom_commercial ?? null,
     ice: anyU?.ice ?? null,
     has_account: hasAccount,
@@ -264,7 +283,7 @@ function mapAdminUserToClient(u: AdminUser): ClientLite {
 function computeAdminDiscountAmount(
   itemsSubtotal: number,
   discountType: AdminDiscountType,
-  discountValue: number
+  discountValue: number,
 ) {
   const subtotal = Math.max(0, numSafe(itemsSubtotal));
   const value = Math.max(0, numSafe(discountValue));
@@ -281,12 +300,20 @@ function computeAdminDiscountAmount(
   return clampMoney(amount);
 }
 
-function needsVendorIdentity(role: "CLIENT" | "VENDEUR", commercialName: string, ice: string) {
+function needsVendorIdentity(
+  role: "CLIENT" | "VENDEUR",
+  commercialName: string,
+  ice: string,
+) {
   if (role !== "VENDEUR") return false;
   return !commercialName.trim() || !ice.trim();
 }
 
-export default function AdminOrderForClientModal({ open, onClose, onCreated }: Props) {
+export default function AdminOrderForClientModal({
+  open,
+  onClose,
+  onCreated,
+}: Props) {
   const [selectedClient, setSelectedClient] = useState<ClientLite | null>(null);
 
   const [basket, setBasket] = useState<{ product: Product; qty: number }[]>([]);
@@ -314,8 +341,12 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   const [vendorInfoModalOpen, setVendorInfoModalOpen] = useState(false);
 
   const [search, setSearch] = useState("");
-  const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
-  const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">("NAME");
+  const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">(
+    "ALL",
+  );
+  const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">(
+    "NAME",
+  );
   const [includeHidden, setIncludeHidden] = useState(false);
 
   const [prodLoading, setProdLoading] = useState(false);
@@ -331,11 +362,18 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   const [saving, setSaving] = useState(false);
 
   const basketItemsTotal = useMemo(() => {
-    return basket.reduce((s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0), 0);
+    return basket.reduce(
+      (s, it) => s + getProductUnitPrice(it.product) * Number(it.qty || 0),
+      0,
+    );
   }, [basket]);
 
   const adminDiscountAmount = useMemo(() => {
-    return computeAdminDiscountAmount(basketItemsTotal, discountType, discountValue);
+    return computeAdminDiscountAmount(
+      basketItemsTotal,
+      discountType,
+      discountValue,
+    );
   }, [basketItemsTotal, discountType, discountValue]);
 
   const discountedItemsTotal = useMemo(() => {
@@ -343,7 +381,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   }, [basketItemsTotal, adminDiscountAmount]);
 
   const basketTotal = useMemo(() => {
-    return Math.max(0, numSafe(discountedItemsTotal)) + Math.max(0, numSafe(deliveryFee));
+    return (
+      Math.max(0, numSafe(discountedItemsTotal)) +
+      Math.max(0, numSafe(deliveryFee))
+    );
   }, [discountedItemsTotal, deliveryFee]);
 
   const paidClamped = useMemo(() => {
@@ -352,8 +393,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     return p;
   }, [basketTotal, amountPaid]);
 
-  const remaining = useMemo(() => computeRemaining(basketTotal, paidClamped), [basketTotal, paidClamped]);
-  const payStatus = useMemo(() => computePayStatus(basketTotal, paidClamped), [basketTotal, paidClamped]);
+  const remaining = useMemo(
+    () => computeRemaining(basketTotal, paidClamped),
+    [basketTotal, paidClamped],
+  );
 
   useEffect(() => {
     if (paidClamped !== amountPaid) setAmountPaid(paidClamped);
@@ -374,7 +417,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
     const nextRole = normalizeCustomerRole(selectedClient.role);
     setClientRole(nextRole);
-    setVendorCommercialName(String(selectedClient.commercial_name || "").trim());
+    setVendorCommercialName(
+      String(selectedClient.commercial_name || "").trim(),
+    );
     setVendorIce(String(selectedClient.ice || "").trim());
   }, [selectedClient]);
 
@@ -437,8 +482,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   function setQty(pId: number, qty: number) {
     setBasket((prev) =>
       prev
-        .map((x) => (x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x))
-        .filter((x) => x.qty > 0)
+        .map((x) =>
+          x.product.id === pId ? { ...x, qty: Math.max(1, qty) } : x,
+        )
+        .filter((x) => x.qty > 0),
     );
   }
 
@@ -500,7 +547,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       all.forEach((p) => map.set(p.id, p));
       const merged = Array.from(map.values());
 
-      const finalList = includeHidden ? merged : merged.filter((p) => isProductActive(p));
+      const finalList = includeHidden
+        ? merged
+        : merged.filter((p) => isProductActive(p));
       setProducts(finalList);
     } catch (e: any) {
       if (ac.signal.aborted) return;
@@ -557,14 +606,18 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       arr = arr.filter((p) => {
         const anyP = p as AnyObj;
         const name = String(p.name || "").toLowerCase();
-        const sku = String(anyP.sku || anyP.ref || anyP.code || "").toLowerCase();
+        const sku = String(
+          anyP.sku || anyP.ref || anyP.code || "",
+        ).toLowerCase();
         return name.includes(ql) || (sku && sku.includes(ql));
       });
     }
 
     const sorted = [...arr];
     if (sortBy === "NAME") {
-      sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+      sorted.sort((a, b) =>
+        String(a.name || "").localeCompare(String(b.name || ""), "fr"),
+      );
     } else if (sortBy === "PRICE_ASC") {
       sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
     } else if (sortBy === "PRICE_DESC") {
@@ -624,7 +677,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       return;
     }
 
-    const isGuest = !selectedClient.has_account || Number(selectedClient.id || 0) <= 0;
+    const isGuest =
+      !selectedClient.has_account || Number(selectedClient.id || 0) <= 0;
     if (isGuest) {
       const ph = normalizePhoneKey(selectedClient.phone);
       if (!ph) {
@@ -679,7 +733,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
               last_name: selectedClient.last_name || undefined,
               role: clientRole,
               commercial_name:
-                clientRole === "VENDEUR" ? vendorCommercialName.trim() : undefined,
+                clientRole === "VENDEUR"
+                  ? vendorCommercialName.trim()
+                  : undefined,
               ice: clientRole === "VENDEUR" ? vendorIce.trim() : undefined,
             },
           }
@@ -691,7 +747,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
               phone: normalizePhoneKey(selectedClient.phone) || undefined,
               role: clientRole,
               commercial_name:
-                clientRole === "VENDEUR" ? vendorCommercialName.trim() : undefined,
+                clientRole === "VENDEUR"
+                  ? vendorCommercialName.trim()
+                  : undefined,
               ice: clientRole === "VENDEUR" ? vendorIce.trim() : undefined,
               ...clientLocation,
             },
@@ -712,7 +770,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       items: itemsPayload,
 
       totals: {
-        items_count: itemsPayload.reduce((s, it) => s + (Number(it.qty) || 0), 0),
+        items_count: itemsPayload.reduce(
+          (s, it) => s + (Number(it.qty) || 0),
+          0,
+        ),
         items_amount: Math.max(0, numSafe(basketItemsTotal)),
         delivery_fee: Math.max(0, numSafe(deliveryFee)),
         amount: total,
@@ -721,7 +782,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
       payment: {
         method: payMethod,
-        note: payNote || `Admin order | ${status} | payé=${paid} | reste=${remain}`,
+        note:
+          payNote || `Admin order | ${status} | payé=${paid} | reste=${remain}`,
         paid_amount: paid,
         status,
       },
@@ -762,10 +824,11 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     const missingVendorData = needsVendorIdentity(
       clientRole,
       vendorCommercialName,
-      vendorIce
+      vendorIce,
     );
 
-    const existingDbClient = !!selectedClient.has_account && Number(selectedClient.id || 0) > 0;
+    const existingDbClient =
+      !!selectedClient.has_account && Number(selectedClient.id || 0) > 0;
 
     if (existingDbClient && clientRole === "VENDEUR" && missingVendorData) {
       setVendorInfoModalOpen(true);
@@ -779,18 +842,30 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
   return (
     <>
-      <div className="modal d-block duu-admin-order-backdrop" tabIndex={-1} role="dialog">
-        <div className="modal-dialog modal-xl duu-admin-order-dialog" role="document">
+      <div
+        className="modal d-block duu-admin-order-backdrop"
+        tabIndex={-1}
+        role="dialog"
+      >
+        <div
+          className="modal-dialog modal-xl duu-admin-order-dialog"
+          role="document"
+        >
           <div className="modal-content duu-admin-order-modal">
             <div className="modal-header duu-admin-order-header">
               <div className="d-flex flex-column">
                 <h5 className="modal-title mb-0">Commander pour un client</h5>
                 <div className="text-muted small">
-                  Sélectionne le client, ajoute les produits, puis valide la commande
+                  Sélectionne le client, ajoute les produits, puis valide la
+                  commande
                 </div>
               </div>
 
-              <button className="btn-close" onClick={onClose} disabled={saving} />
+              <button
+                className="btn-close"
+                onClick={onClose}
+                disabled={saving}
+              />
             </div>
 
             <div className="modal-body duu-admin-order-body">
@@ -800,7 +875,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                     <div className="duu-panel-head">
                       <div>
                         <div className="duu-section-title">Produits</div>
-                        <div className="duu-section-subtitle">Ajoute rapidement les articles au panier</div>
+                        <div className="duu-section-subtitle">
+                          Ajoute rapidement les articles au panier
+                        </div>
                       </div>
 
                       <button
@@ -827,7 +904,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         <select
                           className="form-select duu-input"
                           value={promoFilter}
-                          onChange={(e) => setPromoFilter(e.target.value as any)}
+                          onChange={(e) =>
+                            setPromoFilter(e.target.value as any)
+                          }
                           disabled={saving}
                         >
                           <option value="ALL">Tous</option>
@@ -857,16 +936,25 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                             onChange={(e) => setIncludeHidden(e.target.checked)}
                             disabled={saving}
                           />
-                          <span>Inclure les <strong>produits cachés</strong> (inactifs)</span>
+                          <span>
+                            Inclure les <strong>produits cachés</strong>{" "}
+                            (inactifs)
+                          </span>
                         </label>
                       </div>
                     </div>
 
-                    {prodErr && <div className="alert alert-danger mt-3 mb-0">{prodErr}</div>}
+                    {prodErr && (
+                      <div className="alert alert-danger mt-3 mb-0">
+                        {prodErr}
+                      </div>
+                    )}
 
                     <div className="duu-products-list mt-3">
                       {prodLoading ? (
-                        <div className="text-muted small">Chargement de tous les produits…</div>
+                        <div className="text-muted small">
+                          Chargement de tous les produits…
+                        </div>
                       ) : filteredProducts.length === 0 ? (
                         <div className="text-muted small">Aucun produit.</div>
                       ) : (
@@ -887,7 +975,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                     className="duu-product-thumb"
                                     loading="lazy"
                                     onError={(e) => {
-                                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                                      (
+                                        e.currentTarget as HTMLImageElement
+                                      ).style.display = "none";
                                     }}
                                   />
                                 ) : (
@@ -896,9 +986,19 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                                 <div className="min-w-0">
                                   <div className="duu-product-name-row">
-                                    <div className="duu-product-name">{p.name}</div>
-                                    {!active ? <span className="badge bg-dark">Caché</span> : null}
-                                    {promo ? <span className="badge bg-danger">Promo</span> : null}
+                                    <div className="duu-product-name">
+                                      {p.name}
+                                    </div>
+                                    {!active ? (
+                                      <span className="badge bg-dark">
+                                        Caché
+                                      </span>
+                                    ) : null}
+                                    {promo ? (
+                                      <span className="badge bg-danger">
+                                        Promo
+                                      </span>
+                                    ) : null}
                                   </div>
 
                                   <div className="duu-product-price">
@@ -907,10 +1007,14 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                         <span className="text-decoration-line-through me-2 text-muted">
                                           {mad(base)}
                                         </span>
-                                        <span className="fw-bold">{mad(unit)}</span>
+                                        <span className="fw-bold">
+                                          {mad(unit)}
+                                        </span>
                                       </>
                                     ) : (
-                                      <span className="fw-bold">{mad(unit)}</span>
+                                      <span className="fw-bold">
+                                        {mad(unit)}
+                                      </span>
                                     )}
                                   </div>
                                 </div>
@@ -929,7 +1033,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       )}
                     </div>
 
-                    <div className="small text-muted mt-2">{products.length} produits chargés</div>
+                    <div className="small text-muted mt-2">
+                      {products.length} produits chargés
+                    </div>
                   </div>
                 </div>
 
@@ -937,8 +1043,12 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                   <div className="duu-panel h-100">
                     <div className="duu-panel-head">
                       <div>
-                        <div className="duu-section-title">Client, panier & paiement</div>
-                        <div className="duu-section-subtitle">Finalisation rapide</div>
+                        <div className="duu-section-title">
+                          Client, panier & paiement
+                        </div>
+                        <div className="duu-section-subtitle">
+                          Finalisation rapide
+                        </div>
                       </div>
 
                       <button
@@ -952,7 +1062,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <div className="duu-block mt-2">
                       <div className="d-flex align-items-center justify-content-between mb-2">
-                        <label className="form-label m-0 fw-semibold">Client</label>
+                        <label className="form-label m-0 fw-semibold">
+                          Client
+                        </label>
                         <button
                           className="btn btn-sm btn-outline-dark"
                           onClick={loadClients}
@@ -970,13 +1082,21 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         disabled={saving}
                       />
 
-                      {clientsErr && <div className="alert alert-danger mt-2 mb-0">{clientsErr}</div>}
+                      {clientsErr && (
+                        <div className="alert alert-danger mt-2 mb-0">
+                          {clientsErr}
+                        </div>
+                      )}
 
                       <div className="duu-clients-list mt-2">
                         {clientsLoading ? (
-                          <div className="text-muted small p-2">Chargement clients…</div>
+                          <div className="text-muted small p-2">
+                            Chargement clients…
+                          </div>
                         ) : filteredClients.length === 0 ? (
-                          <div className="text-muted small p-2">Aucun client</div>
+                          <div className="text-muted small p-2">
+                            Aucun client
+                          </div>
                         ) : (
                           filteredClients.map((c, idx) => {
                             const selected = isSameClient(selectedClient, c);
@@ -992,9 +1112,13 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                 disabled={saving}
                                 title={clientLabel(c)}
                               >
-                                <div className="duu-client-main">{clientLabel(c)}</div>
+                                <div className="duu-client-main">
+                                  {clientLabel(c)}
+                                </div>
                                 <div className="duu-client-meta">
-                                  {c.has_account ? `ID: ${c.id}` : "Invité (sans compte)"}
+                                  {c.has_account
+                                    ? `ID: ${c.id}`
+                                    : "Invité (sans compte)"}
                                   {c.ville ? ` • ${c.ville}` : ""}
                                   {c.quartier ? ` • ${c.quartier}` : ""}
                                   {c.role ? ` • ${c.role}` : ""}
@@ -1008,11 +1132,15 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <div className="row g-2 mt-2">
                       <div className="col-12 col-md-6">
-                        <label className="form-label fw-semibold">Ville du client</label>
+                        <label className="form-label fw-semibold">
+                          Ville du client
+                        </label>
                         <select
                           className="form-select duu-input"
                           value={clientCity}
-                          onChange={(e) => setClientCity((e.target as HTMLSelectElement).value)}
+                          onChange={(e) =>
+                            setClientCity((e.target as HTMLSelectElement).value)
+                          }
                           disabled={saving}
                         >
                           <option value="">Choisir une ville</option>
@@ -1025,11 +1153,17 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       </div>
 
                       <div className="col-12 col-md-6">
-                        <label className="form-label fw-semibold">Quartier</label>
+                        <label className="form-label fw-semibold">
+                          Quartier
+                        </label>
                         <input
                           className="form-control duu-input"
                           value={clientDistrict}
-                          onChange={(e) => setClientDistrict((e.target as HTMLInputElement).value)}
+                          onChange={(e) =>
+                            setClientDistrict(
+                              (e.target as HTMLInputElement).value,
+                            )
+                          }
                           disabled={saving}
                           placeholder="Ex: Maarif, Gueliz…"
                         />
@@ -1038,12 +1172,18 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <div className="row g-2 mt-2">
                       <div className="col-12 col-md-4">
-                        <label className="form-label fw-semibold">Rôle du client</label>
+                        <label className="form-label fw-semibold">
+                          Rôle du client
+                        </label>
                         <select
                           className="form-select duu-input"
                           value={clientRole}
                           onChange={(e) =>
-                            setClientRole((e.target as HTMLSelectElement).value as "CLIENT" | "VENDEUR")
+                            setClientRole(
+                              (e.target as HTMLSelectElement).value as
+                                | "CLIENT"
+                                | "VENDEUR",
+                            )
                           }
                           disabled={saving}
                         >
@@ -1053,11 +1193,15 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       </div>
 
                       <div className="col-12 col-md-4">
-                        <label className="form-label fw-semibold">Nom commercial</label>
+                        <label className="form-label fw-semibold">
+                          Nom commercial
+                        </label>
                         <input
                           className="form-control duu-input"
                           value={vendorCommercialName}
-                          onChange={(e) => setVendorCommercialName(e.target.value)}
+                          onChange={(e) =>
+                            setVendorCommercialName(e.target.value)
+                          }
                           disabled={saving || clientRole !== "VENDEUR"}
                           placeholder="Ex: Roky Marrakech"
                         />
@@ -1076,7 +1220,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                     </div>
 
                     <div className="small text-muted mt-1">
-                      Si le rôle est vendeur, le nom commercial et l’ICE sont obligatoires.
+                      Si le rôle est vendeur, le nom commercial et l’ICE sont
+                      obligatoires.
                     </div>
 
                     <div className="duu-summary-card mt-3">
@@ -1088,8 +1233,15 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       {discountType !== "NONE" && (
                         <>
                           <div className="duu-summary-row">
-                            <span>Réduction {discountType === "PERCENT" ? `(${discountValue || 0}%)` : ""}</span>
-                            <strong className="text-danger">- {mad(adminDiscountAmount)}</strong>
+                            <span>
+                              Réduction{" "}
+                              {discountType === "PERCENT"
+                                ? `(${discountValue || 0}%)`
+                                : ""}
+                            </span>
+                            <strong className="text-danger">
+                              - {mad(adminDiscountAmount)}
+                            </strong>
                           </div>
                           <div className="duu-summary-row">
                             <span>Sous-total net</span>
@@ -1125,7 +1277,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                           const thumb = getProductThumb(ln.product);
 
                           return (
-                            <div key={ln.product.id} className="duu-basket-item">
+                            <div
+                              key={ln.product.id}
+                              className="duu-basket-item"
+                            >
                               <div className="duu-basket-item-left">
                                 {thumb ? (
                                   <img
@@ -1138,8 +1293,12 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                 )}
 
                                 <div className="min-w-0">
-                                  <div className="duu-product-name">{ln.product.name}</div>
-                                  <div className="duu-product-price small fw-bold">{mad(unit)}</div>
+                                  <div className="duu-product-name">
+                                    {ln.product.name}
+                                  </div>
+                                  <div className="duu-product-price small fw-bold">
+                                    {mad(unit)}
+                                  </div>
                                 </div>
                               </div>
 
@@ -1152,7 +1311,13 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                   onChange={(e) =>
                                     setQty(
                                       ln.product.id,
-                                      Math.max(1, Number((e.target as HTMLInputElement).value || 1))
+                                      Math.max(
+                                        1,
+                                        Number(
+                                          (e.target as HTMLInputElement)
+                                            .value || 1,
+                                        ),
+                                      ),
                                     )
                                   }
                                   disabled={saving}
@@ -1175,11 +1340,17 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <div className="row g-2">
                       <div className="col-12 col-md-6">
-                        <label className="form-label fw-semibold">Mode livraison</label>
+                        <label className="form-label fw-semibold">
+                          Mode livraison
+                        </label>
                         <select
                           className="form-select duu-input"
                           value={deliveryMode}
-                          onChange={(e) => setDeliveryMode((e.target as HTMLSelectElement).value as any)}
+                          onChange={(e) =>
+                            setDeliveryMode(
+                              (e.target as HTMLSelectElement).value as any,
+                            )
+                          }
                           disabled={saving}
                         >
                           <option value="SIMPLE">SIMPLE</option>
@@ -1191,14 +1362,22 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       </div>
 
                       <div className="col-12 col-md-6">
-                        <label className="form-label fw-semibold">Frais livraison</label>
+                        <label className="form-label fw-semibold">
+                          Frais livraison
+                        </label>
                         <input
                           type="number"
                           min={0}
                           step="1"
                           className="form-control duu-input"
                           value={toInputNumberValue(deliveryFee)}
-                          onChange={(e) => setDeliveryFee(fromInputNumberValue((e.target as HTMLInputElement).value))}
+                          onChange={(e) =>
+                            setDeliveryFee(
+                              fromInputNumberValue(
+                                (e.target as HTMLInputElement).value,
+                              ),
+                            )
+                          }
                           disabled={saving}
                         />
                       </div>
@@ -1208,11 +1387,18 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <div className="row g-2">
                       <div className="col-12 col-md-4">
-                        <label className="form-label fw-semibold">Type réduction</label>
+                        <label className="form-label fw-semibold">
+                          Type réduction
+                        </label>
                         <select
                           className="form-select duu-input"
                           value={discountType}
-                          onChange={(e) => setDiscountType((e.target as HTMLSelectElement).value as AdminDiscountType)}
+                          onChange={(e) =>
+                            setDiscountType(
+                              (e.target as HTMLSelectElement)
+                                .value as AdminDiscountType,
+                            )
+                          }
                           disabled={saving}
                         >
                           <option value="NONE">Aucune</option>
@@ -1231,17 +1417,29 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                           step="1"
                           className="form-control duu-input"
                           value={toInputNumberValue(discountValue)}
-                          onChange={(e) => setDiscountValue(fromInputNumberValue((e.target as HTMLInputElement).value))}
+                          onChange={(e) =>
+                            setDiscountValue(
+                              fromInputNumberValue(
+                                (e.target as HTMLInputElement).value,
+                              ),
+                            )
+                          }
                           disabled={saving || discountType === "NONE"}
                         />
                       </div>
 
                       <div className="col-12 col-md-4">
-                        <label className="form-label fw-semibold">Libellé réduction</label>
+                        <label className="form-label fw-semibold">
+                          Libellé réduction
+                        </label>
                         <input
                           className="form-control duu-input"
                           value={discountLabel}
-                          onChange={(e) => setDiscountLabel((e.target as HTMLInputElement).value)}
+                          onChange={(e) =>
+                            setDiscountLabel(
+                              (e.target as HTMLInputElement).value,
+                            )
+                          }
                           disabled={saving || discountType === "NONE"}
                           placeholder="Ex: Geste commercial"
                         />
@@ -1252,11 +1450,15 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <div className="row g-2">
                       <div className="col-12 col-md-6">
-                        <label className="form-label fw-semibold">Méthode paiement</label>
+                        <label className="form-label fw-semibold">
+                          Méthode paiement
+                        </label>
                         <select
                           className="form-select duu-input"
                           value={payMethod}
-                          onChange={(e) => setPayMethod((e.target as HTMLSelectElement).value)}
+                          onChange={(e) =>
+                            setPayMethod((e.target as HTMLSelectElement).value)
+                          }
                           disabled={saving}
                         >
                           <option value="CASH">CASH</option>
@@ -1267,14 +1469,22 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       </div>
 
                       <div className="col-12 col-md-6">
-                        <label className="form-label fw-semibold">Montant payé</label>
+                        <label className="form-label fw-semibold">
+                          Montant payé
+                        </label>
                         <input
                           type="number"
                           min={0}
                           step="1"
                           className="form-control duu-input"
                           value={toInputNumberValue(amountPaid)}
-                          onChange={(e) => setAmountPaid(fromInputNumberValue((e.target as HTMLInputElement).value))}
+                          onChange={(e) =>
+                            setAmountPaid(
+                              fromInputNumberValue(
+                                (e.target as HTMLInputElement).value,
+                              ),
+                            )
+                          }
                           disabled={saving}
                         />
                       </div>
@@ -1284,7 +1494,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         <input
                           className="form-control duu-input"
                           value={payNote}
-                          onChange={(e) => setPayNote((e.target as HTMLInputElement).value)}
+                          onChange={(e) =>
+                            setPayNote((e.target as HTMLInputElement).value)
+                          }
                           disabled={saving}
                           placeholder="Ex: payé en boutique, virement en attente…"
                         />
@@ -1299,7 +1511,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         disabled={saving}
                       />
                       <span>
-                        Marquer comme <strong>livrée (DONE)</strong> après création
+                        Marquer comme <strong>livrée (DONE)</strong> après
+                        création
                       </span>
                     </label>
                   </div>
@@ -1308,7 +1521,11 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
             </div>
 
             <div className="modal-footer duu-admin-order-footer">
-              <button className="btn btn-outline-dark" onClick={onClose} disabled={saving}>
+              <button
+                className="btn btn-outline-dark"
+                onClick={onClose}
+                disabled={saving}
+              >
                 Fermer
               </button>
               <button
@@ -1324,7 +1541,12 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       </div>
 
       {vendorInfoModalOpen && (
-        <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.45)" }}>
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          role="dialog"
+          style={{ background: "rgba(0,0,0,.45)" }}
+        >
           <div className="modal-dialog modal-dialog-centered" role="document">
             <div className="modal-content" style={{ borderRadius: 18 }}>
               <div className="modal-header">
@@ -1337,12 +1559,15 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
               </div>
               <div className="modal-body">
                 <p className="text-muted mb-3">
-                  Ce client existe déjà dans la base, mais il manque les informations vendeur.
-                  Merci de renseigner le nom commercial et l’ICE avant de continuer.
+                  Ce client existe déjà dans la base, mais il manque les
+                  informations vendeur. Merci de renseigner le nom commercial et
+                  l’ICE avant de continuer.
                 </p>
 
                 <div className="mb-3">
-                  <label className="form-label fw-semibold">Nom commercial</label>
+                  <label className="form-label fw-semibold">
+                    Nom commercial
+                  </label>
                   <input
                     className="form-control"
                     value={vendorCommercialName}
