@@ -38,6 +38,16 @@ function fmtDate(value?: string | null) {
   });
 }
 
+function fmtMoney(value?: number | string | null, currency = "MAD") {
+  const n = Number(value || 0);
+
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: currency || "MAD",
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(n) ? n : 0);
+}
+
 function safeErrorMessage(e: any) {
   return e?.response?.data?.error || e?.message || "Erreur";
 }
@@ -178,6 +188,21 @@ function buildQueryParams(args: {
   };
 }
 
+function parseDetailsJson(value: any) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function sumBy(items: SalesReport[], getter: (x: SalesReport) => number) {
+  return items.reduce((acc, item) => acc + getter(item), 0);
+}
+
 export default function ReportsSalesPage() {
   const [type, setType] = useState<ReportType>("DAILY");
   const [currency, setCurrency] = useState("MAD");
@@ -268,6 +293,79 @@ export default function ReportsSalesPage() {
       mounted = false;
     };
   }, [queryParams, type]);
+
+  const enrichedItems = useMemo(() => {
+    return items.map((r) => {
+      const details = parseDetailsJson((r as any).details_json);
+      const grossItemsAmount = Number(details?.gross_items_amount || 0);
+      const adminDiscountAmount = Number(details?.admin_discount_amount || 0);
+      const netItemsAmount =
+        Number(details?.net_items_amount || r.items_amount || 0);
+      const paidAmount = Number(details?.paid_amount || 0);
+      const remainingAmount = Number(details?.remaining_amount || 0);
+      const paymentBreakdown = Array.isArray(details?.payment_breakdown)
+        ? details.payment_breakdown
+        : [];
+
+      return {
+        ...r,
+        _details: details,
+        _gross_items_amount: grossItemsAmount,
+        _admin_discount_amount: adminDiscountAmount,
+        _net_items_amount: netItemsAmount,
+        _paid_amount: paidAmount,
+        _remaining_amount: remainingAmount,
+        _payment_breakdown: paymentBreakdown,
+      };
+    });
+  }, [items]);
+
+  const summary = useMemo(() => {
+    const reportsCount = enrichedItems.length;
+    const ordersCount = sumBy(enrichedItems, (x) => Number(x.orders_count || 0));
+    const grossItemsAmount = sumBy(
+      enrichedItems,
+      (x: any) => Number(x._gross_items_amount || 0)
+    );
+    const adminDiscountAmount = sumBy(
+      enrichedItems,
+      (x: any) => Number(x._admin_discount_amount || 0)
+    );
+    const netItemsAmount = sumBy(
+      enrichedItems,
+      (x: any) => Number(x._net_items_amount || x.items_amount || 0)
+    );
+    const deliveryAmount = sumBy(
+      enrichedItems,
+      (x) => Number(x.delivery_amount || 0)
+    );
+    const totalAmount = sumBy(enrichedItems, (x) => Number(x.total_amount || 0));
+    const commissionAmount = sumBy(
+      enrichedItems,
+      (x) => Number(x.duumini_commission || 0)
+    );
+    const paidAmount = sumBy(
+      enrichedItems,
+      (x: any) => Number(x._paid_amount || 0)
+    );
+    const remainingAmount = sumBy(
+      enrichedItems,
+      (x: any) => Number(x._remaining_amount || 0)
+    );
+
+    return {
+      reportsCount,
+      ordersCount,
+      grossItemsAmount,
+      adminDiscountAmount,
+      netItemsAmount,
+      deliveryAmount,
+      totalAmount,
+      commissionAmount,
+      paidAmount,
+      remainingAmount,
+    };
+  }, [enrichedItems]);
 
   function renderPeriodFilters() {
     if (type === "DAILY") {
@@ -382,14 +480,17 @@ export default function ReportsSalesPage() {
   }
 
   return (
-    <div className="container py-3">
+    <div className="container-fluid py-3">
       <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
         <div>
-          <h2 className="mb-0">Rapports de ventes</h2>
+          <h2 className="mb-1 fw-bold">Dashboard rapports de ventes</h2>
+          <div className="text-muted small">
+            Vue synthétique des performances Duumini
+          </div>
         </div>
       </div>
 
-      <div className="card mb-3">
+      <div className="card border-0 shadow-sm mb-3">
         <div className="card-body">
           <div className="row g-2">
             <div className="col-12 col-md-3">
@@ -438,12 +539,144 @@ export default function ReportsSalesPage() {
       {loading && <div className="text-muted">Chargement…</div>}
       {error && <div className="alert alert-danger">{error}</div>}
 
+      {!loading && !error && (
+        <>
+          <div className="row g-3 mb-3">
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Nombre de rapports</div>
+                  <div className="fs-3 fw-bold">{summary.reportsCount}</div>
+                  <div className="small text-muted mt-1">
+                    Type sélectionné : {typeLabel(type)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Nombre de commandes</div>
+                  <div className="fs-3 fw-bold">{summary.ordersCount}</div>
+                  <div className="small text-muted mt-1">
+                    Total cumulé sur la période filtrée
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Total ventes</div>
+                  <div className="fs-3 fw-bold">
+                    {fmtMoney(summary.totalAmount, currency)}
+                  </div>
+                  <div className="small text-muted mt-1">
+                    Produits nets + livraison
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Commission Duumini</div>
+                  <div className="fs-3 fw-bold">
+                    {fmtMoney(summary.commissionAmount, currency)}
+                  </div>
+                  <div className="small text-muted mt-1">
+                    Basée sur les produits nets
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="row g-3 mb-3">
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">CA brut produits</div>
+                  <div className="fs-4 fw-bold">
+                    {fmtMoney(summary.grossItemsAmount, currency)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Réduction admin</div>
+                  <div className="fs-4 fw-bold text-danger">
+                    {fmtMoney(summary.adminDiscountAmount, currency)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Produits nets</div>
+                  <div className="fs-4 fw-bold">
+                    {fmtMoney(summary.netItemsAmount, currency)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-md-6 col-xl-3">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Livraison</div>
+                  <div className="fs-4 fw-bold">
+                    {fmtMoney(summary.deliveryAmount, currency)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="row g-3 mb-4">
+            <div className="col-12 col-md-6">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Montant payé</div>
+                  <div className="fs-3 fw-bold text-success">
+                    {fmtMoney(summary.paidAmount, currency)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-md-6">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body">
+                  <div className="text-muted small mb-1">Reste à payer</div>
+                  <div className="fs-3 fw-bold text-warning">
+                    {fmtMoney(summary.remainingAmount, currency)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {!loading && !items.length && !error && (
         <div className="text-muted">Aucun rapport.</div>
       )}
 
-      {!!items.length && (
-        <div className="card">
+      {!!enrichedItems.length && (
+        <div className="card border-0 shadow-sm">
+          <div className="card-header bg-white border-0 pb-0">
+            <h5 className="mb-0 fw-semibold">Liste détaillée des rapports</h5>
+          </div>
+
           <div className="table-responsive">
             <table className="table align-middle mb-0">
               <thead>
@@ -451,15 +684,21 @@ export default function ReportsSalesPage() {
                   <th>ID</th>
                   <th>Type</th>
                   <th>Période</th>
-                  <th>Devise</th>
-                  <th>Créé</th>
+                  <th className="text-end">Cmdes</th>
+                  <th className="text-end">Brut</th>
+                  <th className="text-end">Réduc.</th>
+                  <th className="text-end">Livraison</th>
+                  <th className="text-end">Total</th>
+                  <th className="text-end">Payé</th>
+                  <th className="text-end">Reste</th>
+                  <th className="text-end">Commission</th>
                   <th className="text-end">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((r) => (
+                {enrichedItems.map((r: any) => (
                   <tr key={r.id}>
-                    <td>#{r.id}</td>
+                    <td className="fw-semibold">#{r.id}</td>
                     <td>
                       <span className="badge text-bg-dark">
                         {typeLabel(r.period_type)}
@@ -475,8 +714,28 @@ export default function ReportsSalesPage() {
                         </div>
                       </div>
                     </td>
-                    <td>{r.currency}</td>
-                    <td>{fmtDate(r.created_at)}</td>
+                    <td className="text-end">{Number(r.orders_count || 0)}</td>
+                    <td className="text-end">
+                      {fmtMoney(r._gross_items_amount, r.currency)}
+                    </td>
+                    <td className="text-end text-danger">
+                      {fmtMoney(r._admin_discount_amount, r.currency)}
+                    </td>
+                    <td className="text-end">
+                      {fmtMoney(r.delivery_amount, r.currency)}
+                    </td>
+                    <td className="text-end fw-semibold">
+                      {fmtMoney(r.total_amount, r.currency)}
+                    </td>
+                    <td className="text-end text-success">
+                      {fmtMoney(r._paid_amount, r.currency)}
+                    </td>
+                    <td className="text-end text-warning">
+                      {fmtMoney(r._remaining_amount, r.currency)}
+                    </td>
+                    <td className="text-end">
+                      {fmtMoney(r.duumini_commission, r.currency)}
+                    </td>
                     <td className="text-end">
                       <Link
                         className="btn btn-sm btn-primary"
