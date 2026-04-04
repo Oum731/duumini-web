@@ -12,15 +12,24 @@ import {
 } from "./orderUtils";
 import { useAuth } from "../../context/AuthContext";
 
+type CustomerRole = "CLIENT" | "VENDEUR";
+
 function safeUpper(v: any) {
-  return String(v || "")
-    .trim()
-    .toUpperCase();
+  return String(v || "").trim().toUpperCase();
 }
 
 function num(v: any, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function hasValue(v: any) {
+  const s = String(v ?? "").trim();
+  if (!s) return false;
+  if (s === "—") return false;
+  if (s.toLowerCase() === "null") return false;
+  if (s.toLowerCase() === "undefined") return false;
+  return true;
 }
 
 function reductionLabel(adminDiscount: any, currency = "MAD") {
@@ -33,16 +42,10 @@ function reductionLabel(adminDiscount: any, currency = "MAD") {
   return "—";
 }
 
-function viewerRoleLabel(role: string) {
-  if (role === "ADMIN") return "ADMIN";
-  if (role === "VENDEUR" || role === "VENDOR") return "VENDEUR";
-  return "CLIENT";
-}
-
 function money(n?: number | null, currency = "MAD") {
   return `${Number(n || 0).toLocaleString("fr-FR", {
-    maximumFractionDigits: 2,
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   })} ${currency}`;
 }
 
@@ -52,28 +55,10 @@ function paymentMethodLabel(method: any) {
   if (!m) return "—";
   if (["CASH", "ESPECES", "ESPÈCES"].includes(m)) return "Espèces";
   if (["CARD", "CARTE"].includes(m)) return "Carte";
-  if (["BANK_TRANSFER", "TRANSFER", "VIREMENT", "BANK"].includes(m))
-    return "Virement";
+  if (["BANK_TRANSFER", "TRANSFER", "VIREMENT", "BANK"].includes(m)) return "Virement";
   if (["DEPOT_VENTE", "DEPOT", "CONSIGNMENT"].includes(m)) return "Dépôt vente";
 
   return String(method);
-}
-
-function hasValue(v: any) {
-  const s = String(v ?? "").trim();
-  if (!s) return false;
-  if (s === "—") return false;
-  if (s.toLowerCase() === "null") return false;
-  if (s.toLowerCase() === "undefined") return false;
-  return true;
-}
-
-function formatCustomerType(v: any) {
-  const s = safeUpper(v);
-  if (s === "ENTREPRISE") return "Entreprise";
-  if (s === "INFORMEL") return "Informel";
-  if (s === "CLIENT") return "Client";
-  return hasValue(v) ? String(v) : "—";
 }
 
 function getUnitPrice(item: any) {
@@ -101,6 +86,8 @@ function cleanPaymentNote(note: any) {
     .replace(/\bUNPAID\b\s*\|\s*/gi, "")
     .replace(/\|\s*\bUNPAID\b/gi, "")
     .replace(/\bUNPAID\b/gi, "")
+    .replace(/\bPAID\b\s*\|\s*/gi, "")
+    .replace(/\|\s*\bPAID\b/gi, "")
     .replace(/\s+\|\s+\|/g, " | ")
     .replace(/^\|\s*/, "")
     .replace(/\s*\|$/, "")
@@ -115,34 +102,11 @@ function calcLineHT(qty: number, unitTTC: number) {
   return +(qty * calcUnitHT(unitTTC)).toFixed(2);
 }
 
-function formatVendorInvoiceCode(order: any, fallbackCode: string) {
-  const rawDate =
-    order?.created_at ||
-    order?.createdAt ||
-    order?.date ||
-    order?.ordered_at ||
-    order?.order_date ||
-    new Date().toISOString();
-
-  const d = new Date(rawDate);
-  const year = String(d.getFullYear());
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-
-  const rawNumber =
-    order?.invoice_sequence ||
-    order?.invoice_no ||
-    order?.invoice_number ||
-    order?.display_number ||
-    order?.sequence ||
-    order?.id ||
-    fallbackCode ||
-    "1";
-
-  const normalized = String(rawNumber).replace(/\D/g, "");
-  const padded = (normalized || "1").slice(-4).padStart(4, "0");
-
-  return `${year}${month}${day}${padded}S`;
+function calcFromTTC(ttc: number) {
+  const safeTTC = +Math.max(0, Number(ttc || 0)).toFixed(2);
+  const ht = +(safeTTC / 1.2).toFixed(2);
+  const tva = +(safeTTC - ht).toFixed(2);
+  return { ht, tva, ttc: safeTTC };
 }
 
 function fmtDateOnly(raw: any) {
@@ -152,6 +116,13 @@ function fmtDateOnly(raw: any) {
   return d.toLocaleDateString("fr-FR");
 }
 
+function fmtDateTime(raw: any) {
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("fr-FR");
+}
+
 function fmtQty(value: any) {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return "0";
@@ -159,6 +130,26 @@ function fmtQty(value: any) {
     minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
     maximumFractionDigits: 2,
   });
+}
+
+function normalizeCustomerRole(v: any): CustomerRole {
+  const s = safeUpper(v);
+  return s === "VENDEUR" || s === "VENDOR" || s === "SELLER" ? "VENDEUR" : "CLIENT";
+}
+
+function viewerRoleLabel(role: string) {
+  if (role === "ADMIN") return "ADMIN";
+  if (role === "VENDEUR" || role === "VENDOR") return "VENDEUR";
+  return "CLIENT";
+}
+
+function buildOrderDocumentNumber(rawDate: any, orderCode: string) {
+  const d = new Date(rawDate || Date.now());
+  if (Number.isNaN(d.getTime())) return orderCode;
+  const yyyy = String(d.getFullYear());
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}${orderCode}`;
 }
 
 export default function OrderReceipt(props: {
@@ -185,27 +176,19 @@ export default function OrderReceipt(props: {
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const [sharing, setSharing] = useState(false);
 
+  const orderCode = getOrderDisplayCode(order);
   const viewerRole = safeUpper(user?.role);
-  const isAdmin = viewerRole === "ADMIN";
-  const isVendor = viewerRole === "VENDEUR" || viewerRole === "VENDOR";
-  const isVendorView = isAdmin || isVendor;
 
-  const code = getOrderDisplayCode(order);
-  const vendorInvoiceCode = useMemo(
-    () => formatVendorInvoiceCode(order, code),
-    [order, code],
-  );
-
-  const created = order?.created_at
-    ? new Date(order.created_at).toLocaleString("fr-FR")
-    : "—";
-  const createdDateOnly = fmtDateOnly(
+  const createdAt =
     order?.created_at ||
-      order?.createdAt ||
-      order?.date ||
-      order?.ordered_at ||
-      order?.order_date,
-  );
+    order?.createdAt ||
+    order?.date ||
+    order?.ordered_at ||
+    order?.order_date;
+
+  const created = fmtDateTime(createdAt);
+  const createdDateOnly = fmtDateOnly(createdAt);
+  const documentNumber = buildOrderDocumentNumber(createdAt, orderCode);
 
   const contact = order?.contact || order?.customer || order?.user || {};
   const address = order?.address || contact?.address || {};
@@ -235,7 +218,10 @@ export default function OrderReceipt(props: {
     "—";
 
   const commune =
-    address?.commune || contact?.commune || order?.customer_commune || "—";
+    address?.commune ||
+    contact?.commune ||
+    order?.customer_commune ||
+    "—";
 
   const district =
     address?.district ||
@@ -257,51 +243,59 @@ export default function OrderReceipt(props: {
     order?.customer_address ||
     "—";
 
-  const customerType = formatCustomerType(
-    order?.customer_type || contact?.customer_type || contact?.type_client,
-  );
-
   const customerTradeName =
     order?.customer_trade_name ||
+    order?.commercial_name ||
     contact?.customer_trade_name ||
     contact?.trade_name ||
+    contact?.commercial_name ||
     contact?.nom_commercial ||
     "—";
 
   const customerIce =
-    order?.customer_ice || contact?.customer_ice || contact?.ice || "—";
+    order?.customer_ice ||
+    order?.ice ||
+    contact?.customer_ice ||
+    contact?.ice ||
+    "—";
+
+  const orderCustomerRole: CustomerRole = normalizeCustomerRole(
+    order?.customer_role ||
+      order?.role_client ||
+      contact?.customer_role ||
+      contact?.role ||
+      contact?.user_role ||
+      ""
+  );
+
+  const hasVendorIdentity =
+    (hasValue(customerTradeName) && customerTradeName !== "—") ||
+    (hasValue(customerIce) && customerIce !== "—");
+
+  const isVendorInvoice = orderCustomerRole === "VENDEUR" || hasVendorIdentity;
 
   const f = normFulfillment(order);
   const fBadge = fulfillmentLabel(f);
 
-  const { itemsAmount, deliveryFee, total, duuShare, vendorNet } =
-    computeOrderAmounts(order);
-
+  const { itemsAmount, deliveryFee, total } = computeOrderAmounts(order);
   const pay = getPaymentFromOrder(order);
 
-  const currency = String(
-    order?.totals?.currency || order?.currency || "MAD",
-  ).toUpperCase();
-
+  const currency = String(order?.totals?.currency || order?.currency || "MAD").toUpperCase();
   const totals = order?.totals || {};
   const adminDiscount = order?.admin_discount || {};
 
   const itemsSubtotal = num(totals?.items_subtotal, itemsAmount);
-
-  const discountAmount = num(
-    adminDiscount?.amount,
-    totals?.admin_discount_amount,
-  );
-
+  const discountAmount = num(adminDiscount?.amount, totals?.admin_discount_amount);
   const discountedItemsAmount = num(
     totals?.discounted_items_amount,
-    Math.max(0, itemsSubtotal - discountAmount),
+    Math.max(0, itemsSubtotal - discountAmount)
   );
-
   const displayDeliveryFee = num(totals?.delivery_fee, deliveryFee);
   const displayTotal = num(totals?.amount, total);
 
   const discountText = reductionLabel(adminDiscount, currency);
+  const discountLabelText = String(adminDiscount?.label || "").trim();
+  const cleanedNote = cleanPaymentNote(pay?.note);
 
   const paymentLine = [
     pay?.method ? `Méthode: ${paymentMethodLabel(pay.method)}` : null,
@@ -310,8 +304,6 @@ export default function OrderReceipt(props: {
     .filter(Boolean)
     .join(" • ");
 
-  const cleanedNote = cleanPaymentNote(pay?.note);
-
   const summary = useMemo(
     () => ({
       itemsSubtotal,
@@ -319,39 +311,24 @@ export default function OrderReceipt(props: {
       discountedItemsAmount,
       deliveryFee: displayDeliveryFee,
       total: displayTotal,
-      duuShare,
-      vendorNet,
     }),
-    [
-      itemsSubtotal,
-      discountAmount,
-      discountedItemsAmount,
-      displayDeliveryFee,
-      displayTotal,
-      duuShare,
-      vendorNet,
-    ],
+    [itemsSubtotal, discountAmount, discountedItemsAmount, displayDeliveryFee, displayTotal]
   );
 
-  const vendorItems = Array.isArray(order?.items) ? order.items : [];
+  const items = Array.isArray(order?.items) ? order.items : [];
 
-  const vendorTotals = useMemo(() => {
-    const totalHT = vendorItems.reduce((acc: number, it: any) => {
-      const qty = Number(it?.qty || 1);
-      const unitTTC = getUnitPrice(it);
-      return acc + calcLineHT(qty, unitTTC);
-    }, 0);
-
-    const safeTotalHT = +Math.max(0, totalHT).toFixed(2);
-    const tvaAmount = +(safeTotalHT * 0.2).toFixed(2);
-    const totalTTC = +(safeTotalHT + tvaAmount).toFixed(2);
+  const invoiceTotals = useMemo(() => {
+    const discount = +Math.max(0, discountAmount).toFixed(2);
+    const netProducts = +Math.max(0, discountedItemsAmount).toFixed(2);
+    const productTax = calcFromTTC(netProducts);
 
     return {
-      totalHT: safeTotalHT,
-      tvaAmount,
-      totalTTC,
+      discount,
+      totalHT: productTax.ht,
+      tvaAmount: productTax.tva,
+      totalTTC: productTax.ttc,
     };
-  }, [vendorItems]);
+  }, [discountAmount, discountedItemsAmount]);
 
   function buildVerifyUrl(o: any) {
     const base =
@@ -360,14 +337,10 @@ export default function OrderReceipt(props: {
 
     const token = o?.receipt_token ? String(o.receipt_token) : null;
     if (!token) return base;
-
     return `${base}/r/${encodeURIComponent(token)}`;
   }
 
-  const verifyUrl = useMemo(
-    () => buildVerifyUrl(order),
-    [order, publicWebBase],
-  );
+  const verifyUrl = useMemo(() => buildVerifyUrl(order), [order, publicWebBase]);
 
   function cleanupPrintRoot() {
     document.body.classList.remove("duu-printing");
@@ -376,9 +349,7 @@ export default function OrderReceipt(props: {
   }
 
   function waitImages(container: HTMLElement, timeoutMs = 2500) {
-    const imgs = Array.from(
-      container.querySelectorAll("img"),
-    ) as HTMLImageElement[];
+    const imgs = Array.from(container.querySelectorAll("img")) as HTMLImageElement[];
     if (!imgs.length) return Promise.resolve();
 
     const waits = imgs.map((img) => {
@@ -416,6 +387,7 @@ export default function OrderReceipt(props: {
       window.removeEventListener("afterprint", after);
       cleanupPrintRoot();
     };
+
     window.addEventListener("afterprint", after);
 
     setTimeout(() => {
@@ -449,7 +421,7 @@ export default function OrderReceipt(props: {
         backgroundColor: "#ffffff",
       });
 
-      const filename = `${isVendorView ? "Facture" : "Recu"}-${code}.png`;
+      const filename = `${isVendorInvoice ? "Facture" : "Recu"}-${documentNumber}.png`;
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], filename, { type: "image/png" });
 
@@ -457,8 +429,8 @@ export default function OrderReceipt(props: {
 
       if (nav?.share && (!nav?.canShare || nav.canShare({ files: [file] }))) {
         await nav.share({
-          title: isVendorView ? "Facture vendeur" : "Reçu Duumini",
-          text: isVendorView ? "Facture vendeur." : "Reçu.",
+          title: isVendorInvoice ? "Facture vendeur" : "Reçu Duumini",
+          text: isVendorInvoice ? "Facture vendeur." : "Reçu.",
           files: [file],
         });
         return;
@@ -470,14 +442,23 @@ export default function OrderReceipt(props: {
     }
   }
 
-  const receiptRows = [
+  const customerHeaderName =
+    hasValue(customerTradeName) && customerTradeName !== "—"
+      ? customerTradeName
+      : fullName;
+
+  const receiptInfoRows = [
     { label: "Client", value: fullName },
+    ...(isVendorInvoice
+      ? [{ label: "Nom commercial", value: customerHeaderName }]
+      : []),
+    ...(isVendorInvoice && hasValue(customerIce) ? [{ label: "ICE", value: customerIce }] : []),
     { label: "Téléphone", value: String(phone) },
     { label: "Ville", value: city },
-    { label: "Commune", value: commune },
-    { label: "Quartier", value: district },
-    { label: "Adresse", value: addressLine },
-    { label: "Type client", value: customerType },
+    ...(hasValue(commune) ? [{ label: "Commune", value: commune }] : []),
+    ...(hasValue(district) ? [{ label: "Quartier", value: district }] : []),
+    ...(hasValue(addressLine) ? [{ label: "Adresse", value: addressLine }] : []),
+    { label: "Rôle client", value: orderCustomerRole },
     { label: "Livraison", value: fBadge.text },
   ];
 
@@ -485,19 +466,17 @@ export default function OrderReceipt(props: {
     <>
       <style>{`
         :root{
-          --dm-yellow:#FFD000;
-          --dm-black:#111111;
-          --dm-text:#161616;
-          --dm-muted:#667085;
-          --dm-soft:#F8F9FB;
-          --dm-line:#D0D5DD;
-          --dm-line-soft:#EAECF0;
-          --dm-danger:#D92D20;
-          --dm-success:#12B76A;
+          --dm-yellow:#fff200;
+          --dm-black:#0d0d0d;
+          --dm-bg:#ededed;
+          --dm-border:#7f7f7f;
+          --dm-border-soft:#b7b7b7;
+          --dm-danger:#c62828;
+          --dm-text:#101010;
         }
 
-        .dm-r-wrap{
-          width:1100px;
+        .dm-wrap{
+          width:980px;
           max-width:100%;
           margin:0 auto;
           font-family:Arial, Helvetica, sans-serif;
@@ -505,37 +484,34 @@ export default function OrderReceipt(props: {
         }
 
         .dm-actions{
-          margin-bottom:10px;
+          margin-bottom:12px;
           display:flex;
           gap:8px;
           justify-content:center;
           flex-wrap:wrap;
         }
 
-        .dm-btn{
-          border-radius:12px;
-          padding:10px 13px;
+        .dm-btn,
+        .dm-btn-ghost{
+          border-radius:10px;
+          padding:10px 14px;
           font-weight:900;
           font-size:12px;
           cursor:pointer;
-          border:1px solid var(--dm-black);
-          background:var(--dm-black);
-          color:var(--dm-yellow);
           width:100%;
           max-width:280px;
         }
 
+        .dm-btn{
+          border:1px solid #111;
+          background:#111;
+          color:#fff200;
+        }
+
         .dm-btn-ghost{
-          border-radius:12px;
-          padding:10px 13px;
-          font-weight:900;
-          font-size:12px;
-          cursor:pointer;
-          border:1px solid rgba(0,0,0,.12);
+          border:1px solid rgba(0,0,0,.15);
           background:#fff;
-          color:var(--dm-black);
-          width:100%;
-          max-width:280px;
+          color:#111;
         }
 
         .dm-btn:disabled,
@@ -544,636 +520,425 @@ export default function OrderReceipt(props: {
           cursor:not-allowed;
         }
 
-        .dm-r-paper{
-          background:#fff;
-          border:1px solid rgba(17,17,17,.08);
-          border-radius:10px;
+        .dm-paper{
+          background:var(--dm-bg);
+          border:1px solid rgba(0,0,0,.08);
+          border-radius:28px;
           overflow:hidden;
-          box-shadow:0 8px 24px rgba(17,17,17,.06);
+          box-shadow:0 10px 26px rgba(0,0,0,.06);
         }
 
-        .dm-receipt-modern{
-          padding:16px;
-          font-family:Inter, Arial, Helvetica, sans-serif;
+        .dm-page{
+          background:var(--dm-bg);
+          padding:24px 26px 0;
         }
 
-        .dm-r-topbar{
-          height:4px;
-          background:linear-gradient(90deg, #FFD000 0%, #FFE04D 50%, #FFD000 100%);
-        }
-
-        .dm-r-header{
-          padding:12px 16px 10px;
-          border-bottom:1px solid var(--dm-line-soft);
-          background:
-            radial-gradient(circle at top left, rgba(255,208,0,.09), transparent 28%),
-            linear-gradient(180deg, #fff 0%, #fcfcfd 100%);
-        }
-
-        .dm-r-head-main{
+        .dm-head{
           display:grid;
-          grid-template-columns:1fr auto;
-          gap:12px;
+          grid-template-columns:82px minmax(0,1fr);
+          gap:16px;
           align-items:start;
         }
 
-        .dm-r-brand{
-          display:flex;
-          gap:10px;
-          align-items:flex-start;
-          min-width:0;
-        }
-
-        .dm-r-logo{
-          width:44px;
-          height:44px;
-          border-radius:10px;
-          overflow:hidden;
-          border:1px solid rgba(0,0,0,.08);
+        .dm-logo-box{
+          width:78px;
+          height:78px;
           background:#fff;
+          border:1px solid rgba(0,0,0,.12);
           display:flex;
           align-items:center;
           justify-content:center;
-          flex:0 0 auto;
+          overflow:hidden;
         }
 
-        .dm-r-logo img{
+        .dm-logo-box img{
           width:100%;
           height:100%;
-          object-fit:cover;
-        }
-
-        .dm-r-name{
-          font-size:18px;
-          font-weight:900;
-          line-height:1;
-          letter-spacing:.3px;
-        }
-
-        .dm-r-slogan{
-          margin-top:4px;
-          color:var(--dm-muted);
-          font-size:10px;
-          font-weight:700;
-          line-height:1.3;
-          word-break:break-word;
-          overflow-wrap:anywhere;
-        }
-
-        .dm-r-meta{
-          text-align:right;
-          min-width:200px;
-        }
-
-        .dm-r-badge{
-          display:inline-flex;
-          align-items:center;
-          justify-content:center;
-          padding:4px 8px;
-          border-radius:999px;
-          background:#FFF7CC;
-          border:1px solid rgba(17,17,17,.06);
-          color:#2D2A1F;
-          font-size:10px;
-          font-weight:900;
-          margin-bottom:6px;
-        }
-
-        .dm-r-doc-title{
-          font-size:18px;
-          font-weight:900;
-          letter-spacing:.5px;
-          line-height:1;
-        }
-
-        .dm-r-doc-sub{
-          margin-top:4px;
-          color:var(--dm-muted);
-          font-size:10px;
-          font-weight:700;
-          line-height:1.35;
-        }
-
-        .dm-r-body{
-          padding:12px 16px 14px;
-          font-size:11px;
-        }
-
-        .dm-r-panel{
-          border:1px solid var(--dm-line-soft);
-          border-radius:10px;
+          object-fit:contain;
           background:#fff;
-          padding:10px 11px;
+        }
+
+        .dm-brand{
           min-width:0;
         }
 
-        .dm-r-panel-soft{
-          background:var(--dm-soft);
+        .dm-brand-title{
+          margin-top:6px;
+          font-size:24px;
+          line-height:1.04;
+          font-weight:900;
+          color:#d90000;
+          text-shadow:1px 1px 0 rgba(0,0,0,.2);
+          word-break:break-word;
         }
 
-        .dm-r-panel-title{
+        .dm-brand-title.receipt{
+          color:#111;
+          text-shadow:none;
+        }
+
+        .dm-brand-sub{
+          margin-top:8px;
           font-size:9px;
-          text-transform:uppercase;
-          letter-spacing:.9px;
-          color:var(--dm-muted);
-          font-weight:900;
-          margin-bottom:7px;
-        }
-
-        .dm-r-mini-grid{
-          display:grid;
-          grid-template-columns:1fr 1fr 1fr 1fr;
-          gap:6px 12px;
-        }
-
-        .dm-r-mini-row{
-          display:grid;
-          grid-template-columns:78px 1fr;
-          gap:6px;
-          align-items:start;
-          min-width:0;
-        }
-
-        .dm-r-k{
-          color:var(--dm-muted);
-          font-weight:800;
-        }
-
-        .dm-r-v{
-          font-weight:900;
-          text-align:right;
-          word-break:break-word;
-          overflow-wrap:anywhere;
-        }
-
-        .dm-r-grid-main{
-          display:grid;
-          grid-template-columns:minmax(0, 1.35fr) minmax(290px, .9fr);
-          gap:10px;
-          align-items:start;
-          margin-top:10px;
-        }
-
-        .dm-r-side-stack{
-          display:grid;
-          gap:10px;
-        }
-
-        .dm-r-section-title{
-          font-size:10px;
+          line-height:1.3;
+          text-align:center;
           font-weight:900;
           text-transform:uppercase;
-          letter-spacing:.7px;
-          margin-bottom:6px;
-          color:#202020;
+          letter-spacing:.35px;
         }
 
-        .dm-r-table-wrap{
-          border:1px solid var(--dm-line-soft);
-          border-radius:10px;
-          overflow:hidden;
-          background:#fff;
-        }
-
-        .dm-r-table{
+        .dm-invoice-head-image{
           width:100%;
-          border-collapse:collapse;
+          display:block;
+          margin-bottom:12px;
+          border-radius:0;
         }
 
-        .dm-r-table th,
-        .dm-r-table td{
-          padding:7px 8px;
-          border-bottom:1px solid var(--dm-line-soft);
-          vertical-align:middle;
+        .dm-meta-line{
+          display:flex;
+          justify-content:flex-end;
+          align-items:center;
+          margin-top:8px;
+          margin-bottom:10px;
         }
 
-        .dm-r-table th{
-          background:#FAFAFB;
-          text-align:left;
-          font-size:10px;
-          font-weight:900;
-          color:#202020;
-        }
-
-        .dm-r-table tbody tr:last-child td{
-          border-bottom:none;
-        }
-
-        .dm-r-table td{
-          font-size:10.5px;
-          font-weight:700;
-          line-height:1.25;
-        }
-
-        .dm-r-table td.num{
+        .dm-date{
           text-align:right;
+          font-size:12px;
           font-weight:900;
           white-space:nowrap;
         }
 
-        .dm-r-line-name{
-          font-weight:900;
-          line-height:1.25;
-        }
-
-        .dm-r-totals{
+        .dm-client-box{
           width:100%;
-          border:1px solid var(--dm-line-soft);
-          border-radius:10px;
-          overflow:hidden;
           background:#fff;
+          border:2px solid #555;
+          padding:10px 12px;
+          min-height:auto;
+          box-sizing:border-box;
         }
 
-        .dm-r-totals-head{
-          background:#FAFAFB;
-          padding:8px 10px;
-          font-size:9px;
+        .dm-client-name{
+          font-size:12px;
+          line-height:1.14;
+          font-weight:900;
           text-transform:uppercase;
-          letter-spacing:.7px;
-          color:var(--dm-muted);
-          font-weight:900;
-          border-bottom:1px solid var(--dm-line-soft);
-        }
-
-        .dm-r-total-row{
-          display:flex;
-          justify-content:space-between;
-          align-items:flex-start;
-          gap:10px;
-          padding:8px 10px;
-          border-bottom:1px solid var(--dm-line-soft);
-          font-size:10.5px;
-        }
-
-        .dm-r-total-row:last-child{
-          border-bottom:none;
-        }
-
-        .dm-r-total-row .label{
-          color:#475467;
-          font-weight:800;
-        }
-
-        .dm-r-total-row .value{
-          text-align:right;
-          font-weight:900;
-          max-width:180px;
-          white-space:normal;
           word-break:break-word;
           overflow-wrap:anywhere;
-        }
-
-        .dm-r-v-danger{
-          color:var(--dm-danger);
-        }
-
-        .dm-r-v-success{
-          color:var(--dm-success);
-        }
-
-        .dm-r-total-row-strong{
-          background:#FFFDF2;
-        }
-
-        .dm-r-total-row-strong .label,
-        .dm-r-total-row-strong .value{
-          font-size:12px;
-          font-weight:900;
-          color:#111;
-        }
-
-        .dm-r-payment-box{
-          border:1px solid var(--dm-line-soft);
-          border-radius:10px;
-          background:#FCFCFD;
-          padding:9px 10px;
-        }
-
-        .dm-r-payment-line{
-          display:flex;
-          justify-content:space-between;
-          align-items:flex-start;
-          gap:10px;
-          font-size:10.5px;
-        }
-
-        .dm-r-payment-line .left{
-          color:var(--dm-muted);
-          font-weight:800;
-        }
-
-        .dm-r-payment-line .right{
-          text-align:right;
-          font-weight:900;
-          word-break:break-word;
-        }
-
-        .dm-r-note-box{
-          border:1px dashed #D0D5DD;
-          border-radius:10px;
-          background:#fff;
-          padding:9px 10px;
-        }
-
-        .dm-r-note-title{
-          font-size:9px;
-          text-transform:uppercase;
-          letter-spacing:.7px;
-          color:var(--dm-muted);
-          font-weight:900;
           margin-bottom:5px;
         }
 
-        .dm-r-note-body{
-          font-size:10.5px;
-          line-height:1.35;
-          font-weight:700;
-          color:#2F2F2F;
-          white-space:pre-wrap;
-          word-break:break-word;
-        }
-
-        .dm-r-bottom{
-          margin-top:10px;
+        .dm-client-lines{
           display:grid;
-          grid-template-columns:1fr 88px;
-          gap:10px;
-          align-items:end;
+          grid-template-columns:repeat(2, minmax(0, 1fr));
+          gap:4px 14px;
         }
 
-        .dm-r-footer{
-          border-top:1px solid var(--dm-line-soft);
-          padding-top:8px;
+        .dm-client-line{
+          font-size:7px;
+          line-height:1.28;
+          font-weight:700;
+          word-break:break-word;
+          overflow-wrap:anywhere;
         }
 
-        .dm-r-footer-main{
-          font-size:11px;
+        .dm-client-line b{
           font-weight:900;
         }
 
-        .dm-r-qr{
-          display:flex;
-          flex-direction:column;
-          align-items:center;
-          justify-content:center;
-          gap:5px;
-          border:1px solid var(--dm-line-soft);
-          border-radius:10px;
-          padding:7px;
-          background:#fff;
-        }
-
-        .dm-r-qrtext{
-          font-size:8.5px;
-          line-height:1.2;
-          text-align:center;
-          color:var(--dm-muted);
-          font-weight:800;
-        }
-
-        .dm-invoice-wrap{
-          width:100%;
-          background:#fff;
-          color:#000;
-          font-family:Arial, Helvetica, sans-serif;
-        }
-
-        .dm-invoice-page{
-          width:100%;
-          min-height:auto;
-          background:#fff;
-        }
-
-        .dm-invoice-header-img,
-        .dm-invoice-footer-img{
-          display:block;
-          width:100%;
-          height:auto;
-        }
-
-        .dm-invoice-body{
-          padding:4mm 8mm 5mm;
-        }
-
-        .dm-invoice-head{
+        .dm-doc-row{
+          margin-top:18px;
           display:grid;
-          grid-template-columns:minmax(0, 1fr) 82mm;
-          gap:8mm;
-          align-items:start;
-          margin:0 0 3mm;
-          min-height:28mm;
-        }
-
-        .dm-invoice-head-left{
-          min-height:1px;
-        }
-
-        .dm-invoice-head-right{
-          text-align:right;
-        }
-
-        .dm-invoice-date{
-          font-size:11px;
-          font-weight:700;
-          line-height:1.2;
-          margin-bottom:4px;
-        }
-
-        .dm-invoice-client-box{
-          border:1.2px solid #111;
-          padding:5px 6px;
-          text-align:left;
-          min-height:22mm;
-          display:flex;
-          flex-direction:column;
-          justify-content:flex-start;
-          overflow-wrap:anywhere;
-          word-break:break-word;
-        }
-
-        .dm-invoice-client-name{
-          font-size:10.5px;
-          font-weight:800;
-          line-height:1.2;
-          text-transform:uppercase;
-        }
-
-        .dm-invoice-client-ice{
-          margin-top:3px;
-          font-size:9px;
-          font-weight:700;
-          line-height:1.15;
-        }
-
-        .dm-invoice-docline{
-          display:grid;
-          grid-template-columns:1fr auto auto;
-          gap:6px;
+          grid-template-columns:minmax(0,1fr) auto;
+          gap:20px;
           align-items:end;
-          margin:0 0 3mm;
         }
 
-        .dm-invoice-doclabel{
-          font-size:12px;
+        .dm-doc-label{
+          font-size:18px;
+          line-height:1.05;
           font-style:italic;
           font-weight:700;
-          line-height:1.1;
         }
 
-        .dm-invoice-docnumber{
-          font-size:11px;
-          font-weight:800;
-          line-height:1.1;
+        .dm-doc-number{
+          font-size:13px;
+          font-weight:900;
+          text-align:right;
           white-space:nowrap;
         }
 
-        .dm-invoice-table{
+        .dm-table-wrap{
+          margin-top:14px;
+        }
+
+        .dm-table{
           width:100%;
           border-collapse:collapse;
           table-layout:fixed;
-          border:1.2px solid #111;
-        }
-
-        .dm-invoice-table th{
-          background:#111;
-          color:#fff;
-          border:1px solid #4a4a4a;
-          padding:6px 5px;
-          text-align:center;
-          font-size:9px;
-          font-weight:800;
-          line-height:1.15;
-        }
-
-        .dm-invoice-table td{
-          border:1px solid #7f7f7f;
-          padding:6px 5px;
-          font-size:9px;
-          line-height:1.18;
-          vertical-align:top;
-        }
-
-        .dm-invoice-table .c-ref{
-          width:16%;
-          text-align:center;
-        }
-
-        .dm-invoice-table .c-designation{
-          width:44%;
-        }
-
-        .dm-invoice-table .c-qty{
-          width:10%;
-          text-align:center;
-          white-space:nowrap;
-        }
-
-        .dm-invoice-table .c-unit{
-          width:15%;
-          text-align:right;
-          white-space:nowrap;
-        }
-
-        .dm-invoice-table .c-total{
-          width:15%;
-          text-align:right;
-          white-space:nowrap;
-        }
-
-        .dm-invoice-line-name{
-          font-weight:700;
-          line-height:1.2;
-          word-break:break-word;
-        }
-
-        .dm-invoice-line-sub{
-          display:block;
-          margin-top:2px;
-          font-size:8px;
-          font-weight:500;
-          line-height:1.1;
-        }
-
-        .dm-invoice-bottom{
-          display:flex;
-          justify-content:flex-end;
-          margin-top:4mm;
-        }
-
-        .dm-invoice-totals{
-          width:76mm;
-          border:1.2px solid #111;
           background:#fff;
         }
 
-        .dm-invoice-total-row{
-          display:grid;
-          grid-template-columns:minmax(0, 1fr) auto;
-          gap:10px;
-          padding:6px 8px;
-          border-bottom:1px solid #9f9f9f;
-          align-items:center;
-          font-size:10px;
-          line-height:1.15;
-        }
-
-        .dm-invoice-total-row:last-child{
-          border-bottom:none;
-        }
-
-        .dm-invoice-total-row .label{
-          font-weight:800;
-        }
-
-        .dm-invoice-total-row .value{
-          text-align:right;
-          white-space:nowrap;
-          font-weight:800;
-        }
-
-        .dm-invoice-total-row.ttc{
-          background:#f3f3f3;
-        }
-
-        .dm-invoice-total-row.ttc .label,
-        .dm-invoice-total-row.ttc .value{
-          font-size:11px;
+        .dm-table th{
+          background:#000;
+          color:#fff;
+          border:2px solid #5c5c5c;
+          padding:6px 4px;
+          text-align:center;
+          font-size:8px;
+          line-height:1.1;
           font-weight:900;
         }
 
-        @media (max-width: 900px){
-          .dm-r-wrap{
+        .dm-table td{
+          border:2px solid #8d8d8d;
+          padding:7px 6px;
+          font-size:7px;
+          line-height:1.2;
+          font-weight:700;
+          vertical-align:top;
+          background:#fff;
+          word-break:break-word;
+          overflow-wrap:anywhere;
+        }
+
+        .dm-table .c-ref{ width:16%; text-align:center; }
+        .dm-table .c-name{ width:44%; }
+        .dm-table .c-qty{ width:10%; text-align:center; }
+        .dm-table .c-unit{ width:15%; text-align:right; white-space:nowrap; }
+        .dm-table .c-total{ width:15%; text-align:right; white-space:nowrap; }
+
+        .dm-line-name{
+          font-size:7px;
+          line-height:1.22;
+          font-weight:900;
+          word-break:break-word;
+          overflow-wrap:anywhere;
+        }
+
+        .dm-line-sub{
+          display:block;
+          margin-top:2px;
+          font-size:6px;
+          line-height:1.1;
+          font-weight:600;
+          word-break:break-word;
+          overflow-wrap:anywhere;
+        }
+
+        .dm-totals-wrap{
+          display:flex;
+          justify-content:flex-end;
+          margin-top:18px;
+          margin-bottom:20px;
+        }
+
+        .dm-totals{
+          width:100%;
+          max-width:560px;
+          background:#fff;
+          border:2px solid #585858;
+        }
+
+        .dm-total-row{
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto;
+          gap:10px;
+          align-items:center;
+          padding:8px 12px;
+          border-bottom:1px solid #bcbcbc;
+        }
+
+        .dm-total-row:last-child{
+          border-bottom:none;
+        }
+
+        .dm-total-label{
+          font-size:10px;
+          font-weight:900;
+          text-transform:uppercase;
+        }
+
+        .dm-total-value{
+          font-size:10px;
+          font-weight:900;
+          text-align:right;
+          white-space:nowrap;
+        }
+
+        .dm-total-row.strong .dm-total-label,
+        .dm-total-row.strong .dm-total-value{
+          font-size:11px;
+        }
+
+        .dm-total-row.discount .dm-total-value{
+          color:var(--dm-danger);
+        }
+
+        .dm-receipt-bottom{
+          display:grid;
+          grid-template-columns:minmax(0,1fr) 104px;
+          gap:14px;
+          align-items:end;
+          margin-bottom:20px;
+        }
+
+        .dm-box{
+          background:#fff;
+          border:2px solid #b8b8b8;
+          padding:8px 10px;
+        }
+
+        .dm-box-title{
+          font-size:8px;
+          line-height:1.2;
+          font-weight:900;
+          text-transform:uppercase;
+          margin-bottom:4px;
+        }
+
+        .dm-box-text{
+          font-size:7px;
+          line-height:1.28;
+          font-weight:700;
+          word-break:break-word;
+          overflow-wrap:anywhere;
+          white-space:pre-wrap;
+        }
+
+        .dm-qr-box{
+          background:#fff;
+          border:2px solid #d6d6d6;
+          padding:7px;
+          text-align:center;
+        }
+
+        .dm-qr-label{
+          margin-top:4px;
+          font-size:5.5px;
+          line-height:1.12;
+          font-weight:800;
+          color:#5d5d5d;
+        }
+
+        .dm-thanks{
+          margin-top:8px;
+          font-size:8px;
+          font-weight:900;
+        }
+
+        .dm-footer-yellow{
+          background:var(--dm-yellow);
+          padding:10px 16px 12px;
+          text-align:center;
+          border-top:1px solid rgba(0,0,0,.08);
+        }
+
+        .dm-footer-line{
+          font-size:7px;
+          line-height:1.2;
+          font-weight:700;
+          word-break:break-word;
+        }
+
+        .dm-footer-line + .dm-footer-line{
+          margin-top:2px;
+        }
+
+        @media (max-width: 860px){
+          .dm-wrap{
             width:100%;
           }
 
-          .dm-r-head-main,
-          .dm-r-grid-main,
-          .dm-r-mini-grid,
-          .dm-r-bottom,
-          .dm-invoice-head{
+          .dm-page{
+            padding:14px 12px 0;
+          }
+
+          .dm-head{
+            grid-template-columns:58px minmax(0,1fr);
+            gap:10px;
+          }
+
+          .dm-logo-box{
+            width:54px;
+            height:54px;
+          }
+
+          .dm-brand-title{
+            font-size:16px;
+          }
+
+          .dm-brand-sub{
+            font-size:7px;
+          }
+
+          .dm-client-lines{
             grid-template-columns:1fr;
           }
 
-          .dm-r-meta{
-            text-align:left;
-            min-width:0;
-          }
-
-          .dm-invoice-body{
-            padding:10px 12px 12px;
-          }
-
-          .dm-invoice-head-right{
-            text-align:left;
-          }
-
-          .dm-invoice-docline{
+          .dm-doc-row{
             grid-template-columns:1fr;
-            gap:4px;
+            gap:5px;
           }
 
-          .dm-invoice-totals{
-            width:100%;
+          .dm-doc-label{
+            font-size:15px;
+          }
+
+          .dm-doc-number{
+            text-align:left;
+            font-size:11px;
+            white-space:normal;
+          }
+
+          .dm-receipt-bottom{
+            grid-template-columns:1fr;
+          }
+
+          .dm-meta-line{
+            justify-content:flex-start;
+          }
+
+          .dm-date{
+            text-align:left;
+          }
+        }
+
+        @media (max-width: 640px){
+          .dm-table th{
+            font-size:7px;
+            padding:5px 3px;
+          }
+
+          .dm-table td{
+            font-size:6px;
+            padding:5px 4px;
+          }
+
+          .dm-line-name{
+            font-size:6px;
+          }
+
+          .dm-line-sub{
+            font-size:5.5px;
+          }
+
+          .dm-total-label,
+          .dm-total-value{
+            font-size:9px;
+          }
+
+          .dm-total-row.strong .dm-total-label,
+          .dm-total-row.strong .dm-total-value{
+            font-size:10px;
+          }
+
+          .dm-client-name{
+            font-size:10px;
+          }
+
+          .dm-client-line{
+            font-size:6.5px;
           }
         }
 
@@ -1206,60 +971,49 @@ export default function OrderReceipt(props: {
             margin:0 auto !important;
           }
 
-          #duu-print-root .dm-r-paper{
+          #duu-print-root .dm-wrap{
+            width:210mm !important;
+            max-width:210mm !important;
+            margin:0 auto !important;
+          }
+
+          #duu-print-root .dm-paper{
             border:none !important;
             border-radius:0 !important;
             box-shadow:none !important;
             overflow:visible !important;
           }
 
+          #duu-print-root .dm-page{
+            width:210mm !important;
+            max-width:210mm !important;
+            min-height:297mm !important;
+            padding:10mm 9mm 0 !important;
+            box-sizing:border-box !important;
+            background:#ededed !important;
+          }
+
           #duu-print-root .dm-no-print{
             display:none !important;
           }
 
-          #duu-print-root .dm-r-wrap{
-            width:210mm !important;
-            max-width:210mm !important;
-            margin:0 auto !important;
-          }
-
-          #duu-print-root .dm-invoice-wrap,
-          #duu-print-root .dm-invoice-page{
-            width:210mm !important;
-            max-width:210mm !important;
-            min-height:297mm !important;
-            box-shadow:none !important;
-            border:none !important;
-            overflow:hidden !important;
-          }
-
-          #duu-print-root .dm-invoice-header-img,
-          #duu-print-root .dm-invoice-footer-img{
-            width:210mm !important;
-            max-width:210mm !important;
-            height:auto !important;
-            page-break-inside:avoid !important;
-          }
-
-          #duu-print-root .dm-invoice-table,
-          #duu-print-root .dm-invoice-totals,
-          #duu-print-root .dm-r-panel,
-          #duu-print-root .dm-r-payment-box,
-          #duu-print-root .dm-r-note-box,
-          #duu-print-root .dm-r-totals{
+          #duu-print-root .dm-table,
+          #duu-print-root .dm-totals,
+          #duu-print-root .dm-box,
+          #duu-print-root .dm-qr-box,
+          #duu-print-root .dm-footer-yellow,
+          #duu-print-root .dm-client-box{
             break-inside:avoid;
             page-break-inside:avoid;
           }
         }
       `}</style>
 
-      <div className="dm-r-wrap">
+      <div className="dm-wrap">
         {!hidePrintButton ? (
           <div className="dm-actions dm-no-print">
             <button className="dm-btn" type="button" onClick={printTicket}>
-              {isVendorView
-                ? "Imprimer la facture vendeur"
-                : "Imprimer le reçu"}
+              {isVendorInvoice ? "Imprimer la facture vendeur" : "Imprimer le reçu"}
             </button>
 
             <button
@@ -1273,339 +1027,300 @@ export default function OrderReceipt(props: {
           </div>
         ) : null}
 
-        <div ref={receiptRef} className="dm-r-paper">
-          {isVendorView ? (
-            <div className="dm-invoice-wrap">
-              <div className="dm-invoice-page">
-                <img
-                  src="/entete.png"
-                  alt="Entête facture"
-                  className="dm-invoice-header-img"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                  }}
-                />
+        <div ref={receiptRef} className="dm-paper">
+          {isVendorInvoice ? (
+            <div className="dm-page">
+              <img
+                src="/entete.png"
+                alt="Entête facture"
+                className="dm-invoice-head-image"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
 
-                <div className="dm-invoice-body">
-                  <div className="dm-invoice-head">
-                    <div className="dm-invoice-head-left" />
+              <div className="dm-meta-line">
+                <div className="dm-date">{createdDateOnly}</div>
+              </div>
 
-                    <div className="dm-invoice-head-right">
-                      <div className="dm-invoice-date">{createdDateOnly}</div>
+              <div className="dm-client-box">
+               
 
-                      <div className="dm-invoice-client-box">
-                        <div className="dm-invoice-client-name">
-                          {hasValue(customerTradeName) && customerTradeName !== "—"
-                            ? customerTradeName
-                            : fullName}
-                        </div>
-
-                        {hasValue(customerIce) && customerIce !== "—" ? (
-                          <div className="dm-invoice-client-ice">
-                            ICE {customerIce}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="dm-invoice-docline">
-                    <div className="dm-invoice-doclabel">Facture</div>
-                    <div className="dm-invoice-docnumber">N°</div>
-                    <div className="dm-invoice-docnumber">{vendorInvoiceCode}</div>
-                  </div>
-
-                  <table className="dm-invoice-table">
-                    <thead>
-                      <tr>
-                        <th className="c-ref">Référence</th>
-                        <th className="c-designation">Désignation</th>
-                        <th className="c-qty">Qté</th>
-                        <th className="c-unit">Px U H.T</th>
-                        <th className="c-total">Montant HT</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vendorItems.length ? (
-                        vendorItems.map((it: any, idx: number) => {
-                          const ref =
-                            it?.reference ||
-                            it?.sku ||
-                            it?.product_sku ||
-                            it?.product_ref ||
-                            it?.code ||
-                            "—";
-
-                          const name =
-                            it?.product_name ||
-                            it?.name ||
-                            `Produit #${it?.product_id || idx + 1}`;
-
-                          const variant = [it?.variant_size, it?.variant_color]
-                            .filter(Boolean)
-                            .join(" / ");
-
-                          const qty = Number(it?.qty || 1);
-                          const unitTTC = getUnitPrice(it);
-                          const unitHT = calcUnitHT(unitTTC);
-                          const lineHT = calcLineHT(qty, unitTTC);
-
-                          return (
-                            <tr key={idx}>
-                              <td className="c-ref">{ref}</td>
-                              <td className="c-designation">
-                                <div className="dm-invoice-line-name">{name}</div>
-                                {variant ? (
-                                  <span className="dm-invoice-line-sub">
-                                    {variant}
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="c-qty">{fmtQty(qty)}</td>
-                              <td className="c-unit">{money(unitHT, currency)}</td>
-                              <td className="c-total">{money(lineHT, currency)}</td>
-                            </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td className="c-ref">—</td>
-                          <td className="c-designation">Aucun produit.</td>
-                          <td className="c-qty">—</td>
-                          <td className="c-unit">0,00 MAD</td>
-                          <td className="c-total">0,00 MAD</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-
-                  <div className="dm-invoice-bottom">
-                    <div className="dm-invoice-totals">
-                      <div className="dm-invoice-total-row">
-                        <div className="label">TOTAL H.T :</div>
-                        <div className="value">
-                          {money(vendorTotals.totalHT, currency)}
-                        </div>
-                      </div>
-
-                      <div className="dm-invoice-total-row">
-                        <div className="label">T.V.A 20% :</div>
-                        <div className="value">
-                          {money(vendorTotals.tvaAmount, currency)}
-                        </div>
-                      </div>
-
-                      <div className="dm-invoice-total-row ttc">
-                        <div className="label">TOTAL T.T.C :</div>
-                        <div className="value">
-                          {money(vendorTotals.totalTTC, currency)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <div className="dm-client-lines">
+                  <div className="dm-client-line"><b>Client :</b> {fullName}</div>
+                  <div className="dm-client-line"><b>Nom commercial :</b> {customerHeaderName}</div>
+                  <div className="dm-client-line"><b>ICE :</b> {customerIce}</div>
+                  <div className="dm-client-line"><b>Téléphone :</b> {phone}</div>
+                  <div className="dm-client-line"><b>Ville :</b> {city}</div>
+                  {hasValue(commune) ? <div className="dm-client-line"><b>Commune :</b> {commune}</div> : null}
+                  {hasValue(district) ? <div className="dm-client-line"><b>Quartier :</b> {district}</div> : null}
+                  {hasValue(addressLine) ? <div className="dm-client-line"><b>Adresse :</b> {addressLine}</div> : null}
                 </div>
+              </div>
 
-                <img
-                  src="/pied.png"
-                  alt="Pied facture"
-                  className="dm-invoice-footer-img"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = "none";
-                  }}
-                />
+              <div className="dm-doc-row">
+                <div className="dm-doc-label">Facture</div>
+                <div className="dm-doc-number">N° {documentNumber}</div>
+              </div>
+
+              <div className="dm-table-wrap">
+                <table className="dm-table">
+                  <thead>
+                    <tr>
+                      <th className="c-ref">Référence</th>
+                      <th className="c-name">Désignation</th>
+                      <th className="c-qty">Qté</th>
+                      <th className="c-unit">Px U H.T</th>
+                      <th className="c-total">Montant HT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.length ? (
+                      items.map((it: any, idx: number) => {
+                        const name =
+                          it?.product_name ||
+                          it?.name ||
+                          `Produit #${it?.product_id || idx + 1}`;
+
+                        const variant = [it?.variant_size, it?.variant_color]
+                          .filter(Boolean)
+                          .join(" / ");
+
+                        const qty = Number(it?.qty || 1);
+                        const unitTTC = getUnitPrice(it);
+                        const unitHT = calcUnitHT(unitTTC);
+                        const lineHT = calcLineHT(qty, unitTTC);
+
+                        return (
+                          <tr key={idx}>
+                            <td className="c-ref">{documentNumber}</td>
+                            <td className="c-name">
+                              <div className="dm-line-name">{name}</div>
+                              {variant ? <span className="dm-line-sub">{variant}</span> : null}
+                            </td>
+                            <td className="c-qty">{fmtQty(qty)}</td>
+                            <td className="c-unit">{money(unitHT, currency)}</td>
+                            <td className="c-total">{money(lineHT, currency)}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td className="c-ref">{documentNumber}</td>
+                        <td className="c-name">Aucun produit.</td>
+                        <td className="c-qty">—</td>
+                        <td className="c-unit">0,00 MAD</td>
+                        <td className="c-total">0,00 MAD</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="dm-totals-wrap">
+                <div className="dm-totals">
+                  <div className="dm-total-row">
+                    <div className="dm-total-label">TOTAL H.T :</div>
+                    <div className="dm-total-value">{money(invoiceTotals.totalHT, currency)}</div>
+                  </div>
+
+                  <div className="dm-total-row">
+                    <div className="dm-total-label">T.V.A 20% :</div>
+                    <div className="dm-total-value">{money(invoiceTotals.tvaAmount, currency)}</div>
+                  </div>
+
+                  <div className="dm-total-row strong">
+                    <div className="dm-total-label">TOTAL T.T.C :</div>
+                    <div className="dm-total-value">{money(invoiceTotals.totalTTC, currency)}</div>
+                  </div>
+
+                  {invoiceTotals.discount > 0 ? (
+                    <div className="dm-total-row discount">
+                      <div className="dm-total-label">
+                        RÉDUCTION{discountText !== "—" ? ` (${discountText})` : ""} :
+                      </div>
+                      <div className="dm-total-value">
+                        - {money(invoiceTotals.discount, currency)}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  
+                </div>
+              </div>
+
+              <div className="dm-footer-yellow">
+                <div className="dm-footer-line">
+                  46 Boulevard ZERKTOUNI 2 eme étage Appt 6 CO STOR Conseil Casablanca
+                </div>
+                <div className="dm-footer-line">
+                  RC CASABLANCA : 476059 - TP : 34260412 - IF : 47225785 ICE : 002641145000090
+                </div>
+                <div className="dm-footer-line">
+                  Contact : +212 623677884 / +212 6 56 56 88 27 – email : lebesoingroup@gmail.com
+                </div>
               </div>
             </div>
           ) : (
-            <div className="dm-receipt-modern">
-              <div className="dm-r-topbar" />
+            <div className="dm-page">
+              <div className="dm-head">
+                <div className="dm-logo-box">
+                  <img
+                    src={logoSrc}
+                    alt={shopName}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                    }}
+                  />
+                </div>
 
-              <div className="dm-r-header">
-                <div className="dm-r-head-main">
-                  <div className="dm-r-brand">
-                    <div className="dm-r-logo">
-                      <img
-                        src={logoSrc}
-                        alt={shopName}
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display =
-                            "none";
-                        }}
-                      />
-                    </div>
+                <div className="dm-brand">
+                  <div className="dm-brand-title receipt">{shopName}</div>
+                  <div className="dm-brand-sub">{slogan}</div>
+                </div>
+              </div>
 
-                    <div>
-                      <div className="dm-r-name">{shopName}</div>
-                      <div className="dm-r-slogan">{slogan}</div>
+             
+              <div className="dm-client-box">
+                
+
+                <div className="dm-client-lines">
+                  {receiptInfoRows.map((row) => (
+                    <div key={row.label} className="dm-client-line">
+                      <b>{row.label} :</b> {row.value}
                     </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="dm-doc-row">
+                <div className="dm-doc-label">Reçu</div>
+                <div className="dm-doc-number">N° {documentNumber}</div>
+              </div>
+
+              <div className="dm-table-wrap">
+                <table className="dm-table">
+                  <thead>
+                    <tr>
+                      <th className="c-ref">Référence</th>
+                      <th className="c-name">Désignation</th>
+                      <th className="c-qty">Qté</th>
+                      <th className="c-unit">Prix U.</th>
+                      <th className="c-total">Montant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.length ? (
+                      items.map((it: any, idx: number) => {
+                        const name =
+                          it?.product_name ||
+                          it?.name ||
+                          `Produit #${it?.product_id || idx + 1}`;
+
+                        const variant = [it?.variant_size, it?.variant_color]
+                          .filter(Boolean)
+                          .join(" / ");
+
+                        const qty = Number(it?.qty || 1);
+                        const unit = getUnitPrice(it);
+                        const lineTotal = +(qty * unit).toFixed(2);
+
+                        return (
+                          <tr key={idx}>
+                            <td className="c-ref">{documentNumber}</td>
+                            <td className="c-name">
+                              <div className="dm-line-name">{name}</div>
+                              {variant ? <span className="dm-line-sub">{variant}</span> : null}
+                            </td>
+                            <td className="c-qty">{fmtQty(qty)}</td>
+                            <td className="c-unit">{money(unit, currency)}</td>
+                            <td className="c-total">{money(lineTotal, currency)}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td className="c-ref">{documentNumber}</td>
+                        <td className="c-name">Aucun produit.</td>
+                        <td className="c-qty">—</td>
+                        <td className="c-unit">0,00 MAD</td>
+                        <td className="c-total">0,00 MAD</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="dm-totals-wrap">
+                <div className="dm-totals">
+                  <div className="dm-total-row">
+                    <div className="dm-total-label">SOUS-TOTAL :</div>
+                    <div className="dm-total-value">{money(summary.itemsSubtotal, currency)}</div>
                   </div>
 
-                  <div className="dm-r-meta">
-                    <div className="dm-r-badge">
-                      Vue {viewerRoleLabel(viewerRole)}
-                      {isImpersonating ? " • IMPERSONATION" : ""}
+                  {summary.discountAmount > 0 ? (
+                    <div className="dm-total-row discount">
+                      <div className="dm-total-label">
+                        RÉDUCTION{discountText !== "—" ? ` (${discountText})` : ""} :
+                      </div>
+                      <div className="dm-total-value">
+                        - {money(summary.discountAmount, currency)}
+                      </div>
                     </div>
+                  ) : null}
 
-                    <div className="dm-r-doc-title">REÇU</div>
-
-                    <div className="dm-r-doc-sub">
-                      N° {code}
-                      <br />
-                      {created}
-                      {!!hotlinePhone ? (
-                        <>
-                          <br />
-                          Hotline: {hotlinePhone}
-                        </>
-                      ) : null}
+                  {discountLabelText ? (
+                    <div className="dm-total-row">
+                      <div className="dm-total-label">LIBELLÉ :</div>
+                      <div className="dm-total-value">{discountLabelText}</div>
                     </div>
+                  ) : null}
+
+                  <div className="dm-total-row">
+                    <div className="dm-total-label">LIVRAISON :</div>
+                    <div className="dm-total-value">{money(summary.deliveryFee, currency)}</div>
+                  </div>
+
+                  <div className="dm-total-row strong">
+                    <div className="dm-total-label">TOTAL :</div>
+                    <div className="dm-total-value">{money(summary.total, currency)}</div>
                   </div>
                 </div>
               </div>
 
-              <div className="dm-r-body">
-                <div className="dm-r-panel dm-r-panel-soft">
-                  <div className="dm-r-panel-title">Informations client</div>
-
-                  <div className="dm-r-mini-grid">
-                    {receiptRows.map((row) => (
-                      <div className="dm-r-mini-row" key={row.label}>
-                        <div className="dm-r-k">{row.label}</div>
-                        <div className="dm-r-v">{row.value}</div>
-                      </div>
-                    ))}
+              <div className="dm-receipt-bottom">
+                <div>
+                  <div className="dm-box">
+                    <div className="dm-box-title">Paiement</div>
+                    <div className="dm-box-text">{paymentLine || "—"}</div>
                   </div>
+
+                  {cleanedNote ? (
+                    <div className="dm-box" style={{ marginTop: 10, borderStyle: "dashed" }}>
+                      <div className="dm-box-title">Note</div>
+                      <div className="dm-box-text">{cleanedNote}</div>
+                    </div>
+                  ) : null}
+
+                  <div className="dm-thanks">Merci pour votre commande — {shopName}</div>
                 </div>
 
-                <div className="dm-r-grid-main">
-                  <div>
-                    <div className="dm-r-section-title">Détails produits</div>
-
-                    <div className="dm-r-table-wrap">
-                      <table className="dm-r-table">
-                        <thead>
-                          <tr>
-                            <th>Produit</th>
-                            <th>Qté</th>
-                            <th>PU</th>
-                            <th>Montant</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Array.isArray(order?.items) && order.items.length ? (
-                            order.items.map((it: any, idx: number) => {
-                              const name =
-                                it.product_name ||
-                                it.name ||
-                                `Produit #${it.product_id}`;
-                              const variant = [it.variant_size, it.variant_color]
-                                .filter(Boolean)
-                                .join(" / ");
-                              const displayName = variant
-                                ? `${name} (${variant})`
-                                : name;
-
-                              const qty = Number(it.qty || 1);
-                              const unit = getUnitPrice(it);
-                              const lineTotal = +(qty * unit).toFixed(2);
-
-                              return (
-                                <tr key={idx}>
-                                  <td>
-                                    <div className="dm-r-line-name">
-                                      {displayName}
-                                    </div>
-                                  </td>
-                                  <td className="num">{fmtQty(qty)}</td>
-                                  <td className="num">{mad(unit)}</td>
-                                  <td className="num">{mad(lineTotal)}</td>
-                                </tr>
-                              );
-                            })
-                          ) : (
-                            <tr>
-                              <td colSpan={4}>Aucun produit.</td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="dm-r-side-stack">
-                    <div className="dm-r-totals">
-                      <div className="dm-r-totals-head">Résumé</div>
-
-                      <div className="dm-r-total-row">
-                        <div className="label">Sous-total</div>
-                        <div className="value">{mad(summary.itemsSubtotal)}</div>
-                      </div>
-
-                      {summary.discountAmount > 0 ? (
-                        <>
-                          <div className="dm-r-total-row">
-                            <div className="label">Type réduction</div>
-                            <div className="value">{discountText}</div>
-                          </div>
-
-                          <div className="dm-r-total-row">
-                            <div className="label">Réduction</div>
-                            <div className="value dm-r-v-danger">
-                              - {mad(summary.discountAmount)}
-                            </div>
-                          </div>
-
-                          <div className="dm-r-total-row">
-                            <div className="label">Après réduction</div>
-                            <div className="value dm-r-v-success">
-                              {mad(summary.discountedItemsAmount)}
-                            </div>
-                          </div>
-                        </>
-                      ) : null}
-
-                      <div className="dm-r-total-row">
-                        <div className="label">Livraison</div>
-                        <div className="value">{mad(summary.deliveryFee)}</div>
-                      </div>
-
-                      <div className="dm-r-total-row dm-r-total-row-strong">
-                        <div className="label">TOTAL</div>
-                        <div className="value">{mad(summary.total)}</div>
-                      </div>
-                    </div>
-
-                    <div className="dm-r-payment-box">
-                      <div className="dm-r-payment-line">
-                        <div className="left">Paiement</div>
-                        <div className="right">{paymentLine || "—"}</div>
-                      </div>
-                    </div>
-
-                    {cleanedNote ? (
-                      <div className="dm-r-note-box">
-                        <div className="dm-r-note-title">Note</div>
-                        <div className="dm-r-note-body">{cleanedNote}</div>
-                      </div>
-                    ) : null}
+                <div className="dm-qr-box">
+                  <QRCode value={verifyUrl || "https://duumini.com"} size={78} />
+                  <div className="dm-qr-label">
+                    Vérification
+                    <br />
+                    authenticité
                   </div>
                 </div>
+              </div>
 
-                <div className="dm-r-bottom">
-                  <div className="dm-r-footer">
-                    <div className="dm-r-footer-main">
-                      Merci pour votre commande — Duumini
-                    </div>
-                  </div>
-
-                  <div className="dm-r-qr">
-                    <QRCode value={verifyUrl || "https://duumini.com"} size={58} />
-                    <div className="dm-r-qrtext">
-                      Vérification
-                      <br />
-                      authenticité
-                    </div>
-                  </div>
-                </div>
+              <div className="dm-footer-yellow">
+                <div className="dm-footer-line">{shopName}</div>
+                <div className="dm-footer-line">{slogan}</div>
+                {!!hotlinePhone ? (
+                  <div className="dm-footer-line">Hotline : {hotlinePhone}</div>
+                ) : null}
               </div>
             </div>
           )}

@@ -21,6 +21,7 @@ export type PaymentStatus = "PAID" | "UNPAID" | "PARTIAL";
 export type PayStatus = PaymentStatus | "PENDING";
 
 export type AdminDiscountType = "NONE" | "AMOUNT" | "PERCENT";
+export type CustomerRole = "CLIENT" | "VENDEUR";
 
 export type AdminDiscount = {
   type: AdminDiscountType;
@@ -52,13 +53,26 @@ export type OrderItemInput = {
   variant_label?: string | null;
 };
 
+export type OrderContactInput = {
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+  phone?: string;
+
+  ville?: string;
+  city?: string;
+  commune?: string;
+  quartier?: string | null;
+  district?: string | null;
+  address_line?: string | null;
+
+  role?: CustomerRole | string;
+  commercial_name?: string | null;
+  ice?: string | null;
+};
+
 export type CreateOrderPayload = {
-  contact?: {
-    first_name?: string;
-    last_name?: string;
-    name?: string;
-    phone?: string;
-  };
+  contact?: OrderContactInput;
 
   address?: {
     ville?: string;
@@ -111,6 +125,7 @@ export type CreateOrderPayload = {
 
 export type CreateAdminOrderPayload = CreateOrderPayload & {
   customer_id?: number;
+  customer_role?: CustomerRole | string;
 
   customer?: {
     first_name?: string;
@@ -122,6 +137,10 @@ export type CreateAdminOrderPayload = CreateOrderPayload & {
     commune?: string;
     quartier?: string | null;
     district?: string | null;
+
+    role?: CustomerRole | string;
+    commercial_name?: string | null;
+    ice?: string | null;
   };
 
   admin_discount?: {
@@ -142,6 +161,16 @@ export type CreateOrderResult = {
 
   receipt_number?: string | null;
   receipt_token?: string | null;
+
+  customer_role?: CustomerRole | string;
+  contact?: {
+    first_name?: string | null;
+    last_name?: string | null;
+    phone?: string | null;
+    role?: CustomerRole | string | null;
+    commercial_name?: string | null;
+    ice?: string | null;
+  } | null;
 
   admin_discount?: AdminDiscount | null;
   totals?: OrderTotals | null;
@@ -165,11 +194,23 @@ export type Order = {
   display_code?: string | null;
 
   user_id?: number | null;
+  customer_role?: CustomerRole | string | null;
 
   contact?: {
     first_name?: string | null;
     last_name?: string | null;
     phone?: string | null;
+
+    city?: string | null;
+    ville?: string | null;
+    commune?: string | null;
+    district?: string | null;
+    quartier?: string | null;
+    address_line?: string | null;
+
+    role?: CustomerRole | string | null;
+    commercial_name?: string | null;
+    ice?: string | null;
   } | null;
 
   address?: any | null;
@@ -291,9 +332,20 @@ function cleanString(v: any) {
   return s ? s : "";
 }
 
+function cleanNullableString(v: any) {
+  const s = String(v ?? "").trim();
+  return s ? s : null;
+}
+
 function toNumOrNull(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeCustomerRoleInput(value: any): CustomerRole {
+  return String(value || "").trim().toUpperCase() === "VENDEUR"
+    ? "VENDEUR"
+    : "CLIENT";
 }
 
 function normalizeItemInput(x: any): OrderItemInput | null {
@@ -311,12 +363,69 @@ function normalizeItemInput(x: any): OrderItemInput | null {
   const out: OrderItemInput = { product_id, qty, variant_id };
 
   if (x.name != null) out.name = cleanString(x.name) || undefined;
-  if (x.price != null && Number.isFinite(Number(x.price))) out.price = Number(x.price);
+  if (x.price != null && Number.isFinite(Number(x.price))) {
+    out.price = Number(x.price);
+  }
 
   if (x.variant_key != null) out.variant_key = cleanString(x.variant_key) || null;
   if (x.variant_label != null) out.variant_label = cleanString(x.variant_label) || null;
 
   return out;
+}
+
+function normalizeContactInput(input: any): OrderContactInput | undefined {
+  if (!input || typeof input !== "object") return undefined;
+
+  const first_name = cleanString(input.first_name) || undefined;
+  const last_name = cleanString(input.last_name) || undefined;
+  const name = cleanString(input.name) || undefined;
+  const phone = cleanString(input.phone) || undefined;
+
+  const ville = cleanString(input.ville) || undefined;
+  const city = cleanString(input.city) || undefined;
+  const commune = cleanString(input.commune) || undefined;
+  const quartier = cleanNullableString(input.quartier);
+  const district = cleanNullableString(input.district);
+  const address_line = cleanNullableString(input.address_line);
+
+  const role =
+    input.role != null ? normalizeCustomerRoleInput(input.role) : undefined;
+
+  const commercial_name = cleanNullableString(input.commercial_name);
+  const ice = cleanNullableString(input.ice);
+
+  const hasAny =
+    first_name ||
+    last_name ||
+    name ||
+    phone ||
+    ville ||
+    city ||
+    commune ||
+    quartier ||
+    district ||
+    address_line ||
+    role ||
+    commercial_name ||
+    ice;
+
+  if (!hasAny) return undefined;
+
+  return {
+    ...(first_name ? { first_name } : {}),
+    ...(last_name ? { last_name } : {}),
+    ...(name ? { name } : {}),
+    ...(phone ? { phone } : {}),
+    ...(ville ? { ville } : {}),
+    ...(city ? { city } : {}),
+    ...(commune ? { commune } : {}),
+    ...(quartier != null ? { quartier } : {}),
+    ...(district != null ? { district } : {}),
+    ...(address_line != null ? { address_line } : {}),
+    ...(role ? { role } : {}),
+    ...(commercial_name != null ? { commercial_name } : {}),
+    ...(ice != null ? { ice } : {}),
+  };
 }
 
 function normalizeAdminDiscountInput(input: any) {
@@ -343,17 +452,12 @@ function normalizeCreatePayload(payload: CreateOrderPayload): CreateOrderPayload
   const itemsRaw = Array.isArray(payload?.items) ? payload.items : [];
   const cleanItems = itemsRaw.map(normalizeItemInput).filter(Boolean) as OrderItemInput[];
 
-  const phone = cleanString(payload?.contact?.phone);
   const paidAmount = payload?.payment?.paid_amount ?? payload?.payment?.amount ?? null;
+  const contact = normalizeContactInput(payload?.contact);
 
   return {
     ...payload,
-    contact: payload.contact
-      ? {
-          ...payload.contact,
-          ...(phone ? { phone } : {}),
-        }
-      : payload.contact,
+    ...(contact ? { contact } : {}),
     items: cleanItems,
     payment: payload.payment
       ? {
@@ -373,9 +477,21 @@ function normalizeAdminCreatePayload(
   const customer_id =
     cid == null || cid === "" ? undefined : toPositiveInt(cid, 0) || undefined;
 
+  const normalizedCustomer = normalizeContactInput(payload?.customer);
+  const normalizedRole =
+    payload?.customer_role != null
+      ? normalizeCustomerRoleInput(payload.customer_role)
+      : normalizedCustomer?.role != null
+      ? normalizeCustomerRoleInput(normalizedCustomer.role)
+      : base.contact?.role != null
+      ? normalizeCustomerRoleInput(base.contact.role)
+      : undefined;
+
   return {
     ...(base as any),
     ...(customer_id ? { customer_id } : {}),
+    ...(normalizedRole ? { customer_role: normalizedRole } : {}),
+    ...(normalizedCustomer ? { customer: normalizedCustomer } : {}),
     ...(payload?.admin_discount
       ? { admin_discount: normalizeAdminDiscountInput(payload.admin_discount) }
       : {}),

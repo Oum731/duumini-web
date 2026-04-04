@@ -10,6 +10,7 @@ import {
 } from "../../services/orders";
 
 type AnyObj = Record<string, any>;
+type CustomerRole = "CLIENT" | "VENDEUR";
 
 type Props = {
   open: boolean;
@@ -38,6 +39,7 @@ function clampMoney(n: number) {
 function toInputNumberValue(n: number) {
   return n === 0 ? "" : String(n);
 }
+
 function fromInputNumberValue(v: string) {
   if (v.trim() === "") return 0;
   const n = Number(v);
@@ -75,7 +77,9 @@ function getProductUnitPrice(p: Product): number {
   const base = anyP.price ?? 0;
 
   const promoNum = Number(promo);
-  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity)) return promoNum;
+  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity)) {
+    return promoNum;
+  }
 
   const baseNum = Number(base);
   return Number.isFinite(baseNum) ? baseNum : 0;
@@ -119,6 +123,12 @@ function computeAdminDiscountAmount(
   return clampMoney(amount);
 }
 
+function normalizeCustomerRole(value: any): CustomerRole {
+  return String(value || "").trim().toUpperCase() === "VENDEUR"
+    ? "VENDEUR"
+    : "CLIENT";
+}
+
 export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [cFirst, setCFirst] = useState("");
   const [cLast, setCLast] = useState("");
@@ -129,6 +139,10 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [cDistrict, setCDistrict] = useState("");
   const [cAddress, setCAddress] = useState("");
   const [cLandmark, setCLandmark] = useState("");
+
+  const [customerRole, setCustomerRole] = useState<CustomerRole>("CLIENT");
+  const [commercialName, setCommercialName] = useState("");
+  const [customerIce, setCustomerIce] = useState("");
 
   const [basket, setBasket] = useState<{ product: Product; qty: number }[]>([]);
   const [amountPaid, setAmountPaid] = useState<number>(0);
@@ -206,6 +220,10 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setCDistrict("");
     setCAddress("");
     setCLandmark("");
+
+    setCustomerRole("CLIENT");
+    setCommercialName("");
+    setCustomerIce("");
 
     setMarkDone(true);
     setSaving(false);
@@ -328,9 +346,13 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     }
 
     const sorted = [...arr];
-    if (sortBy === "NAME") sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
-    else if (sortBy === "PRICE_ASC") sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
-    else if (sortBy === "PRICE_DESC") sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
+    if (sortBy === "NAME") {
+      sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+    } else if (sortBy === "PRICE_ASC") {
+      sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
+    } else if (sortBy === "PRICE_DESC") {
+      sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
+    }
     return sorted;
   }, [results, search, promoFilter, sortBy]);
 
@@ -348,6 +370,19 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     if (discountType !== "NONE" && discountValue <= 0) {
       alert("Entre une valeur de réduction valide.");
       return;
+    }
+
+    const role = normalizeCustomerRole(customerRole);
+
+    if (role === "VENDEUR") {
+      if (!commercialName.trim()) {
+        alert("Le nom commercial est obligatoire pour un client vendeur.");
+        return;
+      }
+      if (!customerIce.trim()) {
+        alert("L'ICE est obligatoire pour un client vendeur.");
+        return;
+      }
     }
 
     const total = Math.max(0, numSafe(basketTotal));
@@ -368,6 +403,8 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     });
 
     const payload = {
+      customer_role: role,
+
       contact: {
         first_name: cFirst || "Client",
         last_name: cLast || "POS",
@@ -377,6 +414,9 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
         district: cDistrict || null,
         address_line: cAddress || null,
         landmark: cLandmark || null,
+        role,
+        commercial_name: role === "VENDEUR" ? commercialName.trim() : null,
+        ice: role === "VENDEUR" ? customerIce.trim() : null,
       },
 
       address: {
@@ -637,8 +677,8 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                             payStatus === "PAID"
                               ? "bg-success"
                               : payStatus === "PARTIAL"
-                                ? "bg-warning text-dark"
-                                : "bg-secondary"
+                              ? "bg-warning text-dark"
+                              : "bg-secondary"
                           }`}
                         >
                           {payStatus === "PAID" ? "PAYÉ" : payStatus === "PARTIAL" ? "PARTIEL" : "NON PAYÉ"}
@@ -843,6 +883,47 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           disabled={saving}
                         />
                       </div>
+
+                      <div className="col-12 col-sm-4">
+                        <select
+                          className="form-select"
+                          value={customerRole}
+                          onChange={(e) => setCustomerRole(normalizeCustomerRole(e.target.value))}
+                          disabled={saving}
+                        >
+                          <option value="CLIENT">Client</option>
+                          <option value="VENDEUR">Vendeur</option>
+                        </select>
+                      </div>
+
+                      {customerRole === "VENDEUR" ? (
+                        <>
+                          <div className="col-12 col-sm-4">
+                            <input
+                              className="form-control"
+                              placeholder="Nom commercial *"
+                              value={commercialName}
+                              onChange={(e) => setCommercialName(e.target.value)}
+                              disabled={saving}
+                            />
+                          </div>
+
+                          <div className="col-12 col-sm-4">
+                            <input
+                              className="form-control"
+                              placeholder="ICE *"
+                              value={customerIce}
+                              onChange={(e) => setCustomerIce(e.target.value)}
+                              disabled={saving}
+                            />
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+
+                    <div className="small text-muted mt-2">
+                      Si le téléphone correspond à un compte existant, le backend mettra à jour ce compte avec le rôle
+                      choisi. Si tu choisis <strong>VENDEUR</strong>, le nom commercial et l’ICE sont obligatoires.
                     </div>
 
                     <div className="form-check mt-3">

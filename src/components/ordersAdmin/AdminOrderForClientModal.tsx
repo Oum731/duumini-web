@@ -12,6 +12,8 @@ import { listAllAdminUsers, type AdminUser } from "../../services/adminUsers";
 
 type AnyObj = Record<string, any>;
 
+type CustomerRole = "CLIENT" | "VENDEUR";
+
 type ClientLite = {
   id: number;
   first_name?: string | null;
@@ -22,6 +24,8 @@ type ClientLite = {
   quartier?: string | null;
   has_account?: boolean;
   from_orders?: boolean;
+  commercial_name?: string | null;
+  ice?: string | null;
 };
 
 type Props = {
@@ -68,6 +72,7 @@ function numSafe(v: any) {
 function toInputNumberValue(n: number) {
   return n === 0 ? "" : String(n);
 }
+
 function fromInputNumberValue(v: string) {
   if (v.trim() === "") return 0;
   const n = Number(v);
@@ -146,8 +151,9 @@ function getProductUnitPrice(p: Product): number {
   const base = anyP.price ?? 0;
 
   const promoNum = Number(promo);
-  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity))
+  if (Number.isFinite(promoNum) && promoNum > 0 && promoNum < Number(base || Infinity)) {
     return promoNum;
+  }
 
   const baseNum = Number(base);
   return Number.isFinite(baseNum) ? baseNum : 0;
@@ -184,6 +190,10 @@ function normalizePhoneKey(phone?: string | null) {
   return String(phone || "").trim().replace(/\s+/g, "");
 }
 
+function normalizeCustomerRole(value?: string | null): CustomerRole {
+  return String(value || "").trim().toUpperCase() === "VENDEUR" ? "VENDEUR" : "CLIENT";
+}
+
 function dedupeClients(list: ClientLite[]) {
   const byKey = new Map<string, ClientLite>();
 
@@ -212,6 +222,8 @@ function dedupeClients(list: ClientLite[]) {
       role: keep.role || other.role || null,
       ville: keep.ville || other.ville || null,
       quartier: keep.quartier || other.quartier || null,
+      commercial_name: keep.commercial_name || other.commercial_name || null,
+      ice: keep.ice || other.ice || null,
       has_account: keep.has_account ?? other.has_account,
       from_orders: keep.from_orders ?? other.from_orders,
     });
@@ -241,9 +253,16 @@ function mapAdminUserToClient(u: AdminUser): ClientLite {
     first_name: names.first_name,
     last_name: names.last_name,
     phone: anyU?.phone ?? anyU?.tel ?? null,
-    role: anyU?.role ?? (hasAccount ? "MEMBER" : "GUEST"),
+    role: anyU?.role ?? (hasAccount ? "CLIENT" : "CLIENT"),
     ville: anyU?.ville ?? anyU?.city ?? anyU?.customer_city ?? null,
     quartier: anyU?.quartier ?? anyU?.district ?? anyU?.customer_district ?? null,
+    commercial_name:
+      anyU?.commercial_name ??
+      anyU?.commercialName ??
+      anyU?.vendor_name ??
+      anyU?.shop_name ??
+      null,
+    ice: anyU?.ice ?? anyU?.ICE ?? null,
     has_account: hasAccount,
     from_orders: anyU?.from_orders != null ? !!anyU.from_orders : !hasAccount,
   };
@@ -289,6 +308,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
   const [clientCity, setClientCity] = useState<string>("");
   const [clientDistrict, setClientDistrict] = useState<string>("");
+
+  const [customerRole, setCustomerRole] = useState<CustomerRole>("CLIENT");
+  const [commercialName, setCommercialName] = useState<string>("");
+  const [ice, setIce] = useState<string>("");
 
   const [search, setSearch] = useState("");
   const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
@@ -340,11 +363,17 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     if (!selectedClient) {
       setClientCity("");
       setClientDistrict("");
+      setCustomerRole("CLIENT");
+      setCommercialName("");
+      setIce("");
       return;
     }
 
     setClientCity(String(selectedClient.ville || "").trim());
     setClientDistrict(String(selectedClient.quartier || "").trim());
+    setCustomerRole(normalizeCustomerRole(selectedClient.role));
+    setCommercialName(String(selectedClient.commercial_name || "").trim());
+    setIce(String(selectedClient.ice || "").trim());
   }, [selectedClient]);
 
   const reset = useCallback(() => {
@@ -366,6 +395,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
     setClientCity("");
     setClientDistrict("");
+
+    setCustomerRole("CLIENT");
+    setCommercialName("");
+    setIce("");
 
     setSearch("");
     setPromoFilter("ALL");
@@ -528,12 +561,13 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     }
 
     const sorted = [...arr];
-    if (sortBy === "NAME")
+    if (sortBy === "NAME") {
       sorted.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
-    else if (sortBy === "PRICE_ASC")
+    } else if (sortBy === "PRICE_ASC") {
       sorted.sort((a, b) => getProductUnitPrice(a) - getProductUnitPrice(b));
-    else if (sortBy === "PRICE_DESC")
+    } else if (sortBy === "PRICE_DESC") {
       sorted.sort((a, b) => getProductUnitPrice(b) - getProductUnitPrice(a));
+    }
     return sorted;
   }, [products, search, promoFilter, sortBy]);
 
@@ -546,12 +580,16 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       const phone = normalizePhoneKey(c.phone).toLowerCase();
       const ville = String(c.ville || "").toLowerCase();
       const quartier = String(c.quartier || "").toLowerCase();
+      const cName = String(c.commercial_name || "").toLowerCase();
+      const cIce = String(c.ice || "").toLowerCase();
 
       return (
         label.includes(ql) ||
         phone.includes(ql) ||
         ville.includes(ql) ||
         quartier.includes(ql) ||
+        cName.includes(ql) ||
+        cIce.includes(ql) ||
         (c.id > 0 && String(c.id).includes(ql))
       );
     });
@@ -571,6 +609,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       alert("Choisis un client.");
       return;
     }
+
     if (basket.length === 0) {
       alert("Ajoutez au moins un produit.");
       return;
@@ -578,10 +617,24 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
     const city = String(clientCity || "").trim();
     const district = String(clientDistrict || "").trim();
+    const role = normalizeCustomerRole(customerRole);
+    const vendorCommercialName = String(commercialName || "").trim();
+    const vendorIce = String(ice || "").trim();
 
     if (!city) {
       alert("Choisis la ville du client.");
       return;
+    }
+
+    if (role === "VENDEUR") {
+      if (!vendorCommercialName) {
+        alert("Le nom commercial est obligatoire pour un vendeur.");
+        return;
+      }
+      if (!vendorIce) {
+        alert("L'ICE est obligatoire pour un vendeur.");
+        return;
+      }
     }
 
     const isGuest = !selectedClient.has_account || Number(selectedClient.id || 0) <= 0;
@@ -620,22 +673,32 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       district: district || undefined,
     };
 
+    const commonContact = {
+      first_name: selectedClient.first_name || undefined,
+      last_name: selectedClient.last_name || undefined,
+      phone: normalizePhoneKey(selectedClient.phone) || undefined,
+      role,
+      commercial_name: role === "VENDEUR" ? vendorCommercialName : undefined,
+      ice: role === "VENDEUR" ? vendorIce : undefined,
+      ...clientLocation,
+    };
+
     const payload: any = {
+      customer_role: role,
+
       ...(isGuest
         ? {
             contact: {
-              phone: normalizePhoneKey(selectedClient.phone),
-              first_name: selectedClient.first_name || undefined,
-              last_name: selectedClient.last_name || undefined,
+              ...commonContact,
             },
           }
         : {
             customer_id: Number(selectedClient.id),
             customer: {
-              first_name: selectedClient.first_name || undefined,
-              last_name: selectedClient.last_name || undefined,
-              phone: normalizePhoneKey(selectedClient.phone) || undefined,
-              ...clientLocation,
+              ...commonContact,
+            },
+            contact: {
+              ...commonContact,
             },
           }),
 
@@ -883,7 +946,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <input
                       className="form-control duu-input"
-                      placeholder="Rechercher client (nom, téléphone, ville, quartier, id)…"
+                      placeholder="Rechercher client (nom, téléphone, ville, quartier, id, nom commercial, ice)…"
                       value={clientQ}
                       onChange={(e) => setClientQ(e.target.value)}
                       disabled={saving}
@@ -917,6 +980,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                 {c.from_orders ? " • orders" : ""}
                                 {c.ville ? ` • ${c.ville}` : ""}
                                 {c.quartier ? ` • ${c.quartier}` : ""}
+                                {normalizeCustomerRole(c.role) === "VENDEUR" ? " • VENDEUR" : " • CLIENT"}
                               </div>
                             </button>
                           );
@@ -959,8 +1023,47 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                     </div>
                   </div>
 
+                  <div className="row g-2 mt-2">
+                    <div className="col-12 col-md-4">
+                      <label className="form-label fw-semibold">Rôle client</label>
+                      <select
+                        className="form-select duu-input"
+                        value={customerRole}
+                        onChange={(e) =>
+                          setCustomerRole(normalizeCustomerRole((e.target as HTMLSelectElement).value))
+                        }
+                        disabled={saving}
+                      >
+                        <option value="CLIENT">CLIENT</option>
+                        <option value="VENDEUR">VENDEUR</option>
+                      </select>
+                    </div>
+
+                    <div className="col-12 col-md-4">
+                      <label className="form-label fw-semibold">Nom commercial</label>
+                      <input
+                        className="form-control duu-input"
+                        value={commercialName}
+                        onChange={(e) => setCommercialName((e.target as HTMLInputElement).value)}
+                        disabled={saving || customerRole !== "VENDEUR"}
+                        placeholder="Ex: MIENRA GROUP"
+                      />
+                    </div>
+
+                    <div className="col-12 col-md-4">
+                      <label className="form-label fw-semibold">ICE</label>
+                      <input
+                        className="form-control duu-input"
+                        value={ice}
+                        onChange={(e) => setIce((e.target as HTMLInputElement).value)}
+                        disabled={saving || customerRole !== "VENDEUR"}
+                        placeholder="Ex: 003492191000081"
+                      />
+                    </div>
+                  </div>
+
                   <div className="small text-muted mt-1">
-                    La ville est obligatoire. Le quartier peut rester vide.
+                    La ville est obligatoire. Si le client est vendeur, le nom commercial et l’ICE sont obligatoires.
                   </div>
 
                   <div className="duu-summary-card mt-3">
@@ -975,6 +1078,14 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                           <span>Réduction {discountType === "PERCENT" ? `(${discountValue || 0}%)` : ""}</span>
                           <strong className="text-danger">- {mad(adminDiscountAmount)}</strong>
                         </div>
+
+                        {discountLabel.trim() ? (
+                          <div className="duu-summary-row">
+                            <span>Libellé</span>
+                            <strong>{discountLabel.trim()}</strong>
+                          </div>
+                        ) : null}
+
                         <div className="duu-summary-row">
                           <span>Sous-total net</span>
                           <strong>{mad(discountedItemsTotal)}</strong>
