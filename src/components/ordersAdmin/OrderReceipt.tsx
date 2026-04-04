@@ -116,12 +116,6 @@ function fmtDateOnly(raw: any) {
   return d.toLocaleDateString("fr-FR");
 }
 
-function fmtDateTime(raw: any) {
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("fr-FR");
-}
 
 function fmtQty(value: any) {
   const n = Number(value || 0);
@@ -137,11 +131,6 @@ function normalizeCustomerRole(v: any): CustomerRole {
   return s === "VENDEUR" || s === "VENDOR" || s === "SELLER" ? "VENDEUR" : "CLIENT";
 }
 
-function viewerRoleLabel(role: string) {
-  if (role === "ADMIN") return "ADMIN";
-  if (role === "VENDEUR" || role === "VENDOR") return "VENDEUR";
-  return "CLIENT";
-}
 
 function buildOrderDocumentNumber(rawDate: any, orderCode: string) {
   const d = new Date(rawDate || Date.now());
@@ -171,13 +160,12 @@ export default function OrderReceipt(props: {
     publicWebBase,
   } = props;
 
-  const { user, isImpersonating } = useAuth();
+  useAuth();
 
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const [sharing, setSharing] = useState(false);
 
   const orderCode = getOrderDisplayCode(order);
-  const viewerRole = safeUpper(user?.role);
 
   const createdAt =
     order?.created_at ||
@@ -186,7 +174,6 @@ export default function OrderReceipt(props: {
     order?.ordered_at ||
     order?.order_date;
 
-  const created = fmtDateTime(createdAt);
   const createdDateOnly = fmtDateOnly(createdAt);
   const documentNumber = buildOrderDocumentNumber(createdAt, orderCode);
 
