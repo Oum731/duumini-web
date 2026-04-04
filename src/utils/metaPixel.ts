@@ -19,7 +19,7 @@ function toMetaNumber(value: unknown, fallback = 0) {
     const cleaned = value
       .replace(/\u00A0/g, " ")
       .replace(/\s+/g, "")
-      .replace(/[,]/g, ".")
+      .replace(/,/g, ".")
       .replace(/[^\d.-]/g, "");
 
     const n = Number(cleaned);
@@ -51,6 +51,11 @@ function cleanParams(params: MetaParams) {
 
     if (typeof value === "string" && value.trim() === "") {
       delete params[key];
+      return;
+    }
+
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      delete params[key];
     }
   });
 
@@ -69,6 +74,7 @@ export function metaTrack(
       window.fbq!("track", eventName, params, { eventID: options.eventID });
       return;
     }
+
     window.fbq!("track", eventName, params);
     return;
   }
@@ -81,8 +87,10 @@ export function metaTrack(
   window.fbq!("track", eventName);
 }
 
-export function trackPageView() {
-  metaTrack("PageView");
+export function trackPageView(event_id?: string) {
+  metaTrack("PageView", undefined, {
+    eventID: event_id,
+  });
 }
 
 export function trackViewContent(input?: {
@@ -97,7 +105,7 @@ export function trackViewContent(input?: {
 }) {
   const params: MetaParams = cleanParams({
     content_name: input?.content_name,
-    content_ids: input?.content_ids,
+    content_ids: input?.content_ids?.map(String),
     content_type: input?.content_type || "product",
     value: toMetaNumber(input?.value, 0),
     currency: normalizeCurrency(input?.currency),
@@ -105,7 +113,9 @@ export function trackViewContent(input?: {
     content_category: input?.category_name,
   });
 
-  metaTrack("ViewContent", params, { eventID: input?.event_id });
+  metaTrack("ViewContent", params, {
+    eventID: input?.event_id,
+  });
 }
 
 export function trackAddToCart(input?: {
@@ -119,14 +129,16 @@ export function trackAddToCart(input?: {
 }) {
   const params: MetaParams = cleanParams({
     content_name: input?.content_name,
-    content_ids: input?.content_ids,
+    content_ids: input?.content_ids?.map(String),
     content_type: input?.content_type || "product",
     value: toMetaNumber(input?.value, 0),
     currency: normalizeCurrency(input?.currency),
     num_items: toMetaNumber(input?.num_items, 1),
   });
 
-  metaTrack("AddToCart", params, { eventID: input?.event_id });
+  metaTrack("AddToCart", params, {
+    eventID: input?.event_id,
+  });
 }
 
 export function trackInitiateCheckout(input?: {
@@ -141,11 +153,13 @@ export function trackInitiateCheckout(input?: {
     value: toMetaNumber(input?.value, 0),
     currency: normalizeCurrency(input?.currency),
     num_items: toMetaNumber(input?.num_items, 1),
-    content_ids: input?.content_ids,
+    content_ids: input?.content_ids?.map(String),
     content_type: input?.content_type || "product",
   });
 
-  metaTrack("InitiateCheckout", params, { eventID: input?.event_id });
+  metaTrack("InitiateCheckout", params, {
+    eventID: input?.event_id,
+  });
 }
 
 export function trackPurchase(input: {
@@ -156,9 +170,11 @@ export function trackPurchase(input: {
   content_ids?: Array<string | number>;
   content_type?: string;
   num_items?: number | string;
+  content_name?: string;
 }) {
   const value = toMetaNumber(input?.value, 0);
   const currency = normalizeCurrency(input?.currency);
+  const eventID = input?.event_id || (input?.order_id ? `purchase_${input.order_id}` : undefined);
 
   if (value <= 0) {
     console.warn("[Meta Pixel] Purchase ignoré: valeur invalide", {
@@ -177,14 +193,15 @@ export function trackPurchase(input: {
     content_ids: input?.content_ids?.map(String),
     content_type: input?.content_type || "product",
     num_items: toMetaNumber(input?.num_items, 1),
+    content_name: input?.content_name,
   });
 
-  console.log("[Meta Pixel] Purchase", {
-    eventID: input?.event_id || String(input?.order_id || ""),
+  console.log("[Meta Pixel] Purchase envoyé", {
+    eventID,
     params,
   });
 
   metaTrack("Purchase", params, {
-    eventID: input?.event_id || String(input?.order_id || ""),
+    eventID,
   });
 }

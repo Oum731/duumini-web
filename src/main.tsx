@@ -25,16 +25,22 @@ const queryClient = new QueryClient({
   },
 });
 
+function buildPageViewEventId(path: string) {
+  return `pv_${path}_${Date.now()}`;
+}
+
 function MetaPageTracker() {
   const location = useLocation();
   const lastTrackedRef = useRef("");
 
   useEffect(() => {
     const currentPath = `${location.pathname}${location.search}${location.hash}`;
+
     if (lastTrackedRef.current === currentPath) return;
     lastTrackedRef.current = currentPath;
-    trackPageView();
-  }, [location]);
+
+    trackPageView(buildPageViewEventId(currentPath));
+  }, [location.pathname, location.search, location.hash]);
 
   return null;
 }

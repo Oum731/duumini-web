@@ -8,28 +8,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Duumini</title>
 
-    <!-- PWA -->
     <meta name="theme-color" content="#fddc00" />
     <link rel="manifest" href="/manifest.webmanifest" />
-
-    <!-- Favicon -->
     <link rel="icon" href="/logo.jpeg" />
 
-    <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Duumini" />
-    <meta
-      name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent"
-    />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-
-    <!-- Optionnel (Windows tiles) -->
     <meta name="msapplication-TileColor" content="#fddc00" />
 
-    <!-- ========================= -->
-    <!--        Meta Pixel         -->
-    <!-- ========================= -->
     <script>
       !(function (f, b, e, v, n, t, s) {
         if (f.fbq) return;
@@ -56,14 +44,9 @@
       );
 
       fbq("init", "%VITE_META_PIXEL_ID%");
+      fbq("track", "PageView");
     </script>
-    <!-- ========================= -->
-    <!--      End Meta Pixel       -->
-    <!-- ========================= -->
 
-    <!-- ========================= -->
-    <!--      Google Tag Manager   -->
-    <!-- ========================= -->
     <script>
       (function (w, d, s, l, i) {
         w[l] = w[l] || [];
@@ -76,13 +59,7 @@
         f.parentNode.insertBefore(j, f);
       })(window, document, "script", "dataLayer", "GTM-W28W9XJ3");
     </script>
-    <!-- ========================= -->
-    <!--   End Google Tag Manager  -->
-    <!-- ========================= -->
 
-    <!-- ========================= -->
-    <!--       Metricool Tracker   -->
-    <!-- ========================= -->
     <script>
       (function () {
         var img = document.createElement("img");
@@ -105,15 +82,9 @@
         document.head.appendChild(s);
       })();
     </script>
-    <!-- ========================= -->
-    <!--     End Metricool Tracker -->
-    <!-- ========================= -->
   </head>
 
   <body>
-    <!-- ========================= -->
-    <!-- Google Tag Manager (noscript) -->
-    <!-- ========================= -->
     <noscript>
       <iframe
         src="https://www.googletagmanager.com/ns.html?id=GTM-W28W9XJ3"
@@ -122,13 +93,7 @@
         style="display: none; visibility: hidden"
       ></iframe>
     </noscript>
-    <!-- ========================= -->
-    <!-- End Google Tag Manager    -->
-    <!-- ========================= -->
 
-    <!-- ========================= -->
-    <!-- Meta Pixel (noscript)     -->
-    <!-- ========================= -->
     <noscript>
       <img
         height="1"
@@ -137,12 +102,8 @@
         src="https://www.facebook.com/tr?id=%VITE_META_PIXEL_ID%&ev=PageView&noscript=1"
       />
     </noscript>
-    <!-- ========================= -->
-    <!-- End Meta Pixel (noscript) -->
-    <!-- ========================= -->
 
     <div id="root"></div>
-
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
