@@ -1,4 +1,3 @@
-// src/main.tsx
 import React, { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, useLocation } from "react-router-dom";
@@ -12,12 +11,7 @@ import { RealtimeProvider } from "./context/RealtimeContext";
 import { LocationProvider } from "./context/LocationContext";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-
-declare global {
-  interface Window {
-    fbq?: (...args: any[]) => void;
-  }
-}
+import { trackPageView } from "./utils/metaPixel";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,17 +27,13 @@ const queryClient = new QueryClient({
 
 function MetaPageTracker() {
   const location = useLocation();
-  const lastTrackedRef = useRef<string>("");
+  const lastTrackedRef = useRef("");
 
   useEffect(() => {
     const currentPath = `${location.pathname}${location.search}${location.hash}`;
-
     if (lastTrackedRef.current === currentPath) return;
     lastTrackedRef.current = currentPath;
-
-    if (typeof window !== "undefined" && typeof window.fbq === "function") {
-      window.fbq("track", "PageView");
-    }
+    trackPageView();
   }, [location]);
 
   return null;
