@@ -15,7 +15,7 @@
     <!-- Favicon -->
     <link rel="icon" href="/logo.jpeg" />
 
-    <!-- iOS PWA (IMPORTANT) -->
+    <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Duumini" />
     <meta
@@ -26,6 +26,41 @@
 
     <!-- Optionnel (Windows tiles) -->
     <meta name="msapplication-TileColor" content="#fddc00" />
+
+    <!-- ========================= -->
+    <!--        Meta Pixel         -->
+    <!-- ========================= -->
+    <script>
+      !(function (f, b, e, v, n, t, s) {
+        if (f.fbq) return;
+        n = f.fbq = function () {
+          n.callMethod
+            ? n.callMethod.apply(n, arguments)
+            : n.queue.push(arguments);
+        };
+        if (!f._fbq) f._fbq = n;
+        n.push = n;
+        n.loaded = true;
+        n.version = "2.0";
+        n.queue = [];
+        t = b.createElement(e);
+        t.async = true;
+        t.src = v;
+        s = b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t, s);
+      })(
+        window,
+        document,
+        "script",
+        "https://connect.facebook.net/en_US/fbevents.js"
+      );
+
+      fbq("init", "%VITE_META_PIXEL_ID%");
+      fbq("track", "PageView");
+    </script>
+    <!-- ========================= -->
+    <!--      End Meta Pixel       -->
+    <!-- ========================= -->
 
     <!-- ========================= -->
     <!--      Google Tag Manager   -->
@@ -49,14 +84,15 @@
     <!-- ========================= -->
     <!--       Metricool Tracker   -->
     <!-- ========================= -->
-    <img
-      src="https://tracker.metricool.com/c3po.jpg?hash=a5a92e3aed658a4f3d4c3d6645b66a61"
-      alt=""
-      style="display: none"
-    />
-
     <script>
       (function () {
+        var img = document.createElement("img");
+        img.src =
+          "https://tracker.metricool.com/c3po.jpg?hash=a5a92e3aed658a4f3d4c3d6645b66a61";
+        img.alt = "";
+        img.style.display = "none";
+        document.head.appendChild(img);
+
         var s = document.createElement("script");
         s.src = "https://tracker.metricool.com/resources/be.js";
         s.async = true;
@@ -89,6 +125,21 @@
     </noscript>
     <!-- ========================= -->
     <!-- End Google Tag Manager    -->
+    <!-- ========================= -->
+
+    <!-- ========================= -->
+    <!-- Meta Pixel (noscript)     -->
+    <!-- ========================= -->
+    <noscript>
+      <img
+        height="1"
+        width="1"
+        style="display: none"
+        src="https://www.facebook.com/tr?id=%VITE_META_PIXEL_ID%&ev=PageView&noscript=1"
+      />
+    </noscript>
+    <!-- ========================= -->
+    <!-- End Meta Pixel (noscript) -->
     <!-- ========================= -->
 
     <div id="root"></div>
