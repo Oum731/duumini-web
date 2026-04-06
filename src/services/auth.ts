@@ -106,6 +106,33 @@ function normalizeSexe(s: any): Sexe | null {
   return null;
 }
 
+export function normalizePhone(phone: string): string {
+  let raw = String(phone || "")
+    .replace(/\s+/g, "")
+    .replace(/-/g, "")
+    .replace(/\./g, "");
+
+  if (!raw) return "";
+
+  if (raw.startsWith("00")) {
+    raw = "+" + raw.slice(2);
+  }
+
+  if (/^0\d{9}$/.test(raw)) {
+    raw = "+212" + raw.slice(1);
+  }
+
+  if (/^212\d{9}$/.test(raw)) {
+    raw = "+" + raw;
+  }
+
+  if (!raw.startsWith("+")) {
+    raw = "+" + raw;
+  }
+
+  return raw;
+}
+
 export function getImpersonationMeta(): ImpersonationInfo | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.imp_meta);
@@ -119,6 +146,7 @@ function normalizeUser(u: any): User {
   if (!u) return u;
   return {
     ...u,
+    phone: normalizePhone(String(u.phone || "")),
     role: normalizeRole(u.role),
     sexe: normalizeSexe(u.sexe),
     impersonation: getImpersonationMeta() || u.impersonation || null,
@@ -314,10 +342,15 @@ export async function register(payload: {
   quartier?: string | null;
   sexe?: Sexe | null;
 }) {
+  const cleanPayload = {
+    ...payload,
+    phone: normalizePhone(payload.phone),
+  };
+
   const res = await fetch(`${API}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(cleanPayload),
     mode: "cors",
     credentials: "include",
   });
@@ -329,7 +362,10 @@ export async function login(phone: string, password: string) {
   const res = await fetch(`${API}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone, password }),
+    body: JSON.stringify({
+      phone: normalizePhone(phone),
+      password,
+    }),
     mode: "cors",
     credentials: "include",
   });
@@ -376,6 +412,9 @@ export async function updateProfile(payload: Partial<User>) {
   if ("role" in cleanPayload) delete cleanPayload.role;
   if ("impersonation" in cleanPayload) delete cleanPayload.impersonation;
   if ("shops" in cleanPayload) delete cleanPayload.shops;
+  if ("phone" in cleanPayload && cleanPayload.phone != null) {
+    cleanPayload.phone = normalizePhone(String(cleanPayload.phone));
+  }
 
   const res = await authFetch(`${API}/api/user/me`, {
     method: "PUT",
