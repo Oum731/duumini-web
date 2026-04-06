@@ -6,13 +6,20 @@ import {
   Package,
   ShieldCheck,
   SlidersHorizontal,
+  AlertTriangle,
+  Lock,
 } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 
 import InstallPWA from "../components/InstallPWA";
 import CategoriesMenu from "../components/CategoriesMenu";
 
-import { listProducts, type Product } from "../services/products";
+import {
+  listProducts,
+  type Product,
+  getSiteStatus,
+  type SiteStatus,
+} from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories } from "../services/subCategories";
 import { API_BASE } from "../services/http";
@@ -54,6 +61,52 @@ function OfflineBanner() {
     <div className="alert alert-warning rounded-0 text-center small m-0 fw-semibold">
       Vous êtes hors-ligne.
     </div>
+  );
+}
+
+/* ===== Site closed full message ===== */
+function SiteClosedOnly({
+  siteStatus,
+}: {
+  siteStatus: SiteStatus | null;
+}) {
+  if (!siteStatus?.is_closed) return null;
+
+  const message =
+    String(siteStatus.message || "").trim() ||
+    "Le site est temporairement fermé. Merci de revenir plus tard.";
+
+  return (
+    <section className="site-closed-only-wrap">
+      <div className="site-closed-only-card">
+        <div className="site-closed-only-bg" />
+        <div className="site-closed-only-ring site-closed-only-ring--one" />
+        <div className="site-closed-only-ring site-closed-only-ring--two" />
+
+        <div className="site-closed-only-content">
+          <div className="site-closed-only-lock">
+            <div className="site-closed-only-lock-core">
+              <Lock size={34} />
+            </div>
+          </div>
+
+          <div className="site-closed-only-alert">
+            <AlertTriangle size={18} />
+            <span>Information importante</span>
+          </div>
+
+          <h1 className="site-closed-only-title">
+            Le site est temporairement fermé
+          </h1>
+
+          <p className="site-closed-only-message">{message}</p>
+
+          <div className="site-closed-only-note">
+            Merci de revenir plus tard.
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -164,19 +217,17 @@ function AutoCarousel({
   }, [items.length, autoMs]);
 
   return (
-    <>
-      <div ref={ref} className="duu-track">
-        {items.map((p) => (
-          <div key={(p as any).id} className="duu-track-item">
-            <MiniCard
-              product={p}
-              href={itemHref(p)}
-              hint={itemHint ? itemHint(p) : null}
-            />
-          </div>
-        ))}
-      </div>
-    </>
+    <div ref={ref} className="duu-track">
+      {items.map((p) => (
+        <div key={(p as any).id} className="duu-track-item">
+          <MiniCard
+            product={p}
+            href={itemHref(p)}
+            hint={itemHint ? itemHint(p) : null}
+          />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -204,6 +255,8 @@ type Vertical = "MARKET";
 export default function Home() {
   const navigate = useNavigate();
   const [activeVertical] = useState<Vertical>("MARKET");
+  const [siteStatus, setSiteStatus] = useState<SiteStatus | null>(null);
+  const [siteStatusLoading, setSiteStatusLoading] = useState(true);
 
   const results = useQueries({
     queries: [
@@ -211,11 +264,13 @@ export default function Home() {
         queryKey: ["categories", { page: 1, pageSize: 500 }],
         queryFn: () => listCategories({ page: 1, pageSize: 500 }),
         staleTime: 5 * 60 * 1000,
+        enabled: !siteStatus?.is_closed,
       },
       {
         queryKey: ["subCategories", { page: 1, pageSize: 2000 }],
         queryFn: () => listSubCategories({ page: 1, pageSize: 2000 }),
         staleTime: 10 * 60 * 1000,
+        enabled: !siteStatus?.is_closed,
       },
       {
         queryKey: ["homeProducts", "african-market"],
@@ -227,6 +282,7 @@ export default function Home() {
             onlyActive: true,
           } as any),
         staleTime: 3 * 60 * 1000,
+        enabled: !siteStatus?.is_closed,
       },
     ],
   });
@@ -235,13 +291,17 @@ export default function Home() {
   const subsQ = results[1];
   const marketQ = results[2];
 
-  const loading = catsQ.isLoading || subsQ.isLoading || marketQ.isLoading;
+  const loading =
+    !siteStatus?.is_closed &&
+    (catsQ.isLoading || subsQ.isLoading || marketQ.isLoading);
 
   const err =
-    (catsQ.error as any)?.message ||
-    (subsQ.error as any)?.message ||
-    (marketQ.error as any)?.message ||
-    null;
+    !siteStatus?.is_closed
+      ? (catsQ.error as any)?.message ||
+        (subsQ.error as any)?.message ||
+        (marketQ.error as any)?.message ||
+        null
+      : null;
 
   const categories = (catsQ.data?.items || []) as Category[];
   const market = (marketQ.data?.items || []) as Product[];
@@ -250,6 +310,28 @@ export default function Home() {
   const [activeSubCategoryId, setActiveSubCategoryId] = useState<number | null>(
     null,
   );
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        setSiteStatusLoading(true);
+        const res = await getSiteStatus();
+        if (!mounted) return;
+        setSiteStatus(res);
+      } catch {
+        if (!mounted) return;
+        setSiteStatus(null);
+      } finally {
+        if (mounted) setSiteStatusLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const categoriesById = useMemo(() => {
     const m: Record<number, Category> = {};
@@ -304,6 +386,8 @@ export default function Home() {
     return name ? `Catégorie : ${name}` : null;
   }
 
+  const siteClosed = !!siteStatus?.is_closed;
+
   return (
     <div className="home-page">
       <style>{`
@@ -317,6 +401,182 @@ export default function Home() {
 
         .home-shell{
           padding-bottom: 32px;
+        }
+
+        .site-closed-only-wrap{
+          min-height: calc(100vh - 140px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 12px 0 24px;
+          animation: siteClosedWrapIn .45s ease;
+        }
+
+        .site-closed-only-card{
+          position: relative;
+          width: 100%;
+          max-width: 760px;
+          overflow: hidden;
+          border-radius: 30px;
+          padding: 28px 22px;
+          background:
+            linear-gradient(145deg, rgba(17,17,17,.985), rgba(31,31,31,.965));
+          border: 1px solid rgba(255,255,255,.08);
+          box-shadow:
+            0 24px 64px rgba(0,0,0,.20),
+            0 0 0 1px rgba(255,255,255,.02) inset;
+        }
+
+        .site-closed-only-bg{
+          position: absolute;
+          inset: -10%;
+          background:
+            radial-gradient(circle at 18% 18%, rgba(var(--duu-yellow-rgb),.22), transparent 26%),
+            radial-gradient(circle at 82% 24%, rgba(255,255,255,.08), transparent 18%),
+            radial-gradient(circle at 50% 100%, rgba(229,57,53,.22), transparent 28%);
+          animation: siteClosedGlow 6s ease-in-out infinite alternate;
+          pointer-events: none;
+        }
+
+        .site-closed-only-ring{
+          position: absolute;
+          border-radius: 999px;
+          border: 1px solid rgba(255,255,255,.06);
+          pointer-events: none;
+        }
+
+        .site-closed-only-ring--one{
+          width: 220px;
+          height: 220px;
+          top: -70px;
+          right: -50px;
+          animation: siteClosedFloat 7s ease-in-out infinite;
+        }
+
+        .site-closed-only-ring--two{
+          width: 160px;
+          height: 160px;
+          left: -40px;
+          bottom: -40px;
+          animation: siteClosedFloat 8s ease-in-out infinite reverse;
+        }
+
+        .site-closed-only-content{
+          position: relative;
+          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+
+        .site-closed-only-lock{
+          position: relative;
+          margin-bottom: 16px;
+        }
+
+        .site-closed-only-lock::before{
+          content: "";
+          position: absolute;
+          inset: -10px;
+          border-radius: 999px;
+          background: rgba(var(--duu-yellow-rgb), .10);
+          animation: siteClosedPulse 1.9s ease-in-out infinite;
+        }
+
+        .site-closed-only-lock-core{
+          position: relative;
+          width: 84px;
+          height: 84px;
+          border-radius: 24px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(var(--duu-yellow-rgb), .14);
+          color: var(--duu-yellow);
+          border: 1px solid rgba(var(--duu-yellow-rgb), .22);
+          box-shadow: 0 16px 34px rgba(0,0,0,.16);
+          backdrop-filter: blur(4px);
+        }
+
+        .site-closed-only-alert{
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 14px;
+          border-radius: 999px;
+          background: rgba(255,255,255,.07);
+          border: 1px solid rgba(255,255,255,.08);
+          color: #fff1bf;
+          font-size: .86rem;
+          font-weight: 900;
+          margin-bottom: 18px;
+        }
+
+        .site-closed-only-title{
+          margin: 0 0 10px;
+          color: #fff;
+          font-weight: 950;
+          line-height: 1.06;
+          letter-spacing: -.03em;
+          font-size: clamp(1.7rem, 3.4vw, 2.7rem);
+          max-width: 620px;
+        }
+
+        .site-closed-only-message{
+          margin: 0;
+          max-width: 620px;
+          color: rgba(255,255,255,.84);
+          font-size: 1rem;
+          line-height: 1.65;
+          font-weight: 600;
+        }
+
+        .site-closed-only-note{
+          margin-top: 18px;
+          color: rgba(255,255,255,.62);
+          font-size: .9rem;
+          font-weight: 700;
+        }
+
+        @keyframes siteClosedWrapIn{
+          from{
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to{
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes siteClosedGlow{
+          0%{
+            transform: translate3d(0,0,0) scale(1);
+          }
+          100%{
+            transform: translate3d(10px,-8px,0) scale(1.03);
+          }
+        }
+
+        @keyframes siteClosedPulse{
+          0%,100%{
+            transform: scale(1);
+            opacity: .55;
+          }
+          50%{
+            transform: scale(1.08);
+            opacity: .15;
+          }
+        }
+
+        @keyframes siteClosedFloat{
+          0%,100%{
+            transform: translateY(0px);
+          }
+          50%{
+            transform: translateY(10px);
+          }
         }
 
         .home-hero{
@@ -343,35 +603,6 @@ export default function Home() {
         .home-hero-inner{
           position: relative;
           z-index: 1;
-        }
-
-        .home-kicker{
-          display:inline-flex;
-          align-items:center;
-          gap:8px;
-          padding:7px 12px;
-          border-radius:999px;
-          background: rgba(var(--duu-yellow-rgb), .16);
-          border: 1px solid rgba(0,0,0,.08);
-          font-weight: 900;
-          color: var(--duu-black);
-          font-size: .82rem;
-        }
-
-        .home-title{
-          color: var(--duu-black);
-          font-weight: 950;
-          letter-spacing: -.03em;
-          line-height: 1.05;
-          margin: 0;
-        }
-
-        .home-subtitle{
-          color: rgba(0,0,0,.62);
-          font-weight: 600;
-          line-height: 1.55;
-          margin: 0;
-          max-width: 760px;
         }
 
         .home-badges{
@@ -629,30 +860,40 @@ export default function Home() {
           .home-hero{
             padding: 26px;
           }
-          .home-title{
-            font-size: 2.5rem;
-          }
-        }
-
-        @media (max-width: 991.98px){
-          .home-title{
-            font-size: 2rem;
-          }
         }
 
         @media (max-width: 575.98px){
           .home-shell{
             padding-bottom: 20px;
           }
+
+          .site-closed-only-wrap{
+            min-height: calc(100vh - 120px);
+            padding: 8px 0 18px;
+          }
+
+          .site-closed-only-card{
+            border-radius: 24px;
+            padding: 22px 16px;
+          }
+
+          .site-closed-only-lock-core{
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+          }
+
+          .site-closed-only-title{
+            font-size: 1.55rem;
+          }
+
+          .site-closed-only-message{
+            font-size: .94rem;
+          }
+
           .home-hero{
             border-radius: 22px;
             padding: 16px;
-          }
-          .home-title{
-            font-size: 1.8rem;
-          }
-          .home-subtitle{
-            font-size: .95rem;
           }
           .home-mini-link{
             width: 172px !important;
@@ -675,161 +916,164 @@ export default function Home() {
         <section className="container pt-3">
           <InstallPWA />
 
-          <div className="home-hero">
-            <div className="home-hero-inner">
-              <div className="d-flex flex-column gap-2">
-               
+          {siteStatusLoading ? (
+            <div className="text-muted small mt-2">Chargement…</div>
+          ) : siteClosed ? (
+            <SiteClosedOnly siteStatus={siteStatus} />
+          ) : (
+            <>
+              <div className="home-hero">
+                <div className="home-hero-inner">
+                  <div className="d-flex flex-column gap-2">
+                    <div className="home-badges">
+                      <span className="home-badge">
+                        <Package size={16} />
+                        Produits sélectionnés
+                      </span>
+                      <span className="home-badge">
+                        <ShieldCheck size={16} />
+                        Achat simple et fiable
+                      </span>
+                    </div>
 
-          
- 
+                    <div className="home-top-actions">
+                      <button
+                        type="button"
+                        className="btn btn-dark home-market-pill"
+                        disabled
+                        style={{ cursor: "default", opacity: 1 }}
+                      >
+                        🛒 Market
+                      </button>
 
-                <div className="home-badges">
-                  <span className="home-badge">
-                    <Package size={16} />
-                    Produits sélectionnés
-                  </span>
-                  <span className="home-badge">
-                    <ShieldCheck size={16} />
-                    Achat simple et fiable
-                  </span>
-                </div>
-
-                <div className="home-top-actions">
-                  <button
-                    type="button"
-                    className="btn btn-dark home-market-pill"
-                    disabled
-                    style={{ cursor: "default", opacity: 1 }}
-                  >
-                    🛒 Market
-                  </button>
-
-                  <Link to={rootForVertical()} className="soft-action">
-                    Voir tout <ChevronRight size={15} />
-                  </Link>
-                </div>
-
-                <div className="home-toolbar">
-                  <div className="duu-filter-btn d-flex align-items-center gap-2">
-                    <span className="filter-icon" aria-hidden="true">
-                      <SlidersHorizontal size={18} />
-                    </span>
-
-                    <CategoriesMenu
-                      title="Filtrer les catégories"
-                      variant="auto"
-                      activeCategoryId={activeCategoryId}
-                      activeSubCategoryId={activeSubCategoryId}
-                      onSelectCategory={(c) => {
-                        setActiveCategoryId(c.id);
-                        setActiveSubCategoryId(null);
-                        navigate(routeForCategorySlug(String((c as any).slug || "")));
-                      }}
-                      onSelectSubCategory={(s) => {
-                        const sid = Number((s as any).id || 0);
-                        const cid = Number((s as any).category_id || 0);
-                        setActiveSubCategoryId(sid || null);
-                        setActiveCategoryId(cid || null);
-
-                        const cat = categoriesById[cid];
-                        const catSlug = String((cat as any)?.slug || "");
-                        if (!catSlug) return;
-
-                        navigate(
-                          routeForSubSlug(catSlug, String((s as any).slug || "")),
-                        );
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {err && (
-            <div className="alert alert-danger mt-3 d-flex justify-content-between align-items-center">
-              <span>{err}</span>
-              <button
-                className="btn btn-sm"
-                style={{
-                  background: "var(--duu-yellow)",
-                  border: "none",
-                  fontWeight: 900,
-                }}
-                onClick={() => {
-                  catsQ.refetch();
-                  subsQ.refetch();
-                  marketQ.refetch();
-                }}
-              >
-                Réessayer
-              </button>
-            </div>
-          )}
-
-          {loading ? (
-            <div className="text-muted small mt-3">Chargement…</div>
-          ) : null}
-
-          {!loading && !err && (
-            <div className="d-flex flex-column gap-3 mt-3">
-              {categoryIdsWithProducts.map((cid, idx) => {
-                const cat = categoriesById[cid];
-                if (!cat) return null;
-
-                const list = activeMap[cid] || [];
-                if (!list.length) return null;
-
-                const items = list.slice(0, 18);
-
-                const v = pickSectionVariant(idx);
-                const headClass =
-                  v === "yellow"
-                    ? "head-yellow"
-                    : v === "white"
-                      ? "head-white"
-                      : "head-dark";
-
-                const catSlug = String((cat as any).slug || "");
-                const mainLink = catSlug
-                  ? routeForCategorySlug(catSlug)
-                  : rootForVertical();
-
-                return (
-                  <div key={`${activeVertical}-${cid}`} className="sec">
-                    <div className={`sec-head ${headClass}`}>
-                      <div className="min-w-0">
-                        <div className="sec-title text-truncate">
-                          {(cat as any).name}
-                        </div>
-                        <div className="sec-sub">
-                          Une sélection de produits à découvrir
-                        </div>
-                      </div>
-
-                      <Link to={mainLink} className="soft-action">
-                        Explorer <ChevronRight size={14} />
+                      <Link to={rootForVertical()} className="soft-action">
+                        Voir tout <ChevronRight size={15} />
                       </Link>
                     </div>
 
-                    <div className="sec-body">
-                      <AutoCarousel
-                        items={items}
-                        itemHref={itemHrefForProduct}
-                        itemHint={hintForProduct}
-                        autoMs={2600}
-                      />
+                    <div className="home-toolbar">
+                      <div className="duu-filter-btn d-flex align-items-center gap-2">
+                        <span className="filter-icon" aria-hidden="true">
+                          <SlidersHorizontal size={18} />
+                        </span>
+
+                        <CategoriesMenu
+                          title="Filtrer les catégories"
+                          variant="auto"
+                          activeCategoryId={activeCategoryId}
+                          activeSubCategoryId={activeSubCategoryId}
+                          onSelectCategory={(c) => {
+                            setActiveCategoryId(c.id);
+                            setActiveSubCategoryId(null);
+                            navigate(routeForCategorySlug(String((c as any).slug || "")));
+                          }}
+                          onSelectSubCategory={(s) => {
+                            const sid = Number((s as any).id || 0);
+                            const cid = Number((s as any).category_id || 0);
+                            setActiveSubCategoryId(sid || null);
+                            setActiveCategoryId(cid || null);
+
+                            const cat = categoriesById[cid];
+                            const catSlug = String((cat as any)?.slug || "");
+                            if (!catSlug) return;
+
+                            navigate(
+                              routeForSubSlug(catSlug, String((s as any).slug || "")),
+                            );
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              </div>
 
-              {!categoryIdsWithProducts.length && (
-                <div className="home-empty">
-                  Aucun produit Market pour le moment.
+              {err && (
+                <div className="alert alert-danger mt-3 d-flex justify-content-between align-items-center">
+                  <span>{err}</span>
+                  <button
+                    className="btn btn-sm"
+                    style={{
+                      background: "var(--duu-yellow)",
+                      border: "none",
+                      fontWeight: 900,
+                    }}
+                    onClick={() => {
+                      catsQ.refetch();
+                      subsQ.refetch();
+                      marketQ.refetch();
+                    }}
+                  >
+                    Réessayer
+                  </button>
                 </div>
               )}
-            </div>
+
+              {loading ? (
+                <div className="text-muted small mt-3">Chargement…</div>
+              ) : null}
+
+              {!loading && !err && (
+                <div className="d-flex flex-column gap-3 mt-3">
+                  {categoryIdsWithProducts.map((cid, idx) => {
+                    const cat = categoriesById[cid];
+                    if (!cat) return null;
+
+                    const list = activeMap[cid] || [];
+                    if (!list.length) return null;
+
+                    const items = list.slice(0, 18);
+
+                    const v = pickSectionVariant(idx);
+                    const headClass =
+                      v === "yellow"
+                        ? "head-yellow"
+                        : v === "white"
+                          ? "head-white"
+                          : "head-dark";
+
+                    const catSlug = String((cat as any).slug || "");
+                    const mainLink = catSlug
+                      ? routeForCategorySlug(catSlug)
+                      : rootForVertical();
+
+                    return (
+                      <div key={`${activeVertical}-${cid}`} className="sec">
+                        <div className={`sec-head ${headClass}`}>
+                          <div className="min-w-0">
+                            <div className="sec-title text-truncate">
+                              {(cat as any).name}
+                            </div>
+                            <div className="sec-sub">
+                              Une sélection de produits à découvrir
+                            </div>
+                          </div>
+
+                          <Link to={mainLink} className="soft-action">
+                            Explorer <ChevronRight size={14} />
+                          </Link>
+                        </div>
+
+                        <div className="sec-body">
+                          <AutoCarousel
+                            items={items}
+                            itemHref={itemHrefForProduct}
+                            itemHint={hintForProduct}
+                            autoMs={2600}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {!categoryIdsWithProducts.length && (
+                    <div className="home-empty">
+                      Aucun produit Market pour le moment.
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

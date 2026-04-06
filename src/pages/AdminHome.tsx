@@ -5,6 +5,7 @@ import { listOrders, type Order } from "../services/orders";
 import { listProducts } from "../services/products";
 import { listShops, type Shop } from "../services/shops";
 import { listUsers, type User } from "../services/users";
+import { api } from "../services/http";
 import {
   LineChart,
   Line,
@@ -23,7 +24,20 @@ type AnyObj = Record<string, any>;
 
 export type SalesPoint = { date: string; revenue: number; orders: number };
 
-/* ======= Utils ======= */
+type SiteStatusState = {
+  is_closed: boolean;
+  message: string;
+};
+
+type AdminProductLite = {
+  id: number;
+  name: string;
+  stock_status?: string | null;
+  is_out_of_stock?: boolean | number | null;
+  availability_message?: string | null;
+  is_active?: boolean | number | null;
+};
+
 function mad(n?: number | null) {
   const v = typeof n === "number" && !isNaN(n) ? n : 0;
   return new Intl.NumberFormat("fr-FR", {
@@ -32,12 +46,14 @@ function mad(n?: number | null) {
     maximumFractionDigits: 0,
   }).format(v);
 }
+
 function shortDate(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
 }
+
 function safeTotal(o: any): number {
   const candidates = [o?.total, o?.total_amount, o?.amount];
   const v =
@@ -45,20 +61,15 @@ function safeTotal(o: any): number {
     Number(candidates.find((x) => x != null));
   return Number.isFinite(v) ? Number(v) : 0;
 }
+
 function normStatus(s: any): string {
   return String(s || "").trim().toUpperCase();
 }
+
 function readTotalFromPaged(res: any): number {
   return res?.pageInfo?.total ?? res?.total ?? (Array.isArray(res?.items) ? res.items.length : 0) ?? 0;
 }
 
-/**
- * Sous-total des produits (CA hors livraison) pour une commande.
- * Priorité :
- * - totals.items_amount (backend)
- * - somme des lignes items (unit_price/price * qty)
- * - fallback : total - frais de livraison (si dispo)
- */
 function itemsAmount(o: any): number {
   const anyO = o as any;
   const totals = anyO.totals;
@@ -86,7 +97,6 @@ function itemsAmount(o: any): number {
   return items > 0 ? items : 0;
 }
 
-/* ======= Hauteur responsive pour Recharts ======= */
 function useChartHeight() {
   const pick = () => {
     const w = typeof window !== "undefined" ? window.innerWidth : 1200;
@@ -107,7 +117,6 @@ function useChartHeight() {
   return h;
 }
 
-/* ======= Flag mobile ======= */
 function useIsMobile(breakpoint = 576) {
   const pick = () => (typeof window !== "undefined" ? window.innerWidth < breakpoint : false);
   const [m, setM] = useState<boolean>(pick);
@@ -119,7 +128,6 @@ function useIsMobile(breakpoint = 576) {
   return m;
 }
 
-/* ======= Outils dates TZ (Africa/Casablanca) ======= */
 function dateKeyTZ(d: Date, timeZone = "Africa/Casablanca") {
   const fmt = new Intl.DateTimeFormat("fr-MA", {
     timeZone,
@@ -133,9 +141,11 @@ function dateKeyTZ(d: Date, timeZone = "Africa/Casablanca") {
   const day = parts.find((p) => p.type === "day")?.value ?? "01";
   return `${y}-${m}-${day}`;
 }
+
 function weekdayNameTZ(d: Date, timeZone = "Africa/Casablanca") {
   return new Intl.DateTimeFormat("fr-MA", { timeZone, weekday: "long" }).format(d).toLowerCase();
 }
+
 function getStartOfWeekTZ(today: Date, timeZone = "Africa/Casablanca") {
   const t = new Date(today);
   for (let i = 0; i < 7; i++) {
@@ -145,13 +155,13 @@ function getStartOfWeekTZ(today: Date, timeZone = "Africa/Casablanca") {
   }
   return new Date(today);
 }
+
 function getStartOfMonthTZ(today: Date) {
   const d = new Date(today);
   d.setDate(1);
   return d;
 }
 
-/* ======= 🔁 Helpers DONE date ======= */
 function doneDate(o: any): Date | null {
   if (normStatus(o?.status) !== "DONE") return null;
   const iso =
@@ -163,14 +173,12 @@ function doneDate(o: any): Date | null {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? null : d;
 }
+
 function doneKey(o: any, tz = "Africa/Casablanca"): string | null {
   const d = doneDate(o);
   return d ? dateKeyTZ(d, tz) : null;
 }
 
-/* =========================
- * ✅ Rôles + Filtrage vendeur
- * =======================*/
 type CurrentUser = {
   id?: number;
   role?: string;
@@ -185,8 +193,6 @@ function isVendorRole(role?: string) {
 
 function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
   if (!user) return false;
-
-  // admin voit tout
   if (!isVendorRole(user.role)) return true;
 
   const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;
@@ -220,7 +226,6 @@ function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
   return false;
 }
 
-/* ======= Badge color ======= */
 function statusClass(s: string) {
   const st = String(s || "").toUpperCase();
   if (st === "DONE") return "bg-success";
@@ -230,9 +235,6 @@ function statusClass(s: string) {
   return "bg-secondary";
 }
 
-/* =========================
- * ✅ Summary
- * =======================*/
 type Summary = {
   revenue_today: number;
   revenue_week: number;
@@ -245,14 +247,44 @@ type Summary = {
   duumini_commission_year: number;
 
   orders_pending: number;
-
-  // admin-only KPI (peuvent rester 0 côté vendeur)
   products_active: number;
   shops_total: number;
   users_total: number;
-
   sales_series: SalesPoint[];
 };
+
+function normalizeSiteStatusResponse(data: any): SiteStatusState {
+  return {
+    is_closed: Boolean(
+      data?.is_closed ??
+      data?.site_closed ??
+      data?.closed ??
+      false
+    ),
+    message: String(
+      data?.message ??
+      data?.site_closed_message ??
+      "Le site est temporairement fermé. Merci de revenir plus tard."
+    ),
+  };
+}
+
+function defaultClosedMessage() {
+  return "Le site est temporairement fermé. Merci de revenir plus tard.";
+}
+
+function defaultProductOutMessage() {
+  return "Ce produit est actuellement en rupture de stock.";
+}
+
+function productIsOut(p: any) {
+  const stockStatus = String(p?.stock_status || "").trim().toUpperCase();
+  return Boolean(
+    p?.is_out_of_stock === true ||
+    Number(p?.is_out_of_stock || 0) === 1 ||
+    stockStatus === "OUT_OF_STOCK"
+  );
+}
 
 async function fetchOrdersByStatusPaginated(status: string, maxPages = 20, pageSize = 200) {
   const all: Order[] = [];
@@ -332,7 +364,6 @@ function computeSummaryFromDoneOrders(ordersDone: Order[]) {
     }
   }
 
-  // series 30 jours
   const days = 30;
   const map = new Map<string, { revenue: number; orders: number }>();
   for (let i = days - 1; i >= 0; i--) {
@@ -394,12 +425,10 @@ async function buildSummaryAdmin(): Promise<Summary> {
 }
 
 async function buildSummaryVendor(user: CurrentUser): Promise<Summary> {
-  // DONE pour stats/charts
   const ordersDoneAll = await fetchOrdersByStatusPaginated("DONE", 20, 200);
   const ordersDone = ordersDoneAll.filter((o) => orderBelongsToUser(o as AnyObj, user));
   const core = computeSummaryFromDoneOrders(ordersDone);
 
-  // pending (OPEN + PREPARATION) => on pagine puis filtre
   const [openAll, prepAll] = await Promise.all([
     fetchOrdersByStatusPaginated("OPEN", 10, 200),
     fetchOrdersByStatusPaginated("PREPARATION", 10, 200),
@@ -433,6 +462,19 @@ export default function AdminHome() {
 
   const [commissionFilter, setCommissionFilter] = useState<"today" | "week" | "month" | "year">("today");
 
+  const [siteStatus, setSiteStatus] = useState<SiteStatusState>({
+    is_closed: false,
+    message: defaultClosedMessage(),
+  });
+  const [siteStatusLoading, setSiteStatusLoading] = useState(false);
+  const [siteActionLoading, setSiteActionLoading] = useState(false);
+
+  const [productsQuick, setProductsQuick] = useState<AdminProductLite[]>([]);
+  const [productsQuickLoading, setProductsQuickLoading] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<number | "">("");
+  const [selectedProductMessage, setSelectedProductMessage] = useState(defaultProductOutMessage());
+  const [productActionLoading, setProductActionLoading] = useState(false);
+
   const chartHeight = useChartHeight();
   const isMobile = useIsMobile(576);
 
@@ -440,7 +482,12 @@ export default function AdminHome() {
   const visibleRef = useRef<boolean>(true);
   const sseRef = useRef<{ close(): void } | null>(null);
 
-  // charge user
+  const selectedProduct = useMemo(() => {
+    const id = Number(selectedProductId || 0);
+    if (!id) return null;
+    return productsQuick.find((p) => Number(p.id) === id) || null;
+  }, [selectedProductId, productsQuick]);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -458,17 +505,55 @@ export default function AdminHome() {
     };
   }, []);
 
+  const loadSiteStatus = useCallback(async () => {
+    if (isVendor) return;
+    try {
+      setSiteStatusLoading(true);
+      const res = await api.get("/api/admin/site-status");
+      setSiteStatus(normalizeSiteStatusResponse(res));
+    } catch {
+      setSiteStatus({
+        is_closed: false,
+        message: defaultClosedMessage(),
+      });
+    } finally {
+      setSiteStatusLoading(false);
+    }
+  }, [isVendor]);
+
+  const loadQuickProducts = useCallback(async () => {
+    if (isVendor) return;
+    try {
+      setProductsQuickLoading(true);
+      const res = await listProducts({ page: 1, pageSize: 100 } as any);
+      const items = Array.isArray((res as any)?.items) ? (res as any).items : [];
+      const normalized: AdminProductLite[] = items
+        .map((p: any) => ({
+          id: Number(p?.id || 0),
+          name: String(p?.name || p?.product_name || `Produit #${p?.id || ""}`),
+          stock_status: p?.stock_status ?? null,
+          is_out_of_stock: p?.is_out_of_stock ?? null,
+          availability_message: p?.availability_message ?? p?.stock_message ?? null,
+          is_active: p?.is_active ?? null,
+        }))
+        .filter((p: any) => p.id > 0);
+      setProductsQuick(normalized);
+    } catch {
+      setProductsQuick([]);
+    } finally {
+      setProductsQuickLoading(false);
+    }
+  }, [isVendor]);
+
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setLoading(true);
 
     try {
-      // si user pas encore chargé, on fait un refresh minimal
       const curUser = user;
 
       if (curUser && isVendorRole(curUser.role)) {
-        // ===== VENDEUR =====
         const [sum, lastOrdersOpen, lastOrdersPrep, lastOrdersDeliv] = await Promise.all([
           buildSummaryVendor(curUser),
           listOrders({ page: 1, pageSize: 6, status: "OPEN" } as any).catch(() => ({ items: [] })),
@@ -476,7 +561,6 @@ export default function AdminHome() {
           listOrders({ page: 1, pageSize: 6, status: "DELIVERY" } as any).catch(() => ({ items: [] })),
         ]);
 
-        // pour “Dernières commandes” côté vendeur : on combine & filtre & trie
         const combined = [
           ...((lastOrdersOpen as any)?.items || []),
           ...((lastOrdersPrep as any)?.items || []),
@@ -494,14 +578,13 @@ export default function AdminHome() {
 
         setKpi(sum);
         setOrders(mine);
-        setShops([]); // hidden
-        setUsers([]); // hidden
+        setShops([]);
+        setUsers([]);
         setError(null);
         setLastUpdate(new Date());
         return;
       }
 
-      // ===== ADMIN =====
       const results = await Promise.allSettled([
         (async () => ({ kind: "sum" as const, val: await buildSummaryAdmin() }))(),
         (async () => ({ kind: "orders" as const, val: await listOrders({ page: 1, pageSize: 6 }) }))(),
@@ -555,12 +638,26 @@ export default function AdminHome() {
     }
   }, [user]);
 
-  // Initial load
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // Polling (15s) tant que l’onglet est visible
+  useEffect(() => {
+    if (isVendor) return;
+    loadSiteStatus();
+    loadQuickProducts();
+  }, [isVendor, loadSiteStatus, loadQuickProducts]);
+
+  useEffect(() => {
+    if (!selectedProduct) {
+      setSelectedProductMessage(defaultProductOutMessage());
+      return;
+    }
+    setSelectedProductMessage(
+      String(selectedProduct.availability_message || "").trim() || defaultProductOutMessage()
+    );
+  }, [selectedProduct]);
+
   useEffect(() => {
     const onVis = () => {
       visibleRef.current = document.visibilityState === "visible";
@@ -575,7 +672,6 @@ export default function AdminHome() {
     };
   }, [refresh]);
 
-  // SSE : rafraîchir à la volée sur ORDER_CREATED / ORDER_STATUS
   useEffect(() => {
     const token = getAccessToken();
     if (!token) return;
@@ -597,6 +693,121 @@ export default function AdminHome() {
       sseRef.current = null;
     };
   }, [refresh]);
+
+  const handleCloseSite = useCallback(async () => {
+    try {
+      setSiteActionLoading(true);
+      const payload = {
+        is_closed: true,
+        message: String(siteStatus.message || "").trim() || defaultClosedMessage(),
+      };
+      const res = await api.put("/api/admin/site-status", payload);
+      setSiteStatus(normalizeSiteStatusResponse(res));
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          e?.response?.data?.error ||
+          "Impossible de fermer le site."
+      );
+    } finally {
+      setSiteActionLoading(false);
+    }
+  }, [siteStatus.message]);
+
+  const handleOpenSite = useCallback(async () => {
+    try {
+      setSiteActionLoading(true);
+      const res = await api.put("/api/admin/site-status", {
+        is_closed: false,
+        message: "",
+      });
+      const normalized = normalizeSiteStatusResponse(res);
+      setSiteStatus({
+        is_closed: false,
+        message: normalized.message || "",
+      });
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          e?.response?.data?.error ||
+          "Impossible de réouvrir le site."
+      );
+    } finally {
+      setSiteActionLoading(false);
+    }
+  }, []);
+
+  const handleMarkProductOut = useCallback(async () => {
+    const id = Number(selectedProductId || 0);
+    if (!id) return;
+
+    try {
+      setProductActionLoading(true);
+      const message =
+        String(selectedProductMessage || "").trim() || defaultProductOutMessage();
+
+      await api.patch(`/api/products/${id}/stock-status`, {
+        is_out_of_stock: true,
+        availability_message: message,
+      });
+
+      setProductsQuick((prev) =>
+        prev.map((p) =>
+          Number(p.id) === id
+            ? {
+                ...p,
+                stock_status: "OUT_OF_STOCK",
+                is_out_of_stock: true,
+                availability_message: message,
+              }
+            : p
+        )
+      );
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          e?.response?.data?.error ||
+          "Impossible de mettre le produit en rupture."
+      );
+    } finally {
+      setProductActionLoading(false);
+    }
+  }, [selectedProductId, selectedProductMessage]);
+
+  const handleReopenProduct = useCallback(async () => {
+    const id = Number(selectedProductId || 0);
+    if (!id) return;
+
+    try {
+      setProductActionLoading(true);
+
+      await api.patch(`/api/products/${id}/stock-status`, {
+        is_out_of_stock: false,
+        availability_message: null,
+      });
+
+      setProductsQuick((prev) =>
+        prev.map((p) =>
+          Number(p.id) === id
+            ? {
+                ...p,
+                stock_status: "IN_STOCK",
+                is_out_of_stock: false,
+                availability_message: null,
+              }
+            : p
+        )
+      );
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          e?.response?.data?.error ||
+          "Impossible de réouvrir le produit."
+      );
+    } finally {
+      setProductActionLoading(false);
+    }
+  }, [selectedProductId]);
 
   const series = useMemo<SalesPoint[]>(() => kpi?.sales_series || [], [kpi]);
 
@@ -633,7 +844,190 @@ export default function AdminHome() {
 
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
-      {/* ===== KPI Cards ===== */}
+      {!isVendor && (
+        <div className="row g-2 g-sm-3 mb-3">
+          <div className="col-12 col-xl-6">
+            <div className="card h-100 shadow-sm border-0">
+              <div className="card-body">
+                <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-3">
+                  <div>
+                    <h2 className="h6 mb-0" style={{ color: "var(--duu-black)" }}>
+                      Pilotage du site
+                    </h2>
+                    <div className="text-muted small">
+                      Fermer ou réouvrir tout le site avec un message clair.
+                    </div>
+                  </div>
+
+                  <span
+                    className={`badge ${
+                      siteStatus.is_closed ? "bg-danger" : "bg-success"
+                    }`}
+                    style={{ borderRadius: 999, fontSize: 12 }}
+                  >
+                    {siteStatus.is_closed ? "Site fermé" : "Site ouvert"}
+                  </span>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">
+                    Message affiché quand le site est fermé
+                  </label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    value={siteStatus.message}
+                    onChange={(e) =>
+                      setSiteStatus((prev) => ({
+                        ...prev,
+                        message: e.target.value,
+                      }))
+                    }
+                    placeholder="Ex: Le site est temporairement fermé. Merci de revenir plus tard."
+                    disabled={siteActionLoading || siteStatusLoading}
+                  />
+                  <div className="form-text">
+                    Ce message ne sera affiché que lorsque le site est fermé.
+                  </div>
+                </div>
+
+                {siteStatus.is_closed ? (
+                  <div className="alert alert-warning mb-3">
+                    <div className="fw-semibold mb-1">Message actuellement affiché</div>
+                    <div>
+                      {String(siteStatus.message || "").trim() || defaultClosedMessage()}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="d-flex flex-column flex-sm-row gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={handleCloseSite}
+                    disabled={siteActionLoading || siteStatusLoading}
+                  >
+                    {siteActionLoading && siteStatus.is_closed
+                      ? "Mise à jour…"
+                      : "Fermer le site"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={handleOpenSite}
+                    disabled={siteActionLoading || siteStatusLoading}
+                  >
+                    {siteActionLoading && !siteStatus.is_closed
+                      ? "Mise à jour…"
+                      : "Réouvrir le site"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="col-12 col-xl-6">
+            <div className="card h-100 shadow-sm border-0">
+              <div className="card-body">
+                <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-3">
+                  <div>
+                    <h2 className="h6 mb-0" style={{ color: "var(--duu-black)" }}>
+                      Gestion rapide des produits
+                    </h2>
+                    <div className="text-muted small">
+                      Marquer un produit en rupture ou le réouvrir.
+                    </div>
+                  </div>
+
+                  {selectedProduct ? (
+                    <span
+                      className={`badge ${
+                        productIsOut(selectedProduct) ? "bg-danger" : "bg-success"
+                      }`}
+                      style={{ borderRadius: 999, fontSize: 12 }}
+                    >
+                      {productIsOut(selectedProduct) ? "En rupture" : "Disponible"}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">Produit</label>
+                  <select
+                    className="form-select"
+                    value={selectedProductId}
+                    onChange={(e) => setSelectedProductId(Number(e.target.value) || "")}
+                    disabled={productsQuickLoading || productActionLoading}
+                  >
+                    <option value="">Sélectionner un produit</option>
+                    {productsQuick.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">
+                    Message de rupture
+                  </label>
+                  <input
+                    className="form-control"
+                    value={selectedProductMessage}
+                    onChange={(e) => setSelectedProductMessage(e.target.value)}
+                    placeholder="Ce produit est actuellement en rupture de stock."
+                    disabled={!selectedProduct || productActionLoading}
+                  />
+                  <div className="form-text">
+                    Ce message sera visible uniquement si le produit est en rupture.
+                  </div>
+                </div>
+
+                {selectedProduct && productIsOut(selectedProduct) ? (
+                  <div className="alert alert-warning mb-3">
+                    <div className="fw-semibold mb-1">Message actuellement affiché</div>
+                    <div>
+                      {String(selectedProduct.availability_message || "").trim() ||
+                        defaultProductOutMessage()}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="d-flex flex-column flex-sm-row gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger"
+                    disabled={!selectedProduct || productActionLoading}
+                    onClick={handleMarkProductOut}
+                  >
+                    {productActionLoading && productIsOut(selectedProduct)
+                      ? "Mise à jour…"
+                      : "Mettre en rupture"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-success"
+                    disabled={!selectedProduct || productActionLoading}
+                    onClick={handleReopenProduct}
+                  >
+                    {productActionLoading && !productIsOut(selectedProduct)
+                      ? "Mise à jour…"
+                      : "Réouvrir le produit"}
+                  </button>
+                </div>
+
+                {productsQuickLoading ? (
+                  <div className="text-muted small mt-3">Chargement des produits…</div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
@@ -683,7 +1077,6 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* Commission */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
@@ -706,7 +1099,6 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* Pending */}
         <div className="col-12 col-sm-6 col-xl-2">
           <div className="card h-100 shadow-sm">
             <div className="card-body py-3 py-sm-3">
@@ -719,7 +1111,6 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* ADMIN-ONLY KPIs */}
         {!isVendor && (
           <>
             <div className="col-12 col-sm-6 col-xl-2">
@@ -761,7 +1152,6 @@ export default function AdminHome() {
         )}
       </div>
 
-      {/* ===== Charts ===== */}
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
         <div className="col-12 col-lg-8">
           <div className="card h-100 shadow-sm">
@@ -842,9 +1232,7 @@ export default function AdminHome() {
         </div>
       </div>
 
-      {/* ===== Tables ===== */}
       <div className="row g-2 g-sm-3">
-        {/* Commandes */}
         <div className={`col-12 ${isVendor ? "" : "col-xxl-6"}`}>
           <div className="card h-100 shadow-sm">
             <div className="card-body">
@@ -895,7 +1283,9 @@ export default function AdminHome() {
               )}
 
               <div className="d-flex align-items-center justify-content-between mt-2">
-                <div className="text-muted small">{loading ? "Mise à jour…" : "Actualisé automatiquement (polling + SSE)"}</div>
+                <div className="text-muted small">
+                  {loading ? "Mise à jour…" : "Actualisé automatiquement (polling + SSE)"}
+                </div>
                 <button className="btn btn-sm btn-outline-dark" onClick={refresh} disabled={loading}>
                   Rafraîchir
                 </button>
@@ -904,10 +1294,8 @@ export default function AdminHome() {
           </div>
         </div>
 
-        {/* ADMIN ONLY: Boutiques + Utilisateurs */}
         {!isVendor && (
           <>
-            {/* Boutiques */}
             <div className="col-12 col-xxl-6">
               <div className="card h-100 shadow-sm">
                 <div className="card-body">
@@ -952,7 +1340,6 @@ export default function AdminHome() {
               </div>
             </div>
 
-            {/* Utilisateurs */}
             <div className="col-12">
               <div className="card h-100 shadow-sm">
                 <div className="card-body">
@@ -1023,6 +1410,10 @@ export default function AdminHome() {
           border: none;
         }
         .btn-duu:hover{ filter: brightness(0.95); }
+
+        .card{
+          border-radius: 16px;
+        }
       `}</style>
     </div>
   );

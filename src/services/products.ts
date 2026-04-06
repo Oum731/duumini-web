@@ -33,7 +33,7 @@ export type ProductOptionChoice = {
   group_id: number;
 
   label: string;
-  price_delta?: number | null; // supplément
+  price_delta?: number | null;
   is_default?: 0 | 1 | null;
   is_active?: 0 | 1 | null;
 
@@ -50,8 +50,8 @@ export type ProductOptionGroup = {
   type: "ACCOMPANIMENT" | "DRINK_TEMP" | "CUSTOM";
   title: string;
 
-  required?: 0 | 1 | null; // obligé ?
-  max_select?: number | null; // 1 = radio, >1 = multi
+  required?: 0 | 1 | null;
+  max_select?: number | null;
   is_active?: 0 | 1 | null;
 
   sort_order?: number | null;
@@ -92,7 +92,6 @@ export type Product = SupplierAgg & {
   slug: string;
 
   price: number;
-
   vendor_price?: number | null;
 
   has_variants?: boolean;
@@ -111,7 +110,6 @@ export type Product = SupplierAgg & {
   promo_discount_value?: number | null;
   promo_free_delivery?: 0 | 1 | null;
 
-  // computed by backend
   promo_price?: number | null;
   min_promo_price?: number | null;
   has_promo?: boolean;
@@ -129,7 +127,7 @@ export type Product = SupplierAgg & {
   shop_city_code?: string | null;
 
   is_active?: 0 | 1 | null;
-  active?: 0 | 1 | null; // compat
+  active?: 0 | 1 | null;
 
   cities?: string[] | null;
 
@@ -138,9 +136,12 @@ export type Product = SupplierAgg & {
   rating_count?: number | null;
 
   variants?: ProductVariant[];
-
-  /** options (FOOD) */
   option_groups?: ProductOptionGroup[];
+
+  /** ✅ rupture / disponibilité */
+  stock_status?: "IN_STOCK" | "OUT_OF_STOCK" | string | null;
+  is_out_of_stock?: boolean | 0 | 1 | null;
+  availability_message?: string | null;
 
   sub_category?: never;
 };
@@ -152,6 +153,30 @@ export type Paginated<T> = {
 
 type Channel = "african-food" | "african-market";
 type Vertical = "FOOD" | "MARKET" | "FASHION";
+
+/** ✅ pilotage du site */
+export type SiteStatus = {
+  is_closed: boolean;
+  message: string;
+};
+
+export type SiteStatusPayload = {
+  is_closed: boolean;
+  message?: string | null;
+};
+
+export type ProductStockStatusPayload = {
+  is_out_of_stock: boolean;
+  availability_message?: string | null;
+};
+
+export type ProductStockStatusResponse = {
+  ok: true;
+  id: number;
+  stock_status: "IN_STOCK" | "OUT_OF_STOCK" | string;
+  is_out_of_stock: boolean;
+  availability_message: string | null;
+};
 
 /* ======================================================================
  * Utils
@@ -236,23 +261,46 @@ function normalizeVertical(v: any): Vertical | null {
   return null;
 }
 
-/** produit actif (compat active/is_active) */
+function normalizeSiteStatus(res: any): SiteStatus {
+  const body = unwrap<any>(res);
+  return {
+    is_closed: Boolean(
+      body?.is_closed ??
+      body?.site_closed ??
+      body?.closed ??
+      false
+    ),
+    message: String(
+      body?.message ??
+      body?.site_closed_message ??
+      ""
+    ),
+  };
+}
+
 export function isProductActive(p: any): boolean {
   return !!(p?.active ?? p?.is_active ?? 1);
 }
 
-/** variante active */
 export function isVariantActive(v: any): boolean {
   return !!(v?.is_active ?? 1);
 }
 
-/** un produit a des variantes actives ? */
 export function hasActiveVariants(p: any): boolean {
   const vs: any[] = Array.isArray(p?.variants) ? p.variants : [];
   return vs.some((x) => isVariantActive(x));
 }
 
-/** filtre de sécurité: enlève les produits inactifs */
+/** ✅ rupture produit */
+export function isProductOutOfStock(p: any): boolean {
+  const stockStatus = String(p?.stock_status || "").trim().toUpperCase();
+  return Boolean(
+    p?.is_out_of_stock === true ||
+    Number(p?.is_out_of_stock || 0) === 1 ||
+    stockStatus === "OUT_OF_STOCK"
+  );
+}
+
 function filterActive<T extends any>(arr: T[]): T[] {
   return (arr || []).filter((p: any) => isProductActive(p));
 }
@@ -265,12 +313,10 @@ function asArray<T = any>(x: any): T[] {
   const body = unwrap<any>(x);
 
   if (Array.isArray(body)) return body;
-
   if (body && Array.isArray(body.items)) return body.items;
   if (body && Array.isArray(body.data)) return body.data;
   if (body && Array.isArray(body.rows)) return body.rows;
   if (body && Array.isArray(body.results)) return body.results;
-
   if (body?.data && Array.isArray(body.data.items)) return body.data.items;
 
   return [];
@@ -280,8 +326,9 @@ function asPaginated<T = any>(x: any): Paginated<T> {
   const body = unwrap<any>(x);
 
   if (body && Array.isArray(body.items) && body.pageInfo) return body as Paginated<T>;
-  if (body?.data && Array.isArray(body.data.items) && body.data.pageInfo)
+  if (body?.data && Array.isArray(body.data.items) && body.data.pageInfo) {
     return body.data as Paginated<T>;
+  }
 
   const items = asArray<T>(body);
   const pageInfo = {
@@ -294,17 +341,14 @@ function asPaginated<T = any>(x: any): Paginated<T> {
 }
 
 /* ======================================================================
- * Shared query helper (compat pagination)
+ * Shared query helper
  * ===================================================================== */
 
 function withPageCompat(query: Record<string, any>, page: number, pageSize: number) {
   query.page = page;
-
-  // ✅ support all common variants
   query.pageSize = pageSize;
   query.pagesize = pageSize;
   query.page_size = pageSize;
-
   return query;
 }
 
@@ -319,12 +363,12 @@ export async function listManageProducts(
     onlyActive?: boolean;
     category_id?: number;
     sub_category_id?: number;
-    shop_id?: number; // admin only (backend ignore for vendor)
+    shop_id?: number;
     q?: string;
     vertical?: Vertical;
     includeVariants?: boolean;
     onlyWithVariants?: boolean;
-    includeOptions?: boolean; // backend may ignore (safe)
+    includeOptions?: boolean;
   } = {}
 ) {
   const page = opts.page ?? 1;
@@ -359,8 +403,6 @@ export async function listManageProducts(
 
   if (opts.includeVariants) query.includeVariants = 1;
   if (opts.onlyWithVariants) query.onlyWithVariants = 1;
-
-  // ✅ safe: backend peut ignorer
   if (opts.includeOptions) query.includeOptions = 1;
 
   const raw = await api.get<any>("/api/products/manage", { query });
@@ -372,12 +414,10 @@ export async function listManageProducts(
 
 export async function getManageProductById(
   id: number,
-  opts?: { variants?: boolean; options?: boolean } // options safe (backend may ignore)
+  opts?: { variants?: boolean; options?: boolean }
 ): Promise<Product> {
   const query: Record<string, any> = {};
   if (opts?.variants) query.variants = 1;
-
-  // ✅ safe: si backend ignore, no impact
   if (opts?.options) query.options = 1;
 
   const raw = await api.get<any>(`/api/products/manage/${id}`, { query });
@@ -416,7 +456,7 @@ export async function listProducts(
     vertical?: Vertical;
     includeVariants?: boolean;
     onlyWithVariants?: boolean;
-    includeOptions?: boolean; // safe (ignored if backend not supporting)
+    includeOptions?: boolean;
   } = {}
 ) {
   const page = opts.page ?? 1;
@@ -458,8 +498,6 @@ export async function listProducts(
 
   if (opts.includeVariants) query.includeVariants = 1;
   if (opts.onlyWithVariants) query.onlyWithVariants = 1;
-
-  // safe
   if (opts.includeOptions) query.includeOptions = 1;
 
   const raw = await api.get<any>(base, { query });
@@ -480,7 +518,7 @@ export async function listPromotions(
     q?: string;
     vertical?: Vertical;
     includeVariants?: boolean;
-    includeOptions?: boolean; // safe
+    includeOptions?: boolean;
   } = {}
 ) {
   const limit = opts.limit ?? 12;
@@ -521,7 +559,7 @@ export async function listPromotions(
 
 export async function getProduct(
   id: number,
-  opts?: { variants?: boolean; options?: boolean } // options safe
+  opts?: { variants?: boolean; options?: boolean }
 ): Promise<Product> {
   const query: Record<string, any> = {};
   if (opts?.variants) query.variants = 1;
@@ -532,7 +570,40 @@ export async function getProduct(
 }
 
 /* ======================================================================
- * Drinks (PUBLIC) — endpoint exist in backend
+ * ✅ Site status
+ * ===================================================================== */
+
+export async function getSiteStatus(): Promise<SiteStatus> {
+  const raw = await api.get<any>("/api/admin/site-status");
+  return normalizeSiteStatus(raw);
+}
+
+export async function updateSiteStatus(payload: SiteStatusPayload): Promise<SiteStatus> {
+  const raw = await api.put<any>("/api/admin/site-status", {
+    is_closed: !!payload.is_closed,
+    message: payload.is_closed ? String(payload.message || "").trim() : "",
+  });
+  return normalizeSiteStatus(raw);
+}
+
+export async function closeSite(message?: string | null): Promise<SiteStatus> {
+  return updateSiteStatus({
+    is_closed: true,
+    message:
+      String(message || "").trim() ||
+      "Le site est temporairement fermé. Merci de revenir plus tard.",
+  });
+}
+
+export async function openSite(): Promise<SiteStatus> {
+  return updateSiteStatus({
+    is_closed: false,
+    message: "",
+  });
+}
+
+/* ======================================================================
+ * Drinks (PUBLIC)
  * ===================================================================== */
 
 export async function listShopDrinks(opts: {
@@ -604,16 +675,49 @@ export async function removeProductVariant(variantId: number): Promise<{ ok: tru
 }
 
 /* ======================================================================
- * Options (FOOD) — ✅ SAFE WRAPPERS (backend peut ne pas les avoir)
+ * ✅ Produit rupture / réouverture
+ * ===================================================================== */
+
+export async function updateProductStockStatus(
+  productId: number,
+  payload: ProductStockStatusPayload
+): Promise<ProductStockStatusResponse> {
+  const raw = await api.patch<any>(`/api/products/${productId}/stock-status`, {
+    is_out_of_stock: !!payload.is_out_of_stock,
+    availability_message: payload.is_out_of_stock
+      ? String(payload.availability_message || "").trim() ||
+        "Ce produit est actuellement en rupture de stock."
+      : null,
+  });
+  return unwrap<ProductStockStatusResponse>(raw);
+}
+
+export async function markProductOutOfStock(
+  productId: number,
+  message?: string | null
+): Promise<ProductStockStatusResponse> {
+  return updateProductStockStatus(productId, {
+    is_out_of_stock: true,
+    availability_message:
+      String(message || "").trim() ||
+      "Ce produit est actuellement en rupture de stock.",
+  });
+}
+
+export async function reopenProduct(
+  productId: number
+): Promise<ProductStockStatusResponse> {
+  return updateProductStockStatus(productId, {
+    is_out_of_stock: false,
+    availability_message: null,
+  });
+}
+
+/* ======================================================================
+ * Options (FOOD) — SAFE WRAPPERS
  * ===================================================================== */
 
 const OPTIONS_BASE = "/api/products";
-
-/**
- * IMPORTANT:
- * Ton backend products.js collé ne contient pas /:id/options.
- * Donc ces fonctions doivent être "safe" (si 404 -> fallback).
- */
 
 function isNotFoundError(e: any): boolean {
   const msg = String(e?.message || "").toLowerCase();
@@ -672,11 +776,9 @@ export type SupplierProduct = {
   id: number;
   product_id: number;
   supplier_id?: number | null;
-
   cost_price?: number | null;
   stock?: number | null;
   note?: string | null;
-
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -687,10 +789,8 @@ export type SupplierOrder = {
   id: number;
   supplier_id?: number | null;
   status: SupplierOrderStatus;
-
   total_cost?: number | null;
   note?: string | null;
-
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -700,10 +800,8 @@ export type SupplierOrderItem = {
   supplier_order_id: number;
   supplier_product_id?: number | null;
   product_id?: number | null;
-
   qty: number;
   unit_cost?: number | null;
-
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -802,7 +900,6 @@ export async function addSupplierOrderItems(
  * Create / Update / Delete (multipart)
  * ===================================================================== */
 
-/* ---------- Create ---------- */
 export async function createProduct(
   draft: Partial<Product> & {
     variants?: Array<{
@@ -814,8 +911,6 @@ export async function createProduct(
       is_active?: 0 | 1 | null;
     }>;
     replace_variants?: boolean;
-
-    // ✅ safe: backend peut ignorer si non implémenté
     option_groups?: Array<
       Partial<Omit<ProductOptionGroup, "choices">> & {
         choices?: Array<Partial<ProductOptionChoice>>;
@@ -828,7 +923,6 @@ export async function createProduct(
   const fd = new FormData();
 
   if (draft.name) fd.append("name", draft.name);
-
   if (draft.price != null) fd.append("price", String(draft.price));
   if (draft.currency) fd.append("currency", String(draft.currency));
   if (draft.description != null) fd.append("description", String(draft.description || ""));
@@ -866,7 +960,6 @@ export async function createProduct(
     if (v != null) fd.append("is_active", String(v));
   }
 
-  // admin only (backend check role)
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
   const cities = uniqCities(draft.cities);
@@ -877,7 +970,6 @@ export async function createProduct(
   }
   if ((draft as any).replace_variants) fd.append("replace_variants", "1");
 
-  // ✅ safe: backend peut ignorer si pas implémenté
   if (Array.isArray((draft as any).option_groups) && (draft as any).option_groups.length) {
     fd.append("option_groups", JSON.stringify((draft as any).option_groups));
   }
@@ -889,7 +981,6 @@ export async function createProduct(
   return unwrap<{ id: number; channel?: Channel; vertical?: Vertical }>(raw);
 }
 
-/* ---------- Update ---------- */
 export async function updateProduct(
   id: number,
   draft: Partial<Product> & {
@@ -907,7 +998,6 @@ export async function updateProduct(
 
   if (draft.name) fd.append("name", draft.name);
   if (draft.price != null) fd.append("price", String(draft.price));
-
   if (draft.currency) fd.append("currency", String(draft.currency));
   if (draft.description != null) fd.append("description", String(draft.description || ""));
   if (draft.stock != null) fd.append("stock", String(draft.stock));
@@ -944,7 +1034,6 @@ export async function updateProduct(
   const vert = normalizeVertical(draft.vertical);
   if (vert) fd.append("vertical", vert);
 
-  // admin only
   if (draft.shop_id != null) fd.append("shop_id", String(draft.shop_id));
 
   const cities = uniqCities(draft.cities);
@@ -952,7 +1041,6 @@ export async function updateProduct(
 
   fd.append("replace_images", replaceImages ? "true" : "false");
 
-  // safe: backend peut ignorer
   if (Array.isArray((draft as any).option_groups) && (draft as any).option_groups.length) {
     fd.append("option_groups", JSON.stringify((draft as any).option_groups));
   }
@@ -964,7 +1052,6 @@ export async function updateProduct(
   return unwrap<{ ok: true }>(raw);
 }
 
-/* ---------- Delete ---------- */
 export async function removeProduct(id: number): Promise<{ ok: true }> {
   const raw = await api.delete<any>(`/api/products/${id}`);
   return unwrap<{ ok: true }>(raw);
@@ -1014,7 +1101,6 @@ export async function listTopRatedProducts(
   if (onlyActive) query.onlyActive = 1;
 
   const raw = await api.get<any>("/api/products/top-rated", { query });
-
   const arr = asArray<Product>(raw);
   return onlyActive ? filterActive(arr) : arr;
 }

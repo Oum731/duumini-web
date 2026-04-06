@@ -47,6 +47,27 @@ function isActiveProduct(p: Product | null | undefined) {
   return Number(anyP.is_active ?? anyP.active ?? 1) === 1;
 }
 
+function isClosedProduct(p: Product | null | undefined) {
+  if (!p) return false;
+  const anyP = p as any;
+  const stockStatus = String(anyP.stock_status || "")
+    .trim()
+    .toUpperCase();
+
+  return Boolean(
+    anyP.is_out_of_stock === true ||
+      Number(anyP.is_out_of_stock || 0) === 1 ||
+      stockStatus === "OUT_OF_STOCK"
+  );
+}
+
+function closedProductMessage(p: Product | null | undefined) {
+  if (!p) return "Ce produit est actuellement indisponible.";
+  const anyP = p as any;
+  const msg = String(anyP.availability_message || "").trim();
+  return msg || "Ce produit est actuellement en rupture de stock.";
+}
+
 function subToken(p: Product | null | undefined) {
   if (!p) return "";
   const anyP = p as any;
@@ -458,6 +479,12 @@ export default function ProductView() {
   );
 
   const productIsActive = useMemo(() => isActiveProduct(product), [product]);
+  const productIsClosed = useMemo(() => isClosedProduct(product), [product]);
+  const productClosedMessageText = useMemo(
+    () => closedProductMessage(product),
+    [product]
+  );
+
   const sectionPath = useMemo(() => sectionPathFor(product), [product]);
 
   const resolvedIdOrSlug = useMemo(() => {
@@ -618,6 +645,7 @@ export default function ProductView() {
 
         const rel = items
           .filter((x) => isActiveProduct(x))
+          .filter((x) => !isClosedProduct(x))
           .filter((x) => Number((x as any).id) !== currentId)
           .slice(0, 12);
 
@@ -658,7 +686,7 @@ export default function ProductView() {
     return s == null || s === "" ? null : Number(s);
   }, [anyP?.stock]);
 
-  const isOutOfStock = stock === 0;
+  const stockIsZero = stock === 0;
 
   const variants = useMemo(() => parseVariants(product), [product]);
   const hasVariants = variants.length > 0;
@@ -738,7 +766,8 @@ export default function ProductView() {
 
   const canAddNow =
     canOrder(viewerRole) &&
-    !isOutOfStock &&
+    !productIsClosed &&
+    !stockIsZero &&
     (!hasVariants ||
       (!!selectedVariant && !isVariantOutOfStock(selectedVariant)));
 
@@ -935,6 +964,13 @@ export default function ProductView() {
           bottom: 12px;
           background: rgba(17,17,17,.72);
           color: #fff;
+        }
+        .pv-badge--closed{
+          top: 12px;
+          right: 12px;
+          background: rgba(217,45,32,.96);
+          color: #fff;
+          box-shadow: 0 10px 20px rgba(217,45,32,.22);
         }
 
         .pv-arrow{
@@ -1149,6 +1185,12 @@ export default function ProductView() {
                 </span>
               ) : null}
 
+              {productIsClosed ? (
+                <span className="pv-badge pv-badge--closed">
+                  Rupture
+                </span>
+              ) : null}
+
               {images.length > 1 ? (
                 <>
                   <span className="pv-badge pv-badge--count">
@@ -1205,6 +1247,13 @@ export default function ProductView() {
                 <ProductRating productId={Number(anyP?.id)} />
               </div>
 
+              {productIsClosed ? (
+                <div className="alert alert-danger mb-0">
+                  <div className="fw-bold mb-1">Produit indisponible</div>
+                  <div>{productClosedMessageText}</div>
+                </div>
+              ) : null}
+
               <div className="pv-price-row">
                 <span className="pv-price-main">{moneyMAD(displayPrice)}</span>
                 {promoActive ? (
@@ -1225,6 +1274,7 @@ export default function ProductView() {
                     className="form-select pv-select"
                     value={selectedKey || ""}
                     onChange={(e) => setSelectedKey(e.target.value)}
+                    disabled={productIsClosed}
                   >
                     {variants.map((v) => (
                       <option
@@ -1274,7 +1324,9 @@ export default function ProductView() {
                   disabled={!canAddNow}
                   type="button"
                 >
-                  + Ajouter au panier
+                  {productIsClosed
+                    ? "Produit indisponible"
+                    : "+ Ajouter au panier"}
                 </button>
 
                 <Link to={backPath} className="btn btn-outline-dark">

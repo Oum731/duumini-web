@@ -285,6 +285,20 @@ function isVariantOutOfStock(v: UiVariant) {
   return v.stock === 0;
 }
 
+function isClosedProduct(anyP: any) {
+  const stockStatus = String(anyP?.stock_status || "").trim().toUpperCase();
+  return Boolean(
+    anyP?.is_out_of_stock === true ||
+      Number(anyP?.is_out_of_stock || 0) === 1 ||
+      stockStatus === "OUT_OF_STOCK"
+  );
+}
+
+function closedProductMessage(anyP: any) {
+  const msg = String(anyP?.availability_message || "").trim();
+  return msg || "Ce produit est actuellement en rupture de stock.";
+}
+
 type Props = {
   product: Product;
   onAdd?: (p: Product) => void;
@@ -319,6 +333,9 @@ function ProductCardInner({
 
   const isActive = Number(anyP.is_active ?? anyP.active ?? 1) === 1;
   if (!isActive) return null;
+
+  const productClosed = useMemo(() => isClosedProduct(anyP), [anyP]);
+  const productClosedText = useMemo(() => closedProductMessage(anyP), [anyP]);
 
   const baseStockRaw = anyP.stock;
   const baseStock =
@@ -432,14 +449,17 @@ function ProductCardInner({
   }, [baseStock, hasVariants, selectedVariant]);
 
   const canAddNow = useMemo(() => {
+    if (productClosed) return false;
     if (!hasVariants) return !(baseStock === 0);
     if (!selectedVariant) return false;
     if (selectedVariant.stock === 0) return false;
     if (effectiveStock === 0) return false;
     return true;
-  }, [baseStock, effectiveStock, hasVariants, selectedVariant]);
+  }, [productClosed, baseStock, effectiveStock, hasVariants, selectedVariant]);
 
   const handleAdd = useCallback(() => {
+    if (productClosed) return;
+
     const raw =
       hasVariants && selectedVariant?.price != null
         ? toNum(selectedVariant.price)
@@ -501,6 +521,7 @@ function ProductCardInner({
     selectedVariant,
     subCatToken,
     treatOverrideAsFinal,
+    productClosed,
   ]);
 
   const productPath = useMemo(() => {
@@ -654,6 +675,18 @@ function ProductCardInner({
           font-size: .85rem;
         }
 
+        .duu-status{
+          margin-top: 10px;
+          padding: 8px 10px;
+          border-radius: 12px;
+          background: rgba(217,45,32,.08);
+          border: 1px solid rgba(217,45,32,.14);
+          color: #a61b12;
+          font-size: .78rem;
+          font-weight: 800;
+          line-height: 1.3;
+        }
+
         .duu-section-label{
           font-size: .76rem;
           font-weight: 900;
@@ -741,11 +774,11 @@ function ProductCardInner({
           )}
         </Link>
 
-        {effectiveBadgeText && !(effectiveStock != null && effectiveStock <= 0) ? (
+        {effectiveBadgeText && !productClosed && !(effectiveStock != null && effectiveStock <= 0) ? (
           <span className="duu-badge duu-badge--promo">{effectiveBadgeText}</span>
         ) : null}
 
-        {effectiveStock != null && effectiveStock <= 0 ? (
+        {(productClosed || (effectiveStock != null && effectiveStock <= 0)) ? (
           <span className="duu-badge duu-badge--danger">En rupture</span>
         ) : null}
       </div>
@@ -776,6 +809,10 @@ function ProductCardInner({
             )}
         </div>
 
+        {productClosed ? (
+          <div className="duu-status">{productClosedText}</div>
+        ) : null}
+
         {hasVariants ? (
           <div className="duu-variant-wrap">
             <div className="duu-section-label">Variante</div>
@@ -784,6 +821,7 @@ function ProductCardInner({
               value={selectedKey}
               onChange={(e) => setSelectedKey(e.target.value)}
               aria-label="Sélection de variante"
+              disabled={productClosed}
             >
               {variants.map((v) => (
                 <option key={v.key} value={v.key} disabled={isVariantOutOfStock(v)}>
@@ -802,7 +840,7 @@ function ProductCardInner({
             type="button"
           >
             <ShoppingCart size={16} />
-            Ajouter au panier
+            {productClosed ? "Produit indisponible" : "Ajouter au panier"}
           </button>
 
           <Link to={productPath} className="duu-icon-main" title="Voir">

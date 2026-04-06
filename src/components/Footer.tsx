@@ -1,12 +1,8 @@
 // src/components/Footer.tsx
-import React, { useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, type LinkProps } from "react-router-dom";
-import { DUUMINI_SLOGAN, DUUMINI_OPEN_ISO } from "../lib/brand";
-
-/** Helper date */
-function isDateReached(iso: string) {
-  return Date.now() >= new Date(iso).getTime();
-}
+import { DUUMINI_SLOGAN } from "../lib/brand";
+import { getSiteStatus, type SiteStatus } from "../services/products";
 
 /** Link qui remonte en haut de page au clic (Footer) */
 function TopLink(
@@ -33,7 +29,33 @@ function TopLink(
 }
 
 export default function Footer() {
-  const isOpen = useMemo(() => isDateReached(DUUMINI_OPEN_ISO), []);
+  const [siteStatus, setSiteStatus] = useState<SiteStatus | null>(null);
+  const [siteStatusLoading, setSiteStatusLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        setSiteStatusLoading(true);
+        const res = await getSiteStatus();
+        if (!mounted) return;
+        setSiteStatus(res);
+      } catch {
+        if (!mounted) return;
+        setSiteStatus(null);
+      } finally {
+        if (mounted) setSiteStatusLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const siteClosed = !!siteStatus?.is_closed;
+  const showShopLinks = !siteStatusLoading && !siteClosed;
 
   return (
     <footer className="border-top mt-4" style={{ background: "#fff" }}>
@@ -47,7 +69,6 @@ export default function Footer() {
 
       <div className="container-xxl py-4">
         <div className="row g-4">
-          {/* ================= Brand ================= */}
           <div className="col-12 col-md-4">
             <div className="d-flex align-items-center gap-2 mb-2">
               <img
@@ -85,7 +106,6 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* ================= Navigation ================= */}
           <div className="col-6 col-md-2">
             <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
               Menu
@@ -97,8 +117,7 @@ export default function Footer() {
                 </TopLink>
               </li>
 
-              {/* ✅ Duumini Market → visible SEULEMENT après ouverture */}
-              {isOpen && (
+              {showShopLinks && (
                 <li>
                   <TopLink
                     className="link-dark d-block py-1"
@@ -109,7 +128,7 @@ export default function Footer() {
                 </li>
               )}
 
-              {isOpen && (
+              {showShopLinks && (
                 <li>
                   <TopLink
                     className="link-dark d-block py-1"
@@ -119,8 +138,8 @@ export default function Footer() {
                   </TopLink>
                 </li>
               )}
-              {/* ✅ Fashion → visible SEULEMENT après ouverture */}
-              {isOpen && (
+
+              {showShopLinks && (
                 <li>
                   <TopLink className="link-dark d-block py-1" to="/fashion">
                     Duumini Fashion
@@ -151,7 +170,6 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* ================= Légal ================= */}
           <div className="col-6 col-md-3">
             <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
               Informations légales
@@ -175,7 +193,6 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* ================= Support ================= */}
           <div className="col-12 col-md-3">
             <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
               Support
