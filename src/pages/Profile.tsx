@@ -30,6 +30,7 @@ import {
   getCurrentUser,
   updateProfile,
   mapCityCodeToVille,
+  changePassword,
 } from "../services/auth";
 import { http, api } from "../services/http";
 import { normalizePhoneInput, isValidPhoneIntl } from "../utils/phone";
@@ -193,7 +194,12 @@ function loadLocations(): LocationsStore {
     ...BASE_COMMUNES_MARRAKECH,
   ]);
 
-  const out: LocationsStore = { version: 1, villes, communesByVille, quartiersByVille };
+  const out: LocationsStore = {
+    version: 1,
+    villes,
+    communesByVille,
+    quartiersByVille,
+  };
   localStorage.setItem(LS_LOCATIONS_KEY, JSON.stringify(out));
   return out;
 }
@@ -226,7 +232,10 @@ function addCommune(store: LocationsStore, ville: string, commune: string) {
   const key = normKey(v);
 
   next = { ...next, communesByVille: { ...next.communesByVille } };
-  next.communesByVille[key] = uniqSorted([...(next.communesByVille[key] || []), c]);
+  next.communesByVille[key] = uniqSorted([
+    ...(next.communesByVille[key] || []),
+    c,
+  ]);
 
   saveLocations(next);
   return next;
@@ -241,7 +250,10 @@ function addQuartier(store: LocationsStore, ville: string, quartier: string) {
   const key = normKey(v);
 
   next = { ...next, quartiersByVille: { ...next.quartiersByVille } };
-  next.quartiersByVille[key] = uniqSorted([...(next.quartiersByVille[key] || []), q]);
+  next.quartiersByVille[key] = uniqSorted([
+    ...(next.quartiersByVille[key] || []),
+    q,
+  ]);
 
   saveLocations(next);
   return next;
@@ -272,9 +284,9 @@ function useDebouncedValue<T>(value: T, delay = 250) {
  * - abort in-flight requests
  * ========================= */
 function useLocationsApi() {
-  const citiesCache = useRef<Map<string, string[]>>(new Map()); // key = q
-  const communesCache = useRef<Map<string, string[]>>(new Map()); // key = city
-  const quartiersCache = useRef<Map<string, string[]>>(new Map()); // key = city||commune
+  const citiesCache = useRef<Map<string, string[]>>(new Map());
+  const communesCache = useRef<Map<string, string[]>>(new Map());
+  const quartiersCache = useRef<Map<string, string[]>>(new Map());
 
   const inFlight = useRef<{
     cities?: AbortController | null;
@@ -332,7 +344,8 @@ function useLocationsApi() {
     const m = titleCase(commune);
     if (!c || !m) return [];
     const key = `${normKey(c)}||${normKey(m)}`;
-    if (quartiersCache.current.has(key)) return quartiersCache.current.get(key)!;
+    if (quartiersCache.current.has(key))
+      return quartiersCache.current.get(key)!;
 
     abort("quartiers");
     const ac = new AbortController();
@@ -353,8 +366,6 @@ function useLocationsApi() {
     if (!c) return;
     try {
       await api.post("/api/locations/cities", { city: c });
-      // invalidate broad cache by clearing only empty query cache
-      // (safe, since we merge w/ local store anyway)
       citiesCache.current.delete("");
     } catch {}
   }
@@ -375,12 +386,23 @@ function useLocationsApi() {
     const q = titleCase(quartier);
     if (!c || !m || !q) return;
     try {
-      await api.post("/api/locations/quartiers", { city: c, commune: m, quartier: q });
+      await api.post("/api/locations/quartiers", {
+        city: c,
+        commune: m,
+        quartier: q,
+      });
       quartiersCache.current.delete(`${normKey(c)}||${normKey(m)}`);
     } catch {}
   }
 
-  return { listCities, listCommunes, listQuartiers, addCity, addCommune, addQuartier };
+  return {
+    listCities,
+    listCommunes,
+    listQuartiers,
+    addCity,
+    addCommune,
+    addQuartier,
+  };
 }
 
 /* =========================
@@ -390,7 +412,9 @@ function initials(u: User | null): string {
   const fn = (u?.first_name || "").trim();
   const ln = (u?.last_name || "").trim();
   const phone = u?.phone || "";
-  if (fn || ln) return `${fn?.[0] || ""}${ln?.[0] || ""}`.toUpperCase() || phone.slice(-2);
+  if (fn || ln)
+    return `${fn?.[0] || ""}${ln?.[0] || ""}`.toUpperCase() ||
+      phone.slice(-2);
   return phone ? phone.slice(-2) : "U";
 }
 
@@ -439,14 +463,19 @@ function validateRegisterForm(params: {
   const phoneVal = normalizePhoneInput(params.phone.trim());
 
   if (!phoneVal) errors.phone = "Téléphone requis.";
-  else if (!isValidPhoneIntl(phoneVal)) errors.phone = "Numéro invalide. Utilisez le format international ex : +2126…";
+  else if (!isValidPhoneIntl(phoneVal))
+    errors.phone =
+      "Numéro invalide. Utilisez le format international ex : +2126…";
 
   if (!params.password) errors.password = "Mot de passe requis.";
-  else if (!rePassword.test(params.password)) errors.password = "Au moins 8 caractères, avec 1 lettre et 1 chiffre.";
+  else if (!rePassword.test(params.password))
+    errors.password = "Au moins 8 caractères, avec 1 lettre et 1 chiffre.";
 
   if (!params.villeText.trim()) errors.ville = "Veuillez saisir votre ville.";
-  if (!params.communeText.trim()) errors.commune = "Veuillez saisir votre commune.";
-  if (!params.quartierText.trim()) errors.quartier = "Veuillez préciser votre quartier.";
+  if (!params.communeText.trim())
+    errors.commune = "Veuillez saisir votre commune.";
+  if (!params.quartierText.trim())
+    errors.quartier = "Veuillez préciser votre quartier.";
 
   return errors;
 }
@@ -461,11 +490,51 @@ function validateEditForm(params: {
   const phoneVal = normalizePhoneInput(params.phone.trim());
 
   if (!phoneVal) errors.phone = "Téléphone requis.";
-  else if (!isValidPhoneIntl(phoneVal)) errors.phone = "Numéro invalide. Utilisez le format international ex : +2126…";
+  else if (!isValidPhoneIntl(phoneVal))
+    errors.phone =
+      "Numéro invalide. Utilisez le format international ex : +2126…";
 
   if (!params.villeText.trim()) errors.ville = "Veuillez saisir votre ville.";
-  if (!params.communeText.trim()) errors.commune = "Veuillez saisir votre commune.";
-  if (!params.quartierText.trim()) errors.quartier = "Veuillez préciser votre quartier.";
+  if (!params.communeText.trim())
+    errors.commune = "Veuillez saisir votre commune.";
+  if (!params.quartierText.trim())
+    errors.quartier = "Veuillez préciser votre quartier.";
+
+  return errors;
+}
+
+function validatePasswordForm(params: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  const errors: Record<string, string> = {};
+
+  if (!params.currentPassword) {
+    errors.currentPassword = "Mot de passe actuel requis.";
+  }
+
+  if (!params.newPassword) {
+    errors.newPassword = "Nouveau mot de passe requis.";
+  } else if (!rePassword.test(params.newPassword)) {
+    errors.newPassword =
+      "Au moins 8 caractères, avec 1 lettre et 1 chiffre.";
+  }
+
+  if (!params.confirmPassword) {
+    errors.confirmPassword = "Confirmation du mot de passe requise.";
+  } else if (params.newPassword !== params.confirmPassword) {
+    errors.confirmPassword = "Les mots de passe ne correspondent pas.";
+  }
+
+  if (
+    params.currentPassword &&
+    params.newPassword &&
+    params.currentPassword === params.newPassword
+  ) {
+    errors.newPassword =
+      "Le nouveau mot de passe doit être différent de l'ancien.";
+  }
 
   return errors;
 }
@@ -507,7 +576,11 @@ function Modal({
       >
         <div className="d-flex align-items-center justify-content-between p-3 border-bottom">
           <h5 className="m-0">{title}</h5>
-          <button className="btn btn-sm btn-outline-secondary" onClick={onClose} type="button">
+          <button
+            className="btn btn-sm btn-outline-secondary"
+            onClick={onClose}
+            type="button"
+          >
             Fermer
           </button>
         </div>
@@ -551,7 +624,9 @@ function PasswordField({
         type="button"
         className="btn btn-outline-secondary"
         onClick={() => setShow((s) => !s)}
-        aria-label={show ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+        aria-label={
+          show ? "Masquer le mot de passe" : "Afficher le mot de passe"
+        }
         title={show ? "Masquer" : "Afficher"}
       >
         {show ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -562,9 +637,6 @@ function PasswordField({
 
 /* =========================
  * SmartPicker (production)
- * - search input
- * - shows loading/error
- * - supports "add new" action when no exact match
  * ========================= */
 function SmartPicker({
   value,
@@ -650,7 +722,10 @@ function SmartPicker({
 
       {err && <div className="alert alert-warning py-2">{err}</div>}
 
-      <div className="border rounded" style={{ maxHeight: "50vh", overflowY: "auto" }}>
+      <div
+        className="border rounded"
+        style={{ maxHeight: "50vh", overflowY: "auto" }}
+      >
         <ul className="list-group list-group-flush">
           {allowCreate && wantCreate && (
             <li
@@ -665,7 +740,9 @@ function SmartPicker({
             >
               <span className="d-flex align-items-center gap-2">
                 <Plus size={16} />
-                {createLabel ? createLabel(titleCase(q)) : `Ajouter "${titleCase(q)}"`}
+                {createLabel
+                  ? createLabel(titleCase(q))
+                  : `Ajouter "${titleCase(q)}"`}
               </span>
               <span className="badge bg-dark">Nouveau</span>
             </li>
@@ -676,7 +753,9 @@ function SmartPicker({
             return (
               <li
                 key={opt}
-                className={`list-group-item d-flex align-items-center justify-content-between ${active ? "bg-light" : ""}`}
+                className={`list-group-item d-flex align-items-center justify-content-between ${
+                  active ? "bg-light" : ""
+                }`}
                 role="button"
                 onClick={() => onSelect(opt)}
               >
@@ -726,15 +805,20 @@ export default function ProfilePage() {
     return titleCase(v || "") || "Casablanca";
   }, [city]);
 
-  const [locations, setLocations] = useState<LocationsStore>(() => loadLocations());
+  const [locations, setLocations] = useState<LocationsStore>(() =>
+    loadLocations()
+  );
 
   /* User */
   const [user, setUser] = useState<User | null>(() => getCurrentUser());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const tabFromUrl = (sp.get("tab") as "login" | "register" | "forgot" | null) || null;
-  const [tab, setTab] = useState<"login" | "register" | "forgot">(tabFromUrl || "login");
+  const [tab, setTab] = useState<"login" | "register" | "forgot">(
+    tabFromUrl || "login"
+  );
 
   /* Login */
   const [loginPhone, setLoginPhone] = useState("");
@@ -765,11 +849,28 @@ export default function ProfilePage() {
   const [lastName, setLastName] = useState(user?.last_name || "");
   const [phone, setPhone] = useState(user?.phone || "");
 
-  const [editVille, setEditVille] = useState<string>(() => titleCase((user as any)?.ville || villeFromContext));
-  const [editCommune, setEditCommune] = useState<string>(() => titleCase((user as any)?.commune || ""));
-  const [editQuartier, setEditQuartier] = useState<string>(() => titleCase((user as any)?.quartier || ""));
-  const [editSexe, setEditSexe] = useState<"M" | "F">(((user as any)?.sexe as "M" | "F") || "M");
+  const [editVille, setEditVille] = useState<string>(() =>
+    titleCase((user as any)?.ville || villeFromContext)
+  );
+  const [editCommune, setEditCommune] = useState<string>(() =>
+    titleCase((user as any)?.commune || "")
+  );
+  const [editQuartier, setEditQuartier] = useState<string>(() =>
+    titleCase((user as any)?.quartier || "")
+  );
+  const [editSexe, setEditSexe] = useState<"M" | "F">(
+    ((user as any)?.sexe as "M" | "F") || "M"
+  );
   const [editErrors, setEditErrors] = useState<Record<string, string>>({});
+
+  /* Change password */
+  const [passwordCurrent, setPasswordCurrent] = useState("");
+  const [passwordNew, setPasswordNew] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>(
+    {}
+  );
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   /* Modals */
   const [openRegVille, setOpenRegVille] = useState(false);
@@ -803,16 +904,15 @@ export default function ProfilePage() {
           setEditCommune(uCommune);
           setEditQuartier(uQuartier);
 
-          if ((u as any)?.sexe === "M" || (u as any)?.sexe === "F") setEditSexe((u as any).sexe);
+          if ((u as any)?.sexe === "M" || (u as any)?.sexe === "F")
+            setEditSexe((u as any).sexe);
         }
       } catch {
-        // ok
       } finally {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [villeFromContext]);
 
   /* Sync when user updates */
   useEffect(() => {
@@ -828,21 +928,19 @@ export default function ProfilePage() {
     setEditCommune(uCommune);
     setEditQuartier(uQuartier);
 
-    if ((user as any)?.sexe === "M" || (user as any)?.sexe === "F") setEditSexe((user as any).sexe);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    if ((user as any)?.sexe === "M" || (user as any)?.sexe === "F")
+      setEditSexe((user as any).sexe);
+  }, [user, villeFromContext]);
 
   /* =========================
-   * Options loaders (production)
+   * Options loaders
    * ========================= */
   const loadCities = useMemo(() => {
     return async (q: string) => {
-      // Merge API + local fallback for resilience
       const apiList = await locApi.listCities(q);
       const local = locations.villes || [];
       return uniqSorted([...apiList, ...local]);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locApi, locations.villes]);
 
   const loadCommunesFor = useMemo(() => {
@@ -856,14 +954,14 @@ export default function ProfilePage() {
       const needle = normKey(q);
       return merged.filter((x) => normKey(x).includes(needle));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locApi, locations]);
 
   const loadQuartiersFor = useMemo(() => {
     return (cityName: string, communeName: string) => async (q: string) => {
       const city = titleCase(cityName);
       const commune = titleCase(communeName);
-      const apiList = city && commune ? await locApi.listQuartiers(city, commune) : [];
+      const apiList =
+        city && commune ? await locApi.listQuartiers(city, commune) : [];
       const local = city ? quartiersForVille(locations, city) : [];
       const merged = uniqSorted([...apiList, ...local]);
 
@@ -871,19 +969,20 @@ export default function ProfilePage() {
       const needle = normKey(q);
       return merged.filter((x) => normKey(x).includes(needle));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locApi, locations]);
 
   /* ================== Handlers ================== */
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
     setErr(null);
+    setSuccess(null);
 
     const errors: Record<string, string> = {};
     const phoneVal = normalizePhoneInput(loginPhone.trim());
 
     if (!phoneVal) errors.phone = "Téléphone requis.";
-    else if (!isValidPhoneIntl(phoneVal)) errors.phone = "Numéro invalide. Utilisez le format international ex : +212";
+    else if (!isValidPhoneIntl(phoneVal))
+      errors.phone = "Numéro invalide. Utilisez le format international ex : +212";
 
     if (!loginPassword) errors.password = "Mot de passe requis.";
 
@@ -898,7 +997,6 @@ export default function ProfilePage() {
       const u = await login(phoneVal, loginPassword);
       setUser(u);
 
-      // local store enrichment
       const uVille = titleCase((u as any)?.ville || "") || villeFromContext;
       const uCommune = titleCase((u as any)?.commune || "");
       const uQuartier = titleCase((u as any)?.quartier || "");
@@ -911,10 +1009,10 @@ export default function ProfilePage() {
         return next;
       });
 
-      // best-effort suggestions
       locApi.addCity(uVille);
       if (uCommune) locApi.addCommune(uVille, uCommune);
-      if (uCommune && uQuartier) locApi.addQuartier(uVille, uCommune, uQuartier);
+      if (uCommune && uQuartier)
+        locApi.addQuartier(uVille, uCommune, uQuartier);
 
       navigate("/", { replace: true });
     } catch (e: any) {
@@ -925,6 +1023,7 @@ export default function ProfilePage() {
   async function handleRegister(e: FormEvent) {
     e.preventDefault();
     setErr(null);
+    setSuccess(null);
 
     const villeFinal = titleCase(regVille);
     const communeFinal = titleCase(regCommune);
@@ -945,7 +1044,9 @@ export default function ProfilePage() {
     }
 
     if (!regAccept) {
-      setErr("Vous devez accepter les Conditions d’utilisation et la Politique de confidentialité pour créer un compte.");
+      setErr(
+        "Vous devez accepter les Conditions d’utilisation et la Politique de confidentialité pour créer un compte."
+      );
       return;
     }
 
@@ -961,7 +1062,6 @@ export default function ProfilePage() {
         return next;
       });
 
-      // best-effort suggestions
       locApi.addCity(villeFinal);
       locApi.addCommune(villeFinal, communeFinal);
       locApi.addQuartier(villeFinal, communeFinal, quartierFinal);
@@ -995,6 +1095,7 @@ export default function ProfilePage() {
   async function handleUpdate(e: FormEvent) {
     e.preventDefault();
     setErr(null);
+    setSuccess(null);
 
     const villeFinal = titleCase(editVille);
     const communeFinal = titleCase(editCommune);
@@ -1025,7 +1126,6 @@ export default function ProfilePage() {
         return next;
       });
 
-      // best-effort suggestions
       locApi.addCity(villeFinal);
       locApi.addCommune(villeFinal, communeFinal);
       locApi.addQuartier(villeFinal, communeFinal, quartierFinal);
@@ -1042,20 +1142,58 @@ export default function ProfilePage() {
 
       setUser(u);
       setEditing(false);
+      setSuccess("Profil mis à jour avec succès.");
     } catch (e: any) {
       setErr(e.message || "Erreur de mise à jour du profil");
+    }
+  }
+
+  async function handleChangePassword(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setSuccess(null);
+
+    const errors = validatePasswordForm({
+      currentPassword: passwordCurrent,
+      newPassword: passwordNew,
+      confirmPassword: passwordConfirm,
+    });
+
+    setPasswordErrors(errors);
+
+    if (Object.keys(errors).length) {
+      setErr(Object.values(errors)[0]);
+      return;
+    }
+
+    setPasswordErrors({});
+    setPasswordLoading(true);
+
+    try {
+      const res = await changePassword(passwordCurrent, passwordNew);
+      setSuccess(res?.message || "Mot de passe modifié avec succès.");
+      setPasswordCurrent("");
+      setPasswordNew("");
+      setPasswordConfirm("");
+    } catch (e: any) {
+      setErr(e.message || "Erreur de changement du mot de passe");
+    } finally {
+      setPasswordLoading(false);
     }
   }
 
   async function handleForgot(e: FormEvent) {
     e.preventDefault();
     setErr(null);
+    setSuccess(null);
 
     const phoneVal = normalizePhoneInput(forgotPhone.trim());
     const errors: Record<string, string> = {};
 
     if (!phoneVal) errors.phone = "Téléphone requis.";
-    else if (!isValidPhoneIntl(phoneVal)) errors.phone = "Téléphone invalide. Utilisez le format international ex : +2126…";
+    else if (!isValidPhoneIntl(phoneVal))
+      errors.phone =
+        "Téléphone invalide. Utilisez le format international ex : +2126…";
 
     if (Object.keys(errors).length) {
       setForgotErrors(errors);
@@ -1066,9 +1204,13 @@ export default function ProfilePage() {
     setForgotErrors({});
     try {
       await apiOtpStart(phoneVal, "reset");
-      navigate(`/verify?phone=${encodeURIComponent(phoneVal)}&purpose=reset`);
+      navigate(
+        `/verify?phone=${encodeURIComponent(phoneVal)}&purpose=reset`
+      );
     } catch (e: any) {
-      setErr(e?.message || "Impossible d'envoyer le code de réinitialisation.");
+      setErr(
+        e?.message || "Impossible d'envoyer le code de réinitialisation."
+      );
     }
   }
 
@@ -1085,13 +1227,17 @@ export default function ProfilePage() {
    * CONNECTED
    * ========================= */
   if (user) {
-    const effectiveVille = titleCase((user as any)?.ville || editVille || villeFromContext) || "—";
-    const effectiveCommune = titleCase((user as any)?.commune || editCommune) || "—";
-    const effectiveQuartier = titleCase((user as any)?.quartier || editQuartier) || "—";
+    const effectiveVille =
+      titleCase((user as any)?.ville || editVille || villeFromContext) || "—";
+    const effectiveCommune =
+      titleCase((user as any)?.commune || editCommune) || "—";
+    const effectiveQuartier =
+      titleCase((user as any)?.quartier || editQuartier) || "—";
 
     return (
       <div className="container-xxl py-4">
         {err && <div className="alert alert-danger">{err}</div>}
+        {success && <div className="alert alert-success">{success}</div>}
 
         <div className="row g-4">
           <div className="col-12 col-lg-4">
@@ -1159,19 +1305,130 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {forgotErrors.phone && <div className="invalid-feedback">{forgotErrors.phone}</div>}
+                    {forgotErrors.phone && (
+                      <div className="invalid-feedback">
+                        {forgotErrors.phone}
+                      </div>
+                    )}
                     <div className="d-grid mt-3">
                       <button className="btn btn-dark" type="submit">
                         Envoyer
                       </button>
                     </div>
                     <div className="form-text mt-2">
-                      Nous t’enverrons un code par SMS. Tu le renseigneras sur la page suivante.
+                      Nous t’enverrons un code par SMS. Tu le renseigneras sur
+                      la page suivante.
                     </div>
                   </form>
                 </div>
               </div>
             )}
+
+            <div className="card border-0 shadow-sm mt-3">
+              <div className="card-body">
+                <h2 className="h6 d-flex align-items-center gap-2">
+                  <Lock size={18} /> Changer mon mot de passe
+                </h2>
+
+                <form className="row g-3 mt-1" onSubmit={handleChangePassword}>
+                  <div className="col-12">
+                    <label className="form-label">
+                      Mot de passe actuel{" "}
+                      <span className="text-danger">*</span>
+                    </label>
+                    <PasswordField
+                      id="currentPassword"
+                      value={passwordCurrent}
+                      onChange={(e) => {
+                        setPasswordCurrent(e.target.value);
+                        setPasswordErrors((prev) => ({
+                          ...prev,
+                          currentPassword: "",
+                        }));
+                      }}
+                      required
+                      invalid={!!passwordErrors.currentPassword}
+                      placeholder="Saisissez votre mot de passe actuel"
+                      autoComplete="current-password"
+                    />
+                    {passwordErrors.currentPassword && (
+                      <div className="invalid-feedback d-block">
+                        {passwordErrors.currentPassword}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label">
+                      Nouveau mot de passe{" "}
+                      <span className="text-danger">*</span>
+                    </label>
+                    <PasswordField
+                      id="newPassword"
+                      value={passwordNew}
+                      onChange={(e) => {
+                        setPasswordNew(e.target.value);
+                        setPasswordErrors((prev) => ({
+                          ...prev,
+                          newPassword: "",
+                        }));
+                      }}
+                      required
+                      invalid={!!passwordErrors.newPassword}
+                      placeholder="Nouveau mot de passe"
+                      autoComplete="new-password"
+                    />
+                    <div className="form-text">
+                      Min 8 caractères, inclure au moins 1 lettre et 1 chiffre.
+                    </div>
+                    {passwordErrors.newPassword && (
+                      <div className="invalid-feedback d-block">
+                        {passwordErrors.newPassword}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="col-12">
+                    <label className="form-label">
+                      Confirmer le nouveau mot de passe{" "}
+                      <span className="text-danger">*</span>
+                    </label>
+                    <PasswordField
+                      id="confirmPassword"
+                      value={passwordConfirm}
+                      onChange={(e) => {
+                        setPasswordConfirm(e.target.value);
+                        setPasswordErrors((prev) => ({
+                          ...prev,
+                          confirmPassword: "",
+                        }));
+                      }}
+                      required
+                      invalid={!!passwordErrors.confirmPassword}
+                      placeholder="Confirmez le nouveau mot de passe"
+                      autoComplete="new-password"
+                    />
+                    {passwordErrors.confirmPassword && (
+                      <div className="invalid-feedback d-block">
+                        {passwordErrors.confirmPassword}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="col-12 d-grid">
+                    <button
+                      className="btn btn-dark"
+                      type="submit"
+                      disabled={passwordLoading}
+                    >
+                      {passwordLoading
+                        ? "Modification..."
+                        : "Modifier le mot de passe"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
           </div>
 
           <div className="col-12 col-lg-8">
@@ -1206,7 +1463,8 @@ export default function ProfilePage() {
 
                     <div className="col-12 col-md-6">
                       <label className="form-label d-flex align-items-center gap-2">
-                        <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                        <Phone size={16} /> Téléphone{" "}
+                        <span className="text-danger">*</span>
                       </label>
                       <input
                         type="tel"
@@ -1222,16 +1480,25 @@ export default function ProfilePage() {
                         placeholder="+212..."
                         autoComplete="tel"
                       />
-                      {editErrors.phone && <div className="invalid-feedback">{editErrors.phone}</div>}
+                      {editErrors.phone && (
+                        <div className="invalid-feedback">
+                          {editErrors.phone}
+                        </div>
+                      )}
                     </div>
 
                     <div className="col-12 col-md-6">
                       <label className="form-label">Pays</label>
-                      <input className="form-control" value={COUNTRY_FIXED} disabled />
-                      <div className="form-text">Duumini est disponible au Maroc pour le moment.</div>
+                      <input
+                        className="form-control"
+                        value={COUNTRY_FIXED}
+                        disabled
+                      />
+                      <div className="form-text">
+                        Duumini est disponible au Maroc pour le moment.
+                      </div>
                     </div>
 
-                    {/* Ville */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">
                         Ville <span className="text-danger">*</span>
@@ -1244,24 +1511,46 @@ export default function ProfilePage() {
                             setEditVille(e.target.value);
                             setEditCommune("");
                             setEditQuartier("");
-                            setEditErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
+                            setEditErrors((prev) => ({
+                              ...prev,
+                              ville: "",
+                              commune: "",
+                              quartier: "",
+                            }));
                           }}
                           placeholder="Saisir votre ville"
                         />
-                        <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenEditVille(true)}>
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary"
+                          onClick={() => setOpenEditVille(true)}
+                        >
                           Liste
                         </button>
                       </div>
-                      {editErrors.ville && <div className="invalid-feedback d-block">{editErrors.ville}</div>}
+                      {editErrors.ville && (
+                        <div className="invalid-feedback d-block">
+                          {editErrors.ville}
+                        </div>
+                      )}
 
-                      <Modal open={openEditVille} title="Sélectionner une ville" onClose={() => setOpenEditVille(false)}>
+                      <Modal
+                        open={openEditVille}
+                        title="Sélectionner une ville"
+                        onClose={() => setOpenEditVille(false)}
+                      >
                         <SmartPicker
                           value={editVille}
                           onSelect={(val) => {
                             setEditVille(val);
                             setEditCommune("");
                             setEditQuartier("");
-                            setEditErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
+                            setEditErrors((prev) => ({
+                              ...prev,
+                              ville: "",
+                              commune: "",
+                              quartier: "",
+                            }));
                             setOpenEditVille(false);
 
                             setLocations((prev) => addVille(prev, val));
@@ -1279,7 +1568,6 @@ export default function ProfilePage() {
                       </Modal>
                     </div>
 
-                    {/* Commune */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">
                         Commune <span className="text-danger">*</span>
@@ -1291,15 +1579,27 @@ export default function ProfilePage() {
                           onChange={(e) => {
                             setEditCommune(e.target.value);
                             setEditQuartier("");
-                            setEditErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
+                            setEditErrors((prev) => ({
+                              ...prev,
+                              commune: "",
+                              quartier: "",
+                            }));
                           }}
                           placeholder="Saisir votre commune"
                         />
-                        <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenEditCommune(true)}>
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary"
+                          onClick={() => setOpenEditCommune(true)}
+                        >
                           Liste
                         </button>
                       </div>
-                      {editErrors.commune && <div className="invalid-feedback d-block">{editErrors.commune}</div>}
+                      {editErrors.commune && (
+                        <div className="invalid-feedback d-block">
+                          {editErrors.commune}
+                        </div>
+                      )}
 
                       <Modal
                         open={openEditCommune}
@@ -1311,28 +1611,37 @@ export default function ProfilePage() {
                           onSelect={(val) => {
                             setEditCommune(val);
                             setEditQuartier("");
-                            setEditErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
+                            setEditErrors((prev) => ({
+                              ...prev,
+                              commune: "",
+                              quartier: "",
+                            }));
                             setOpenEditCommune(false);
 
                             const cityVal = titleCase(editVille);
-                            setLocations((prev) => addCommune(prev, cityVal, val));
+                            setLocations((prev) =>
+                              addCommune(prev, cityVal, val)
+                            );
                             locApi.addCommune(cityVal, val);
                           }}
                           loadOptions={loadCommunesFor(editVille)}
                           allowCreate={!!titleCase(editVille)}
                           onCreate={async (val) => {
                             const cityVal = titleCase(editVille);
-                            setLocations((prev) => addCommune(prev, cityVal, val));
+                            setLocations((prev) =>
+                              addCommune(prev, cityVal, val)
+                            );
                             await locApi.addCommune(cityVal, val);
                           }}
                           createLabel={(v) => `Ajouter la commune "${v}"`}
                           placeholder="Rechercher une commune…"
                         />
                       </Modal>
-                      <div className="form-text">La liste dépend de la ville.</div>
+                      <div className="form-text">
+                        La liste dépend de la ville.
+                      </div>
                     </div>
 
-                    {/* Quartier */}
                     <div className="col-12 col-md-6">
                       <label className="form-label">
                         Quartier <span className="text-danger">*</span>
@@ -1343,17 +1652,28 @@ export default function ProfilePage() {
                           value={editQuartier}
                           onChange={(e) => {
                             setEditQuartier(e.target.value);
-                            setEditErrors((prev) => ({ ...prev, quartier: "" }));
+                            setEditErrors((prev) => ({
+                              ...prev,
+                              quartier: "",
+                            }));
                           }}
                           placeholder="Ex. Riad Oulfa, Terminus 20"
                           autoCapitalize="words"
                           autoComplete="address-level3"
                         />
-                        <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenEditQuartier(true)}>
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary"
+                          onClick={() => setOpenEditQuartier(true)}
+                        >
                           Liste
                         </button>
                       </div>
-                      {editErrors.quartier && <div className="invalid-feedback d-block">{editErrors.quartier}</div>}
+                      {editErrors.quartier && (
+                        <div className="invalid-feedback d-block">
+                          {editErrors.quartier}
+                        </div>
+                      )}
 
                       <Modal
                         open={openEditQuartier}
@@ -1364,30 +1684,48 @@ export default function ProfilePage() {
                           value={editQuartier}
                           onSelect={(val) => {
                             setEditQuartier(val);
-                            setEditErrors((prev) => ({ ...prev, quartier: "" }));
+                            setEditErrors((prev) => ({
+                              ...prev,
+                              quartier: "",
+                            }));
                             setOpenEditQuartier(false);
 
                             const cityVal = titleCase(editVille);
                             const communeVal = titleCase(editCommune);
-                            setLocations((prev) => addQuartier(prev, cityVal, val));
-                            if (communeVal) locApi.addQuartier(cityVal, communeVal, val);
+                            setLocations((prev) =>
+                              addQuartier(prev, cityVal, val)
+                            );
+                            if (communeVal)
+                              locApi.addQuartier(cityVal, communeVal, val);
                           }}
-                          loadOptions={loadQuartiersFor(editVille, editCommune)}
-                          allowCreate={!!titleCase(editVille) && !!titleCase(editCommune)}
+                          loadOptions={loadQuartiersFor(
+                            editVille,
+                            editCommune
+                          )}
+                          allowCreate={
+                            !!titleCase(editVille) && !!titleCase(editCommune)
+                          }
                           onCreate={async (val) => {
                             const cityVal = titleCase(editVille);
                             const communeVal = titleCase(editCommune);
-                            setLocations((prev) => addQuartier(prev, cityVal, val));
-                            await locApi.addQuartier(cityVal, communeVal, val);
+                            setLocations((prev) =>
+                              addQuartier(prev, cityVal, val)
+                            );
+                            await locApi.addQuartier(
+                              cityVal,
+                              communeVal,
+                              val
+                            );
                           }}
                           createLabel={(v) => `Ajouter le quartier "${v}"`}
                           placeholder="Rechercher un quartier…"
                         />
                       </Modal>
-                      <div className="form-text">La liste dépend de la ville + commune.</div>
+                      <div className="form-text">
+                        La liste dépend de la ville + commune.
+                      </div>
                     </div>
 
-                    {/* Sexe */}
                     <div className="col-12">
                       <label className="form-label">Sexe</label>
                       <div className="d-flex gap-3">
@@ -1400,7 +1738,10 @@ export default function ProfilePage() {
                             checked={editSexe === "M"}
                             onChange={() => setEditSexe("M")}
                           />
-                          <label className="form-check-label" htmlFor="editSexeM">
+                          <label
+                            className="form-check-label"
+                            htmlFor="editSexeM"
+                          >
                             M
                           </label>
                         </div>
@@ -1413,7 +1754,10 @@ export default function ProfilePage() {
                             checked={editSexe === "F"}
                             onChange={() => setEditSexe("F")}
                           />
-                          <label className="form-check-label" htmlFor="editSexeF">
+                          <label
+                            className="form-check-label"
+                            htmlFor="editSexeF"
+                          >
                             F
                           </label>
                         </div>
@@ -1425,7 +1769,11 @@ export default function ProfilePage() {
                         <button className="btn btn-dark" type="submit">
                           Enregistrer
                         </button>
-                        <button className="btn btn-outline-secondary" type="button" onClick={() => setEditing(false)}>
+                        <button
+                          className="btn btn-outline-secondary"
+                          type="button"
+                          onClick={() => setEditing(false)}
+                        >
                           Annuler
                         </button>
                       </div>
@@ -1433,7 +1781,8 @@ export default function ProfilePage() {
 
                     <div className="col-12">
                       <div className="alert alert-light border small mb-0">
-                        ✅ Recherche en direct + cache. Les nouvelles valeurs peuvent être ajoutées à la base (suggestions).
+                        ✅ Recherche en direct + cache. Les nouvelles valeurs
+                        peuvent être ajoutées à la base (suggestions).
                       </div>
                     </div>
                   </form>
@@ -1446,7 +1795,9 @@ export default function ProfilePage() {
                   <div className="row g-3 mt-1">
                     <div className="col-12 col-md-6">
                       <div className="text-muted small">Prénom</div>
-                      <div className="fw-semibold">{user.first_name || "—"}</div>
+                      <div className="fw-semibold">
+                        {user.first_name || "—"}
+                      </div>
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="text-muted small">Nom</div>
@@ -1478,7 +1829,9 @@ export default function ProfilePage() {
                     </div>
                     <div className="col-12 col-md-6">
                       <div className="text-muted small">Sexe</div>
-                      <div className="fw-semibold">{(user as any).sexe || "—"}</div>
+                      <div className="fw-semibold">
+                        {(user as any).sexe || "—"}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1496,6 +1849,7 @@ export default function ProfilePage() {
   return (
     <div className="container-xxl py-4">
       {err && <div className="alert alert-danger">{err}</div>}
+      {success && <div className="alert alert-success">{success}</div>}
 
       <div className="row g-4">
         <div className="col-12 col-lg-6">
@@ -1538,7 +1892,8 @@ export default function ProfilePage() {
                 <form onSubmit={handleLogin} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                      <Phone size={16} /> Téléphone{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
@@ -1552,26 +1907,38 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {loginErrors.phone && <div className="invalid-feedback">{loginErrors.phone}</div>}
+                    {loginErrors.phone && (
+                      <div className="invalid-feedback">
+                        {loginErrors.phone}
+                      </div>
+                    )}
                   </div>
 
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Lock size={16} /> Mot de passe <span className="text-danger">*</span>
+                      <Lock size={16} /> Mot de passe{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <PasswordField
                       id="loginPassword"
                       value={loginPassword}
                       onChange={(e) => {
                         setLoginPassword(e.target.value);
-                        setLoginErrors((prev) => ({ ...prev, password: "" }));
+                        setLoginErrors((prev) => ({
+                          ...prev,
+                          password: "",
+                        }));
                       }}
                       required
                       placeholder="Votre mot de passe"
                       autoComplete="current-password"
                       invalid={!!loginErrors.password}
                     />
-                    {loginErrors.password && <div className="invalid-feedback d-block">{loginErrors.password}</div>}
+                    {loginErrors.password && (
+                      <div className="invalid-feedback d-block">
+                        {loginErrors.password}
+                      </div>
+                    )}
                   </div>
 
                   <div className="col-12 d-grid">
@@ -1586,7 +1953,8 @@ export default function ProfilePage() {
                 <form onSubmit={handleRegister} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                      <Phone size={16} /> Téléphone{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
@@ -1600,27 +1968,39 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {regErrors.phone && <div className="invalid-feedback">{regErrors.phone}</div>}
+                    {regErrors.phone && (
+                      <div className="invalid-feedback">{regErrors.phone}</div>
+                    )}
                   </div>
 
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Lock size={16} /> Mot de passe <span className="text-danger">*</span>
+                      <Lock size={16} /> Mot de passe{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <PasswordField
                       id="registerPassword"
                       value={regPassword}
                       onChange={(e) => {
                         setRegPassword(e.target.value);
-                        setRegErrors((prev) => ({ ...prev, password: "" }));
+                        setRegErrors((prev) => ({
+                          ...prev,
+                          password: "",
+                        }));
                       }}
                       required
                       invalid={!!regErrors.password}
                       placeholder="Créer un mot de passe"
                       autoComplete="new-password"
                     />
-                    <div className="form-text">Min 8 caractères, inclure au moins 1 lettre et 1 chiffre.</div>
-                    {regErrors.password && <div className="invalid-feedback d-block">{regErrors.password}</div>}
+                    <div className="form-text">
+                      Min 8 caractères, inclure au moins 1 lettre et 1 chiffre.
+                    </div>
+                    {regErrors.password && (
+                      <div className="invalid-feedback d-block">
+                        {regErrors.password}
+                      </div>
+                    )}
                   </div>
 
                   <div className="col-12 col-md-6">
@@ -1651,7 +2031,6 @@ export default function ProfilePage() {
                     <input className="form-control" value={COUNTRY_FIXED} disabled />
                   </div>
 
-                  {/* Ville */}
                   <div className="col-12 col-md-6">
                     <label className="form-label">
                       Ville <span className="text-danger">*</span>
@@ -1665,24 +2044,46 @@ export default function ProfilePage() {
                           setRegVille(e.target.value);
                           setRegCommune("");
                           setRegQuartier("");
-                          setRegErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
+                          setRegErrors((prev) => ({
+                            ...prev,
+                            ville: "",
+                            commune: "",
+                            quartier: "",
+                          }));
                         }}
                         placeholder="Saisir votre ville"
                       />
-                      <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenRegVille(true)}>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setOpenRegVille(true)}
+                      >
                         Liste
                       </button>
                     </div>
-                    {regErrors.ville && <div className="invalid-feedback d-block">{regErrors.ville}</div>}
+                    {regErrors.ville && (
+                      <div className="invalid-feedback d-block">
+                        {regErrors.ville}
+                      </div>
+                    )}
 
-                    <Modal open={openRegVille} title="Sélectionner une ville" onClose={() => setOpenRegVille(false)}>
+                    <Modal
+                      open={openRegVille}
+                      title="Sélectionner une ville"
+                      onClose={() => setOpenRegVille(false)}
+                    >
                       <SmartPicker
                         value={regVille}
                         onSelect={(val) => {
                           setRegVille(val);
                           setRegCommune("");
                           setRegQuartier("");
-                          setRegErrors((prev) => ({ ...prev, ville: "", commune: "", quartier: "" }));
+                          setRegErrors((prev) => ({
+                            ...prev,
+                            ville: "",
+                            commune: "",
+                            quartier: "",
+                          }));
                           setOpenRegVille(false);
 
                           setLocations((prev) => addVille(prev, val));
@@ -1700,7 +2101,6 @@ export default function ProfilePage() {
                     </Modal>
                   </div>
 
-                  {/* Commune */}
                   <div className="col-12 col-md-6">
                     <label className="form-label">
                       Commune <span className="text-danger">*</span>
@@ -1713,15 +2113,27 @@ export default function ProfilePage() {
                         onChange={(e) => {
                           setRegCommune(e.target.value);
                           setRegQuartier("");
-                          setRegErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
+                          setRegErrors((prev) => ({
+                            ...prev,
+                            commune: "",
+                            quartier: "",
+                          }));
                         }}
                         placeholder="Saisir votre commune"
                       />
-                      <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenRegCommune(true)}>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setOpenRegCommune(true)}
+                      >
                         Liste
                       </button>
                     </div>
-                    {regErrors.commune && <div className="invalid-feedback d-block">{regErrors.commune}</div>}
+                    {regErrors.commune && (
+                      <div className="invalid-feedback d-block">
+                        {regErrors.commune}
+                      </div>
+                    )}
 
                     <Modal
                       open={openRegCommune}
@@ -1733,7 +2145,11 @@ export default function ProfilePage() {
                         onSelect={(val) => {
                           setRegCommune(val);
                           setRegQuartier("");
-                          setRegErrors((prev) => ({ ...prev, commune: "", quartier: "" }));
+                          setRegErrors((prev) => ({
+                            ...prev,
+                            commune: "",
+                            quartier: "",
+                          }));
                           setOpenRegCommune(false);
 
                           const cityVal = titleCase(regVille);
@@ -1751,10 +2167,11 @@ export default function ProfilePage() {
                         placeholder="Rechercher une commune…"
                       />
                     </Modal>
-                    <div className="form-text">La liste dépend de la ville.</div>
+                    <div className="form-text">
+                      La liste dépend de la ville.
+                    </div>
                   </div>
 
-                  {/* Quartier */}
                   <div className="col-12">
                     <label className="form-label">
                       Quartier <span className="text-danger">*</span>
@@ -1766,17 +2183,28 @@ export default function ProfilePage() {
                         value={regQuartier}
                         onChange={(e) => {
                           setRegQuartier(e.target.value);
-                          setRegErrors((prev) => ({ ...prev, quartier: "" }));
+                          setRegErrors((prev) => ({
+                            ...prev,
+                            quartier: "",
+                          }));
                         }}
                         placeholder="Ex. Riad Oulfa, Terminus 20"
                         autoCapitalize="words"
                         autoComplete="address-level3"
                       />
-                      <button type="button" className="btn btn-outline-secondary" onClick={() => setOpenRegQuartier(true)}>
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setOpenRegQuartier(true)}
+                      >
                         Liste
                       </button>
                     </div>
-                    {regErrors.quartier && <div className="invalid-feedback d-block">{regErrors.quartier}</div>}
+                    {regErrors.quartier && (
+                      <div className="invalid-feedback d-block">
+                        {regErrors.quartier}
+                      </div>
+                    )}
 
                     <Modal
                       open={openRegQuartier}
@@ -1787,16 +2215,25 @@ export default function ProfilePage() {
                         value={regQuartier}
                         onSelect={(val) => {
                           setRegQuartier(val);
-                          setRegErrors((prev) => ({ ...prev, quartier: "" }));
+                          setRegErrors((prev) => ({
+                            ...prev,
+                            quartier: "",
+                          }));
                           setOpenRegQuartier(false);
 
                           const cityVal = titleCase(regVille);
                           const communeVal = titleCase(regCommune);
                           setLocations((prev) => addQuartier(prev, cityVal, val));
-                          if (communeVal) locApi.addQuartier(cityVal, communeVal, val);
+                          if (communeVal)
+                            locApi.addQuartier(cityVal, communeVal, val);
                         }}
-                        loadOptions={loadQuartiersFor(regVille, regCommune)}
-                        allowCreate={!!titleCase(regVille) && !!titleCase(regCommune)}
+                        loadOptions={loadQuartiersFor(
+                          regVille,
+                          regCommune
+                        )}
+                        allowCreate={
+                          !!titleCase(regVille) && !!titleCase(regCommune)
+                        }
                         onCreate={async (val) => {
                           const cityVal = titleCase(regVille);
                           const communeVal = titleCase(regCommune);
@@ -1808,10 +2245,11 @@ export default function ProfilePage() {
                       />
                     </Modal>
 
-                    <div className="form-text">La liste dépend de la ville + commune.</div>
+                    <div className="form-text">
+                      La liste dépend de la ville + commune.
+                    </div>
                   </div>
 
-                  {/* Sexe */}
                   <div className="col-12 col-md-6">
                     <label className="form-label">
                       Sexe <span className="text-danger">*</span>
@@ -1827,7 +2265,10 @@ export default function ProfilePage() {
                           onChange={() => setRegSexe("M")}
                           required
                         />
-                        <label className="form-check-label" htmlFor="regSexeM">
+                        <label
+                          className="form-check-label"
+                          htmlFor="regSexeM"
+                        >
                           M
                         </label>
                       </div>
@@ -1840,14 +2281,16 @@ export default function ProfilePage() {
                           checked={regSexe === "F"}
                           onChange={() => setRegSexe("F")}
                         />
-                        <label className="form-check-label" htmlFor="regSexeF">
+                        <label
+                          className="form-check-label"
+                          htmlFor="regSexeF"
+                        >
                           F
                         </label>
                       </div>
                     </div>
                   </div>
 
-                  {/* Acceptation */}
                   <div className="col-12">
                     <div className="form-check">
                       <input
@@ -1871,7 +2314,8 @@ export default function ProfilePage() {
                       </label>
                     </div>
                     <div className="form-text">
-                      Tu peux les consulter en cliquant sur les liens ci-dessus avant de continuer.
+                      Tu peux les consulter en cliquant sur les liens ci-dessus
+                      avant de continuer.
                     </div>
                   </div>
 
@@ -1883,7 +2327,8 @@ export default function ProfilePage() {
 
                   <div className="col-12">
                     <div className="alert alert-light border small mb-0">
-                      ✅ Recherche en direct + cache. Les nouvelles valeurs peuvent être ajoutées à la base (suggestions).
+                      ✅ Recherche en direct + cache. Les nouvelles valeurs
+                      peuvent être ajoutées à la base (suggestions).
                     </div>
                   </div>
                 </form>
@@ -1893,7 +2338,8 @@ export default function ProfilePage() {
                 <form onSubmit={handleForgot} className="row g-3">
                   <div className="col-12">
                     <label className="form-label d-flex align-items-center gap-2">
-                      <Phone size={16} /> Téléphone <span className="text-danger">*</span>
+                      <Phone size={16} /> Téléphone{" "}
+                      <span className="text-danger">*</span>
                     </label>
                     <input
                       type="tel"
@@ -1907,7 +2353,11 @@ export default function ProfilePage() {
                       }}
                       required
                     />
-                    {forgotErrors.phone && <div className="invalid-feedback">{forgotErrors.phone}</div>}
+                    {forgotErrors.phone && (
+                      <div className="invalid-feedback">
+                        {forgotErrors.phone}
+                      </div>
+                    )}
                   </div>
                   <div className="col-12 d-grid">
                     <button className="btn btn-dark" type="submit">
@@ -1923,7 +2373,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Side panel */}
         <div className="col-12 col-lg-6">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
@@ -1936,10 +2385,13 @@ export default function ProfilePage() {
               <hr />
               <h2 className="h6">Déjà membre ?</h2>
               <p className="text-muted">
-                Utilisez votre numéro de téléphone et votre mot de passe pour vous connecter.
+                Utilisez votre numéro de téléphone et votre mot de passe pour
+                vous connecter.
               </p>
               <hr />
-              <div className="small text-muted">🇲🇦 Duumini est disponible au Maroc pour le moment.</div>
+              <div className="small text-muted">
+                🇲🇦 Duumini est disponible au Maroc pour le moment.
+              </div>
             </div>
           </div>
         </div>

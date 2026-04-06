@@ -388,3 +388,34 @@ export async function updateProfile(payload: Partial<User>) {
   setUserInStorage(normalized);
   return normalized;
 }
+
+export async function changePassword(
+  current_password: string,
+  new_password: string
+) {
+  const res = await authFetch(`${API}/api/auth/change-password`, {
+    method: "POST",
+    body: JSON.stringify({ current_password, new_password }),
+    headers: { "Content-Type": "application/json" },
+  });
+
+  return parseJson<{ ok: true; message: string }>(res);
+}
+
+export async function adminResetDefaultPassword(userId: number) {
+  const res = await authFetch(
+    `${API}/api/auth/admin-reset-default-password/${userId}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+
+  return parseJson<{
+    ok: true;
+    user_id: number;
+    login_phone: string;
+    default_password: string;
+    message: string;
+  }>(res);
+}
