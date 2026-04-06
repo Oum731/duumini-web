@@ -13,6 +13,7 @@ import { listAllAdminUsers, type AdminUser } from "../../services/adminUsers";
 type AnyObj = Record<string, any>;
 
 type CustomerRole = "CLIENT" | "VENDEUR";
+type AdminPaymentMethod = "BMCE" | "GAZHALA" | "CASH";
 
 type ClientLite = {
   id: number;
@@ -194,6 +195,17 @@ function normalizeCustomerRole(value?: string | null): CustomerRole {
   return String(value || "").trim().toUpperCase() === "VENDEUR" ? "VENDEUR" : "CLIENT";
 }
 
+function normalizePaymentMethod(method: AdminPaymentMethod) {
+  if (method === "BMCE" || method === "GAZHALA") return "BANK_TRANSFER";
+  return "CASH";
+}
+
+function paymentMethodLabel(method: AdminPaymentMethod) {
+  if (method === "BMCE") return "BMCE";
+  if (method === "GAZHALA") return "GAZHALA";
+  return "CASH";
+}
+
 function dedupeClients(list: ClientLite[]) {
   const byKey = new Map<string, ClientLite>();
 
@@ -293,7 +305,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
   const [basket, setBasket] = useState<{ product: Product; qty: number }[]>([]);
   const [amountPaid, setAmountPaid] = useState<number>(0);
-  const [payMethod, setPayMethod] = useState<string>("CASH");
+  const [payMethod, setPayMethod] = useState<AdminPaymentMethod>("CASH");
+  const [payReference, setPayReference] = useState<string>("");
   const [payNote, setPayNote] = useState<string>("");
   const [markDone, setMarkDone] = useState(true);
 
@@ -383,6 +396,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     setBasket([]);
     setAmountPaid(0);
     setPayMethod("CASH");
+    setPayReference("");
     setPayNote("");
     setMarkDone(true);
 
@@ -683,6 +697,14 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       ...clientLocation,
     };
 
+    const label = paymentMethodLabel(payMethod);
+    const backendMethod = normalizePaymentMethod(payMethod);
+    const finalPayNote =
+      payNote.trim() ||
+      `Admin order | ${label} | ${status} | payé=${paid} | reste=${remain}${
+        payReference.trim() ? ` | ref=${payReference.trim()}` : ""
+      }`;
+
     const payload: any = {
       customer_role: role,
 
@@ -725,8 +747,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       },
 
       payment: {
-        method: payMethod,
-        note: payNote || `Admin order | ${status} | payé=${paid} | reste=${remain}`,
+        method: backendMethod,
+        method_label: label,
+        reference: payReference.trim() || null,
+        note: finalPayNote,
         paid_amount: paid,
         status,
       },
@@ -1290,13 +1314,12 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       <select
                         className="form-select duu-input"
                         value={payMethod}
-                        onChange={(e) => setPayMethod((e.target as HTMLSelectElement).value)}
+                        onChange={(e) => setPayMethod((e.target as HTMLSelectElement).value as AdminPaymentMethod)}
                         disabled={saving}
                       >
+                        <option value="BMCE">BMCE</option>
+                        <option value="GAZHALA">GAZHALA</option>
                         <option value="CASH">CASH</option>
-                        <option value="COD">COD</option>
-                        <option value="BANK_TRANSFER">BANK_TRANSFER</option>
-                        <option value="VIREMENT">VIREMENT</option>
                       </select>
                     </div>
 
@@ -1313,14 +1336,25 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       />
                     </div>
 
-                    <div className="col-12">
+                    <div className="col-12 col-md-6">
+                      <label className="form-label fw-semibold">Référence paiement</label>
+                      <input
+                        className="form-control duu-input"
+                        value={payReference}
+                        onChange={(e) => setPayReference((e.target as HTMLInputElement).value)}
+                        disabled={saving}
+                        placeholder="Ex: dépôt / transaction / bordereau"
+                      />
+                    </div>
+
+                    <div className="col-12 col-md-6">
                       <label className="form-label fw-semibold">Note</label>
                       <input
                         className="form-control duu-input"
                         value={payNote}
                         onChange={(e) => setPayNote((e.target as HTMLInputElement).value)}
                         disabled={saving}
-                        placeholder="Ex: payé en boutique, virement en attente…"
+                        placeholder="Ex: payé en boutique, dépôt validé…"
                       />
                     </div>
                   </div>

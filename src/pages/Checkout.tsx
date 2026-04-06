@@ -89,7 +89,18 @@ const FocusAndLoadingStyle = () => (
 type LocationSuggestion = { value: string; count?: number };
 type ItemsEnvelope<T> = { items: T[] };
 type FulfillmentMode = "DELIVERY" | "PICKUP" | "EXPEDITION";
-type PaymentMethod = "COD" | "BANK_TRANSFER";
+type PaymentMethod = "BMCE" | "GAZHALA" | "CASH";
+
+function normalizePaymentMethod(method: PaymentMethod) {
+  if (method === "BMCE" || method === "GAZHALA") return "BANK_TRANSFER";
+  return "CASH";
+}
+
+function paymentMethodLabel(method: PaymentMethod) {
+  if (method === "BMCE") return "BMCE";
+  if (method === "GAZHALA") return "GAZHALA";
+  return "CASH";
+}
 
 function normalizeSuggestionItems(input: any): LocationSuggestion[] {
   const arr = input?.items ?? input ?? [];
@@ -175,6 +186,11 @@ const BANK_RIB = {
   rib: "011 450 0000122100028446 74",
   iban: "MA64 0114 5000 0012 2100 0284 4674",
   bic: "BMCEMAMC",
+};
+
+const GAZHALA_PAYMENT = {
+  account_name: "GAZHALA",
+  note: "Paiement / dépôt GAZHALA",
 };
 
 function cityLabelFromCode(city?: string | null) {
@@ -387,7 +403,8 @@ export default function CheckoutPage() {
   const [showGuestSuccess, setShowGuestSuccess] = useState(false);
 
   const [fulfillment, setFulfillment] = useState<FulfillmentMode>("DELIVERY");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("COD");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [paymentReference, setPaymentReference] = useState("");
 
   const autoCityInitRef = useRef(false);
   const reverseAbortRef = useRef<AbortController | null>(null);
@@ -831,6 +848,8 @@ export default function CheckoutPage() {
 
       const normalizedPhone = normalizePhoneInput(phone.trim());
       const finalCity = String(cityText || "").trim();
+      const paymentLabel = paymentMethodLabel(paymentMethod);
+      const backendPaymentMethod = normalizePaymentMethod(paymentMethod);
 
       const address: CreateOrderPayload["address"] =
         fulfillment === "DELIVERY"
@@ -882,12 +901,16 @@ export default function CheckoutPage() {
         fulfillment === "PICKUP"
           ? "Retrait sur place (gratuit)."
           : fulfillment === "EXPEDITION"
-          ? "Expédition: dépôt Duumini gratuit. Le client paie les frais du transporteur à la récupération du colis."
-          : "Livraison à domicile.";
+          ? "Les frais de livraison ne sont pas inclus dans votre commande. Ils seront à payer à la réception, auprès de la société d’expédition."
+          : isCasablanca(finalCity)
+          ? "Livraison à domicile. Les frais de livraison sont inclus selon le tarif de Casablanca."
+          : "Les frais de livraison ne sont pas inclus dans votre commande. Ils seront à payer à la réception, auprès de la société d’expédition.";
 
       const paymentNote =
-        paymentMethod === "BANK_TRANSFER"
-          ? `Virement bancaire (paiement en attente). Merci d’envoyer votre reçu pour confirmation.\nRIB: ${BANK_RIB.rib}\nIBAN: ${BANK_RIB.iban}\nBIC: ${BANK_RIB.bic}\nCompte: ${BANK_RIB.account_name}`
+        paymentMethod === "BMCE"
+          ? `Paiement BMCE (en attente de confirmation). Merci d’envoyer votre reçu.\nRIB: ${BANK_RIB.rib}\nIBAN: ${BANK_RIB.iban}\nBIC: ${BANK_RIB.bic}\nCompte: ${BANK_RIB.account_name}${paymentReference.trim() ? `\nRéférence: ${paymentReference.trim()}` : ""}`
+          : paymentMethod === "GAZHALA"
+          ? `Paiement GAZHALA (en attente de confirmation). Merci d’envoyer votre reçu.\nCanal: ${GAZHALA_PAYMENT.note}\nCompte: ${GAZHALA_PAYMENT.account_name}${paymentReference.trim() ? `\nRéférence: ${paymentReference.trim()}` : ""}`
           : "Paiement cash à la livraison.";
 
       const payload: CreateOrderPayload = {
@@ -919,8 +942,10 @@ export default function CheckoutPage() {
         },
 
         payment: {
-          method: paymentMethod,
-          status: paymentMethod === "BANK_TRANSFER" ? ("PENDING" as any) : undefined,
+          method: backendPaymentMethod,
+          method_label: paymentLabel,
+          reference: paymentReference.trim() || null,
+          status: paymentMethod === "CASH" ? undefined : ("PENDING" as any),
           note: paymentNote,
         } as any,
 
@@ -1008,8 +1033,10 @@ export default function CheckoutPage() {
             delivery_fee: Number(deliveryFee || 0),
             total: Number(totalAmount || 0) + Number(deliveryFee || 0),
             currency: serverCurrency,
-            paymentMethod,
-            paymentStatus: paymentMethod === "BANK_TRANSFER" ? "PENDING" : "COD",
+            paymentMethod: paymentLabel,
+            paymentBackendMethod: backendPaymentMethod,
+            paymentStatus: paymentMethod === "CASH" ? "COD" : "PENDING",
+            paymentReference: paymentReference.trim() || null,
           })
         );
         if (!hasToken) window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
@@ -1057,6 +1084,7 @@ export default function CheckoutPage() {
     cityText,
     fulfillment,
     paymentMethod,
+    paymentReference,
     hasToken,
     communeVal,
     quartier,
@@ -1118,10 +1146,10 @@ export default function CheckoutPage() {
     fulfillment === "PICKUP"
       ? "Retrait sur place (gratuit)"
       : fulfillment === "EXPEDITION"
-      ? "Expédition (dépôt Duumini gratuit)"
+      ? "Expédition (frais de livraison à payer à la réception)"
       : isCasablanca(cityText)
       ? "Livraison Casablanca 25 DH"
-      : "Hors Casablanca dès 60 DH (selon la ville)";
+      : "Livraison hors Casablanca (frais à payer à la réception)";
 
   return (
     <section className="container-xxl py-4 checkout">
@@ -1705,12 +1733,22 @@ export default function CheckoutPage() {
 
                 {fulfillment === "DELIVERY" && (
                   <>
-                    <div className="small text-muted">
-                      La livraison est calculée automatiquement selon votre ville.
-                    </div>
-                    <div className="small mt-2">
-                      Ville : <strong>{cityText || "—"}</strong> • Frais : <strong>{mad(deliveryFee)}</strong>
-                    </div>
+                    {isCasablanca(cityText) ? (
+                      <>
+                        <div className="small text-muted">
+                          La livraison est calculée automatiquement selon votre ville.
+                        </div>
+                        <div className="small mt-2">
+                          Ville : <strong>{cityText || "—"}</strong> • Frais : <strong>{mad(deliveryFee)}</strong>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="small text-muted mt-1">
+                        ⚠️ Les frais de livraison ne sont pas inclus dans ce paiement.
+                        <br />
+                        Ils seront à régler à la réception de votre commande auprès de la société d’expédition.
+                      </div>
+                    )}
                   </>
                 )}
 
@@ -1722,9 +1760,9 @@ export default function CheckoutPage() {
 
                 {fulfillment === "EXPEDITION" && (
                   <div className="small text-muted mt-1">
-                    Expédition : <strong>dépôt Duumini gratuit</strong>. <br />
-                    <strong>Les frais du transporteur</strong> sont payés par le client{" "}
-                    <strong>directement au transporteur</strong> au moment de récupérer son colis.
+                    Les frais de livraison ne sont pas inclus dans votre commande.
+                    <br />
+                    Ils seront à payer à la réception, auprès de la société d’expédition.
                   </div>
                 )}
               </div>
@@ -1749,23 +1787,37 @@ export default function CheckoutPage() {
                     value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
                   >
-                    <option value="COD">Cash (à la livraison)</option>
-                    <option value="BANK_TRANSFER">Virement bancaire</option>
+                    <option value="BMCE">BMCE</option>
+                    <option value="GAZHALA">GAZHALA</option>
+                    <option value="CASH">CASH</option>
                   </select>
                   <div className="form-text">Choisissez comment vous souhaitez payer votre commande.</div>
                 </div>
 
+                {paymentMethod !== "CASH" && (
+                  <div className="col-12 col-md-6">
+                    <label className="form-label">Référence de paiement</label>
+                    <input
+                      className="form-control"
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      placeholder="Ex: transaction / dépôt / bordereau"
+                    />
+                    <div className="form-text">Optionnel mais recommandé pour faciliter la validation.</div>
+                  </div>
+                )}
+
                 <div className="col-12">
-                  {paymentMethod === "COD" ? (
+                  {paymentMethod === "CASH" ? (
                     <div className="alert alert-secondary mb-0">
                       <div className="fw-semibold mb-1">Paiement cash</div>
                       <small className="d-block text-muted">
                         Vous payez <strong>à la réception</strong> en <strong>espèces</strong>.
                       </small>
                     </div>
-                  ) : (
+                  ) : paymentMethod === "BMCE" ? (
                     <div className="alert alert-warning mb-0">
-                      <div className="fw-semibold mb-2">Virement bancaire (paiement en attente)</div>
+                      <div className="fw-semibold mb-2">Paiement BMCE (en attente)</div>
 
                       <div className="rib-box">
                         <div className="small"><strong>Compte:</strong> {BANK_RIB.account_name}</div>
@@ -1775,7 +1827,22 @@ export default function CheckoutPage() {
                       </div>
 
                       <div className="small text-muted mt-2">
-                        Après le virement, merci d’envoyer le <strong>reçu</strong> (capture) pour confirmation.
+                        Après le paiement, merci d’envoyer le <strong>reçu</strong> pour confirmation.
+                        <br />
+                        Statut : <strong>Paiement en attente</strong>.
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="alert alert-warning mb-0">
+                      <div className="fw-semibold mb-2">Paiement GAZHALA (en attente)</div>
+
+                      <div className="rib-box">
+                        <div className="small"><strong>Canal:</strong> {GAZHALA_PAYMENT.note}</div>
+                        <div className="small"><strong>Compte:</strong> {GAZHALA_PAYMENT.account_name}</div>
+                      </div>
+
+                      <div className="small text-muted mt-2">
+                        Après le paiement, merci d’envoyer le <strong>reçu</strong> pour confirmation.
                         <br />
                         Statut : <strong>Paiement en attente</strong>.
                       </div>
@@ -1865,6 +1932,11 @@ export default function CheckoutPage() {
                 <div className="text-muted">Total à payer</div>
                 <div className="h5 m-0">{mad(grandTotalUi)}</div>
               </div>
+
+              <div className="d-flex justify-content-between align-items-center mt-2">
+                <div className="text-muted">Paiement</div>
+                <div className="fw-semibold">{paymentMethodLabel(paymentMethod)}</div>
+              </div>
             </div>
           </div>
 
@@ -1872,9 +1944,20 @@ export default function CheckoutPage() {
             <div className="alert alert-warning mt-3 mb-0">
               <div className="fw-semibold">📦 Expédition</div>
               <div className="small text-muted">
-                Dépôt Duumini : <strong>gratuit</strong>.
+                Les frais de livraison ne sont pas inclus dans votre commande.
                 <br />
-                Le client paie les frais du transporteur au moment de récupérer son colis.
+                Ils seront à payer à la réception auprès de la société d’expédition.
+              </div>
+            </div>
+          )}
+
+          {fulfillment === "DELIVERY" && !isCasablanca(cityText) && (
+            <div className="alert alert-warning mt-3 mb-0">
+              <div className="fw-semibold">🚚 Livraison hors Casablanca</div>
+              <div className="small text-muted">
+                Les frais de livraison ne sont pas inclus dans ce paiement.
+                <br />
+                Ils seront à régler à la réception de votre commande auprès de la société d’expédition.
               </div>
             </div>
           )}

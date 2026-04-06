@@ -11,6 +11,7 @@ import {
 
 type AnyObj = Record<string, any>;
 type CustomerRole = "CLIENT" | "VENDEUR";
+type PosPaymentMethod = "BMCE" | "GAZHALA" | "CASH";
 
 type Props = {
   open: boolean;
@@ -129,6 +130,17 @@ function normalizeCustomerRole(value: any): CustomerRole {
     : "CLIENT";
 }
 
+function normalizePaymentMethod(method: PosPaymentMethod) {
+  if (method === "BMCE" || method === "GAZHALA") return "BANK_TRANSFER";
+  return "CASH";
+}
+
+function getPaymentMethodLabel(method: PosPaymentMethod) {
+  if (method === "BMCE") return "BMCE";
+  if (method === "GAZHALA") return "GAZHALA";
+  return "CASH";
+}
+
 export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [cFirst, setCFirst] = useState("");
   const [cLast, setCLast] = useState("");
@@ -151,6 +163,9 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [discountType, setDiscountType] = useState<AdminDiscountType>("NONE");
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [discountLabel, setDiscountLabel] = useState<string>("");
+
+  const [payMethod, setPayMethod] = useState<PosPaymentMethod>("CASH");
+  const [paymentReference, setPaymentReference] = useState("");
 
   const [search, setSearch] = useState("");
   const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
@@ -210,6 +225,9 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setDiscountType("NONE");
     setDiscountValue(0);
     setDiscountLabel("");
+
+    setPayMethod("CASH");
+    setPaymentReference("");
 
     setCFirst("");
     setCLast("");
@@ -391,6 +409,8 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     const status = computePayStatus(total, paid);
 
     const normalizedPhone = String(cPhone || "").trim();
+    const paymentMethodLabel = getPaymentMethodLabel(payMethod);
+    const paymentMethodNormalized = normalizePaymentMethod(payMethod);
 
     const itemsPayload = basket.map((b) => {
       const unit = getProductUnitPrice(b.product);
@@ -447,8 +467,12 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       },
 
       payment: {
-        method: "CASH",
-        note: `Vente sur place | ${status} | payé=${paid} | reste=${remain}`,
+        method: paymentMethodNormalized,
+        method_label: paymentMethodLabel,
+        reference: paymentReference.trim() || null,
+        note:
+          `Vente sur place | ${paymentMethodLabel} | ${status} | payé=${paid} | reste=${remain}` +
+          (paymentReference.trim() ? ` | ref=${paymentReference.trim()}` : ""),
         paid_amount: paid,
         status,
       },
@@ -789,16 +813,45 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
                     <hr className="my-3" />
 
-                    <h6 className="mb-2">Montant payé</h6>
-                    <input
-                      type="number"
-                      min={0}
-                      step="1"
-                      className="form-control"
-                      value={toInputNumberValue(amountPaid)}
-                      onChange={(e) => setAmountPaid(fromInputNumberValue(e.target.value))}
-                      disabled={saving}
-                    />
+                    <div className="row g-2">
+                      <div className="col-12 col-md-6">
+                        <h6 className="mb-2">Méthode paiement</h6>
+                        <select
+                          className="form-select"
+                          value={payMethod}
+                          onChange={(e) => setPayMethod(e.target.value as PosPaymentMethod)}
+                          disabled={saving}
+                        >
+                          <option value="BMCE">BMCE</option>
+                          <option value="GAZHALA">GAZHALA</option>
+                          <option value="CASH">CASH</option>
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-6">
+                        <h6 className="mb-2">Montant payé</h6>
+                        <input
+                          type="number"
+                          min={0}
+                          step="1"
+                          className="form-control"
+                          value={toInputNumberValue(amountPaid)}
+                          onChange={(e) => setAmountPaid(fromInputNumberValue(e.target.value))}
+                          disabled={saving}
+                        />
+                      </div>
+
+                      <div className="col-12">
+                        <h6 className="mb-2">Référence paiement</h6>
+                        <input
+                          className="form-control"
+                          placeholder="Ex: N° transaction, référence dépôt..."
+                          value={paymentReference}
+                          onChange={(e) => setPaymentReference(e.target.value)}
+                          disabled={saving}
+                        />
+                      </div>
+                    </div>
 
                     <hr className="my-3" />
 

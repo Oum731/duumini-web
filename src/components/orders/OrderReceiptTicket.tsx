@@ -332,39 +332,40 @@ export default function OrderReceipt({
           margin: 0 auto;
           color: var(--dm-black);
           font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+          font-size: 10px;
         }
 
         .dm-ticket{
           border: 1px solid var(--dm-border);
-          border-radius: 16px;
+          border-radius: 14px;
           overflow: hidden;
           background: #fff;
-          box-shadow: 0 10px 28px rgba(0,0,0,.08);
+          box-shadow: 0 8px 20px rgba(0,0,0,.07);
         }
 
         .dm-header{
           background: linear-gradient(135deg, var(--dm-yellow) 0%, var(--dm-yellow2) 100%);
-          padding: 14px 14px 12px;
+          padding: 11px 11px 10px;
         }
 
         .dm-brand{
           display:flex;
           align-items:center;
           justify-content:space-between;
-          gap: 10px;
+          gap: 8px;
         }
 
         .dm-brand-left{
           display:flex;
           align-items:center;
-          gap: 10px;
+          gap: 8px;
           min-width: 0;
         }
 
         .dm-logo{
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
+          width: 38px;
+          height: 38px;
+          border-radius: 10px;
           overflow: hidden;
           background:#fff;
           border:1px solid rgba(0,0,0,.18);
@@ -382,18 +383,18 @@ export default function OrderReceipt({
 
         .dm-title{
           font-weight: 1000;
-          letter-spacing: .6px;
-          font-size: 16px;
-          line-height: 1.1;
+          letter-spacing: .4px;
+          font-size: 13px;
+          line-height: 1.05;
           margin: 0;
         }
 
         .dm-subtitle{
-          margin-top: 2px;
-          font-size: 11px;
+          margin-top: 1px;
+          font-size: 9px;
           font-weight: 800;
           opacity: .9;
-          line-height: 1.15;
+          line-height: 1.1;
           word-break: break-word;
           overflow-wrap: anywhere;
         }
@@ -404,80 +405,116 @@ export default function OrderReceipt({
         }
 
         .dm-receipt-label{
-          font-size: 10px;
+          font-size: 9px;
           font-weight: 1000;
           opacity: .85;
-          letter-spacing: .8px;
+          letter-spacing: .6px;
         }
 
         .dm-receipt-no{
-          font-size: 13px;
+          font-size: 11px;
           font-weight: 1000;
-          margin-top: 2px;
+          margin-top: 1px;
         }
 
         .dm-receipt-date{
-          font-size: 10px;
+          font-size: 8px;
           font-weight: 800;
           opacity: .85;
           margin-top: 2px;
         }
 
         .dm-meta{
-          margin-top: 10px;
+          margin-top: 8px;
           display:flex;
           flex-direction:column;
-          gap: 2px;
-          font-size: 11px;
+          gap: 1px;
+          font-size: 9px;
           font-weight: 900;
           word-break: break-word;
           overflow-wrap:anywhere;
         }
 
         .dm-body{
-          padding: 14px;
+          padding: 11px;
         }
 
         .dm-section{
-          margin-top: 10px;
+          margin-top: 8px;
         }
 
         .dm-section-title{
           display:flex;
           align-items:center;
-          gap: 8px;
+          gap: 6px;
           font-weight: 1000;
-          font-size: 12px;
-          margin: 0 0 8px;
+          font-size: 10px;
+          margin: 0 0 6px;
         }
 
         .dm-dot{
-          width: 8px;
-          height: 8px;
+          width: 7px;
+          height: 7px;
           border-radius: 999px;
           background: var(--dm-yellow);
-          box-shadow: 0 0 0 3px rgba(255,208,0,.25);
+          box-shadow: 0 0 0 3px rgba(255,208,0,.20);
         }
 
         .dm-card{
           border:1px solid var(--dm-border);
-          border-radius: 14px;
-          padding: 10px;
+          border-radius: 12px;
+          padding: 8px;
           background:#fff;
+        }
+
+        .dm-info-grid{
+          display:grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+        }
+
+        .dm-info-item{
+          border:1px solid rgba(0,0,0,.05);
+          border-radius: 10px;
+          padding: 6px 7px;
+          background:#fafafa;
+          min-width: 0;
+        }
+
+        .dm-info-item-full{
+          grid-column: 1 / -1;
+        }
+
+        .dm-info-k{
+          font-size: 8px;
+          line-height: 1.1;
+          font-weight: 1000;
+          color: var(--dm-muted);
+          margin-bottom: 3px;
+          text-transform: uppercase;
+          letter-spacing: .3px;
+        }
+
+        .dm-info-v{
+          font-size: 9px;
+          line-height: 1.2;
+          font-weight: 1000;
+          word-break: break-word;
+          overflow-wrap:anywhere;
         }
 
         .dm-row{
           display:flex;
           justify-content:space-between;
-          gap: 10px;
-          padding: 3px 0;
-          font-size: 11px;
+          gap: 8px;
+          padding: 2px 0;
+          font-size: 9px;
         }
 
         .dm-k{
           font-weight: 900;
           color: var(--dm-muted);
-          min-width: 86px;
+          min-width: 72px;
         }
 
         .dm-v{
@@ -485,7 +522,7 @@ export default function OrderReceipt({
           text-align:right;
           word-break: break-word;
           overflow-wrap:anywhere;
-          max-width: 180px;
+          max-width: 160px;
         }
 
         .dm-v-danger{ color: var(--dm-danger); }
@@ -493,7 +530,7 @@ export default function OrderReceipt({
 
         .dm-table{
           border:1px solid var(--dm-border);
-          border-radius: 14px;
+          border-radius: 12px;
           overflow:hidden;
           background:#fff;
         }
@@ -502,66 +539,73 @@ export default function OrderReceipt({
           background: var(--dm-black);
           color: var(--dm-yellow);
           font-weight: 1000;
-          font-size: 10px;
-          padding: 8px 10px;
+          font-size: 8px;
+          padding: 7px 8px;
           display:grid;
-          grid-template-columns: 1fr 36px 74px;
-          gap: 8px;
+          grid-template-columns: 1fr 28px 62px;
+          gap: 6px;
         }
 
         .dm-tr{
-          padding: 8px 10px;
+          padding: 7px 8px;
           display:grid;
-          grid-template-columns: 1fr 36px 74px;
-          gap: 8px;
+          grid-template-columns: 1fr 28px 62px;
+          gap: 6px;
           border-top: 1px solid rgba(0,0,0,.06);
-          font-size: 11px;
+          font-size: 9px;
         }
 
         .dm-name{
           font-weight: 1000;
-          line-height: 1.15;
+          line-height: 1.12;
           word-break: break-word;
           overflow-wrap:anywhere;
         }
 
         .dm-sub{
-          font-size: 9px;
+          font-size: 8px;
           font-weight: 900;
           color: rgba(17,17,17,.6);
           margin-top: 2px;
         }
 
-        .dm-qty{ text-align:right; font-weight: 1000; }
-        .dm-line{ text-align:right; font-weight: 1000; }
+        .dm-qty{
+          text-align:right;
+          font-weight: 1000;
+        }
+
+        .dm-line{
+          text-align:right;
+          font-weight: 1000;
+        }
 
         .dm-totals{
-          margin-top: 10px;
+          margin-top: 8px;
           border-top: 1px dashed rgba(0,0,0,.22);
-          padding-top: 10px;
+          padding-top: 8px;
         }
 
         .dm-total{
           display:flex;
           justify-content:space-between;
-          margin-top: 8px;
-          font-size: 13px;
+          margin-top: 6px;
+          font-size: 11px;
           font-weight: 1000;
-          padding-top: 6px;
+          padding-top: 5px;
           border-top: 1px dashed rgba(0,0,0,.18);
         }
 
         .dm-qr{
           display:grid;
-          grid-template-columns: 118px 1fr;
-          gap: 10px;
+          grid-template-columns: 92px 1fr;
+          gap: 8px;
           align-items:center;
         }
 
         .dm-qrbox{
           border:1px solid var(--dm-border);
-          border-radius: 14px;
-          padding: 10px;
+          border-radius: 12px;
+          padding: 8px;
           display:flex;
           align-items:center;
           justify-content:center;
@@ -570,39 +614,39 @@ export default function OrderReceipt({
 
         .dm-qrtext{
           font-weight: 1000;
-          font-size: 11px;
+          font-size: 9px;
           line-height: 1.15;
         }
 
         .dm-qrurl{
-          margin-top: 6px;
-          font-size: 9px;
+          margin-top: 4px;
+          font-size: 7px;
           font-weight: 900;
           opacity: .7;
           word-break: break-all;
         }
 
         .dm-footer{
-          margin-top: 10px;
+          margin-top: 8px;
           text-align:center;
-          font-size: 10px;
+          font-size: 8px;
           font-weight: 900;
           opacity: .75;
         }
 
         .dm-actions{
-          margin-top: 12px;
+          margin-top: 10px;
           display:flex;
-          gap: 8px;
+          gap: 6px;
           flex-wrap: wrap;
         }
 
         .dm-btn{
           flex:1;
-          border-radius: 12px;
-          padding: 10px 10px;
+          border-radius: 10px;
+          padding: 8px 8px;
           font-weight: 1000;
-          font-size: 12px;
+          font-size: 10px;
           cursor:pointer;
           border: 1px solid var(--dm-black);
           background: var(--dm-black);
@@ -611,10 +655,10 @@ export default function OrderReceipt({
 
         .dm-btn-outline{
           flex:1;
-          border-radius: 12px;
-          padding: 10px 10px;
+          border-radius: 10px;
+          padding: 8px 8px;
           font-weight: 1000;
-          font-size: 12px;
+          font-size: 10px;
           cursor:pointer;
           border: 1px solid var(--dm-black);
           background: #fff;
@@ -702,43 +746,51 @@ export default function OrderReceipt({
               <div className="dm-section-title">
                 <span className="dm-dot" /> 🧾 Informations
               </div>
+
               <div className="dm-card">
-                <div className="dm-row">
-                  <div className="dm-k">Client</div>
-                  <div className="dm-v">{fullName}</div>
-                </div>
-                <div className="dm-row">
-                  <div className="dm-k">Téléphone</div>
-                  <div className="dm-v">{phone}</div>
-                </div>
-                <div className="dm-row">
-                  <div className="dm-k">Ville</div>
-                  <div className="dm-v">{city}</div>
-                </div>
-                <div className="dm-row">
-                  <div className="dm-k">Commune</div>
-                  <div className="dm-v">{commune}</div>
-                </div>
-                <div className="dm-row">
-                  <div className="dm-k">Quartier</div>
-                  <div className="dm-v">{district}</div>
-                </div>
-                <div className="dm-row">
-                  <div className="dm-k">Adresse</div>
-                  <div className="dm-v">{addressLine}</div>
-                </div>
-                {landmark ? (
-                  <div className="dm-row">
-                    <div className="dm-k">Repère</div>
-                    <div className="dm-v">{landmark}</div>
+                <div className="dm-info-grid">
+                  <div className="dm-info-item">
+                    <div className="dm-info-k">Client</div>
+                    <div className="dm-info-v">{fullName}</div>
                   </div>
-                ) : null}
-                {deliveryMode ? (
-                  <div className="dm-row">
-                    <div className="dm-k">Livraison</div>
-                    <div className="dm-v">{deliveryMode}</div>
+
+                  <div className="dm-info-item">
+                    <div className="dm-info-k">Téléphone</div>
+                    <div className="dm-info-v">{phone}</div>
                   </div>
-                ) : null}
+
+                  <div className="dm-info-item">
+                    <div className="dm-info-k">Ville</div>
+                    <div className="dm-info-v">{city}</div>
+                  </div>
+
+                  <div className="dm-info-item">
+                    <div className="dm-info-k">Commune</div>
+                    <div className="dm-info-v">{commune}</div>
+                  </div>
+
+                  <div className="dm-info-item">
+                    <div className="dm-info-k">Quartier</div>
+                    <div className="dm-info-v">{district}</div>
+                  </div>
+
+                  <div className="dm-info-item">
+                    <div className="dm-info-k">Livraison</div>
+                    <div className="dm-info-v">{deliveryMode || "—"}</div>
+                  </div>
+
+                  <div className="dm-info-item dm-info-item-full">
+                    <div className="dm-info-k">Adresse</div>
+                    <div className="dm-info-v">{addressLine}</div>
+                  </div>
+
+                  {landmark ? (
+                    <div className="dm-info-item dm-info-item-full">
+                      <div className="dm-info-k">Repère</div>
+                      <div className="dm-info-v">{landmark}</div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
 
@@ -781,7 +833,7 @@ export default function OrderReceipt({
                     );
                   })
                 ) : (
-                  <div style={{ padding: 10, fontSize: 11, opacity: 0.7 }}>
+                  <div style={{ padding: 8, fontSize: 9, opacity: 0.7 }}>
                     Aucun produit.
                   </div>
                 )}
@@ -866,7 +918,7 @@ export default function OrderReceipt({
               <div className="dm-card">
                 <div className="dm-qr">
                   <div className="dm-qrbox">
-                    <QRCode value={verifyUrl || "https://duumini.com"} size={110} />
+                    <QRCode value={verifyUrl || "https://duumini.com"} size={86} />
                   </div>
                   <div>
                     <div className="dm-qrtext">
