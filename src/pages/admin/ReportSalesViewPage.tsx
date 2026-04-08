@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { toBlob, toPng } from "html-to-image";
-import { getSalesReport, type SalesReport } from "../../services/reports";
+import {
+  getSalesReport,
+  parseSalesReportDetails,
+  type SalesReport,
+  type PaymentBreakdownRow,
+} from "../../services/reports";
 
 function fmt(iso?: string | null) {
   if (!iso) return "—";
@@ -21,19 +26,6 @@ function money(n?: number | null, currency = "MAD") {
     currency,
     maximumFractionDigits: 2,
   }).format(Number(n || 0));
-}
-
-function parseJson(value: any) {
-  if (!value) return null;
-  if (typeof value === "object") return value;
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return null;
-    }
-  }
-  return null;
 }
 
 function num(v: any) {
@@ -83,33 +75,24 @@ export default function ReportSalesViewPage() {
     };
   }, [reportId]);
 
-  const details = useMemo(() => parseJson(report?.details_json), [report]);
+  const details = useMemo(() => parseSalesReportDetails(report?.details_json), [report]);
 
-  const paymentBreakdown = useMemo(() => {
+  const paymentBreakdown = useMemo<PaymentBreakdownRow[]>(() => {
     return Array.isArray(details?.payment_breakdown) ? details.payment_breakdown : [];
   }, [details]);
 
   const grossItemsAmount = useMemo(() => {
     return num(
-      details?.gross_items_amount ??
-        details?.gross_products_amount ??
-        details?.items_subtotal
+      details?.gross_items_amount
     );
   }, [details]);
 
   const adminDiscountAmount = useMemo(() => {
-    return num(
-      details?.admin_discount_amount ??
-        details?.discount_amount ??
-        details?.reduction_amount
-    );
+    return num(details?.admin_discount_amount);
   }, [details]);
 
   const netItemsAmount = useMemo(() => {
-    const direct = num(
-      details?.net_items_amount ??
-        details?.discounted_items_amount
-    );
+    const direct = num(details?.net_items_amount);
     if (direct > 0) return direct;
 
     const reportItems = num(report?.items_amount);
@@ -119,54 +102,40 @@ export default function ReportSalesViewPage() {
   }, [details, report, grossItemsAmount, adminDiscountAmount]);
 
   const paidAmount = useMemo(() => {
-    if (!report) return 0;
-
-    const directCandidates = [
-      details?.paid_amount,
-      details?.amount_paid,
-      details?.paid_total,
-      details?.total_paid,
-      details?.encaisse,
-      details?.sum_paid,
-    ];
-
-    for (const v of directCandidates) {
-      const n = Number(v);
-      if (Number.isFinite(n)) return n;
-    }
+    const direct = num(details?.paid_amount);
+    if (direct > 0) return direct;
 
     if (paymentBreakdown.length) {
-      return paymentBreakdown.reduce((sum: number, row: any) => {
-        return sum + num(row?.paid_amount);
-      }, 0);
+      return paymentBreakdown.reduce((sum, row) => sum + num(row?.paid_amount), 0);
     }
 
     return 0;
-  }, [report, details, paymentBreakdown]);
+  }, [details, paymentBreakdown]);
 
   const remainingAmount = useMemo(() => {
-    if (!report) return 0;
+    const direct = num(details?.remaining_amount);
+    if (direct > 0) return direct;
 
-    const directCandidates = [
-      details?.remaining_amount,
-      details?.rest_to_pay,
-      details?.remaining,
-      details?.amount_remaining,
-      details?.reste_a_payer,
-    ];
-
-    for (const v of directCandidates) {
-      const n = Number(v);
-      if (Number.isFinite(n)) return n;
-    }
-
-    const total = num(report.total_amount);
+    const total = num(report?.total_amount);
     const remain = total - paidAmount;
     return remain > 0 ? remain : 0;
-  }, [report, details, paidAmount]);
+  }, [details, report, paidAmount]);
+
+  const deliveryAmount = useMemo(() => num(report?.delivery_amount), [report]);
+
+  const totalVentes = useMemo(() => {
+    return netItemsAmount;
+  }, [netItemsAmount]);
+
+  const totalGlobal = useMemo(() => {
+    const reportTotal = num(report?.total_amount);
+    if (reportTotal > 0) return reportTotal;
+    return netItemsAmount + deliveryAmount;
+  }, [report, netItemsAmount, deliveryAmount]);
 
   const shareText = useMemo(() => {
     if (!report) return "";
+
     return [
       `DUUMINI - Rapport de ventes`,
       ``,
@@ -180,9 +149,10 @@ export default function ReportSalesViewPage() {
       `- Nombre de commandes : ${report.orders_count ?? 0}`,
       `- Montant produits brut : ${money(grossItemsAmount, report.currency)}`,
       `- Réduction admin : ${money(adminDiscountAmount, report.currency)}`,
-      `- Montant produits net : ${money(netItemsAmount, report.currency)}`,
-      `- Livraison : ${money(report.delivery_amount, report.currency)}`,
-      `- Total ventes : ${money(report.total_amount, report.currency)}`,
+      `- Produits nets : ${money(netItemsAmount, report.currency)}`,
+      `- Livraison : ${money(deliveryAmount, report.currency)}`,
+      `- Total ventes : ${money(totalVentes, report.currency)}`,
+      `- Total global : ${money(totalGlobal, report.currency)}`,
       ``,
       `Résumé financier`,
       `- Commission Duumini : ${money(report.duumini_commission, report.currency)}`,
@@ -196,6 +166,9 @@ export default function ReportSalesViewPage() {
     grossItemsAmount,
     adminDiscountAmount,
     netItemsAmount,
+    deliveryAmount,
+    totalVentes,
+    totalGlobal,
     paidAmount,
     remainingAmount,
   ]);
@@ -929,7 +902,7 @@ export default function ReportSalesViewPage() {
 
                 <div className="stat-box">
                   <div className="stat-label">Total ventes</div>
-                  <div className="stat-value">{money(report.total_amount, report.currency)}</div>
+                  <div className="stat-value">{money(totalVentes, report.currency)}</div>
                 </div>
 
                 <div className="stat-box">
@@ -969,10 +942,19 @@ export default function ReportSalesViewPage() {
                     <div className="line-value">{money(netItemsAmount, report.currency)}</div>
                   </div>
 
-                  
+                  <div className="line-row">
+                    <div className="line-label">Livraison</div>
+                    <div className="line-value">{money(deliveryAmount, report.currency)}</div>
+                  </div>
+
                   <div className="line-row">
                     <div className="line-label">Total ventes</div>
-                    <div className="line-value">{money(report.total_amount, report.currency)}</div>
+                    <div className="line-value">{money(totalVentes, report.currency)}</div>
+                  </div>
+
+                  <div className="line-row">
+                    <div className="line-label">Total global</div>
+                    <div className="line-value">{money(totalGlobal, report.currency)}</div>
                   </div>
                 </div>
 
@@ -984,11 +966,32 @@ export default function ReportSalesViewPage() {
                     <div className="line-value">{money(netItemsAmount, report.currency)}</div>
                   </div>
 
-                  
-
                   <div className="line-row">
                     <div className="line-label">Commission Duumini</div>
-                    <div className="line-value">{money(report.duumini_commission, report.currency)}</div>
+                    <div className="line-value">
+                      {money(report.duumini_commission, report.currency)}
+                    </div>
+                  </div>
+
+                  <div className="line-row">
+                    <div className="line-label">Mode prix article</div>
+                    <div className="line-value">
+                      {details?.item_price_mode || "—"}
+                    </div>
+                  </div>
+
+                  <div className="line-row">
+                    <div className="line-label">Colonne date</div>
+                    <div className="line-value">
+                      {details?.date_column_used || "—"}
+                    </div>
+                  </div>
+
+                  <div className="line-row">
+                    <div className="line-label">Colonne livraison</div>
+                    <div className="line-value">
+                      {details?.delivery_column_used || "—"}
+                    </div>
                   </div>
                 </div>
 
@@ -1002,13 +1005,15 @@ export default function ReportSalesViewPage() {
 
                   <div className="line-row">
                     <div className="line-label">Reste à payer</div>
-                    <div className="line-value warn">{money(remainingAmount, report.currency)}</div>
+                    <div className="line-value warn">
+                      {money(remainingAmount, report.currency)}
+                    </div>
                   </div>
 
                   <div className="grand-total">
                     <div className="line-row">
                       <div className="line-label">Total global</div>
-                      <div className="line-value">{money(report.total_amount, report.currency)}</div>
+                      <div className="line-value">{money(totalGlobal, report.currency)}</div>
                     </div>
                   </div>
                 </div>
@@ -1035,6 +1040,15 @@ export default function ReportSalesViewPage() {
                     <div className="line-label">Fin période</div>
                     <div className="line-value">{fmt(report.period_end)}</div>
                   </div>
+
+                  <div className="line-row">
+                    <div className="line-label">Statuts inclus</div>
+                    <div className="line-value">
+                      {details?.included_statuses?.length
+                        ? details.included_statuses.join(", ")
+                        : "—"}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="section-card span-2">
@@ -1051,7 +1065,7 @@ export default function ReportSalesViewPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {paymentBreakdown.map((row: any, index: number) => (
+                        {paymentBreakdown.map((row, index) => (
                           <tr key={`${row?.payment_status || "row"}-${index}`}>
                             <td>{row?.payment_status || "—"}</td>
                             <td>{Number(row?.cnt || 0)}</td>
