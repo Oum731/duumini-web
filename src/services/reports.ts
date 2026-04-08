@@ -2,6 +2,36 @@ import { api } from "./http";
 
 export type ReportType = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
+export type PaymentBreakdownRow = {
+  payment_status: string;
+  cnt: number;
+  amount: number;
+  paid_amount: number;
+  remaining_amount?: number;
+};
+
+export type SalesReportDetails = {
+  gross_items_amount?: number;
+  admin_discount_amount?: number;
+  net_items_amount?: number;
+  paid_amount?: number;
+  remaining_amount?: number;
+  payment_breakdown?: PaymentBreakdownRow[];
+
+  included_statuses?: string[];
+  date_column_used?: string | null;
+  delivery_column_used?: string | null;
+
+  item_qty_column_used?: string | null;
+  item_price_column_used?: string | null;
+  item_price_mode?:
+    | "PURCHASE_PRICE_SNAPSHOT"
+    | "ORDER_ITEM_SALE_PRICE_FALLBACK"
+    | "ORDER_SUMMARY_FALLBACK"
+    | string
+    | null;
+};
+
 export type SalesReport = {
   id: number;
   period_type: ReportType;
@@ -14,7 +44,7 @@ export type SalesReport = {
   delivery_amount?: number;
   total_amount?: number;
   duumini_commission?: number;
-  details_json?: any;
+  details_json?: SalesReportDetails | string | null;
 
   created_at?: string | null;
   updated_at?: string | null;
@@ -42,8 +72,51 @@ export type RunSalesReportResponse = {
   report: SalesReport;
 };
 
+export type BackfillSalesReportsPayload = {
+  period_type: ReportType;
+  currency?: string;
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type BackfillSalesReportsResponse = {
+  ok: true;
+  period_type: ReportType;
+  currency: string;
+  generated: number;
+  skipped?: boolean;
+  message?: string;
+  from?: string;
+  to?: string;
+};
+
+export type BackfillAllSalesReportsPayload = {
+  currency?: string;
+  fromDate?: string;
+  toDate?: string;
+};
+
+export type BackfillAllSalesReportsResponse = {
+  ok: true;
+  currency: string;
+  results: BackfillSalesReportsResponse[];
+};
+
 function unwrap<T = any>(r: any): T {
   return (r?.data ?? r) as T;
+}
+
+export function parseSalesReportDetails(
+  value: SalesReport["details_json"]
+): SalesReportDetails | null {
+  if (!value) return null;
+  if (typeof value === "object") return value as SalesReportDetails;
+
+  try {
+    return JSON.parse(value) as SalesReportDetails;
+  } catch {
+    return null;
+  }
 }
 
 function filenameFromDisposition(
@@ -123,18 +196,15 @@ export async function listSalesReports(
   if (params.from) query.from = String(params.from).slice(0, 19);
   if (params.to) query.to = String(params.to).slice(0, 19);
 
-  const r = await api.get("/api/reports/sales", {
-  query,
-});
-
+  const r = await api.get("/api/reports/sales", { query });
   const body = unwrap<any>(r);
 
   if (body && Array.isArray(body.items)) {
-    return { items: body.items };
+    return { items: body.items as SalesReport[] };
   }
 
   if (Array.isArray(body)) {
-    return { items: body };
+    return { items: body as SalesReport[] };
   }
 
   return { items: [] };
@@ -157,6 +227,34 @@ export async function runSalesReport(
 
   const r = await api.post("/api/reports/sales/run", body);
   return unwrap<RunSalesReportResponse>(r);
+}
+
+export async function backfillSalesReports(
+  payload: BackfillSalesReportsPayload
+): Promise<BackfillSalesReportsResponse> {
+  const body: Record<string, any> = {
+    period_type: String(payload.period_type).toUpperCase(),
+  };
+
+  if (payload.currency) body.currency = String(payload.currency).toUpperCase();
+  if (payload.fromDate) body.fromDate = payload.fromDate;
+  if (payload.toDate) body.toDate = payload.toDate;
+
+  const r = await api.post("/api/reports/sales/backfill", body);
+  return unwrap<BackfillSalesReportsResponse>(r);
+}
+
+export async function backfillAllSalesReports(
+  payload: BackfillAllSalesReportsPayload = {}
+): Promise<BackfillAllSalesReportsResponse> {
+  const body: Record<string, any> = {};
+
+  if (payload.currency) body.currency = String(payload.currency).toUpperCase();
+  if (payload.fromDate) body.fromDate = payload.fromDate;
+  if (payload.toDate) body.toDate = payload.toDate;
+
+  const r = await api.post("/api/reports/sales/backfill-all", body);
+  return unwrap<BackfillAllSalesReportsResponse>(r);
 }
 
 /* =========================

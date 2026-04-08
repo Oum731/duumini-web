@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   listSalesReports,
+  parseSalesReportDetails,
   type ReportType,
   type SalesReport,
 } from "../../services/reports";
@@ -193,17 +194,6 @@ function buildQueryParams(args: {
   };
 }
 
-function parseDetailsJson(value: any) {
-  if (!value) return null;
-  if (typeof value === "object") return value;
-
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
 function sumBy<T>(items: T[], getter: (x: T) => number) {
   return items.reduce((acc, item) => acc + getter(item), 0);
 }
@@ -217,89 +207,59 @@ function pickFirstFiniteNumber(...values: any[]) {
 }
 
 function normalizeReportRow(r: SalesReport) {
-  const details = parseDetailsJson((r as any).details_json) || {};
+  const details = parseSalesReportDetails(r.details_json) || {};
 
-  const deliveryAmount = Math.max(
-    0,
-    pickFirstFiniteNumber(
-      details.delivery_amount,
-      (r as any).delivery_amount,
-      0
-    ) ?? 0
-  );
-
-  const discountAmount = Math.max(
-    0,
-    pickFirstFiniteNumber(
-      details.admin_discount_amount,
-      details.discount_amount,
-      details.discount,
-      (r as any).admin_discount_amount,
-      0
-    ) ?? 0
-  );
-
-  const grossCandidate = Math.max(
+  const grossItemsAmount = Math.max(
     0,
     pickFirstFiniteNumber(
       details.gross_items_amount,
-      details.items_gross_amount
+      details.net_items_amount && details.admin_discount_amount !== undefined
+        ? Number(details.net_items_amount) + Number(details.admin_discount_amount || 0)
+        : null
     ) ?? 0
   );
 
-  const netCandidate = Math.max(
+  const adminDiscountAmount = Math.max(
+    0,
+    pickFirstFiniteNumber(details.admin_discount_amount, 0) ?? 0
+  );
+
+  const netItemsAmount = Math.max(
     0,
     pickFirstFiniteNumber(
       details.net_items_amount,
-      details.items_net_amount,
-      (r as any).items_amount
+      r.items_amount,
+      r.total_amount,
+      0
     ) ?? 0
   );
 
-  let grossItemsAmount = grossCandidate;
-  let netItemsAmount = netCandidate;
+  const deliveryAmount = Math.max(
+    0,
+    pickFirstFiniteNumber(r.delivery_amount, 0) ?? 0
+  );
 
-  if (grossItemsAmount <= 0 && netItemsAmount > 0) {
-    grossItemsAmount = netItemsAmount + discountAmount;
-  }
-
-  if (netItemsAmount <= 0 && grossItemsAmount > 0) {
-    netItemsAmount = Math.max(0, grossItemsAmount - discountAmount);
-  }
-
-  if (grossItemsAmount > 0 && netItemsAmount > grossItemsAmount) {
-    grossItemsAmount = netItemsAmount + discountAmount;
-  }
-
-  if (grossItemsAmount <= 0 && netItemsAmount <= 0) {
-    const fallbackTotal = Math.max(
-      0,
-      pickFirstFiniteNumber((r as any).total_amount, 0) ?? 0
-    );
-    netItemsAmount = Math.max(0, fallbackTotal - deliveryAmount);
-    grossItemsAmount = netItemsAmount + discountAmount;
-  }
-
-  const totalSalesAmount = netItemsAmount;
+  const totalSalesAmount = Math.max(
+    0,
+    pickFirstFiniteNumber(r.total_amount, netItemsAmount, 0) ?? 0
+  );
 
   const paidAmount = Math.max(
     0,
+    pickFirstFiniteNumber(details.paid_amount, 0) ?? 0
+  );
+
+  const remainingAmount = Math.max(
+    0,
     pickFirstFiniteNumber(
-      details.paid_amount,
-      (r as any).paid_amount,
-      0
+      details.remaining_amount,
+      Math.max(0, totalSalesAmount - paidAmount)
     ) ?? 0
   );
 
-  const remainingAmount = Math.max(0, totalSalesAmount - paidAmount);
-
   const commissionAmount = Math.max(
     0,
-    pickFirstFiniteNumber(
-      details.duumini_commission,
-      (r as any).duumini_commission,
-      0
-    ) ?? 0
+    pickFirstFiniteNumber(r.duumini_commission, 0) ?? 0
   );
 
   const paymentBreakdown = Array.isArray(details.payment_breakdown)
@@ -310,7 +270,7 @@ function normalizeReportRow(r: SalesReport) {
     ...r,
     _details: details,
     _gross_items_amount: grossItemsAmount,
-    _admin_discount_amount: discountAmount,
+    _admin_discount_amount: adminDiscountAmount,
     _net_items_amount: netItemsAmount,
     _delivery_amount: deliveryAmount,
     _total_sales_amount: totalSalesAmount,
@@ -443,7 +403,10 @@ export default function ReportsSalesPage() {
       (x: any) => toNumber(x._delivery_amount)
     );
 
-    const totalAmount = netItemsAmount;
+    const totalAmount = sumBy(
+      enrichedItems,
+      (x: any) => toNumber(x._total_sales_amount)
+    );
 
     const commissionAmount = sumBy(
       enrichedItems,
@@ -455,7 +418,10 @@ export default function ReportsSalesPage() {
       (x: any) => toNumber(x._paid_amount)
     );
 
-    const remainingAmount = Math.max(0, totalAmount - paidAmount);
+    const remainingAmount = sumBy(
+      enrichedItems,
+      (x: any) => toNumber(x._remaining_amount)
+    );
 
     return {
       reportsCount,
