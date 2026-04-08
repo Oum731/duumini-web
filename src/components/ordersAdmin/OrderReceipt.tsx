@@ -116,7 +116,6 @@ function fmtDateOnly(raw: any) {
   return d.toLocaleDateString("fr-FR");
 }
 
-
 function fmtQty(value: any) {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return "0";
@@ -130,7 +129,6 @@ function normalizeCustomerRole(v: any): CustomerRole {
   const s = safeUpper(v);
   return s === "VENDEUR" || s === "VENDOR" || s === "SELLER" ? "VENDEUR" : "CLIENT";
 }
-
 
 function buildOrderDocumentNumber(rawDate: any, orderCode: string) {
   const d = new Date(rawDate || Date.now());
@@ -627,6 +625,7 @@ export default function OrderReceipt(props: {
           font-weight:700;
           word-break:break-word;
           overflow-wrap:anywhere;
+          min-width:0;
         }
 
         .dm-client-line b{
@@ -860,7 +859,8 @@ export default function OrderReceipt(props: {
           }
 
           .dm-client-lines{
-            grid-template-columns:1fr;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:4px 8px;
           }
 
           .dm-doc-row{
@@ -925,7 +925,12 @@ export default function OrderReceipt(props: {
           }
 
           .dm-client-line{
-            font-size:6.5px;
+            font-size:6.2px;
+          }
+
+          .dm-client-lines{
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:4px 6px;
           }
         }
 
@@ -1031,8 +1036,6 @@ export default function OrderReceipt(props: {
               </div>
 
               <div className="dm-client-box">
-               
-
                 <div className="dm-client-lines">
                   <div className="dm-client-line"><b>Client :</b> {fullName}</div>
                   <div className="dm-client-line"><b>Nom commercial :</b> {customerHeaderName}</div>
@@ -1131,8 +1134,6 @@ export default function OrderReceipt(props: {
                       </div>
                     </div>
                   ) : null}
-
-                  
                 </div>
               </div>
 
@@ -1167,10 +1168,7 @@ export default function OrderReceipt(props: {
                 </div>
               </div>
 
-             
               <div className="dm-client-box">
-                
-
                 <div className="dm-client-lines">
                   {receiptInfoRows.map((row) => (
                     <div key={row.label} className="dm-client-line">
