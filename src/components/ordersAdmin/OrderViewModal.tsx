@@ -20,6 +20,34 @@ import {
   waHref,
 } from "./orderUtils";
 import OrderReceipt from "./OrderReceipt";
+import { useAuth } from "../../context/AuthContext";
+
+const FRONT_ALLOWED_PHONES = ["+212665255698", "+212662325586"];
+
+function normalizePhone(value: any) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cleaned = raw.replace(/[^\d+]/g, "");
+
+  if (cleaned.startsWith("+")) {
+    return `+${cleaned.slice(1).replace(/\D/g, "")}`;
+  }
+
+  return cleaned.replace(/\D/g, "");
+}
+
+function getAuthUserPhone(user: any) {
+  return (
+    user?.phone ||
+    user?.telephone ||
+    user?.user_phone ||
+    user?.contact?.phone ||
+    user?.profile?.phone ||
+    user?.admin?.phone ||
+    ""
+  );
+}
+
 
 export default function OrderViewModal(props: {
   open: boolean;
@@ -37,7 +65,6 @@ export default function OrderViewModal(props: {
   onConfirmQuick: (s: OrderStatus) => void;
   onSaveStatus: () => void;
 
-  // paiement
   updatePaymentAvailable: boolean;
   payEditMode: "SET" | "ADD";
   setPayEditMode: (m: "SET" | "ADD") => void;
@@ -50,7 +77,6 @@ export default function OrderViewModal(props: {
   paySaving: boolean;
   onSavePayment: () => void;
 
-  // actions
   onCancel: (id: number) => void;
 
   dateTime: (iso?: string) => string;
@@ -81,6 +107,14 @@ export default function OrderViewModal(props: {
     onCancel,
     dateTime,
   } = props;
+
+  const auth = useAuth() as any;
+  const currentUser = auth?.user || auth?.currentUser || auth?.admin || null;
+
+  const currentUserPhone = normalizePhone(getAuthUserPhone(currentUser));
+  const canModifyFromFront = FRONT_ALLOWED_PHONES
+    .map(normalizePhone)
+    .includes(currentUserPhone);
 
   if (!open || viewId == null) return null;
 
@@ -138,18 +172,30 @@ export default function OrderViewModal(props: {
     return computeOrderAmounts(detail);
   }, [detail]);
 
-  // ✅ styles utilitaires: wrap + anti overflow (aucune donnée ne déborde)
   const wrapText: React.CSSProperties = {
     whiteSpace: "normal",
     overflowWrap: "anywhere",
     wordBreak: "break-word",
   };
 
+  const modificationLockMessage =
+    "Vous n’êtes pas autorisé à modifier cette commande depuis cette interface.";
+
   return (
-    <div className="modal d-block" tabIndex={-1} role="dialog" style={{ background: "rgba(0,0,0,.45)" }}>
-      <div className="modal-dialog modal-xl modal-dialog-centered" role="document">
-        <div className="modal-content border-0 shadow-lg" style={{ borderRadius: 16, overflow: "hidden" }}>
-          {/* Header */}
+    <div
+      className="modal d-block"
+      tabIndex={-1}
+      role="dialog"
+      style={{ background: "rgba(0,0,0,.45)" }}
+    >
+      <div
+        className="modal-dialog modal-xl modal-dialog-centered"
+        role="document"
+      >
+        <div
+          className="modal-content border-0 shadow-lg"
+          style={{ borderRadius: 16, overflow: "hidden" }}
+        >
           <div className="modal-header align-items-start">
             <div className="d-flex flex-column" style={{ minWidth: 0 }}>
               <h5 className="modal-title mb-1" style={wrapText}>
@@ -158,10 +204,16 @@ export default function OrderViewModal(props: {
 
               {detail ? (
                 <div className="d-flex flex-wrap align-items-center gap-2">
-                  <span className={`badge ${BADGE[((detail as AnyObj).status as OrderStatus) || "OPEN"]}`}>
+                  <span
+                    className={`badge ${
+                      BADGE[((detail as AnyObj).status as OrderStatus) || "OPEN"]
+                    }`}
+                  >
                     {(detail as AnyObj).status}
                   </span>
-                  <span className={`badge ${viewFulLabel.cls}`}>{viewFulLabel.text}</span>
+                  <span className={`badge ${viewFulLabel.cls}`}>
+                    {viewFulLabel.text}
+                  </span>
                   <span className="text-muted small" style={wrapText}>
                     {dateTime((detail as AnyObj).created_at)}
                   </span>
@@ -173,6 +225,12 @@ export default function OrderViewModal(props: {
           </div>
 
           <div className="modal-body">
+            {!canModifyFromFront ? (
+              <div className="alert alert-warning mb-3" style={wrapText}>
+                {modificationLockMessage}
+              </div>
+            ) : null}
+
             {loading ? (
               <div className="text-muted">Chargement…</div>
             ) : error ? (
@@ -183,36 +241,69 @@ export default function OrderViewModal(props: {
               <div className="text-muted">Aucun détail.</div>
             ) : (
               <>
-                {/* Actions status */}
                 <div className="card border-0 shadow-sm mb-3">
                   <div className="card-body">
                     <div className="d-flex flex-column flex-lg-row gap-2 justify-content-between align-items-stretch align-items-lg-center">
-                      <div className="btn-group flex-wrap" role="group" aria-label="Quick status">
+                      <div
+                        className="btn-group flex-wrap"
+                        role="group"
+                        aria-label="Quick status"
+                      >
                         <button
                           className="btn btn-sm btn-outline-dark"
-                          disabled={saving || (detail as AnyObj).status !== "OPEN"}
-                          onClick={() => onConfirmQuick("PREPARATION")}
-                          title="Confirmer = passer en préparation"
+                          disabled={
+                            !canModifyFromFront ||
+                            saving ||
+                            (detail as AnyObj).status !== "OPEN"
+                          }
+                          onClick={() => {
+                            if (!canModifyFromFront) return;
+                            onConfirmQuick("PREPARATION");
+                          }}
+                          title={
+                            !canModifyFromFront
+                              ? modificationLockMessage
+                              : "Confirmer = passer en préparation"
+                          }
                         >
                           Confirmer
                         </button>
                         <button
                           className="btn btn-sm btn-outline-secondary"
-                          disabled={saving || (detail as AnyObj).status !== "PREPARATION"}
-                          onClick={() => onConfirmQuick("DELIVERY")}
-                          title="Mettre en livraison"
+                          disabled={
+                            !canModifyFromFront ||
+                            saving ||
+                            (detail as AnyObj).status !== "PREPARATION"
+                          }
+                          onClick={() => {
+                            if (!canModifyFromFront) return;
+                            onConfirmQuick("DELIVERY");
+                          }}
+                          title={
+                            !canModifyFromFront
+                              ? modificationLockMessage
+                              : "Mettre en livraison"
+                          }
                         >
                           En livraison
                         </button>
                         <button
                           className="btn btn-sm btn-outline-success"
                           disabled={
+                            !canModifyFromFront ||
                             saving ||
                             (detail as AnyObj).status === "DONE" ||
                             (detail as AnyObj).status === "CANCELLED"
                           }
-                          onClick={() => onConfirmQuick("DONE")}
-                          title="Marquer comme livrée"
+                          onClick={() => {
+                            if (!canModifyFromFront) return;
+                            onConfirmQuick("DONE");
+                          }}
+                          title={
+                            !canModifyFromFront
+                              ? modificationLockMessage
+                              : "Marquer comme livrée"
+                          }
                         >
                           Livrée
                         </button>
@@ -222,9 +313,17 @@ export default function OrderViewModal(props: {
                         <select
                           className="form-select form-select-sm"
                           value={viewStatus}
-                          onChange={(e) => setViewStatus(e.target.value as OrderStatus)}
+                          onChange={(e) =>
+                            canModifyFromFront &&
+                            setViewStatus(e.target.value as OrderStatus)
+                          }
                           style={{ width: 200 }}
-                          disabled={saving}
+                          disabled={!canModifyFromFront || saving}
+                          title={
+                            !canModifyFromFront
+                              ? modificationLockMessage
+                              : undefined
+                          }
                         >
                           {STATUSES.map((s) => (
                             <option key={s} value={s}>
@@ -233,7 +332,19 @@ export default function OrderViewModal(props: {
                           ))}
                         </select>
 
-                        <button className="btn btn-sm btn-dark" disabled={saving} onClick={onSaveStatus}>
+                        <button
+                          className="btn btn-sm btn-dark"
+                          disabled={!canModifyFromFront || saving}
+                          onClick={() => {
+                            if (!canModifyFromFront) return;
+                            onSaveStatus();
+                          }}
+                          title={
+                            !canModifyFromFront
+                              ? modificationLockMessage
+                              : undefined
+                          }
+                        >
                           {saving ? "…" : "Enregistrer"}
                         </button>
                       </div>
@@ -242,9 +353,7 @@ export default function OrderViewModal(props: {
                 </div>
 
                 <div className="row g-3">
-                  {/* Col gauche */}
                   <div className="col-12 col-lg-5">
-                    {/* Client */}
                     <div className="card border-0 shadow-sm mb-3">
                       <div className="card-body">
                         <div className="d-flex justify-content-between align-items-start gap-2">
@@ -268,7 +377,10 @@ export default function OrderViewModal(props: {
                               WhatsApp
                             </a>
                             {client.phone ? (
-                              <a className="btn btn-sm btn-outline-dark" href={telHref(client.phone)}>
+                              <a
+                                className="btn btn-sm btn-outline-dark"
+                                href={telHref(client.phone)}
+                              >
                                 Appeler
                               </a>
                             ) : null}
@@ -277,13 +389,14 @@ export default function OrderViewModal(props: {
                       </div>
                     </div>
 
-                    {/* Adresse / Réception */}
                     {viewFulfillment === "DELIVERY" ? (
                       <div className="card border-0 shadow-sm mb-3">
                         <div className="card-body">
                           <div className="d-flex justify-content-between align-items-start gap-2">
                             <div style={{ minWidth: 0 }}>
-                              <div className="text-muted small mb-1">Adresse de livraison</div>
+                              <div className="text-muted small mb-1">
+                                Adresse de livraison
+                              </div>
                               <div style={wrapText}>
                                 {address?.city || address?.ville || "—"}
                                 {address?.commune ? `, ${address.commune}` : ""}
@@ -293,8 +406,12 @@ export default function OrderViewModal(props: {
                               </div>
 
                               {address?.gps ? (
-                                <div className="text-muted small mt-2" style={wrapText}>
-                                  GPS: {address.gps.lat?.toFixed?.(5)}, {address.gps.lng?.toFixed?.(5)}
+                                <div
+                                  className="text-muted small mt-2"
+                                  style={wrapText}
+                                >
+                                  GPS: {address.gps.lat?.toFixed?.(5)},{" "}
+                                  {address.gps.lng?.toFixed?.(5)}
                                 </div>
                               ) : null}
                             </div>
@@ -322,19 +439,18 @@ export default function OrderViewModal(props: {
                             </div>
                           ) : (
                             <div className="text-muted small" style={wrapText}>
-                              Expédition : dépôt Duumini. Le client paie le transporteur au retrait.
+                              Expédition : dépôt Duumini. Le client paie le
+                              transporteur au retrait.
                             </div>
                           )}
                         </div>
                       </div>
                     )}
 
-                    {/* Reçu */}
                     <div className="mb-3">
                       <OrderReceipt order={detail as AnyObj} />
                     </div>
 
-                    {/* Paiement */}
                     <div className="card border-0 shadow-sm">
                       <div className="card-body">
                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -406,25 +522,45 @@ export default function OrderViewModal(props: {
                             </div>
 
                             {(viewPay.method || viewPay.note) && (
-                              <div className="small text-muted mt-2" style={wrapText}>
+                              <div
+                                className="small text-muted mt-2"
+                                style={wrapText}
+                              >
                                 {viewPay.method ? (
-                                  <div style={wrapText}>Méthode: {String(viewPay.method)}</div>
+                                  <div style={wrapText}>
+                                    Méthode: {String(viewPay.method)}
+                                  </div>
                                 ) : null}
                                 {viewPay.note ? (
-                                  <div style={wrapText}>Note: {String(viewPay.note)}</div>
+                                  <div style={wrapText}>
+                                    Note: {String(viewPay.note)}
+                                  </div>
                                 ) : null}
                               </div>
                             )}
 
                             {updatePaymentAvailable ? (
                               <div className="mt-3">
+                                {!canModifyFromFront ? (
+                                  <div
+                                    className="alert alert-light border small mb-2"
+                                    style={wrapText}
+                                  >
+                                    Modification du paiement verrouillée pour ce
+                                    compte.
+                                  </div>
+                                ) : null}
+
                                 <div className="row g-2">
                                   <div className="col-12 col-md-4">
                                     <select
                                       className="form-select form-select-sm"
                                       value={payEditMode}
-                                      onChange={(e) => setPayEditMode(e.target.value as any)}
-                                      disabled={paySaving}
+                                      onChange={(e) =>
+                                        canModifyFromFront &&
+                                        setPayEditMode(e.target.value as any)
+                                      }
+                                      disabled={!canModifyFromFront || paySaving}
                                     >
                                       <option value="ADD">Ajouter</option>
                                       <option value="SET">Fixer</option>
@@ -437,10 +573,19 @@ export default function OrderViewModal(props: {
                                       min={0}
                                       step="1"
                                       className="form-control form-control-sm"
-                                      placeholder={payEditMode === "ADD" ? "Montant à ajouter" : "Montant payé"}
+                                      placeholder={
+                                        payEditMode === "ADD"
+                                          ? "Montant à ajouter"
+                                          : "Montant payé"
+                                      }
                                       value={toInputNumberValue(payInput)}
-                                      onChange={(e) => setPayInput(fromInputNumberValue(e.target.value))}
-                                      disabled={paySaving}
+                                      onChange={(e) =>
+                                        canModifyFromFront &&
+                                        setPayInput(
+                                          fromInputNumberValue(e.target.value)
+                                        )
+                                      }
+                                      disabled={!canModifyFromFront || paySaving}
                                     />
                                   </div>
 
@@ -449,8 +594,11 @@ export default function OrderViewModal(props: {
                                       className="form-control form-control-sm"
                                       placeholder="Méthode (CASH, VIREMENT...)"
                                       value={payMethod}
-                                      onChange={(e) => setPayMethod(e.target.value)}
-                                      disabled={paySaving}
+                                      onChange={(e) =>
+                                        canModifyFromFront &&
+                                        setPayMethod(e.target.value)
+                                      }
+                                      disabled={!canModifyFromFront || paySaving}
                                       style={wrapText}
                                     />
                                   </div>
@@ -460,15 +608,30 @@ export default function OrderViewModal(props: {
                                       className="form-control form-control-sm"
                                       placeholder="Note (optionnel)"
                                       value={payNote}
-                                      onChange={(e) => setPayNote(e.target.value)}
-                                      disabled={paySaving}
+                                      onChange={(e) =>
+                                        canModifyFromFront &&
+                                        setPayNote(e.target.value)
+                                      }
+                                      disabled={!canModifyFromFront || paySaving}
                                       style={wrapText}
                                     />
                                   </div>
                                 </div>
 
                                 <div className="d-flex justify-content-end mt-2">
-                                  <button className="btn btn-sm btn-dark" onClick={onSavePayment} disabled={paySaving}>
+                                  <button
+                                    className="btn btn-sm btn-dark"
+                                    onClick={() => {
+                                      if (!canModifyFromFront) return;
+                                      onSavePayment();
+                                    }}
+                                    disabled={!canModifyFromFront || paySaving}
+                                    title={
+                                      !canModifyFromFront
+                                        ? modificationLockMessage
+                                        : undefined
+                                    }
+                                  >
                                     {paySaving ? "…" : "Mettre à jour paiement"}
                                   </button>
                                 </div>
@@ -476,15 +639,15 @@ export default function OrderViewModal(props: {
                             ) : null}
                           </>
                         ) : (
-                          <div className="text-muted small">Paiement non disponible.</div>
+                          <div className="text-muted small">
+                            Paiement non disponible.
+                          </div>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Col droite */}
                   <div className="col-12 col-lg-7">
-                    {/* Articles */}
                     <div className="card border-0 shadow-sm mb-3">
                       <div className="card-body">
                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -497,7 +660,9 @@ export default function OrderViewModal(props: {
                         <ul className="list-group list-group-flush">
                           {itemsDetail.map((it, i) => {
                             const name =
-                              it?.product_name || it?.name || `Produit #${it?.product_id ?? ""}`;
+                              it?.product_name ||
+                              it?.name ||
+                              `Produit #${it?.product_id ?? ""}`;
                             const qty = Number(it?.qty ?? 1);
                             const unit = Number(it?.unit_price ?? it?.price ?? 0);
                             const img = getItemImage(it);
@@ -527,7 +692,6 @@ export default function OrderViewModal(props: {
                                   ) : null}
 
                                   <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                                    {/* ✅ nom: wrap (pas de dépassement) */}
                                     <div className="fw-semibold" style={wrapText}>
                                       {name}
                                     </div>
@@ -558,7 +722,6 @@ export default function OrderViewModal(props: {
                       </div>
                     </div>
 
-                    {/* Totaux */}
                     <div className="card border-0 shadow-sm">
                       <div className="card-body">
                         <div className="d-flex justify-content-between align-items-center">
@@ -572,9 +735,22 @@ export default function OrderViewModal(props: {
                       </div>
                     </div>
 
-                    {(detail as AnyObj)?.status !== "CANCELLED" && (detail as AnyObj)?.status !== "DONE" ? (
+                    {(detail as AnyObj)?.status !== "CANCELLED" &&
+                    (detail as AnyObj)?.status !== "DONE" ? (
                       <div className="d-flex justify-content-end mt-3">
-                        <button className="btn btn-outline-danger" onClick={() => onCancel(viewId)} disabled={saving}>
+                        <button
+                          className="btn btn-outline-danger"
+                          onClick={() => {
+                            if (!canModifyFromFront) return;
+                            onCancel(viewId);
+                          }}
+                          disabled={!canModifyFromFront || saving}
+                          title={
+                            !canModifyFromFront
+                              ? modificationLockMessage
+                              : undefined
+                          }
+                        >
                           Annuler la commande
                         </button>
                       </div>

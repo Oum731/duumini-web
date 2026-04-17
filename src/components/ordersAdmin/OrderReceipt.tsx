@@ -15,7 +15,9 @@ import { useAuth } from "../../context/AuthContext";
 type CustomerRole = "CLIENT" | "VENDEUR";
 
 function safeUpper(v: any) {
-  return String(v || "").trim().toUpperCase();
+  return String(v || "")
+    .trim()
+    .toUpperCase();
 }
 
 function num(v: any, fallback = 0) {
@@ -55,7 +57,8 @@ function paymentMethodLabel(method: any) {
   if (!m) return "—";
   if (["CASH", "ESPECES", "ESPÈCES"].includes(m)) return "Espèces";
   if (["CARD", "CARTE"].includes(m)) return "Carte";
-  if (["BANK_TRANSFER", "TRANSFER", "VIREMENT", "BANK"].includes(m)) return "Virement";
+  if (["BANK_TRANSFER", "TRANSFER", "VIREMENT", "BANK"].includes(m))
+    return "Virement";
   if (["DEPOT_VENTE", "DEPOT", "CONSIGNMENT"].includes(m)) return "Dépôt vente";
 
   return String(method);
@@ -127,7 +130,9 @@ function fmtQty(value: any) {
 
 function normalizeCustomerRole(v: any): CustomerRole {
   const s = safeUpper(v);
-  return s === "VENDEUR" || s === "VENDOR" || s === "SELLER" ? "VENDEUR" : "CLIENT";
+  return s === "VENDEUR" || s === "VENDOR" || s === "SELLER"
+    ? "VENDEUR"
+    : "CLIENT";
 }
 
 function buildOrderDocumentNumber(rawDate: any, orderCode: string) {
@@ -203,10 +208,7 @@ export default function OrderReceipt(props: {
     "—";
 
   const commune =
-    address?.commune ||
-    contact?.commune ||
-    order?.customer_commune ||
-    "—";
+    address?.commune || contact?.commune || order?.customer_commune || "—";
 
   const district =
     address?.district ||
@@ -250,7 +252,7 @@ export default function OrderReceipt(props: {
       contact?.customer_role ||
       contact?.role ||
       contact?.user_role ||
-      ""
+      "",
   );
 
   const hasVendorIdentity =
@@ -265,15 +267,20 @@ export default function OrderReceipt(props: {
   const { itemsAmount, deliveryFee, total } = computeOrderAmounts(order);
   const pay = getPaymentFromOrder(order);
 
-  const currency = String(order?.totals?.currency || order?.currency || "MAD").toUpperCase();
+  const currency = String(
+    order?.totals?.currency || order?.currency || "MAD",
+  ).toUpperCase();
   const totals = order?.totals || {};
   const adminDiscount = order?.admin_discount || {};
 
   const itemsSubtotal = num(totals?.items_subtotal, itemsAmount);
-  const discountAmount = num(adminDiscount?.amount, totals?.admin_discount_amount);
+  const discountAmount = num(
+    adminDiscount?.amount,
+    totals?.admin_discount_amount,
+  );
   const discountedItemsAmount = num(
     totals?.discounted_items_amount,
-    Math.max(0, itemsSubtotal - discountAmount)
+    Math.max(0, itemsSubtotal - discountAmount),
   );
   const displayDeliveryFee = num(totals?.delivery_fee, deliveryFee);
   const displayTotal = num(totals?.amount, total);
@@ -297,7 +304,13 @@ export default function OrderReceipt(props: {
       deliveryFee: displayDeliveryFee,
       total: displayTotal,
     }),
-    [itemsSubtotal, discountAmount, discountedItemsAmount, displayDeliveryFee, displayTotal]
+    [
+      itemsSubtotal,
+      discountAmount,
+      discountedItemsAmount,
+      displayDeliveryFee,
+      displayTotal,
+    ],
   );
 
   const items = Array.isArray(order?.items) ? order.items : [];
@@ -325,7 +338,10 @@ export default function OrderReceipt(props: {
     return `${base}/r/${encodeURIComponent(token)}`;
   }
 
-  const verifyUrl = useMemo(() => buildVerifyUrl(order), [order, publicWebBase]);
+  const verifyUrl = useMemo(
+    () => buildVerifyUrl(order),
+    [order, publicWebBase],
+  );
 
   function cleanupPrintRoot() {
     document.body.classList.remove("duu-printing");
@@ -334,7 +350,9 @@ export default function OrderReceipt(props: {
   }
 
   function waitImages(container: HTMLElement, timeoutMs = 2500) {
-    const imgs = Array.from(container.querySelectorAll("img")) as HTMLImageElement[];
+    const imgs = Array.from(
+      container.querySelectorAll("img"),
+    ) as HTMLImageElement[];
     if (!imgs.length) return Promise.resolve();
 
     const waits = imgs.map((img) => {
@@ -437,12 +455,16 @@ export default function OrderReceipt(props: {
     ...(isVendorInvoice
       ? [{ label: "Nom commercial", value: customerHeaderName }]
       : []),
-    ...(isVendorInvoice && hasValue(customerIce) ? [{ label: "ICE", value: customerIce }] : []),
+    ...(isVendorInvoice && hasValue(customerIce)
+      ? [{ label: "ICE", value: customerIce }]
+      : []),
     { label: "Téléphone", value: String(phone) },
     { label: "Ville", value: city },
     ...(hasValue(commune) ? [{ label: "Commune", value: commune }] : []),
     ...(hasValue(district) ? [{ label: "Quartier", value: district }] : []),
-    ...(hasValue(addressLine) ? [{ label: "Adresse", value: addressLine }] : []),
+    ...(hasValue(addressLine)
+      ? [{ label: "Adresse", value: addressLine }]
+      : []),
     { label: "Rôle client", value: orderCustomerRole },
     { label: "Livraison", value: fBadge.text },
   ];
@@ -1005,7 +1027,9 @@ export default function OrderReceipt(props: {
         {!hidePrintButton ? (
           <div className="dm-actions dm-no-print">
             <button className="dm-btn" type="button" onClick={printTicket}>
-              {isVendorInvoice ? "Imprimer la facture vendeur" : "Imprimer le reçu"}
+              {isVendorInvoice
+                ? "Imprimer la facture vendeur"
+                : "Imprimer le reçu"}
             </button>
 
             <button
@@ -1036,15 +1060,20 @@ export default function OrderReceipt(props: {
               </div>
 
               <div className="dm-client-box">
-                <div className="dm-client-lines">
-                  <div className="dm-client-line"><b>Client :</b> {fullName}</div>
-                  <div className="dm-client-line"><b>Nom commercial :</b> {customerHeaderName}</div>
-                  <div className="dm-client-line"><b>ICE :</b> {customerIce}</div>
-                  <div className="dm-client-line"><b>Téléphone :</b> {phone}</div>
-                  <div className="dm-client-line"><b>Ville :</b> {city}</div>
-                  {hasValue(commune) ? <div className="dm-client-line"><b>Commune :</b> {commune}</div> : null}
-                  {hasValue(district) ? <div className="dm-client-line"><b>Quartier :</b> {district}</div> : null}
-                  {hasValue(addressLine) ? <div className="dm-client-line"><b>Adresse :</b> {addressLine}</div> : null}
+                <div
+                  className="dm-client-lines"
+                  style={{
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "12px",
+                  }}
+                >
+                  <div className="dm-client-line">
+                    <b>Nom commercial :</b> {customerHeaderName}
+                  </div>
+
+                  <div className="dm-client-line">
+                    <b>ICE :</b> {customerIce}
+                  </div>
                 </div>
               </div>
 
@@ -1086,11 +1115,17 @@ export default function OrderReceipt(props: {
                             <td className="c-ref">{documentNumber}</td>
                             <td className="c-name">
                               <div className="dm-line-name">{name}</div>
-                              {variant ? <span className="dm-line-sub">{variant}</span> : null}
+                              {variant ? (
+                                <span className="dm-line-sub">{variant}</span>
+                              ) : null}
                             </td>
                             <td className="c-qty">{fmtQty(qty)}</td>
-                            <td className="c-unit">{money(unitHT, currency)}</td>
-                            <td className="c-total">{money(lineHT, currency)}</td>
+                            <td className="c-unit">
+                              {money(unitHT, currency)}
+                            </td>
+                            <td className="c-total">
+                              {money(lineHT, currency)}
+                            </td>
                           </tr>
                         );
                       })
@@ -1111,23 +1146,30 @@ export default function OrderReceipt(props: {
                 <div className="dm-totals">
                   <div className="dm-total-row">
                     <div className="dm-total-label">TOTAL H.T :</div>
-                    <div className="dm-total-value">{money(invoiceTotals.totalHT, currency)}</div>
+                    <div className="dm-total-value">
+                      {money(invoiceTotals.totalHT, currency)}
+                    </div>
                   </div>
 
                   <div className="dm-total-row">
                     <div className="dm-total-label">T.V.A 20% :</div>
-                    <div className="dm-total-value">{money(invoiceTotals.tvaAmount, currency)}</div>
+                    <div className="dm-total-value">
+                      {money(invoiceTotals.tvaAmount, currency)}
+                    </div>
                   </div>
 
                   <div className="dm-total-row strong">
                     <div className="dm-total-label">TOTAL T.T.C :</div>
-                    <div className="dm-total-value">{money(invoiceTotals.totalTTC, currency)}</div>
+                    <div className="dm-total-value">
+                      {money(invoiceTotals.totalTTC, currency)}
+                    </div>
                   </div>
 
                   {invoiceTotals.discount > 0 ? (
                     <div className="dm-total-row discount">
                       <div className="dm-total-label">
-                        RÉDUCTION{discountText !== "—" ? ` (${discountText})` : ""} :
+                        RÉDUCTION
+                        {discountText !== "—" ? ` (${discountText})` : ""} :
                       </div>
                       <div className="dm-total-value">
                         - {money(invoiceTotals.discount, currency)}
@@ -1139,13 +1181,16 @@ export default function OrderReceipt(props: {
 
               <div className="dm-footer-yellow">
                 <div className="dm-footer-line">
-                  46 Boulevard ZERKTOUNI 2 eme étage Appt 6 CO STOR Conseil Casablanca
+                  46 Boulevard ZERKTOUNI 2 eme étage Appt 6 CO STOR Conseil
+                  Casablanca
                 </div>
                 <div className="dm-footer-line">
-                  RC CASABLANCA : 476059 - TP : 34260412 - IF : 47225785 ICE : 002641145000090
+                  RC CASABLANCA : 476059 - TP : 34260412 - IF : 47225785 ICE :
+                  002641145000090
                 </div>
                 <div className="dm-footer-line">
-                  Contact : +212 623677884 / +212 6 56 56 88 27 – email : lebesoingroup@gmail.com
+                  Contact : +212 623677884 / +212 6 56 56 88 27 – email :
+                  lebesoingroup@gmail.com
                 </div>
               </div>
             </div>
@@ -1157,7 +1202,8 @@ export default function OrderReceipt(props: {
                     src={logoSrc}
                     alt={shopName}
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                      (e.currentTarget as HTMLImageElement).style.display =
+                        "none";
                     }}
                   />
                 </div>
@@ -1215,11 +1261,15 @@ export default function OrderReceipt(props: {
                             <td className="c-ref">{documentNumber}</td>
                             <td className="c-name">
                               <div className="dm-line-name">{name}</div>
-                              {variant ? <span className="dm-line-sub">{variant}</span> : null}
+                              {variant ? (
+                                <span className="dm-line-sub">{variant}</span>
+                              ) : null}
                             </td>
                             <td className="c-qty">{fmtQty(qty)}</td>
                             <td className="c-unit">{money(unit, currency)}</td>
-                            <td className="c-total">{money(lineTotal, currency)}</td>
+                            <td className="c-total">
+                              {money(lineTotal, currency)}
+                            </td>
                           </tr>
                         );
                       })
@@ -1240,13 +1290,16 @@ export default function OrderReceipt(props: {
                 <div className="dm-totals">
                   <div className="dm-total-row">
                     <div className="dm-total-label">SOUS-TOTAL :</div>
-                    <div className="dm-total-value">{money(summary.itemsSubtotal, currency)}</div>
+                    <div className="dm-total-value">
+                      {money(summary.itemsSubtotal, currency)}
+                    </div>
                   </div>
 
                   {summary.discountAmount > 0 ? (
                     <div className="dm-total-row discount">
                       <div className="dm-total-label">
-                        RÉDUCTION{discountText !== "—" ? ` (${discountText})` : ""} :
+                        RÉDUCTION
+                        {discountText !== "—" ? ` (${discountText})` : ""} :
                       </div>
                       <div className="dm-total-value">
                         - {money(summary.discountAmount, currency)}
@@ -1263,12 +1316,16 @@ export default function OrderReceipt(props: {
 
                   <div className="dm-total-row">
                     <div className="dm-total-label">LIVRAISON :</div>
-                    <div className="dm-total-value">{money(summary.deliveryFee, currency)}</div>
+                    <div className="dm-total-value">
+                      {money(summary.deliveryFee, currency)}
+                    </div>
                   </div>
 
                   <div className="dm-total-row strong">
                     <div className="dm-total-label">TOTAL :</div>
-                    <div className="dm-total-value">{money(summary.total, currency)}</div>
+                    <div className="dm-total-value">
+                      {money(summary.total, currency)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1281,17 +1338,25 @@ export default function OrderReceipt(props: {
                   </div>
 
                   {cleanedNote ? (
-                    <div className="dm-box" style={{ marginTop: 10, borderStyle: "dashed" }}>
+                    <div
+                      className="dm-box"
+                      style={{ marginTop: 10, borderStyle: "dashed" }}
+                    >
                       <div className="dm-box-title">Note</div>
                       <div className="dm-box-text">{cleanedNote}</div>
                     </div>
                   ) : null}
 
-                  <div className="dm-thanks">Merci pour votre commande — {shopName}</div>
+                  <div className="dm-thanks">
+                    Merci pour votre commande — {shopName}
+                  </div>
                 </div>
 
                 <div className="dm-qr-box">
-                  <QRCode value={verifyUrl || "https://duumini.com"} size={78} />
+                  <QRCode
+                    value={verifyUrl || "https://duumini.com"}
+                    size={78}
+                  />
                   <div className="dm-qr-label">
                     Vérification
                     <br />
