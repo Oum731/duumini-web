@@ -10,6 +10,7 @@ import {
   Users,
   Store,
   Wallet,
+  BadgePercent,
 } from "lucide-react";
 import { me } from "../../services/auth";
 
@@ -93,10 +94,36 @@ export default function AdminTopNav({
       { to: "/admin/products", label: "Produits", icon: Boxes },
       { to: "/admin/promotions", label: "Promotions", icon: Percent },
       { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
-      { to: "/admin/reports/sales", label: "Rapports", icon: FileBarChart2, adminOnly: true },
-      { to: "/admin/content-ai", label: "Contenu IA", icon: Sparkles, adminOnly: true },
-      { to: "/admin/users", label: "Utilisateurs", icon: Users, adminOnly: true },
-      { to: "/admin/shops", label: "Boutiques", icon: Store, adminOnly: true },
+      {
+        to: "/admin/affiliates",
+        label: "Affiliés",
+        icon: BadgePercent,
+        adminOnly: true,
+      },
+      {
+        to: "/admin/reports/sales",
+        label: "Rapports",
+        icon: FileBarChart2,
+        adminOnly: true,
+      },
+      {
+        to: "/admin/content-ai",
+        label: "Contenu IA",
+        icon: Sparkles,
+        adminOnly: true,
+      },
+      {
+        to: "/admin/users",
+        label: "Utilisateurs",
+        icon: Users,
+        adminOnly: true,
+      },
+      {
+        to: "/admin/shops",
+        label: "Boutiques",
+        icon: Store,
+        adminOnly: true,
+      },
     ],
     []
   );
@@ -134,7 +161,7 @@ export default function AdminTopNav({
               >
                 {isVendor
                   ? "Gérez facilement vos ventes, produits, promotions et dépenses."
-                  : "Pilotez votre administration, vos boutiques, utilisateurs et performances."}
+                  : "Pilotez votre administration, vos boutiques, utilisateurs, affiliés et performances."}
               </div>
             </div>
 

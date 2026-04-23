@@ -12,6 +12,7 @@ import { LocationProvider } from "./context/LocationContext";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { trackPageView } from "./utils/metaPixel";
+import { initAffiliateTracking } from "./services/affiliateTracking";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +28,22 @@ const queryClient = new QueryClient({
 
 function buildPageViewEventId(path: string) {
   return `pv_${path}_${Date.now()}`;
+}
+
+function AffiliateTrackerBootstrap() {
+  const location = useLocation();
+  const lastTrackedRef = useRef("");
+
+  useEffect(() => {
+    const currentPath = `${location.pathname}${location.search}${location.hash}`;
+
+    if (lastTrackedRef.current === currentPath) return;
+    lastTrackedRef.current = currentPath;
+
+    initAffiliateTracking();
+  }, [location.pathname, location.search, location.hash]);
+
+  return null;
 }
 
 function MetaPageTracker() {
@@ -54,6 +71,7 @@ createRoot(document.getElementById("root")!).render(
           v7_relativeSplatPath: true,
         }}
       >
+        <AffiliateTrackerBootstrap />
         <MetaPageTracker />
         <AuthProvider>
           <RealtimeProvider>

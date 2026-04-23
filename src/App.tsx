@@ -67,6 +67,7 @@ import { useViewer } from "./hooks/useViewer";
 import PublicReceiptPage from "./pages/PublicReceiptPage";
 import ReportSalesViewPage from "./pages/admin/ReportSalesViewPage";
 import ReportsSalesPage from "./pages/admin/ReportsSalesPage";
+import AffiliatesPage from "./pages/admin/AffiliatesPage";
 
 function Page({ title }: { title: string }) {
   return (
@@ -192,7 +193,11 @@ function GlobalRatingModal(props: {
     setSuccess(null);
 
     try {
-      await rateProduct(pending.product_id, rating, comment.trim() || undefined);
+      await rateProduct(
+        pending.product_id,
+        rating,
+        comment.trim() || undefined,
+      );
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch {
@@ -235,14 +240,18 @@ function GlobalRatingModal(props: {
               </p>
 
               <div className="mb-3">
-                <span className="small d-block mb-1 fw-semibold">Votre note :</span>
+                <span className="small d-block mb-1 fw-semibold">
+                  Votre note :
+                </span>
                 <div className="d-flex align-items-center gap-2">
                   {[1, 2, 3, 4, 5].map((i) => renderStar(i))}
                 </div>
               </div>
 
               <div className="mb-3">
-                <label className="form-label small">Votre avis (optionnel)</label>
+                <label className="form-label small">
+                  Votre avis (optionnel)
+                </label>
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -253,8 +262,12 @@ function GlobalRatingModal(props: {
                 />
               </div>
 
-              {error && <div className="alert alert-danger py-1 small">{error}</div>}
-              {success && <div className="alert alert-success py-1 small">{success}</div>}
+              {error && (
+                <div className="alert alert-danger py-1 small">{error}</div>
+              )}
+              {success && (
+                <div className="alert alert-success py-1 small">{success}</div>
+              )}
             </div>
 
             <div className="modal-footer">
@@ -284,7 +297,8 @@ function GlobalRatingModal(props: {
 
 export default function App() {
   const { user } = useAuth();
-  const [pendingRating, setPendingRating] = useState<PendingProductRating | null>(null);
+  const [pendingRating, setPendingRating] =
+    useState<PendingProductRating | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -338,14 +352,20 @@ export default function App() {
                 <Route path="/cart" element={<CartPage />} />
 
                 <Route path="/african-food" element={<AfricanFood />} />
-                <Route path="/african-food/:categorySlug" element={<AfricanFood />} />
+                <Route
+                  path="/african-food/:categorySlug"
+                  element={<AfricanFood />}
+                />
                 <Route
                   path="/african-food/:categorySlug/:subCategorySlug"
                   element={<AfricanFood />}
                 />
 
                 <Route path="/african-market" element={<AfricanMarket />} />
-                <Route path="/african-market/:categorySlug" element={<AfricanMarket />} />
+                <Route
+                  path="/african-market/:categorySlug"
+                  element={<AfricanMarket />}
+                />
                 <Route
                   path="/african-market/:categorySlug/:subCategorySlug"
                   element={<AfricanMarket />}
@@ -358,7 +378,10 @@ export default function App() {
                   element={<Fashion />}
                 />
 
-                <Route path="/share/product/:idOrSlug" element={<ProductView />} />
+                <Route
+                  path="/share/product/:idOrSlug"
+                  element={<ProductView />}
+                />
                 <Route path="/products/:idOrSlug" element={<ProductView />} />
 
                 <Route path="/top-products" element={<TopProductsPage />} />
@@ -375,36 +398,74 @@ export default function App() {
                   <Route element={<AdminShell />}>
                     <Route index element={<AdminHome />} />
                     <Route path="orders" element={<OrdersAdminPage />} />
-                    <Route path="products" element={<ManageProductsPage scope="admin" />} />
+                    <Route
+                      path="products"
+                      element={<ManageProductsPage scope="admin" />}
+                    />
                     <Route path="shops" element={<ShopsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
                     <Route path="expenses" element={<ExpensesPage />} />
-                    <Route path="promotions" element={<PromotionsAdminPage />} />
+                    <Route
+                      path="promotions"
+                      element={<PromotionsAdminPage />}
+                    />
                     <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
                     <Route path="content-ai" element={<ContentAiPage />} />
-                    <Route path="reports/sales" element={<ReportsSalesPage />} />
-                    <Route path="reports/sales/:id" element={<ReportSalesViewPage />} />
-
-                    <Route path="produits" element={<Navigate to="/admin/products" replace />} />
-                    <Route path="commandes" element={<Navigate to="/admin/orders" replace />} />
-                    <Route path="boutiques" element={<Navigate to="/admin/shops" replace />} />
-                    <Route path="utilisateurs" element={<Navigate to="/admin/users" replace />} />
-                    <Route path="promos" element={<Navigate to="/admin/promotions" replace />} />
-                    <Route path="depenses" element={<Navigate to="/admin/expenses" replace />} />
+                    <Route
+                      path="reports/sales"
+                      element={<ReportsSalesPage />}
+                    />
+                    <Route
+                      path="reports/sales/:id"
+                      element={<ReportSalesViewPage />}
+                    />
+                    <Route
+                      path="/admin/affiliates"
+                      element={<AffiliatesPage />}
+                    />
+                    <Route
+                      path="produits"
+                      element={<Navigate to="/admin/products" replace />}
+                    />
+                    <Route
+                      path="commandes"
+                      element={<Navigate to="/admin/orders" replace />}
+                    />
+                    <Route
+                      path="boutiques"
+                      element={<Navigate to="/admin/shops" replace />}
+                    />
+                    <Route
+                      path="utilisateurs"
+                      element={<Navigate to="/admin/users" replace />}
+                    />
+                    <Route
+                      path="promos"
+                      element={<Navigate to="/admin/promotions" replace />}
+                    />
+                    <Route
+                      path="depenses"
+                      element={<Navigate to="/admin/expenses" replace />}
+                    />
                   </Route>
                 </Route>
 
                 <Route
                   element={
                     <RequireAuth
-                      allow={(v: any) => v.caps.canAccessPro || v.caps.canAccessAdmin}
+                      allow={(v: any) =>
+                        v.caps.canAccessPro || v.caps.canAccessAdmin
+                      }
                       redirectTo="/"
                     />
                   }
                 >
-                  <Route path="/vendeur" element={<Navigate to="/ma-boutique" replace />} />
+                  <Route
+                    path="/vendeur"
+                    element={<Navigate to="/ma-boutique" replace />}
+                  />
 
                   <Route path="/ma-boutique" element={<Outlet />}>
                     <Route index element={<VendorHome />} />
@@ -415,8 +476,14 @@ export default function App() {
                     path="/vendeur/produits"
                     element={<ManageProductsPage scope="vendor" />}
                   />
-                  <Route path="/vendeur/commandes" element={<OrdersAdminPage />} />
-                  <Route path="/vendeur/promotions" element={<PromotionsAdminPage />} />
+                  <Route
+                    path="/vendeur/commandes"
+                    element={<OrdersAdminPage />}
+                  />
+                  <Route
+                    path="/vendeur/promotions"
+                    element={<PromotionsAdminPage />}
+                  />
                 </Route>
 
                 <Route path="*" element={<Page title="Page introuvable" />} />

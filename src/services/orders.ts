@@ -1,4 +1,5 @@
 import { api, API_BASE } from "./http";
+import { attachAffiliateCodeToOrderPayload } from "./ordersAffiliate";
 
 /** ✅ Aligné backend: { items, pageInfo } */
 export type Paginated<T> = {
@@ -121,6 +122,8 @@ export type CreateOrderPayload = {
   address_district?: string | null;
   address_gps_lat?: number | null;
   address_gps_lng?: number | null;
+
+  affiliate_code?: string | null;
 };
 
 export type CreateAdminOrderPayload = CreateOrderPayload & {
@@ -170,6 +173,14 @@ export type CreateOrderResult = {
     role?: CustomerRole | string | null;
     commercial_name?: string | null;
     ice?: string | null;
+  } | null;
+
+  affiliate?: {
+    id?: number;
+    affiliate_code?: string | null;
+    commission_rate?: number;
+    commission_amount?: number;
+    base_amount?: number;
   } | null;
 
   admin_discount?: AdminDiscount | null;
@@ -237,6 +248,11 @@ export type Order = {
 
   receipt_number?: string | null;
   receipt_token?: string | null;
+
+  affiliate_id?: number | null;
+  affiliate_code?: string | null;
+  affiliate_commission_rate?: number | null;
+  affiliate_commission_amount?: number | null;
 };
 
 export type OrderItem = {
@@ -348,6 +364,14 @@ function normalizeCustomerRoleInput(value: any): CustomerRole {
     : "CLIENT";
 }
 
+function normalizeAffiliateCode(value: any) {
+  const v = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "");
+  return v || null;
+}
+
 function normalizeItemInput(x: any): OrderItemInput | null {
   if (!x || typeof x !== "object") return null;
 
@@ -454,10 +478,12 @@ function normalizeCreatePayload(payload: CreateOrderPayload): CreateOrderPayload
 
   const paidAmount = payload?.payment?.paid_amount ?? payload?.payment?.amount ?? null;
   const contact = normalizeContactInput(payload?.contact);
+  const affiliate_code = normalizeAffiliateCode((payload as any)?.affiliate_code);
 
   return {
     ...payload,
     ...(contact ? { contact } : {}),
+    ...(affiliate_code ? { affiliate_code } : {}),
     items: cleanItems,
     payment: payload.payment
       ? {
@@ -502,6 +528,12 @@ function normalizeBase(u?: string | null) {
   return String(u || "").replace(/\/+$/, "");
 }
 
+function withAffiliateCode<T extends Record<string, unknown>>(
+  payload: T,
+): T & { affiliate_code?: string | null } {
+  return attachAffiliateCodeToOrderPayload(payload);
+}
+
 /* ===== API ===== */
 export async function listOrders(opts: ListOrdersOptions = {}) {
   const page = opts.page ?? 1;
@@ -543,20 +575,23 @@ export async function cancelOrder(id: number) {
 }
 
 export async function createOrder(payload: CreateOrderPayload) {
-  return api.post<CreateOrderResult>("/api/orders", normalizeCreatePayload(payload));
+  return api.post<CreateOrderResult>(
+    "/api/orders",
+    withAffiliateCode(normalizeCreatePayload(payload)),
+  );
 }
 
 export async function createGuestOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>(
     "/api/orders/guest",
-    normalizeCreatePayload(payload)
+    withAffiliateCode(normalizeCreatePayload(payload)),
   );
 }
 
 export async function createAdminOrder(payload: CreateAdminOrderPayload) {
   return api.post<CreateOrderResult>(
     "/api/orders/admin",
-    normalizeAdminCreatePayload(payload)
+    withAffiliateCode(normalizeAdminCreatePayload(payload)),
   );
 }
 
@@ -588,6 +623,6 @@ export function getPublicReceiptJsonUrl(token: string) {
 export async function sendReceiptWhatsApp(orderId: number) {
   return api.post<{ ok: true; to: string; pdfUrl: string }>(
     `/api/orders/${orderId}/send-receipt-whatsapp`,
-    {}
+    {},
   );
 }
