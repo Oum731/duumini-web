@@ -41,10 +41,9 @@ import {
 
 const DIVINE_START_DATE = new Date("2026-04-25T00:00:00");
 const DIVINE_COMMISSION_RATE = 0.1;
+const DIVINE_LOAD_LIMIT = 1000;
 
-const DIVINE_MATCH_TERMS = [
-  "divine",
-];
+const DIVINE_MATCH_TERMS = ["divine"];
 
 function formatMad(value: number) {
   return new Intl.NumberFormat("fr-MA", {
@@ -126,6 +125,7 @@ export default function OrdersAdminPage() {
 
   const [items, setItems] = useState<Order[]>([]);
   const [vendorAll, setVendorAll] = useState<Order[]>([]);
+  const [divineItems, setDivineItems] = useState<Order[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -196,27 +196,41 @@ export default function OrdersAdminPage() {
         setVendorAll(mine);
         setTotal(mine.length);
         setItems([]);
+        setDivineItems([]);
         setError(null);
         return;
       }
 
       const res = await listOrders({
-        page: divineOnly ? 1 : page,
-        pageSize: divineOnly ? 1000 : pageSize,
+        page,
+        pageSize,
         ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
         ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
       } as any);
 
       setItems(res.items || []);
-      setTotal(divineOnly ? (res.items || []).length : res.pageInfo.total);
+      setTotal(res.pageInfo?.total ?? res.pageInfo?.totalItems ?? 0);
       setVendorAll([]);
+
+      const divineRes = await listOrders({
+        page: 1,
+        pageSize: DIVINE_LOAD_LIMIT,
+        ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+        ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
+      } as any);
+
+      const divineAll = ((divineRes.items || []) as Order[]).filter((o) =>
+        isDivineOrderFromDate(o as AnyObj),
+      );
+
+      setDivineItems(divineAll);
       setError(null);
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, payFilter, isVendor, user, divineOnly]);
+  }, [page, pageSize, statusFilter, payFilter, isVendor, user]);
 
   useEffect(() => {
     if (isVendor) setPage(1);
@@ -249,15 +263,14 @@ export default function OrdersAdminPage() {
   const dateTime = (iso?: string) =>
     iso ? new Date(iso).toLocaleString("fr-FR") : "";
 
-  const dataset = useMemo(
-    () => (isVendor ? vendorAll : items),
-    [isVendor, vendorAll, items],
-  );
+  const dataset = useMemo(() => {
+    if (isVendor) return vendorAll;
+    if (divineOnly) return divineItems;
+    return items;
+  }, [isVendor, vendorAll, divineOnly, divineItems, items]);
 
   const searched = useMemo(() => {
     return dataset.filter((o) => {
-      if (divineOnly && !isDivineOrderFromDate(o as AnyObj)) return false;
-
       if (!q.trim()) return true;
 
       const txt = q.toLowerCase();
@@ -273,7 +286,7 @@ export default function OrdersAdminPage() {
         normalizeTxt((o as any)?.affiliate_name).includes(txt)
       );
     });
-  }, [dataset, q, divineOnly]);
+  }, [dataset, q]);
 
   const displayed = useMemo(() => {
     if (!isVendor && !divineOnly && !q.trim()) return searched;
@@ -299,7 +312,9 @@ export default function OrdersAdminPage() {
     let caDelivery = 0;
     let caDuumini = 0;
 
-    displayed.forEach((o) => {
+    const statsSource = isVendor ? displayed : items;
+
+    statsSource.forEach((o) => {
       const st = String((o as AnyObj)?.status || "").toUpperCase();
       const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(
         o as AnyObj,
@@ -314,16 +329,14 @@ export default function OrdersAdminPage() {
     });
 
     return { caNet, caDelivery, caDuumini };
-  }, [displayed]);
+  }, [displayed, items, isVendor]);
 
   const divineStats = useMemo(() => {
     let ordersCount = 0;
     let salesAmount = 0;
     let commission = 0;
 
-    searched.forEach((o) => {
-      if (!isDivineOrderFromDate(o as AnyObj)) return;
-
+    divineItems.forEach((o) => {
       const st = String((o as AnyObj)?.status || "").toUpperCase();
       if (st === "CANCELLED") return;
 
@@ -335,7 +348,7 @@ export default function OrdersAdminPage() {
     });
 
     return { ordersCount, salesAmount, commission };
-  }, [searched]);
+  }, [divineItems]);
 
   async function onEdit(id: number) {
     try {
