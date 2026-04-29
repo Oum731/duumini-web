@@ -39,8 +39,12 @@ import {
   waHref,
 } from "../../components/ordersAdmin/orderUtils";
 
-const DIVINE_START_DATE = new Date("2026-04-26T00:00:00");
+const DIVINE_START_DATE = new Date("2026-04-25T00:00:00");
 const DIVINE_COMMISSION_RATE = 0.1;
+
+const DIVINE_MATCH_TERMS = [
+  "divine",
+];
 
 function formatMad(value: number) {
   return new Intl.NumberFormat("fr-MA", {
@@ -105,7 +109,9 @@ function orderLinkedToDivine(o: AnyObj) {
     .join(" ")
     .toLowerCase();
 
-  return txt.includes("divine");
+  return DIVINE_MATCH_TERMS.some((term) =>
+    txt.includes(String(term).toLowerCase()),
+  );
 }
 
 function isDivineOrderFromDate(o: AnyObj) {
@@ -195,14 +201,14 @@ export default function OrdersAdminPage() {
       }
 
       const res = await listOrders({
-        page,
-        pageSize,
+        page: divineOnly ? 1 : page,
+        pageSize: divineOnly ? 1000 : pageSize,
         ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
         ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
       } as any);
 
-      setItems(res.items);
-      setTotal(res.pageInfo.total);
+      setItems(res.items || []);
+      setTotal(divineOnly ? (res.items || []).length : res.pageInfo.total);
       setVendorAll([]);
       setError(null);
     } catch (e: any) {
@@ -210,7 +216,7 @@ export default function OrdersAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, payFilter, isVendor, user]);
+  }, [page, pageSize, statusFilter, payFilter, isVendor, user, divineOnly]);
 
   useEffect(() => {
     if (isVendor) setPage(1);
@@ -270,13 +276,13 @@ export default function OrdersAdminPage() {
   }, [dataset, q, divineOnly]);
 
   const displayed = useMemo(() => {
-    if (!isVendor) return searched;
+    if (!isVendor && !divineOnly && !q.trim()) return searched;
 
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
 
     return searched.slice(start, end);
-  }, [searched, isVendor, page, pageSize]);
+  }, [searched, isVendor, divineOnly, q, page, pageSize]);
 
   const effectiveTotal = useMemo(
     () => (isVendor || divineOnly || q.trim() ? searched.length : total),
@@ -602,7 +608,7 @@ export default function OrdersAdminPage() {
             <div>
               <div className="fw-bold">Suivi Divine</div>
               <div className="small text-muted">
-                Commandes liées à Divine depuis le 26/04/2026 — commission 10%
+                Commandes liées à Divine depuis le samedi 25/04/2026 — commission 10%
               </div>
             </div>
 
