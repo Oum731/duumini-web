@@ -163,6 +163,13 @@ export type MyAffiliateDashboardResponse = {
   year: Partial<AffiliateRevenueSnapshot>;
 };
 
+export type TrackAffiliateClickPayload = {
+  affiliate_code: string;
+  landing_url?: string | null;
+  product_id?: number | null;
+  source?: string | null;
+};
+
 function cleanString(value: unknown) {
   const v = String(value ?? "").trim();
   return v || "";
@@ -178,6 +185,7 @@ function normalizeAffiliateCode(value: unknown) {
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
+
   return v || "";
 }
 
@@ -189,6 +197,7 @@ function normalizeSlug(value: unknown) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+
   return v || "";
 }
 
@@ -208,6 +217,11 @@ function normalizePath(path?: string | null, fallback = "/") {
   return raw.startsWith("/") ? raw : `/${raw}`;
 }
 
+function appendQueryParam(path: string, key: string, value: string) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
 function normalizeAffiliateStatus(value: unknown): AffiliateStatus | null {
   const v = String(value || "").trim().toUpperCase();
   if (v === "ACTIVE") return "ACTIVE";
@@ -215,9 +229,7 @@ function normalizeAffiliateStatus(value: unknown): AffiliateStatus | null {
   return null;
 }
 
-function normalizeCommissionStatus(
-  value: unknown,
-): AffiliateCommissionStatus | null {
+function normalizeCommissionStatus(value: unknown): AffiliateCommissionStatus | null {
   const v = String(value || "").trim().toUpperCase();
   if (v === "PENDING") return "PENDING";
   if (v === "APPROVED") return "APPROVED";
@@ -227,9 +239,7 @@ function normalizeCommissionStatus(
 }
 
 function normalizeRevenuePeriod(value: unknown): RevenuePeriod {
-  const v = String(value || "")
-    .trim()
-    .toUpperCase();
+  const v = String(value || "").trim().toUpperCase();
   if (v === "DAY") return "DAY";
   if (v === "WEEK") return "WEEK";
   if (v === "YEAR") return "YEAR";
@@ -280,10 +290,6 @@ export const WEB_BASE = normalizeBase(
     (typeof window !== "undefined" ? window.location.origin : "")) as string,
 );
 
-/* =========================
- * Admin / global affiliates API
- * =======================*/
-
 export async function listAffiliates(
   opts: {
     page?: number;
@@ -313,10 +319,7 @@ export async function createAffiliate(payload: CreateAffiliatePayload) {
   );
 }
 
-export async function updateAffiliate(
-  id: number,
-  payload: UpdateAffiliatePayload,
-) {
+export async function updateAffiliate(id: number, payload: UpdateAffiliatePayload) {
   return api.put<Affiliate>(
     `/api/affiliates/${id}`,
     normalizeUpdateAffiliatePayload(payload),
@@ -445,10 +448,6 @@ export async function getAffiliateRevenueHistory(
   );
 }
 
-/* =========================
- * Logged affiliate API
- * =======================*/
-
 export async function getMyAffiliate() {
   return api.get<MyAffiliateResponse>("/api/affiliate/me");
 }
@@ -512,19 +511,32 @@ export async function getMyAffiliateHistory(
   });
 }
 
-/* =========================
- * Public links
- * =======================*/
+export async function trackAffiliateClick(payload: TrackAffiliateClickPayload) {
+  const affiliateCode = normalizeAffiliateCode(payload.affiliate_code);
+
+  if (!affiliateCode) {
+    return null;
+  }
+
+  return api.post<AffiliateClick>("/api/affiliates/click", {
+    affiliate_code: affiliateCode,
+    landing_url: cleanNullableString(payload.landing_url),
+    product_id: normalizePositiveInt(payload.product_id),
+    source: cleanNullableString(payload.source || "web"),
+  });
+}
 
 export function getAffiliatePublicUrlByCode(code: string) {
   const normalizedCode = normalizeAffiliateCode(code);
   if (!WEB_BASE || !normalizedCode) return "";
+
   return `${WEB_BASE}/?ref=${encodeURIComponent(normalizedCode)}`;
 }
 
 export function getAffiliatePublicUrlBySlug(slug: string) {
   const normalized = normalizeSlug(slug);
   if (!WEB_BASE || !normalized) return "";
+
   return `${WEB_BASE}/ref/${encodeURIComponent(normalized)}`;
 }
 
@@ -535,10 +547,13 @@ export function getAffiliateProductPublicUrlByCode(
 ) {
   const normalizedCode = normalizeAffiliateCode(code);
   const cleanProductId = normalizePositiveInt(productId);
+
   if (!WEB_BASE || !normalizedCode || !cleanProductId) return "";
 
   const path = normalizePath(productPath, `/products/${cleanProductId}`);
-  return `${WEB_BASE}${path}?ref=${encodeURIComponent(normalizedCode)}`;
+  const urlPath = appendQueryParam(path, "ref", normalizedCode);
+
+  return `${WEB_BASE}${urlPath}`;
 }
 
 export function getAffiliateProductPublicUrlBySlug(
@@ -548,19 +563,19 @@ export function getAffiliateProductPublicUrlBySlug(
 ) {
   const normalizedSlug = normalizeSlug(slug);
   const cleanProductId = normalizePositiveInt(productId);
+
   if (!WEB_BASE || !normalizedSlug || !cleanProductId) return "";
 
   const path = normalizePath(productPath, `/products/${cleanProductId}`);
-  return `${WEB_BASE}${path}?ref=${encodeURIComponent(normalizedSlug)}`;
-}
+  const urlPath = appendQueryParam(path, "ref", normalizedSlug);
 
-/* =========================
- * Tracking links
- * =======================*/
+  return `${WEB_BASE}${urlPath}`;
+}
 
 export function getAffiliateTrackingUrlByCode(code: string, to = "/") {
   const normalizedCode = normalizeAffiliateCode(code);
   const target = normalizePath(to, "/");
+
   if (!API_BASE || !normalizedCode) return "";
 
   return `${API_BASE}/api/affiliates/track/${encodeURIComponent(
@@ -571,6 +586,7 @@ export function getAffiliateTrackingUrlByCode(code: string, to = "/") {
 export function getAffiliateTrackingUrlBySlug(slug: string, to = "/") {
   const normalizedSlug = normalizeSlug(slug);
   const target = normalizePath(to, "/");
+
   if (!API_BASE || !normalizedSlug) return "";
 
   return `${API_BASE}/api/affiliates/ref/${encodeURIComponent(

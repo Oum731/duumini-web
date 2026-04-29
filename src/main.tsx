@@ -40,7 +40,11 @@ function AffiliateTrackerBootstrap() {
     if (lastTrackedRef.current === currentPath) return;
     lastTrackedRef.current = currentPath;
 
-    initAffiliateTracking();
+    initAffiliateTracking(undefined, {
+      source: "production",
+      trackClick: true,
+      removeFromUrl: false,
+    });
   }, [location.pathname, location.search, location.hash]);
 
   return null;
@@ -73,6 +77,7 @@ createRoot(document.getElementById("root")!).render(
       >
         <AffiliateTrackerBootstrap />
         <MetaPageTracker />
+
         <AuthProvider>
           <RealtimeProvider>
             <LocationProvider>

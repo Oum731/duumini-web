@@ -23,7 +23,11 @@ import OrderViewModal from "../../components/ordersAdmin/OrderViewModal";
 import PosSaleModal from "../../components/ordersAdmin/PosSaleModal";
 import AdminOrderForClientModal from "../../components/ordersAdmin/AdminOrderForClientModal";
 
-import type { AnyObj, CurrentUser, PayStatus } from "../../components/ordersAdmin/orderUtils";
+import type {
+  AnyObj,
+  CurrentUser,
+  PayStatus,
+} from "../../components/ordersAdmin/orderUtils";
 
 import {
   computeOrderAmounts,
@@ -35,11 +39,85 @@ import {
   waHref,
 } from "../../components/ordersAdmin/orderUtils";
 
+const DIVINE_START_DATE = new Date("2026-04-26T00:00:00");
+const DIVINE_COMMISSION_RATE = 0.1;
+
+function formatMad(value: number) {
+  return new Intl.NumberFormat("fr-MA", {
+    style: "currency",
+    currency: "MAD",
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
+function normalizeTxt(value: any) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getOrderDate(o: AnyObj) {
+  const raw =
+    o.created_at ||
+    o.createdAt ||
+    o.order_date ||
+    o.ordered_at ||
+    o.date ||
+    null;
+
+  const d = raw ? new Date(raw) : null;
+  return d && !Number.isNaN(d.getTime()) ? d : null;
+}
+
+function orderLinkedToDivine(o: AnyObj) {
+  const contact = o.contact || {};
+  const user = o.user || {};
+  const customer = o.customer || {};
+  const affiliate = o.affiliate || {};
+  const payment = o.payment || {};
+
+  const txt = [
+    o.id,
+    o.code,
+    o.order_number,
+    o.reference,
+    o.receipt_number,
+    o.affiliate_code,
+    o.affiliate_name,
+    o.affiliate_id,
+    o.notes,
+    o.note,
+    contact.name,
+    contact.first_name,
+    contact.last_name,
+    contact.phone,
+    user.first_name,
+    user.last_name,
+    user.phone,
+    customer.name,
+    customer.first_name,
+    customer.last_name,
+    customer.phone,
+    affiliate.name,
+    affiliate.code,
+    affiliate.affiliate_code,
+    payment.note,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return txt.includes("divine");
+}
+
+function isDivineOrderFromDate(o: AnyObj) {
+  const d = getOrderDate(o);
+  if (!d || d < DIVINE_START_DATE) return false;
+  return orderLinkedToDivine(o);
+}
+
 export default function OrdersAdminPage() {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const isVendor = useMemo(() => isVendorRole(user?.role), [user?.role]);
 
-  // ✅ source brute (admin) ou collection vendeur (on charge large puis paginate local)
   const [items, setItems] = useState<Order[]>([]);
   const [vendorAll, setVendorAll] = useState<Order[]>([]);
 
@@ -53,13 +131,12 @@ export default function OrdersAdminPage() {
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | OrderStatus>("ALL");
   const [payFilter, setPayFilter] = useState<"ALL" | PayStatus>("ALL");
+  const [divineOnly, setDivineOnly] = useState(false);
 
-  // Edition statut
   const [editId, setEditId] = useState<number | null>(null);
   const [editStatus, setEditStatus] = useState<OrderStatus>("OPEN");
   const [saving, setSaving] = useState(false);
 
-  // View modal
   const [viewId, setViewId] = useState<number | null>(null);
   const [viewLoading, setViewLoading] = useState(false);
   const [viewErr, setViewErr] = useState<string | null>(null);
@@ -67,22 +144,18 @@ export default function OrdersAdminPage() {
   const [viewStatus, setViewStatus] = useState<OrderStatus>("OPEN");
   const [viewSaving, setViewSaving] = useState(false);
 
-  // Paiement dans modal view
   const [payEditMode, setPayEditMode] = useState<"SET" | "ADD">("ADD");
   const [payInput, setPayInput] = useState<number>(0);
   const [payMethod, setPayMethod] = useState<string>("CASH");
   const [payNote, setPayNote] = useState<string>("");
   const [paySaving, setPaySaving] = useState(false);
 
-  // POS modal (vente sur place)
   const [openPos, setOpenPos] = useState(false);
-
-  // ✅ ADMIN: commander pour un client (POS-like)
   const [openAdminOrder, setOpenAdminOrder] = useState(false);
 
-  // charge user
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       try {
         const u = await me();
@@ -93,6 +166,7 @@ export default function OrdersAdminPage() {
         setUser(null);
       }
     })();
+
     return () => {
       mounted = false;
     };
@@ -100,8 +174,8 @@ export default function OrdersAdminPage() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+
     try {
-      // ✅ Mode vendeur: charge large puis filtre côté client (robuste)
       if (isVendor) {
         const res = await listOrders({
           page: 1,
@@ -120,7 +194,6 @@ export default function OrdersAdminPage() {
         return;
       }
 
-      // ✅ Admin: pagination backend
       const res = await listOrders({
         page,
         pageSize,
@@ -139,66 +212,82 @@ export default function OrdersAdminPage() {
     }
   }, [page, pageSize, statusFilter, payFilter, isVendor, user]);
 
-  // reset page si on change de mode/filters en vendeur
   useEffect(() => {
     if (isVendor) setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVendor, statusFilter, payFilter]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // SSE
   useEffect(() => {
     const sub = subscribeSSE("/api/events/stream", (evt: ServerEvent) => {
       if (evt.type === "ORDER_CREATED" || evt.type === "ORDER_STATUS") {
         refresh();
+
         // @ts-ignore
         window?.duuminiToast?.({
           title:
             evt.payload?.title ||
-            (evt.type === "ORDER_CREATED" ? "Nouvelle commande" : "Commande mise à jour"),
+            (evt.type === "ORDER_CREATED"
+              ? "Nouvelle commande"
+              : "Commande mise à jour"),
           message: evt.payload?.body || "",
         });
       }
     });
+
     return () => sub.close();
   }, [refresh]);
 
-  const dateTime = (iso?: string) => (iso ? new Date(iso).toLocaleString("fr-FR") : "");
+  const dateTime = (iso?: string) =>
+    iso ? new Date(iso).toLocaleString("fr-FR") : "";
 
-  // dataset courant
-  const dataset = useMemo(() => (isVendor ? vendorAll : items), [isVendor, vendorAll, items]);
+  const dataset = useMemo(
+    () => (isVendor ? vendorAll : items),
+    [isVendor, vendorAll, items],
+  );
 
-  // filtre recherche
   const searched = useMemo(() => {
     return dataset.filter((o) => {
+      if (divineOnly && !isDivineOrderFromDate(o as AnyObj)) return false;
+
       if (!q.trim()) return true;
+
       const txt = q.toLowerCase();
       const contact = (o as any)?.contact || (o as any)?.user || {};
       const contactName = `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
+
       return (
         String(o.id).toLowerCase().includes(txt) ||
         (o.status?.toLowerCase() || "").includes(txt) ||
         contactName.toLowerCase().includes(txt) ||
-        (contact?.phone || "").toLowerCase().includes(txt)
+        normalizeTxt(contact?.phone).includes(txt) ||
+        normalizeTxt((o as any)?.affiliate_code).includes(txt) ||
+        normalizeTxt((o as any)?.affiliate_name).includes(txt)
       );
     });
-  }, [dataset, q]);
+  }, [dataset, q, divineOnly]);
 
-  // pagination (admin: déjà paginé backend, vendeur: paginate local)
   const displayed = useMemo(() => {
     if (!isVendor) return searched;
+
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
+
     return searched.slice(start, end);
   }, [searched, isVendor, page, pageSize]);
 
-  const effectiveTotal = useMemo(() => (isVendor ? searched.length : total), [isVendor, searched.length, total]);
-  const effectivePages = useMemo(() => Math.max(1, Math.ceil(effectiveTotal / pageSize)), [effectiveTotal, pageSize]);
+  const effectiveTotal = useMemo(
+    () => (isVendor || divineOnly || q.trim() ? searched.length : total),
+    [isVendor, divineOnly, q, searched.length, total],
+  );
 
-  // stats (page)
+  const effectivePages = useMemo(
+    () => Math.max(1, Math.ceil(effectiveTotal / pageSize)),
+    [effectiveTotal, pageSize],
+  );
+
   const globalStats = useMemo(() => {
     let caNet = 0;
     let caDelivery = 0;
@@ -206,24 +295,51 @@ export default function OrdersAdminPage() {
 
     displayed.forEach((o) => {
       const st = String((o as AnyObj)?.status || "").toUpperCase();
-      const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(o as AnyObj);
+      const { itemsAmount, deliveryFee, duuShare } = computeOrderAmounts(
+        o as AnyObj,
+      );
+
       if (st !== "CANCELLED") {
         caNet += itemsAmount;
         caDelivery += deliveryFee;
       }
-      caDuumini += duuShare; // DONE-only déjà géré dans computeOrderAmounts
+
+      caDuumini += duuShare;
     });
 
     return { caNet, caDelivery, caDuumini };
   }, [displayed]);
 
+  const divineStats = useMemo(() => {
+    let ordersCount = 0;
+    let salesAmount = 0;
+    let commission = 0;
+
+    searched.forEach((o) => {
+      if (!isDivineOrderFromDate(o as AnyObj)) return;
+
+      const st = String((o as AnyObj)?.status || "").toUpperCase();
+      if (st === "CANCELLED") return;
+
+      const { itemsAmount } = computeOrderAmounts(o as AnyObj);
+
+      ordersCount += 1;
+      salesAmount += itemsAmount;
+      commission += itemsAmount * DIVINE_COMMISSION_RATE;
+    });
+
+    return { ordersCount, salesAmount, commission };
+  }, [searched]);
+
   async function onEdit(id: number) {
     try {
       const full = await getOrder(id);
+
       if (!orderBelongsToUser(full as AnyObj, user)) {
         setError("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       setEditId(full.id);
       setEditStatus(full.status);
     } catch (e: any) {
@@ -233,7 +349,9 @@ export default function OrdersAdminPage() {
 
   async function onSave() {
     if (!editId) return;
+
     setSaving(true);
+
     try {
       await updateOrderStatus(editId, editStatus);
       setEditId(null);
@@ -247,14 +365,18 @@ export default function OrdersAdminPage() {
 
   async function onCancel(id: number) {
     if (!window.confirm("Annuler cette commande ?")) return;
+
     try {
       const full = await getOrder(id);
+
       if (!orderBelongsToUser(full as AnyObj, user)) {
         setError("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       await cancelOrder(id);
       await refresh();
+
       if (viewId === id) {
         setViewId(null);
         setDetail(null);
@@ -267,10 +389,12 @@ export default function OrdersAdminPage() {
   async function onWhatsappClick(id: number) {
     try {
       const full = await getOrder(id);
+
       if (!orderBelongsToUser(full as AnyObj, user)) {
         alert("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       window.open(waHref(full as AnyObj), "_blank", "noopener,noreferrer");
     } catch {
       alert("Impossible de préparer le message WhatsApp pour cette commande.");
@@ -290,10 +414,12 @@ export default function OrdersAdminPage() {
 
     try {
       const d = await getOrder(id);
+
       if (!orderBelongsToUser(d as AnyObj, user)) {
         setViewErr("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       setDetail(d as any);
       setViewStatus((d as any)?.status || "OPEN");
 
@@ -309,20 +435,25 @@ export default function OrdersAdminPage() {
 
   async function onViewSaveStatus() {
     if (!viewId) return;
+
     setViewSaving(true);
+
     try {
       if (detail && !orderBelongsToUser(detail as AnyObj, user)) {
         setViewErr("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       await updateOrderStatus(viewId, viewStatus);
       await refresh();
 
       const d = await getOrder(viewId);
+
       if (!orderBelongsToUser(d as AnyObj, user)) {
         setViewErr("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       setDetail(d as any);
       setViewStatus((d as any)?.status || viewStatus);
     } catch (e: any) {
@@ -334,20 +465,25 @@ export default function OrdersAdminPage() {
 
   async function onConfirmQuick(status: OrderStatus) {
     if (!viewId) return;
+
     setViewSaving(true);
+
     try {
       if (detail && !orderBelongsToUser(detail as AnyObj, user)) {
         setViewErr("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       await updateOrderStatus(viewId, status);
       await refresh();
 
       const d = await getOrder(viewId);
+
       if (!orderBelongsToUser(d as AnyObj, user)) {
         setViewErr("Accès refusé : cette commande ne vous concerne pas.");
         return;
       }
+
       setDetail(d as any);
       setViewStatus((d as AnyObj)?.status || status);
     } catch (e: any) {
@@ -375,23 +511,39 @@ export default function OrdersAdminPage() {
 
     if (payEditMode === "ADD") {
       if (raw <= 0) return setViewErr("Le montant à ajouter doit être > 0.");
-      if (currentPaid + raw > total + 0.0001) return setViewErr("Vous dépassez le total de la commande.");
+      if (currentPaid + raw > total + 0.0001) {
+        return setViewErr("Vous dépassez le total de la commande.");
+      }
     } else {
       if (raw < 0) return setViewErr("Le montant payé ne peut pas être négatif.");
-      if (raw > total + 0.0001) return setViewErr("Le montant payé ne peut pas dépasser le total.");
+      if (raw > total + 0.0001) {
+        return setViewErr("Le montant payé ne peut pas dépasser le total.");
+      }
     }
 
     setPaySaving(true);
     setViewErr(null);
+
     try {
       const payload =
         payEditMode === "ADD"
-          ? { mode: "ADD" as const, add_amount: raw, method: payMethod, note: payNote }
-          : { mode: "SET" as const, paid_amount: raw, method: payMethod, note: payNote };
+          ? {
+              mode: "ADD" as const,
+              add_amount: raw,
+              method: payMethod,
+              note: payNote,
+            }
+          : {
+              mode: "SET" as const,
+              paid_amount: raw,
+              method: payMethod,
+              note: payNote,
+            };
 
       await updateOrderPayment(viewId, payload as any);
 
       const d = await getOrder(viewId);
+
       if (!orderBelongsToUser(d as AnyObj, user)) {
         setViewErr("Accès refusé : cette commande ne vous concerne pas.");
         return;
@@ -421,7 +573,10 @@ export default function OrdersAdminPage() {
                 + Vente sur place
               </button>
 
-              <button className="btn btn-outline-dark" onClick={() => setOpenAdminOrder(true)}>
+              <button
+                className="btn btn-outline-dark"
+                onClick={() => setOpenAdminOrder(true)}
+              >
                 + Commander pour un client
               </button>
             </>
@@ -435,7 +590,52 @@ export default function OrdersAdminPage() {
         </div>
       </div>
 
-      <OrdersStatsCards caNet={globalStats.caNet} caDelivery={globalStats.caDelivery} caDuumini={globalStats.caDuumini} />
+      <OrdersStatsCards
+        caNet={globalStats.caNet}
+        caDelivery={globalStats.caDelivery}
+        caDuumini={globalStats.caDuumini}
+      />
+
+      {!isVendor && (
+        <div className="card shadow-sm mb-3 border-0 divine-card">
+          <div className="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <div>
+              <div className="fw-bold">Suivi Divine</div>
+              <div className="small text-muted">
+                Commandes liées à Divine depuis le 26/04/2026 — commission 10%
+              </div>
+            </div>
+
+            <div className="d-flex flex-wrap gap-2 align-items-center">
+              <div className="divine-kpi">
+                <span>Commandes</span>
+                <strong>{divineStats.ordersCount}</strong>
+              </div>
+
+              <div className="divine-kpi">
+                <span>Ventes</span>
+                <strong>{formatMad(divineStats.salesAmount)}</strong>
+              </div>
+
+              <div className="divine-kpi divine-commission">
+                <span>Commission Divine</span>
+                <strong>{formatMad(divineStats.commission)}</strong>
+              </div>
+
+              <button
+                type="button"
+                className={`btn ${divineOnly ? "btn-dark" : "btn-outline-dark"}`}
+                onClick={() => {
+                  setPage(1);
+                  setDivineOnly((v) => !v);
+                }}
+              >
+                {divineOnly ? "Voir toutes les commandes" : "Filtrer Divine"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <OrdersFiltersBar
         q={q}
@@ -458,7 +658,10 @@ export default function OrdersAdminPage() {
         page={page}
         pages={effectivePages}
         total={effectiveTotal}
-        onResetPage={() => setPage(1)}
+        onResetPage={() => {
+          setPage(1);
+          setDivineOnly(false);
+        }}
       />
 
       {error && <div className="alert alert-danger">{error}</div>}
@@ -478,13 +681,20 @@ export default function OrdersAdminPage() {
 
           <div className="d-flex justify-content-between align-items-center mt-2">
             <div className="text-muted small">{effectiveTotal} élément(s)</div>
+
             <div className="btn-group">
-              <button className="btn btn-sm btn-outline-dark" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <button
+                className="btn btn-sm btn-outline-dark"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
                 Préc.
               </button>
+
               <span className="btn btn-sm btn-outline-dark disabled">
                 {page} / {effectivePages}
               </span>
+
               <button
                 className="btn btn-sm btn-outline-dark"
                 disabled={page >= effectivePages}
@@ -537,10 +747,14 @@ export default function OrdersAdminPage() {
         dateTime={dateTime}
       />
 
-      {/* ✅ POS (Vente sur place) */}
-      {!isVendor && <PosSaleModal open={openPos} onClose={() => setOpenPos(false)} onCreated={refresh} />}
+      {!isVendor && (
+        <PosSaleModal
+          open={openPos}
+          onClose={() => setOpenPos(false)}
+          onCreated={refresh}
+        />
+      )}
 
-      {/* ✅ ADMIN: commander pour un client (produits + dropdown clients) */}
       {!isVendor && (
         <AdminOrderForClientModal
           open={openAdminOrder}
@@ -555,7 +769,43 @@ export default function OrdersAdminPage() {
           color: #1f1f1f;
           border: none;
         }
-        .btn-duu:hover{ filter: brightness(0.95); }
+
+        .btn-duu:hover{
+          filter: brightness(0.95);
+        }
+
+        .divine-card{
+          background: linear-gradient(135deg, #fff7d6 0%, #ffffff 70%);
+        }
+
+        .divine-kpi{
+          min-width: 125px;
+          border: 1px solid rgba(0,0,0,.08);
+          border-radius: 14px;
+          padding: .55rem .75rem;
+          background: #fff;
+        }
+
+        .divine-kpi span{
+          display: block;
+          font-size: .75rem;
+          color: #6c757d;
+        }
+
+        .divine-kpi strong{
+          display: block;
+          font-size: .95rem;
+          line-height: 1.2;
+        }
+
+        .divine-commission{
+          background: #111;
+          color: var(--duu-yellow);
+        }
+
+        .divine-commission span{
+          color: rgba(255,255,255,.72);
+        }
       `}</style>
     </div>
   );
