@@ -130,7 +130,7 @@ async function listCommunesByCity(ville?: string, signal?: AbortSignal) {
 async function listQuartiersByCityCommune(
   ville?: string,
   commune?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ) {
   const v = String(ville || "").trim();
   const c = String(commune || "").trim();
@@ -145,7 +145,7 @@ async function listQuartiersByCityCommune(
 
 async function trackLocationSuggestion(
   kind: "VILLE" | "COMMUNE" | "QUARTIER",
-  payload: { ville?: string; commune?: string; quartier?: string }
+  payload: { ville?: string; commune?: string; quartier?: string },
 ) {
   try {
     await api.post("/api/locations/track", { kind, ...payload });
@@ -153,7 +153,9 @@ async function trackLocationSuggestion(
 }
 
 function normToken(x: any) {
-  return String(x ?? "").trim().toLowerCase();
+  return String(x ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function productSubToken(p: any) {
@@ -171,13 +173,14 @@ function productSubToken(p: any) {
 
 function isFoodLike(p: any) {
   const t = productSubToken(p);
-  if (t) return t === "food" || t.includes("food") || t.includes("alimentation");
+  if (t)
+    return t === "food" || t.includes("food") || t.includes("alimentation");
   return normToken(p?.category) === "food";
 }
 
 const DELIVERY_RULES = {
   CASABLANCA_FEE: 25,
-  DEFAULT_FEE_OUTSIDE_CASA: 60,
+  DEFAULT_FEE_OUTSIDE_CASA: 0,
   EXPEDITION_DROP_FEE: 0,
 };
 
@@ -193,20 +196,17 @@ const GAZHALA_PAYMENT = {
   note: "Paiement / dépôt GAZHALA",
 };
 
-function cityLabelFromCode(city?: string | null) {
-  const found = CITY_OPTIONS.find((c) => c.code === city);
-  return found?.label || "";
-}
-
 function isCasablanca(label: string) {
-  const s = String(label || "").trim().toLowerCase();
+  const s = String(label || "")
+    .trim()
+    .toLowerCase();
   return s.includes("casa");
 }
 
 function computeDeliveryFeeByCity(cityText: string) {
-  if (!cityText) return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
+  if (!cityText) return 0;
   if (isCasablanca(cityText)) return DELIVERY_RULES.CASABLANCA_FEE;
-  return DELIVERY_RULES.DEFAULT_FEE_OUTSIDE_CASA;
+  return 0;
 }
 
 function getLineVariantKey(l: any) {
@@ -265,7 +265,12 @@ function cityCodeFromText(input?: string | null): CityCode | null {
   const fuzzy = CITY_OPTIONS.find((c) => {
     const label = c.label.toLowerCase();
     const code = c.code.toLowerCase();
-    return label.includes(v) || v.includes(label) || code.includes(v) || v.includes(code);
+    return (
+      label.includes(v) ||
+      v.includes(label) ||
+      code.includes(v) ||
+      v.includes(code)
+    );
   });
   if (fuzzy) return fuzzy.code as CityCode;
 
@@ -312,56 +317,12 @@ function parseGpsInput(raw?: string | null) {
   return null;
 }
 
-async function reverseGeocodeCity(lat: number, lng: number, signal?: AbortSignal) {
-  const url =
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2` +
-    `&lat=${encodeURIComponent(String(lat))}` +
-    `&lon=${encodeURIComponent(String(lng))}` +
-    `&zoom=10&addressdetails=1`;
-
-  const res = await fetch(url, {
-    method: "GET",
-    signal,
-    headers: {
-      Accept: "application/json",
-    },
-  });
-
-  if (!res.ok) throw new Error("Reverse geocoding failed");
-
-  const data = await res.json();
-  const addr = data?.address || {};
-
-  const city =
-    addr?.city ||
-    addr?.town ||
-    addr?.municipality ||
-    addr?.county ||
-    addr?.state_district ||
-    addr?.state ||
-    "";
-
-  const commune =
-    addr?.suburb ||
-    addr?.borough ||
-    addr?.city_district ||
-    addr?.municipality ||
-    "";
-
-  return {
-    city: normalizeCityName(city),
-    commune: normalizeCityName(commune),
-    raw: data,
-  };
-}
-
 export default function CheckoutPage() {
   const nav = useNavigate();
   const location = useLocation();
   const { lines, totalAmount, totalItems, clear } = useCart();
 
-  const { city, setCity, isReady } = useLocationCity();
-  const cityLabel = useMemo(() => cityLabelFromCode(city), [city]);
+  const { setCity, isReady } = useLocationCity();
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -375,22 +336,27 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("");
 
   const [cityInput, setCityInput] = useState("");
-  const [cityTouched, setCityTouched] = useState(false);
-  const [cityManuallyEdited, setCityManuallyEdited] = useState(false);
+  const [, setCityTouched] = useState(false);
+  const [, setCityManuallyEdited] = useState(false);
 
   const [commune, setCommune] = useState<string>("");
   const [communeOther, setCommuneOther] = useState("");
   const [quartier, setQuartier] = useState("");
 
-  const [communeSuggestions, setCommuneSuggestions] = useState<LocationSuggestion[]>([]);
-  const [quartierSuggestions, setQuartierSuggestions] = useState<LocationSuggestion[]>([]);
+  const [communeSuggestions, setCommuneSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
+  const [quartierSuggestions, setQuartierSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
 
   const [useGps, setUseGps] = useState(false);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
   const [gpsErr, setGpsErr] = useState<string | null>(null);
   const [gpsInput, setGpsInput] = useState("");
-  const [gpsLoadingCity, setGpsLoadingCity] = useState(false);
 
   const [loadingGps, setLoadingGps] = useState(false);
   const [loadingRefill, setLoadingRefill] = useState(false);
@@ -406,17 +372,7 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [paymentReference, setPaymentReference] = useState("");
 
-  const autoCityInitRef = useRef(false);
-  const reverseAbortRef = useRef<AbortController | null>(null);
   const metaInitDoneRef = useRef(false);
-
-  useEffect(() => {
-    const next = String(cityLabel || city || "").trim();
-    if (!next) return;
-    if (!cityManuallyEdited) {
-      setCityInput(next);
-    }
-  }, [cityLabel, city, cityManuallyEdited]);
 
   const cityText = useMemo(() => String(cityInput || "").trim(), [cityInput]);
 
@@ -452,8 +408,14 @@ export default function CheckoutPage() {
     return base;
   }, [commune, communeOther]);
 
-  const debouncedCityText = useDebouncedValue(String(cityText || "").trim(), 250);
-  const debouncedCommuneVal = useDebouncedValue(String(communeVal || "").trim(), 250);
+  const debouncedCityText = useDebouncedValue(
+    String(cityText || "").trim(),
+    250,
+  );
+  const debouncedCommuneVal = useDebouncedValue(
+    String(communeVal || "").trim(),
+    250,
+  );
 
   const hasName = hasToken
     ? firstName.trim().length > 0 || lastName.trim().length > 0
@@ -465,63 +427,33 @@ export default function CheckoutPage() {
     if (fulfillment === "PICKUP" || fulfillment === "EXPEDITION") return true;
 
     if (hasToken) {
-      return useGps ? !!coords : communeVal.length > 0 && quartier.trim().length > 0;
+      return useGps
+        ? !!coords
+        : communeVal.length > 0 && quartier.trim().length > 0;
     }
+
     return useGps ? !!coords : guestAddress.trim().length > 0;
-  }, [cityText, fulfillment, hasToken, useGps, coords, communeVal, quartier, guestAddress]);
+  }, [
+    cityText,
+    fulfillment,
+    hasToken,
+    useGps,
+    coords,
+    communeVal,
+    quartier,
+    guestAddress,
+  ]);
 
   const canSubmit = lines.length > 0 && hasName && validPhone && addressOk;
 
-  const applyCoordsAndAutoCity = useCallback(
-    async (
-      nextCoords: { lat: number; lng: number },
-      opts?: { updateUseGps?: boolean; autofillCity?: boolean; autofillCommune?: boolean }
-    ) => {
-      const updateUseGps = opts?.updateUseGps !== false;
-      const autofillCity = opts?.autofillCity !== false;
-      const autofillCommune = opts?.autofillCommune !== false;
-
+  const applyCoords = useCallback(
+    (nextCoords: { lat: number; lng: number }) => {
       setGpsErr(null);
       setCoords(nextCoords);
       setGpsInput(`${nextCoords.lat}, ${nextCoords.lng}`);
-      if (updateUseGps) setUseGps(true);
-
-      if (!autofillCity) return;
-
-      try {
-        reverseAbortRef.current?.abort();
-      } catch {}
-
-      const ac = new AbortController();
-      reverseAbortRef.current = ac;
-
-      try {
-        setGpsLoadingCity(true);
-        const geo = await reverseGeocodeCity(nextCoords.lat, nextCoords.lng, ac.signal);
-        const detectedCity = String(geo?.city || "").trim();
-        const detectedCommune = String(geo?.commune || "").trim();
-
-        if (detectedCity) {
-          setCityTouched(true);
-          setCityManuallyEdited(false);
-          setCityInput(detectedCity);
-          const code = cityCodeFromText(detectedCity);
-          if (code) setCity(code);
-        }
-
-        if (autofillCommune && detectedCommune && !communeVal) {
-          setCommune(detectedCommune);
-          setCommuneOther("");
-        }
-      } catch {
-        if (!ac.signal.aborted) {
-          setGpsErr("Position détectée, mais la ville n’a pas pu être retrouvée automatiquement.");
-        }
-      } finally {
-        if (!ac.signal.aborted) setGpsLoadingCity(false);
-      }
+      setUseGps(true);
     },
-    [setCity, communeVal]
+    [],
   );
 
   const askGps = useCallback(() => {
@@ -535,34 +467,27 @@ export default function CheckoutPage() {
     }
 
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         const nextCoords = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         };
 
-        try {
-          await applyCoordsAndAutoCity(nextCoords, {
-            updateUseGps: true,
-            autofillCity: true,
-            autofillCommune: true,
-          });
-        } finally {
-          setLoadingGps(false);
-        }
+        applyCoords(nextCoords);
+        setLoadingGps(false);
       },
       (error) => {
         setGpsErr(
           error?.message ||
-            "Impossible d’obtenir la position (permission refusée ou indisponible)."
+            "Impossible d’obtenir la position. Vous pouvez saisir votre adresse manuellement.",
         );
         setLoadingGps(false);
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
-  }, [applyCoordsAndAutoCity]);
+  }, [applyCoords]);
 
-  const applyPastedGps = useCallback(async () => {
+  const applyPastedGps = useCallback(() => {
     const parsed = parseGpsInput(gpsInput);
     if (!parsed) {
       setGpsErr("Coordonnées invalides. Format attendu : 5.3600, -4.0083");
@@ -574,13 +499,8 @@ export default function CheckoutPage() {
       return;
     }
 
-    setGpsErr(null);
-    await applyCoordsAndAutoCity(parsed, {
-      updateUseGps: true,
-      autofillCity: true,
-      autofillCommune: true,
-    });
-  }, [gpsInput, applyCoordsAndAutoCity]);
+    applyCoords(parsed);
+  }, [gpsInput, applyCoords]);
 
   useEffect(() => {
     let alive = true;
@@ -605,28 +525,19 @@ export default function CheckoutPage() {
           setLastName((u as any).last_name || "");
           setPhone(normalizePhoneInput((u as any).phone || ""));
 
-          const profileCityRaw = normalizeCityName(
-            String((u as any).city || (u as any).ville || "")
-          );
-
-          if (!cityTouched && profileCityRaw) {
-            setCityManuallyEdited(false);
-            setCityInput(profileCityRaw);
-            const profileCode = cityCodeFromText(profileCityRaw);
-            if (profileCode) setCity(profileCode);
-          }
-
-          const c = String((u as any).commune || "").trim();
-          const q = String((u as any).quartier || "").trim();
-          setCommune(c || "");
+          setCityInput("");
+          setCityTouched(false);
+          setCityManuallyEdited(false);
+          setCommune("");
           setCommuneOther("");
-          setQuartier(q || "");
+          setQuartier("");
 
           setUseGps(false);
           setCoords(null);
           setGpsErr(null);
+          setGpsInput("");
 
-          setEditingAddress(false);
+          setEditingAddress(true);
           setSaveAddressToProfile(false);
         }
       } catch {
@@ -638,30 +549,7 @@ export default function CheckoutPage() {
     return () => {
       alive = false;
     };
-  }, [hasToken, location.pathname, isReady, cityTouched, setCity]);
-
-  useEffect(() => {
-    if (!isReady) return;
-    if (autoCityInitRef.current) return;
-    if (cityTouched) return;
-    if (String(cityInput || "").trim()) return;
-    if (!("geolocation" in navigator)) return;
-
-    autoCityInitRef.current = true;
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          await applyCoordsAndAutoCity(
-            { lat: pos.coords.latitude, lng: pos.coords.longitude },
-            { updateUseGps: false, autofillCity: true, autofillCommune: false }
-          );
-        } catch {}
-      },
-      () => {},
-      { enableHighAccuracy: false, timeout: 7000, maximumAge: 300000 }
-    );
-  }, [isReady, cityTouched, cityInput, applyCoordsAndAutoCity]);
+  }, [hasToken, location.pathname, isReady]);
 
   const refillFromProfile = useCallback(async () => {
     try {
@@ -674,28 +562,19 @@ export default function CheckoutPage() {
         setLastName((u as any).last_name || "");
         setPhone(normalizePhoneInput((u as any).phone || ""));
 
-        const profileCityRaw = normalizeCityName(
-          String((u as any).city || (u as any).ville || "")
-        );
-        if (profileCityRaw) {
-          setCityTouched(true);
-          setCityManuallyEdited(false);
-          setCityInput(profileCityRaw);
-          const code = cityCodeFromText(profileCityRaw);
-          if (code) setCity(code);
-        }
-
-        const c = String((u as any).commune || "").trim();
-        const q = String((u as any).quartier || "").trim();
-        setCommune(c || "");
+        setCityInput("");
+        setCityTouched(false);
+        setCityManuallyEdited(false);
+        setCommune("");
         setCommuneOther("");
-        setQuartier(q || "");
+        setQuartier("");
 
         setUseGps(false);
         setCoords(null);
         setGpsErr(null);
+        setGpsInput("");
 
-        setEditingAddress(false);
+        setEditingAddress(true);
         setSaveAddressToProfile(false);
       }
     } catch (e: any) {
@@ -703,7 +582,7 @@ export default function CheckoutPage() {
     } finally {
       setLoadingRefill(false);
     }
-  }, [setCity]);
+  }, []);
 
   const communeCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
   const quartierCacheRef = useRef<Map<string, LocationSuggestion[]>>(new Map());
@@ -736,6 +615,7 @@ export default function CheckoutPage() {
     communesAbortRef.current = ac;
 
     setLoadingSuggest(true);
+
     (async () => {
       try {
         const communes = await listCommunesByCity(v, ac.signal);
@@ -770,6 +650,7 @@ export default function CheckoutPage() {
 
     const cacheKey = `${v}__${c}`;
     const cached = quartierCacheRef.current.get(cacheKey);
+
     if (cached) {
       setQuartierSuggestions(cached);
       trackLocationSuggestion("COMMUNE", { ville: v, commune: c });
@@ -784,6 +665,7 @@ export default function CheckoutPage() {
     quartiersAbortRef.current = ac;
 
     setLoadingSuggest(true);
+
     (async () => {
       try {
         const qs = await listQuartiersByCityCommune(v, c, ac.signal);
@@ -807,11 +689,18 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     const onCitySelected = (ev: Event) => {
-      const custom = ev as CustomEvent<{ code?: string; label?: string; value?: string }>;
+      const custom = ev as CustomEvent<{
+        code?: string;
+        label?: string;
+        value?: string;
+      }>;
       const code = String(custom.detail?.code || "").trim();
-      const label = String(custom.detail?.label || custom.detail?.value || "").trim();
+      const label = String(
+        custom.detail?.label || custom.detail?.value || "",
+      ).trim();
 
       if (code) setCity(code as CityCode);
+
       if (label) {
         setCityTouched(true);
         setCityManuallyEdited(false);
@@ -820,8 +709,12 @@ export default function CheckoutPage() {
     };
 
     window.addEventListener("city:selected", onCitySelected as EventListener);
+
     return () => {
-      window.removeEventListener("city:selected", onCitySelected as EventListener);
+      window.removeEventListener(
+        "city:selected",
+        onCitySelected as EventListener,
+      );
     };
   }, [setCity]);
 
@@ -858,13 +751,19 @@ export default function CheckoutPage() {
                 ville: finalCity || undefined,
                 commune: communeVal ? String(communeVal) : undefined,
                 quartier: useGps ? null : quartier.trim() || null,
-                gps: useGps && coords ? { lat: coords.lat, lng: coords.lng } : null,
+                gps:
+                  useGps && coords
+                    ? { lat: coords.lat, lng: coords.lng }
+                    : null,
               }
             : {
                 ville: finalCity || undefined,
                 commune: undefined,
                 quartier: useGps ? null : guestAddress.trim() || null,
-                gps: useGps && coords ? { lat: coords.lat, lng: coords.lng } : null,
+                gps:
+                  useGps && coords
+                    ? { lat: coords.lat, lng: coords.lng }
+                    : null,
               }
           : {
               ville: finalCity || undefined,
@@ -892,26 +791,34 @@ export default function CheckoutPage() {
         fulfillment === "PICKUP"
           ? ("PICKUP" as any)
           : fulfillment === "EXPEDITION"
-          ? ("EXPEDITION" as any)
-          : isCasablanca(finalCity)
-          ? ("CASABLANCA" as any)
-          : ("CITY" as any);
+            ? ("EXPEDITION" as any)
+            : isCasablanca(finalCity)
+              ? ("CASABLANCA" as any)
+              : ("CITY" as any);
 
       const deliveryNote =
         fulfillment === "PICKUP"
-          ? "Retrait sur place (gratuit)."
+          ? "Retrait sur place gratuit."
           : fulfillment === "EXPEDITION"
-          ? "Les frais de livraison ne sont pas inclus dans votre commande. Ils seront à payer à la réception, auprès de la société d’expédition."
-          : isCasablanca(finalCity)
-          ? "Livraison à domicile. Les frais de livraison sont inclus selon le tarif de Casablanca."
-          : "Les frais de livraison ne sont pas inclus dans votre commande. Ils seront à payer à la réception, auprès de la société d’expédition.";
+            ? "Les frais d’expédition ne sont pas inclus dans la commande. Le client les paiera directement auprès de la compagnie d’expédition lors de la récupération du colis."
+            : isCasablanca(finalCity)
+              ? "Livraison à domicile Casablanca. Les frais de livraison sont inclus."
+              : "Les frais d’expédition ne sont pas inclus dans la commande. Le client les paiera directement auprès de la compagnie d’expédition lors de la récupération du colis.";
 
       const paymentNote =
         paymentMethod === "BMCE"
-          ? `Paiement BMCE (en attente de confirmation). Merci d’envoyer votre reçu.\nRIB: ${BANK_RIB.rib}\nIBAN: ${BANK_RIB.iban}\nBIC: ${BANK_RIB.bic}\nCompte: ${BANK_RIB.account_name}${paymentReference.trim() ? `\nRéférence: ${paymentReference.trim()}` : ""}`
+          ? `Paiement BMCE en attente de confirmation. Merci d’envoyer votre reçu.\nRIB: ${BANK_RIB.rib}\nIBAN: ${BANK_RIB.iban}\nBIC: ${BANK_RIB.bic}\nCompte: ${BANK_RIB.account_name}${
+              paymentReference.trim()
+                ? `\nRéférence: ${paymentReference.trim()}`
+                : ""
+            }`
           : paymentMethod === "GAZHALA"
-          ? `Paiement GAZHALA (en attente de confirmation). Merci d’envoyer votre reçu.\nCanal: ${GAZHALA_PAYMENT.note}\nCompte: ${GAZHALA_PAYMENT.account_name}${paymentReference.trim() ? `\nRéférence: ${paymentReference.trim()}` : ""}`
-          : "Paiement cash à la livraison.";
+            ? `Paiement GAZHALA en attente de confirmation. Merci d’envoyer votre reçu.\nCanal: ${GAZHALA_PAYMENT.note}\nCompte: ${GAZHALA_PAYMENT.account_name}${
+                paymentReference.trim()
+                  ? `\nRéférence: ${paymentReference.trim()}`
+                  : ""
+              }`
+            : "Paiement cash à la livraison.";
 
       const payload: CreateOrderPayload = {
         contact,
@@ -926,6 +833,7 @@ export default function CheckoutPage() {
 
         items: lines.map((l: any) => {
           const variant_id = getLineVariantId(l);
+
           return {
             product_id: Number(l.id),
             qty: Number(l.qty || 0),
@@ -956,17 +864,26 @@ export default function CheckoutPage() {
         address_gps_lng: (address as any).gps?.lng ?? null,
       };
 
-      const result = hasToken ? await createOrder(payload) : await createGuestOrder(payload);
+      const result = hasToken
+        ? await createOrder(payload)
+        : await createGuestOrder(payload);
 
       const orderId = (result as any).id;
-      const serverTotal = Number((result as any).total ?? (result as any).amount ?? 0);
-      const serverCurrency = String((result as any).currency || "MAD").toUpperCase();
+      const serverTotal = Number(
+        (result as any).total ?? (result as any).amount ?? 0,
+      );
+      const serverCurrency = String(
+        (result as any).currency || "MAD",
+      ).toUpperCase();
 
       const createdAtStr =
-        (result as any).created_at || (result as any).created || new Date().toISOString();
+        (result as any).created_at ||
+        (result as any).created ||
+        new Date().toISOString();
       const createdAt = new Date(createdAtStr);
 
-      const numericId = typeof orderId === "number" ? orderId : Number(orderId) || 0;
+      const numericId =
+        typeof orderId === "number" ? orderId : Number(orderId) || 0;
       const displayCode = numericId
         ? numericId.toString(36).toUpperCase()
         : String(orderId ?? "").toUpperCase();
@@ -981,7 +898,8 @@ export default function CheckoutPage() {
               l.category_name ||
               l.sub_category_name ||
               l.sub_category_slug ||
-              (l.sub_category_id != null && String(l.sub_category_id).trim() !== ""
+              (l.sub_category_id != null &&
+              String(l.sub_category_id).trim() !== ""
                 ? String(l.sub_category_id)
                 : "") ||
               "";
@@ -1012,9 +930,13 @@ export default function CheckoutPage() {
       const minEnd = isCasa ? 90 : 180;
 
       const etaStart =
-        fulfillment === "DELIVERY" ? new Date(createdAt.getTime() + minStart * 60_000) : null;
+        fulfillment === "DELIVERY"
+          ? new Date(createdAt.getTime() + minStart * 60_000)
+          : null;
       const etaEnd =
-        fulfillment === "DELIVERY" ? new Date(createdAt.getTime() + minEnd * 60_000) : null;
+        fulfillment === "DELIVERY"
+          ? new Date(createdAt.getTime() + minEnd * 60_000)
+          : null;
 
       try {
         window.localStorage.setItem(
@@ -1037,9 +959,11 @@ export default function CheckoutPage() {
             paymentBackendMethod: backendPaymentMethod,
             paymentStatus: paymentMethod === "CASH" ? "COD" : "PENDING",
             paymentReference: paymentReference.trim() || null,
-          })
+          }),
         );
-        if (!hasToken) window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
+
+        if (!hasToken)
+          window.localStorage.setItem("duumini:guestWidgetMinimized", "0");
       } catch {}
 
       if (fulfillment === "DELIVERY" && !useGps) {
@@ -1110,15 +1034,11 @@ export default function CheckoutPage() {
         <div className="h5 m-0">{mad(grandTotalUi)}</div>
         <div className="small text-muted">
           Articles: {mad(totalAmount)}{" "}
-          {fulfillment !== "PICKUP" && (
-            <>
-              • Frais: {mad(deliveryFee)}
-            </>
-          )}
+          {fulfillment !== "PICKUP" && <>• Frais inclus: {mad(deliveryFee)}</>}
         </div>
       </div>
     ),
-    [grandTotalUi, totalAmount, deliveryFee, fulfillment]
+    [grandTotalUi, totalAmount, deliveryFee, fulfillment],
   );
 
   if (!isReady || loading) {
@@ -1144,12 +1064,12 @@ export default function CheckoutPage() {
 
   const deliveryTitle =
     fulfillment === "PICKUP"
-      ? "Retrait sur place (gratuit)"
+      ? "Retrait sur place gratuit"
       : fulfillment === "EXPEDITION"
-      ? "Expédition (frais de livraison à payer à la réception)"
-      : isCasablanca(cityText)
-      ? "Livraison Casablanca 25 DH"
-      : "Livraison hors Casablanca (frais à payer à la réception)";
+        ? "Expédition — frais à payer auprès de la compagnie d’expédition"
+        : isCasablanca(cityText)
+          ? "Livraison Casablanca 25 DH"
+          : "Hors Casablanca — frais d’expédition à payer à la récupération";
 
   return (
     <section className="container-xxl py-4 checkout">
@@ -1157,7 +1077,12 @@ export default function CheckoutPage() {
 
       {showGuestSuccess && (
         <>
-          <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
+          <div
+            className="modal fade show d-block"
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content">
                 <div className="modal-header">
@@ -1175,14 +1100,16 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="modal-body">
-                  <p className="mb-2">Merci&nbsp;! Votre commande a bien été envoyée.</p>
+                  <p className="mb-2">
+                    Merci&nbsp;! Votre commande a bien été envoyée.
+                  </p>
                   <p className="mb-2">
                     Un membre de l’équipe Duumini va vous{" "}
                     <strong>contacter très bientôt par téléphone</strong>.
                   </p>
                   <p className="mb-0 small text-muted">
                     Pour <strong>suivre vos commandes</strong>, vous pouvez{" "}
-                    <strong>créer un compte</strong> (optionnel).
+                    <strong>créer un compte</strong> optionnellement.
                   </p>
                 </div>
                 <div className="modal-footer d-flex flex-wrap gap-2">
@@ -1227,11 +1154,9 @@ export default function CheckoutPage() {
           </h1>
 
           <div className="text-muted d-flex flex-wrap align-items-center gap-2">
-            <span>
-              <span className="addr-pill">
-                <span>📍 {cityText || "—"}</span>
-                <small>• {mad(deliveryFee)}</small>
-              </span>
+            <span className="addr-pill">
+              <span>📍 {cityText || "Ville à saisir"}</span>
+              <small>• {mad(deliveryFee)}</small>
             </span>
 
             <button
@@ -1243,7 +1168,9 @@ export default function CheckoutPage() {
               Choisir dans la liste
             </button>
 
-            {hasPromoInCart && <span className="badge text-bg-warning">Promo active</span>}
+            {hasPromoInCart && (
+              <span className="badge text-bg-warning">Promo active</span>
+            )}
           </div>
         </div>
 
@@ -1267,18 +1194,9 @@ export default function CheckoutPage() {
                     disabled={loadingRefill}
                     aria-busy={loadingRefill}
                   >
-                    {loadingRefill ? (
-                      <>
-                        <span
-                          className="spinner-border spinner-border-sm me-2"
-                          role="status"
-                          aria-hidden="true"
-                        />
-                        Rechargement…<span className="visually-hidden">en cours</span>
-                      </>
-                    ) : (
-                      "Recharger depuis mon profil"
-                    )}
+                    {loadingRefill
+                      ? "Rechargement…"
+                      : "Recharger nom et téléphone"}
                   </button>
                 )}
               </div>
@@ -1318,11 +1236,15 @@ export default function CheckoutPage() {
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international :
+                        +2126…, +225…, +223…, +1…
                       </div>
                     )}
                     <div className="form-text">
-                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                      🟢{" "}
+                      <strong>
+                        Idéalement, utilisez votre numéro WhatsApp.
+                      </strong>
                     </div>
                   </div>
 
@@ -1341,54 +1263,39 @@ export default function CheckoutPage() {
                           const code = cityCodeFromText(v);
                           if (code) setCity(code);
                         }}
-                        placeholder="Ville auto-détectée ou saisie manuelle"
+                        placeholder="Saisissez votre ville"
                       />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
-                        onClick={() => window.dispatchEvent(new Event("city:open"))}
+                        onClick={() =>
+                          window.dispatchEvent(new Event("city:open"))
+                        }
                         title="Choisir dans la liste"
                       >
                         Liste
                       </button>
                     </div>
                     <div className="form-text">
-                      Ville détectée automatiquement si la localisation est autorisée.
+                      La ville n’est pas remplie automatiquement. Saisissez-la
+                      vous-même.
                     </div>
                   </div>
 
                   {fulfillment === "DELIVERY" && (
                     <div className="col-12">
-                      {!editingAddress ? (
-                        <div className="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2">
-                          <div className="small">
-                            <div className="fw-semibold">Adresse de livraison</div>
-                            <div className="text-muted">
-                              {cityText || "—"}
-                              {communeVal ? `, ${communeVal}` : ""}
-                              {quartier ? ` — ${quartier}` : ""}
-                              {useGps && coords ? " (GPS activé)" : ""}
-                            </div>
-                          </div>
-                          <div className="d-flex gap-2">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-dark"
-                              onClick={() => setEditingAddress(true)}
-                            >
-                              Changer d’adresse
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
+                      {editingAddress ? (
                         <div className="row g-3">
                           <div className="col-12">
                             <div className="gps-box">
                               <div className="d-flex flex-wrap justify-content-between gap-2 align-items-center">
                                 <div>
-                                  <div className="fw-semibold">Localisation GPS</div>
+                                  <div className="fw-semibold">
+                                    Localisation GPS
+                                  </div>
                                   <div className="small text-muted">
-                                    Autorisez la position ou collez vos coordonnées GPS.
+                                    Le GPS ajoute seulement vos coordonnées. Il
+                                    ne remplit pas la ville.
                                   </div>
                                 </div>
 
@@ -1399,7 +1306,9 @@ export default function CheckoutPage() {
                                   disabled={loadingGps}
                                   aria-busy={loadingGps}
                                 >
-                                  {loadingGps ? "Détection…" : "Utiliser ma position"}
+                                  {loadingGps
+                                    ? "Détection…"
+                                    : "Utiliser ma position"}
                                 </button>
                               </div>
 
@@ -1408,7 +1317,9 @@ export default function CheckoutPage() {
                                   <input
                                     className="form-control"
                                     value={gpsInput}
-                                    onChange={(e) => setGpsInput(e.target.value)}
+                                    onChange={(e) =>
+                                      setGpsInput(e.target.value)
+                                    }
                                     placeholder="Ex: 5.3600, -4.0083 ou lien Google Maps"
                                   />
                                 </div>
@@ -1417,19 +1328,24 @@ export default function CheckoutPage() {
                                     type="button"
                                     className="btn btn-outline-dark"
                                     onClick={applyPastedGps}
-                                    disabled={!gpsInput.trim() || gpsLoadingCity}
+                                    disabled={!gpsInput.trim()}
                                   >
-                                    {gpsLoadingCity ? "Analyse…" : "Coller GPS"}
+                                    Coller GPS
                                   </button>
                                 </div>
                               </div>
 
                               {coords && (
                                 <div className="small text-success mt-2">
-                                  Coordonnées actives : {coords.lat}, {coords.lng}
+                                  Coordonnées actives : {coords.lat},{" "}
+                                  {coords.lng}
                                 </div>
                               )}
-                              {gpsErr && <div className="form-text text-danger mt-1">{gpsErr}</div>}
+                              {gpsErr && (
+                                <div className="form-text text-danger mt-1">
+                                  {gpsErr}
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -1465,7 +1381,9 @@ export default function CheckoutPage() {
                                 className="form-control mt-2"
                                 placeholder="Saisir votre commune"
                                 value={communeOther}
-                                onChange={(e) => setCommuneOther(e.target.value)}
+                                onChange={(e) =>
+                                  setCommuneOther(e.target.value)
+                                }
                               />
                             )}
 
@@ -1477,7 +1395,9 @@ export default function CheckoutPage() {
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label">Quartier / repère</label>
+                            <label className="form-label">
+                              Quartier / repère
+                            </label>
                             {!useGps ? (
                               <>
                                 <input
@@ -1492,9 +1412,6 @@ export default function CheckoutPage() {
                                     <option key={s.value} value={s.value} />
                                   ))}
                                 </datalist>
-                                <div className="form-text">
-                                  Astuce : commence à taper pour voir des suggestions.
-                                </div>
                               </>
                             ) : (
                               <div className="alert alert-info d-flex justify-content-between align-items-center mb-0">
@@ -1502,9 +1419,7 @@ export default function CheckoutPage() {
                                 <button
                                   className="btn btn-sm btn-outline-dark"
                                   type="button"
-                                  onClick={() => {
-                                    setUseGps(false);
-                                  }}
+                                  onClick={() => setUseGps(false)}
                                 >
                                   Revenir à la saisie
                                 </button>
@@ -1518,7 +1433,9 @@ export default function CheckoutPage() {
                                 className="form-check-input"
                                 type="checkbox"
                                 checked={saveAddressToProfile}
-                                onChange={(e) => setSaveAddressToProfile(e.target.checked)}
+                                onChange={(e) =>
+                                  setSaveAddressToProfile(e.target.checked)
+                                }
                               />
                               <span className="form-check-label ms-2">
                                 Enregistrer cette adresse dans mon profil
@@ -1536,6 +1453,27 @@ export default function CheckoutPage() {
                               Terminer
                             </button>
                           </div>
+                        </div>
+                      ) : (
+                        <div className="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2">
+                          <div className="small">
+                            <div className="fw-semibold">
+                              Adresse de livraison
+                            </div>
+                            <div className="text-muted">
+                              {cityText || "—"}
+                              {communeVal ? `, ${communeVal}` : ""}
+                              {quartier ? ` — ${quartier}` : ""}
+                              {useGps && coords ? " (GPS activé)" : ""}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={() => setEditingAddress(true)}
+                          >
+                            Changer d’adresse
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1566,11 +1504,15 @@ export default function CheckoutPage() {
                     />
                     {phone && !isValidPhoneIntl(phone) && (
                       <div className="invalid-feedback">
-                        Numéro invalide. Utilisez le format international : +2126…, +225…, +223…, +1…
+                        Numéro invalide. Utilisez le format international :
+                        +2126…, +225…, +223…, +1…
                       </div>
                     )}
                     <div className="form-text">
-                      🟢 <strong>Idéalement, utilisez votre numéro WhatsApp</strong>.
+                      🟢{" "}
+                      <strong>
+                        Idéalement, utilisez votre numéro WhatsApp.
+                      </strong>
                     </div>
                   </div>
 
@@ -1589,32 +1531,40 @@ export default function CheckoutPage() {
                           const code = cityCodeFromText(v);
                           if (code) setCity(code);
                         }}
-                        placeholder="Ville auto-détectée ou saisie manuelle"
+                        placeholder="Saisissez votre ville"
                       />
                       <button
                         type="button"
                         className="btn btn-outline-dark"
-                        onClick={() => window.dispatchEvent(new Event("city:open"))}
+                        onClick={() =>
+                          window.dispatchEvent(new Event("city:open"))
+                        }
                         title="Choisir dans la liste"
                       >
                         Liste
                       </button>
                     </div>
                     <div className="form-text">
-                      Ville détectée automatiquement si la localisation est autorisée.
+                      La ville n’est pas remplie automatiquement. Saisissez-la
+                      vous-même.
                     </div>
                   </div>
 
                   {fulfillment === "DELIVERY" && (
                     <div className="col-12">
-                      <label className="form-label">Adresse complète / Localisation</label>
+                      <label className="form-label">
+                        Adresse complète / Localisation
+                      </label>
 
                       <div className="gps-box mb-3">
                         <div className="d-flex flex-wrap justify-content-between gap-2 align-items-center">
                           <div>
-                            <div className="fw-semibold">GPS automatique ou manuel</div>
+                            <div className="fw-semibold">
+                              GPS automatique ou manuel
+                            </div>
                             <div className="small text-muted">
-                              Vous pouvez autoriser la localisation ou coller des coordonnées GPS.
+                              Le GPS ajoute seulement les coordonnées. La ville
+                              doit être saisie.
                             </div>
                           </div>
 
@@ -1643,9 +1593,9 @@ export default function CheckoutPage() {
                               type="button"
                               className="btn btn-outline-dark"
                               onClick={applyPastedGps}
-                              disabled={!gpsInput.trim() || gpsLoadingCity}
+                              disabled={!gpsInput.trim()}
                             >
-                              {gpsLoadingCity ? "Analyse…" : "Coller GPS"}
+                              Coller GPS
                             </button>
                           </div>
                         </div>
@@ -1655,7 +1605,11 @@ export default function CheckoutPage() {
                             Coordonnées actives : {coords.lat}, {coords.lng}
                           </div>
                         )}
-                        {gpsErr && <div className="form-text text-danger mt-1">{gpsErr}</div>}
+                        {gpsErr && (
+                          <div className="form-text text-danger mt-1">
+                            {gpsErr}
+                          </div>
+                        )}
                       </div>
 
                       {!useGps ? (
@@ -1663,11 +1617,13 @@ export default function CheckoutPage() {
                           <textarea
                             className="form-control"
                             rows={3}
-                            placeholder="Ex: Quartier..., immeuble..., appartement..."
+                            placeholder="Ex: commune, quartier, immeuble, appartement, repère..."
                             value={guestAddress}
                             onChange={(e) => setGuestAddress(e.target.value)}
                           />
-                          <div className="form-text">Adresse complète ou GPS.</div>
+                          <div className="form-text">
+                            Adresse complète obligatoire.
+                          </div>
                         </>
                       ) : (
                         <>
@@ -1676,18 +1632,18 @@ export default function CheckoutPage() {
                             <button
                               className="btn btn-sm btn-outline-dark"
                               type="button"
-                              onClick={() => {
-                                setUseGps(false);
-                              }}
+                              onClick={() => setUseGps(false)}
                             >
                               Revenir à la saisie
                             </button>
                           </div>
-                          <div className="form-text">Précisions optionnelles :</div>
+                          <div className="form-text">
+                            Précisions optionnelles :
+                          </div>
                           <textarea
                             className="form-control mt-2"
                             rows={2}
-                            placeholder="Repère, étage, porte… (optionnel)"
+                            placeholder="Repère, étage, porte…"
                             value={guestAddress}
                             onChange={(e) => setGuestAddress(e.target.value)}
                           />
@@ -1736,17 +1692,22 @@ export default function CheckoutPage() {
                     {isCasablanca(cityText) ? (
                       <>
                         <div className="small text-muted">
-                          La livraison est calculée automatiquement selon votre ville.
+                          Livraison à domicile Casablanca avec frais inclus dans
+                          la commande.
                         </div>
                         <div className="small mt-2">
-                          Ville : <strong>{cityText || "—"}</strong> • Frais : <strong>{mad(deliveryFee)}</strong>
+                          Ville : <strong>{cityText || "—"}</strong> • Frais :{" "}
+                          <strong>{mad(deliveryFee)}</strong>
                         </div>
                       </>
                     ) : (
                       <div className="small text-muted mt-1">
-                        ⚠️ Les frais de livraison ne sont pas inclus dans ce paiement.
+                        ⚠️ Les frais d’expédition ne sont pas inclus dans ce
+                        paiement.
                         <br />
-                        Ils seront à régler à la réception de votre commande auprès de la société d’expédition.
+                        Le client paiera les frais directement auprès de la
+                        compagnie d’expédition pendant la récupération de son
+                        colis.
                       </div>
                     )}
                   </>
@@ -1754,22 +1715,26 @@ export default function CheckoutPage() {
 
                 {fulfillment === "PICKUP" && (
                   <div className="small text-muted mt-1">
-                    Vous venez récupérer la commande sur place. <strong>Aucun frais</strong>.
+                    Vous venez récupérer la commande sur place.{" "}
+                    <strong>Aucun frais</strong>.
                   </div>
                 )}
 
                 {fulfillment === "EXPEDITION" && (
                   <div className="small text-muted mt-1">
-                    Les frais de livraison ne sont pas inclus dans votre commande.
+                    Les frais d’expédition ne sont pas inclus dans votre
+                    commande.
                     <br />
-                    Ils seront à payer à la réception, auprès de la société d’expédition.
+                    Ils seront payés directement auprès de la compagnie
+                    d’expédition pendant la récupération du colis.
                   </div>
                 )}
               </div>
 
               {fulfillment !== "DELIVERY" && (
                 <div className="mini-note mt-2">
-                  (Si vous choisissez Livraison plus tard, vous pourrez renseigner/mettre à jour l’adresse.)
+                  Si vous choisissez Livraison plus tard, vous pourrez
+                  renseigner l’adresse.
                 </div>
               )}
             </div>
@@ -1785,13 +1750,14 @@ export default function CheckoutPage() {
                   <select
                     className="form-select"
                     value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                    onChange={(e) =>
+                      setPaymentMethod(e.target.value as PaymentMethod)
+                    }
                   >
                     <option value="BMCE">BMCE</option>
                     <option value="GAZHALA">GAZHALA</option>
                     <option value="CASH">CASH</option>
                   </select>
-                  <div className="form-text">Choisissez comment vous souhaitez payer votre commande.</div>
                 </div>
 
                 {paymentMethod !== "CASH" && (
@@ -1803,7 +1769,6 @@ export default function CheckoutPage() {
                       onChange={(e) => setPaymentReference(e.target.value)}
                       placeholder="Ex: transaction / dépôt / bordereau"
                     />
-                    <div className="form-text">Optionnel mais recommandé pour faciliter la validation.</div>
                   </div>
                 )}
 
@@ -1812,39 +1777,42 @@ export default function CheckoutPage() {
                     <div className="alert alert-secondary mb-0">
                       <div className="fw-semibold mb-1">Paiement cash</div>
                       <small className="d-block text-muted">
-                        Vous payez <strong>à la réception</strong> en <strong>espèces</strong>.
+                        Vous payez <strong>à la réception</strong> en espèces.
                       </small>
                     </div>
                   ) : paymentMethod === "BMCE" ? (
                     <div className="alert alert-warning mb-0">
-                      <div className="fw-semibold mb-2">Paiement BMCE (en attente)</div>
-
-                      <div className="rib-box">
-                        <div className="small"><strong>Compte:</strong> {BANK_RIB.account_name}</div>
-                        <div className="small"><strong>RIB:</strong> {BANK_RIB.rib}</div>
-                        <div className="small"><strong>IBAN:</strong> {BANK_RIB.iban}</div>
-                        <div className="small"><strong>BIC:</strong> {BANK_RIB.bic}</div>
+                      <div className="fw-semibold mb-2">
+                        Paiement BMCE en attente
                       </div>
-
-                      <div className="small text-muted mt-2">
-                        Après le paiement, merci d’envoyer le <strong>reçu</strong> pour confirmation.
-                        <br />
-                        Statut : <strong>Paiement en attente</strong>.
+                      <div className="rib-box">
+                        <div className="small">
+                          <strong>Compte:</strong> {BANK_RIB.account_name}
+                        </div>
+                        <div className="small">
+                          <strong>RIB:</strong> {BANK_RIB.rib}
+                        </div>
+                        <div className="small">
+                          <strong>IBAN:</strong> {BANK_RIB.iban}
+                        </div>
+                        <div className="small">
+                          <strong>BIC:</strong> {BANK_RIB.bic}
+                        </div>
                       </div>
                     </div>
                   ) : (
                     <div className="alert alert-warning mb-0">
-                      <div className="fw-semibold mb-2">Paiement GAZHALA (en attente)</div>
-
-                      <div className="rib-box">
-                        <div className="small"><strong>Canal:</strong> {GAZHALA_PAYMENT.note}</div>
-                        <div className="small"><strong>Compte:</strong> {GAZHALA_PAYMENT.account_name}</div>
+                      <div className="fw-semibold mb-2">
+                        Paiement GAZHALA en attente
                       </div>
-
-                      <div className="small text-muted mt-2">
-                        Après le paiement, merci d’envoyer le <strong>reçu</strong> pour confirmation.
-                        <br />
-                        Statut : <strong>Paiement en attente</strong>.
+                      <div className="rib-box">
+                        <div className="small">
+                          <strong>Canal:</strong> {GAZHALA_PAYMENT.note}
+                        </div>
+                        <div className="small">
+                          <strong>Compte:</strong>{" "}
+                          {GAZHALA_PAYMENT.account_name}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1863,20 +1831,13 @@ export default function CheckoutPage() {
               onClick={submitOrder}
               disabled={!canSubmit || submitting}
               aria-busy={submitting}
-              title={!canSubmit ? "Complétez les champs requis" : "Confirmer la commande"}
+              title={
+                !canSubmit
+                  ? "Complétez les champs requis"
+                  : "Confirmer la commande"
+              }
             >
-              {submitting ? (
-                <>
-                  <span
-                    className="spinner-border spinner-border-sm me-2"
-                    role="status"
-                    aria-hidden="true"
-                  />
-                  Confirmation…<span className="visually-hidden">de la commande</span>
-                </>
-              ) : (
-                "Confirmer la commande"
-              )}
+              {submitting ? "Confirmation…" : "Confirmer la commande"}
             </button>
           </div>
         </div>
@@ -1886,17 +1847,23 @@ export default function CheckoutPage() {
             <div className="card-body">
               <h2 className="h6 mb-3">Récapitulatif</h2>
 
-              {hasPromoInCart && <div className="badge text-bg-warning mb-3">Promo active</div>}
+              {hasPromoInCart && (
+                <div className="badge text-bg-warning mb-3">Promo active</div>
+              )}
 
               <ul className="list-group list-group-flush">
                 {lines.map((l: any) => {
                   const vLabel = getLineVariantLabel(l);
+
                   return (
                     <li
                       key={lineKey(l)}
                       className="list-group-item d-flex justify-content-between align-items-start"
                     >
-                      <div className="me-3 text-truncate" style={{ maxWidth: 280 }}>
+                      <div
+                        className="me-3 text-truncate"
+                        style={{ maxWidth: 280 }}
+                      >
                         <div className="text-truncate">
                           {l.name} <span className="text-muted">×{l.qty}</span>
                         </div>
@@ -1906,7 +1873,9 @@ export default function CheckoutPage() {
                           </div>
                         )}
                       </div>
-                      <span className="fw-semibold">{mad((l.qty || 0) * (l.price || 0))}</span>
+                      <span className="fw-semibold">
+                        {mad((l.qty || 0) * (l.price || 0))}
+                      </span>
                     </li>
                   );
                 })}
@@ -1916,8 +1885,8 @@ export default function CheckoutPage() {
                     {fulfillment === "PICKUP"
                       ? "Frais"
                       : fulfillment === "EXPEDITION"
-                      ? "Expédition"
-                      : "Livraison"}
+                        ? "Expédition"
+                        : "Livraison"}
                   </span>
                   <span className="fw-semibold">{mad(deliveryFee)}</span>
                 </li>
@@ -1935,29 +1904,23 @@ export default function CheckoutPage() {
 
               <div className="d-flex justify-content-between align-items-center mt-2">
                 <div className="text-muted">Paiement</div>
-                <div className="fw-semibold">{paymentMethodLabel(paymentMethod)}</div>
+                <div className="fw-semibold">
+                  {paymentMethodLabel(paymentMethod)}
+                </div>
               </div>
             </div>
           </div>
 
-          {fulfillment === "EXPEDITION" && (
+          {(fulfillment === "EXPEDITION" ||
+            (fulfillment === "DELIVERY" && !isCasablanca(cityText))) && (
             <div className="alert alert-warning mt-3 mb-0">
-              <div className="fw-semibold">📦 Expédition</div>
+              <div className="fw-semibold">📦 Frais d’expédition</div>
               <div className="small text-muted">
-                Les frais de livraison ne sont pas inclus dans votre commande.
+                Les frais d’expédition ne sont pas inclus dans le total payé sur
+                Duumini.
                 <br />
-                Ils seront à payer à la réception auprès de la société d’expédition.
-              </div>
-            </div>
-          )}
-
-          {fulfillment === "DELIVERY" && !isCasablanca(cityText) && (
-            <div className="alert alert-warning mt-3 mb-0">
-              <div className="fw-semibold">🚚 Livraison hors Casablanca</div>
-              <div className="small text-muted">
-                Les frais de livraison ne sont pas inclus dans ce paiement.
-                <br />
-                Ils seront à régler à la réception de votre commande auprès de la société d’expédition.
+                Le client les paiera directement auprès de la compagnie
+                d’expédition pendant la récupération de son colis.
               </div>
             </div>
           )}
