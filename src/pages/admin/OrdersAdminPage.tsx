@@ -54,7 +54,9 @@ function formatMad(value: number) {
 }
 
 function normalizeTxt(value: any) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function getOrderDate(o: AnyObj) {
@@ -209,7 +211,7 @@ export default function OrdersAdminPage() {
       } as any);
 
       setItems(res.items || []);
-      setTotal(res.pageInfo?.total ?? res.pageInfo?.totalItems ?? 0);
+      setTotal(Number(res.pageInfo?.total || 0));
       setVendorAll([]);
 
       const divineRes = await listOrders({
@@ -275,7 +277,8 @@ export default function OrdersAdminPage() {
 
       const txt = q.toLowerCase();
       const contact = (o as any)?.contact || (o as any)?.user || {};
-      const contactName = `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
+      const contactName =
+        `${contact?.first_name || ""} ${contact?.last_name || ""}`.trim();
 
       return (
         String(o.id).toLowerCase().includes(txt) ||
@@ -534,7 +537,8 @@ export default function OrdersAdminPage() {
         return setViewErr("Vous dépassez le total de la commande.");
       }
     } else {
-      if (raw < 0) return setViewErr("Le montant payé ne peut pas être négatif.");
+      if (raw < 0)
+        return setViewErr("Le montant payé ne peut pas être négatif.");
       if (raw > total + 0.0001) {
         return setViewErr("Le montant payé ne peut pas dépasser le total.");
       }
@@ -621,7 +625,8 @@ export default function OrdersAdminPage() {
             <div>
               <div className="fw-bold">Suivi Divine</div>
               <div className="small text-muted">
-                Commandes liées à Divine depuis le samedi 25/04/2026 — commission 10%
+                Commandes liées à Divine depuis le samedi 25/04/2026 —
+                commission 10%
               </div>
             </div>
 
