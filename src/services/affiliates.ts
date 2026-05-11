@@ -47,6 +47,8 @@ export type Affiliate = {
   updated_at?: string | null;
   share_url_by_code?: string | null;
   share_url_by_slug?: string | null;
+  track_url_by_code?: string | null;
+  track_url_by_slug?: string | null;
   user?: AffiliateUser;
 };
 
@@ -61,8 +63,6 @@ export type AffiliateCommission = {
   paid_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-  total_sales?: number | null;
-  total_earnings?: number | null;
   product_id?: number | null;
   period_day?: string | null;
   period_week_start?: string | null;
@@ -207,8 +207,8 @@ function normalizePositiveInt(value: unknown) {
   return Math.trunc(n);
 }
 
-function normalizeBase(u?: string | null) {
-  return String(u || "").replace(/\/+$/, "");
+function normalizeBase(value?: string | null) {
+  return String(value || "").replace(/\/+$/, "");
 }
 
 function normalizePath(path?: string | null, fallback = "/") {
@@ -272,7 +272,44 @@ function normalizeCreateAffiliatePayload(payload: CreateAffiliatePayload) {
 }
 
 function normalizeUpdateAffiliatePayload(payload: UpdateAffiliatePayload) {
-  return normalizeCreateAffiliatePayload(payload as CreateAffiliatePayload);
+  const out: Record<string, any> = {};
+
+  if (payload.user_id !== undefined) {
+    out.user_id =
+  payload.user_id === null || payload.user_id === undefined
+    ? null
+    : normalizePositiveInt(payload.user_id);
+  }
+
+  if (payload.affiliate_code !== undefined) {
+    out.affiliate_code = normalizeAffiliateCode(payload.affiliate_code);
+  }
+
+  if (payload.referral_slug !== undefined) {
+    out.referral_slug = normalizeSlug(payload.referral_slug);
+  }
+
+  if (payload.name !== undefined) {
+    out.name = cleanNullableString(payload.name);
+  }
+
+  if (payload.phone !== undefined) {
+    out.phone = cleanNullableString(payload.phone);
+  }
+
+  if (payload.commission_rate !== undefined) {
+    out.commission_rate = Number(payload.commission_rate || 0);
+  }
+
+  if (payload.status !== undefined) {
+    out.status = normalizeAffiliateStatus(payload.status) || "ACTIVE";
+  }
+
+  if (payload.notes !== undefined) {
+    out.notes = cleanNullableString(payload.notes);
+  }
+
+  return out;
 }
 
 const HTTP_API_BASE =
@@ -298,9 +335,10 @@ export async function listAffiliates(
     status?: AffiliateStatus | "ALL" | "";
   } = {},
 ) {
-  const page = opts.page ?? 1;
-  const pageSize = opts.pageSize ?? 20;
-  const query: Record<string, any> = { page, pageSize };
+  const query: Record<string, any> = {
+    page: opts.page ?? 1,
+    pageSize: opts.pageSize ?? 20,
+  };
 
   if (opts.q && cleanString(opts.q)) query.q = cleanString(opts.q);
   if (opts.status && opts.status !== "ALL") query.status = opts.status;
@@ -343,9 +381,10 @@ export async function listAffiliateCommissions(
     status?: AffiliateCommissionStatus | "ALL" | "";
   } = {},
 ) {
-  const page = opts.page ?? 1;
-  const pageSize = opts.pageSize ?? 20;
-  const query: Record<string, any> = { page, pageSize };
+  const query: Record<string, any> = {
+    page: opts.page ?? 1,
+    pageSize: opts.pageSize ?? 20,
+  };
 
   if (opts.status && opts.status !== "ALL") {
     query.status = opts.status;
@@ -364,9 +403,10 @@ export async function listAffiliateClicks(
     pageSize?: number;
   } = {},
 ) {
-  const page = opts.page ?? 1;
-  const pageSize = opts.pageSize ?? 20;
-  const query: Record<string, any> = { page, pageSize };
+  const query: Record<string, any> = {
+    page: opts.page ?? 1,
+    pageSize: opts.pageSize ?? 20,
+  };
 
   return api.get<Paginated<AffiliateClick>>(
     `/api/affiliates/${affiliateId}/clicks`,
@@ -387,9 +427,12 @@ export async function updateAffiliateCommissionStatus(
 }
 
 export async function getAffiliatesRevenueSummary(period: RevenuePeriod = "MONTH") {
-  return api.get<AffiliateRevenueSummaryResponse>("/api/affiliates/reports/summary", {
-    query: { period: normalizeRevenuePeriod(period) },
-  });
+  return api.get<AffiliateRevenueSummaryResponse>(
+    "/api/affiliates/reports/summary",
+    {
+      query: { period: normalizeRevenuePeriod(period) },
+    },
+  );
 }
 
 export async function getAffiliatesRevenueHistory(
@@ -472,9 +515,10 @@ export async function getMyAffiliateCommissions(
     query.status = opts.status;
   }
 
-  return api.get<Paginated<AffiliateCommission>>("/api/affiliate/me/commissions", {
-    query,
-  });
+  return api.get<Paginated<AffiliateCommission>>(
+    "/api/affiliate/me/commissions",
+    { query },
+  );
 }
 
 export async function getMyAffiliateClicks(
@@ -506,9 +550,10 @@ export async function getMyAffiliateHistory(
     pageSize: opts.pageSize ?? 12,
   };
 
-  return api.get<Paginated<AffiliateRevenueHistoryRow>>("/api/affiliate/me/history", {
-    query,
-  });
+  return api.get<Paginated<AffiliateRevenueHistoryRow>>(
+    "/api/affiliate/me/history",
+    { query },
+  );
 }
 
 export async function trackAffiliateClick(payload: TrackAffiliateClickPayload) {
@@ -518,12 +563,21 @@ export async function trackAffiliateClick(payload: TrackAffiliateClickPayload) {
     return null;
   }
 
-  return api.post<AffiliateClick>("/api/affiliates/click", {
-    affiliate_code: affiliateCode,
-    landing_url: cleanNullableString(payload.landing_url),
-    product_id: normalizePositiveInt(payload.product_id),
-    source: cleanNullableString(payload.source || "web"),
-  });
+  const target = payload.landing_url || "/";
+  const productId = normalizePositiveInt(payload.product_id);
+  const source = cleanNullableString(payload.source || "web") || "web";
+
+  const path = `/api/affiliates/track/${encodeURIComponent(affiliateCode)}`;
+  const query: Record<string, any> = {
+    to: target,
+    source,
+  };
+
+  if (productId) {
+    query.product_id = productId;
+  }
+
+  return api.get<unknown>(path, { query });
 }
 
 export function getAffiliatePublicUrlByCode(code: string) {

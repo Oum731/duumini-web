@@ -3,6 +3,7 @@ import { trackAffiliateClick } from "../services/affiliates";
 const AFFILIATE_STORAGE_KEY = "duumini_affiliate_code";
 const AFFILIATE_TS_KEY = "duumini_affiliate_code_ts";
 const AFFILIATE_PRODUCT_KEY = "duumini_affiliate_product_id";
+const AFFILIATE_SOURCE_KEY = "duumini_affiliate_source";
 const AFFILIATE_TTL_DAYS = 30;
 
 function nowMs(): number {
@@ -14,7 +15,7 @@ function ttlMs(days = AFFILIATE_TTL_DAYS): number {
 }
 
 function canUseStorage(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  return typeof window !== "undefined" && !!window.localStorage;
 }
 
 export function normalizeAffiliateCode(value: unknown): string | null {
@@ -38,6 +39,7 @@ function normalizePositiveInt(value: unknown): number | null {
 export function setStoredAffiliateCode(
   code: unknown,
   productId?: unknown,
+  source?: unknown,
 ): string | null {
   if (!canUseStorage()) return null;
 
@@ -50,6 +52,13 @@ export function setStoredAffiliateCode(
   const cleanProductId = normalizePositiveInt(productId);
   if (cleanProductId) {
     window.localStorage.setItem(AFFILIATE_PRODUCT_KEY, String(cleanProductId));
+  } else {
+    window.localStorage.removeItem(AFFILIATE_PRODUCT_KEY);
+  }
+
+  const cleanSource = String(source || "").trim();
+  if (cleanSource) {
+    window.localStorage.setItem(AFFILIATE_SOURCE_KEY, cleanSource);
   }
 
   return normalized;
@@ -61,6 +70,7 @@ export function clearStoredAffiliateCode(): void {
   window.localStorage.removeItem(AFFILIATE_STORAGE_KEY);
   window.localStorage.removeItem(AFFILIATE_TS_KEY);
   window.localStorage.removeItem(AFFILIATE_PRODUCT_KEY);
+  window.localStorage.removeItem(AFFILIATE_SOURCE_KEY);
 }
 
 export function getStoredAffiliateCode(options?: {
@@ -104,15 +114,27 @@ export function getStoredAffiliateProductId(): number | null {
   return Math.trunc(n);
 }
 
+export function getStoredAffiliateSource(): string | null {
+  if (!canUseStorage()) return null;
+
+  const source = String(window.localStorage.getItem(AFFILIATE_SOURCE_KEY) || "")
+    .trim();
+
+  return source || null;
+}
+
 export function getAffiliateCodeFromUrl(url?: string): string | null {
   try {
-    const href = url || (typeof window !== "undefined" ? window.location.href : "");
+    const href =
+      url || (typeof window !== "undefined" ? window.location.href : "");
+
     if (!href) return null;
 
-    const parsed = new URL(href);
+    const parsed = new URL(href, typeof window !== "undefined" ? window.location.origin : undefined);
 
     return normalizeAffiliateCode(
       parsed.searchParams.get("ref") ||
+        parsed.searchParams.get("affiliate_code") ||
         parsed.searchParams.get("affiliate") ||
         parsed.searchParams.get("code"),
     );
@@ -123,21 +145,30 @@ export function getAffiliateCodeFromUrl(url?: string): string | null {
 
 export function getProductIdFromUrl(url?: string): number | null {
   try {
-    const href = url || (typeof window !== "undefined" ? window.location.href : "");
+    const href =
+      url || (typeof window !== "undefined" ? window.location.href : "");
+
     if (!href) return null;
 
-    const parsed = new URL(href);
+    const parsed = new URL(href, typeof window !== "undefined" ? window.location.origin : undefined);
 
-    const queryProductId = normalizePositiveInt(parsed.searchParams.get("product_id"));
+    const queryProductId =
+      normalizePositiveInt(parsed.searchParams.get("product_id")) ||
+      normalizePositiveInt(parsed.searchParams.get("productId")) ||
+      normalizePositiveInt(parsed.searchParams.get("pid"));
+
     if (queryProductId) return queryProductId;
 
     const path = parsed.pathname || "";
 
+    const productByProduct = path.match(/\/product\/(\d+)/i);
+    if (productByProduct) return normalizePositiveInt(productByProduct[1]);
+
     const productByProducts = path.match(/\/products\/(\d+)/i);
     if (productByProducts) return normalizePositiveInt(productByProducts[1]);
 
-    const productByProduct = path.match(/\/product\/(\d+)/i);
-    if (productByProduct) return normalizePositiveInt(productByProduct[1]);
+    const productByP = path.match(/\/p\/(\d+)/i);
+    if (productByP) return normalizePositiveInt(productByP[1]);
 
     return null;
   } catch {
@@ -153,12 +184,14 @@ export function removeAffiliateCodeFromCurrentUrl(): void {
 
     const hasAffiliateParam =
       url.searchParams.has("ref") ||
+      url.searchParams.has("affiliate_code") ||
       url.searchParams.has("affiliate") ||
       url.searchParams.has("code");
 
     if (!hasAffiliateParam) return;
 
     url.searchParams.delete("ref");
+    url.searchParams.delete("affiliate_code");
     url.searchParams.delete("affiliate");
     url.searchParams.delete("code");
 
@@ -183,11 +216,12 @@ export async function captureAffiliateCodeFromUrl(
   if (!code) return null;
 
   const productId = getProductIdFromUrl(url);
-  const stored = setStoredAffiliateCode(code, productId);
+  const source = options?.source || "WEB_REF";
+  const stored = setStoredAffiliateCode(code, productId, source);
 
   if (!stored) return null;
 
-  if (options?.trackClick !== false && typeof window !== "undefined") {
+  if (options?.trackClick === true && typeof window !== "undefined") {
     try {
       const landingUrl =
         url ||
@@ -197,7 +231,7 @@ export async function captureAffiliateCodeFromUrl(
         affiliate_code: stored,
         landing_url: landingUrl,
         product_id: productId,
-        source: options?.source || "web",
+        source,
       });
     } catch {}
   }
@@ -219,8 +253,8 @@ export async function initAffiliateTracking(
 ): Promise<string | null> {
   const captured = await captureAffiliateCodeFromUrl(url, {
     removeFromUrl: options?.removeFromUrl ?? true,
-    trackClick: options?.trackClick ?? true,
-    source: options?.source || "production",
+    trackClick: options?.trackClick ?? false,
+    source: options?.source || "WEB_REF",
   });
 
   if (captured) return captured;
@@ -234,7 +268,10 @@ export function hasStoredAffiliateCode(): boolean {
 
 export function attachAffiliateCodeToOrderPayload<
   T extends Record<string, unknown>,
->(payload: T): T & {
+>(
+  payload: T,
+  manualCode?: unknown,
+): T & {
   affiliate_code?: string | null;
   affiliate?: {
     code?: string | null;
@@ -244,20 +281,16 @@ export function attachAffiliateCodeToOrderPayload<
   };
 } {
   const basePayload = { ...payload };
-  const affiliateCode = getStoredAffiliateCode({ refreshTtl: true });
+
+  const manualAffiliateCode = normalizeAffiliateCode(manualCode);
+  const storedAffiliateCode = getStoredAffiliateCode({ refreshTtl: true });
+  const affiliateCode = manualAffiliateCode || storedAffiliateCode;
+
   const productId = getStoredAffiliateProductId();
+  const source = manualAffiliateCode ? "ADMIN_MANUAL" : getStoredAffiliateSource() || "WEB_REF";
 
   if (!affiliateCode) {
     return basePayload;
-  }
-
-  const existingCode =
-    typeof (basePayload as { affiliate_code?: unknown }).affiliate_code === "string"
-      ? String((basePayload as { affiliate_code?: unknown }).affiliate_code).trim()
-      : "";
-
-  if (existingCode) {
-    return basePayload as T & { affiliate_code?: string | null };
   }
 
   return {
@@ -267,7 +300,7 @@ export function attachAffiliateCodeToOrderPayload<
       ...((basePayload as any).affiliate || {}),
       code: affiliateCode,
       product_id: productId,
-      source: "WEB_REF",
+      source,
     },
   };
 }

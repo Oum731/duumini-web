@@ -4,7 +4,9 @@ import { attachAffiliateCodeToOrderPayload } from "./ordersAffiliate";
 /** ✅ Aligné backend: { items, pageInfo } */
 export type Paginated<T> = {
   items: T[];
-  pageInfo: { page: number; pageSize: number; total: number };
+  pageInfo: {
+    [x: string]: number; page: number; pageSize: number; total: number 
+};
 };
 
 /* ===== Types ===== */
