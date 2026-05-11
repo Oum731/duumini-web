@@ -20,6 +20,7 @@ import ContentAiPage from "./pages/admin/ContentAiPage";
 
 import AfricanFood from "./pages/AfricanFood";
 import AfricanMarket from "./pages/AfricanMarket";
+import Fashion from "./pages/Fashion";
 
 import CartPage from "./pages/Cart";
 import { CartProvider, useCart } from "./store/cart";
@@ -42,9 +43,9 @@ import {
   type PendingProductRating,
   rateProduct,
 } from "./services/productRatings";
+
 import TopProductsPage from "./pages/TopProductsPage";
 import GuestOrderWidget from "./components/GuestOrderWidget";
-
 import LocationGate from "./components/LocationGate";
 import NotificationBubble from "./components/NotificationBubble";
 
@@ -56,7 +57,6 @@ import PromotionsPage from "./pages/PromotionsPage";
 import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
 import CanKickLottie from "./components/CanKickLottie";
 import AiCopyPage from "./pages/admin/AiCopyPage";
-import Fashion from "./pages/Fashion";
 
 import VendorHome from "./pages/vendor/VendorHome";
 import MyShopPage from "./pages/vendor/MyShopPage";
@@ -68,6 +68,7 @@ import PublicReceiptPage from "./pages/PublicReceiptPage";
 import ReportSalesViewPage from "./pages/admin/ReportSalesViewPage";
 import ReportsSalesPage from "./pages/admin/ReportsSalesPage";
 import AffiliatesPage from "./pages/admin/AffiliatesPage";
+import AffiliateDashboardPage from "./pages/admin/AffiliateDashboardPage";
 
 function Page({ title }: { title: string }) {
   return (
@@ -85,6 +86,7 @@ function ScrollToTop() {
     if ("scrollRestoration" in window.history) {
       window.history.scrollRestoration = "manual";
     }
+
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname, search]);
 
@@ -96,6 +98,7 @@ function PageViewTracker() {
 
   useEffect(() => {
     const path = `${pathname}${search || ""}`;
+
     trackPageView(path);
     trackMetricoolPageView();
     metaPageView(path);
@@ -117,6 +120,7 @@ function AdminShell() {
 
 function NavbarWithCount() {
   const { totalItems } = useCart();
+
   return <Navbar cartCount={totalItems} />;
 }
 
@@ -129,12 +133,15 @@ function FloatingCartGuard() {
     pathname.startsWith("/checkout") ||
     pathname.startsWith("/admin") ||
     pathname.startsWith("/vendeur") ||
-    pathname.startsWith("/ma-boutique");
+    pathname.startsWith("/ma-boutique") ||
+    pathname.startsWith("/affiliate") ||
+    pathname.startsWith("/affilie");
 
   const hideForPro =
     !loading && isLogged && (caps.canAccessAdmin || caps.canAccessPro);
 
   if (hideByRoute || hideForPro) return null;
+
   return <FloatingCartButton />;
 }
 
@@ -143,6 +150,7 @@ function GlobalRatingModal(props: {
   onClose: () => void;
 }) {
   const { pending, onClose } = props;
+
   const [rating, setRating] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [comment, setComment] = useState("");
@@ -186,6 +194,7 @@ function GlobalRatingModal(props: {
       alert("Choisissez d'abord le nombre d'étoiles.");
       return;
     }
+
     if (saving) return;
 
     setSaving(true);
@@ -198,6 +207,7 @@ function GlobalRatingModal(props: {
         rating,
         comment.trim() || undefined,
       );
+
       setSuccess("Merci pour votre avis !");
       setTimeout(() => onClose(), 800);
     } catch {
@@ -209,12 +219,16 @@ function GlobalRatingModal(props: {
 
   useEffect(() => {
     document.body.classList.add("modal-open");
-    return () => document.body.classList.remove("modal-open");
+
+    return () => {
+      document.body.classList.remove("modal-open");
+    };
   }, []);
 
   return (
     <>
       <div className="modal-backdrop fade show" />
+
       <div
         className="modal fade show d-block"
         tabIndex={-1}
@@ -225,6 +239,7 @@ function GlobalRatingModal(props: {
           <div className="modal-content">
             <div className="modal-header">
               <h5 className="modal-title">Donnez votre avis</h5>
+
               <button
                 type="button"
                 className="btn-close"
@@ -235,7 +250,8 @@ function GlobalRatingModal(props: {
 
             <div className="modal-body">
               <p className="small text-muted mb-2">
-                Vous avez reçu votre commande contenant :<br />
+                Vous avez reçu votre commande contenant :
+                <br />
                 <strong>{pending.product_name}</strong>
               </p>
 
@@ -243,6 +259,7 @@ function GlobalRatingModal(props: {
                 <span className="small d-block mb-1 fw-semibold">
                   Votre note :
                 </span>
+
                 <div className="d-flex align-items-center gap-2">
                   {[1, 2, 3, 4, 5].map((i) => renderStar(i))}
                 </div>
@@ -252,6 +269,7 @@ function GlobalRatingModal(props: {
                 <label className="form-label small">
                   Votre avis (optionnel)
                 </label>
+
                 <textarea
                   className="form-control form-control-sm"
                   rows={3}
@@ -265,6 +283,7 @@ function GlobalRatingModal(props: {
               {error && (
                 <div className="alert alert-danger py-1 small">{error}</div>
               )}
+
               {success && (
                 <div className="alert alert-success py-1 small">{success}</div>
               )}
@@ -279,6 +298,7 @@ function GlobalRatingModal(props: {
               >
                 Plus tard
               </button>
+
               <button
                 type="button"
                 className="btn btn-sm btn-duu"
@@ -297,6 +317,7 @@ function GlobalRatingModal(props: {
 
 export default function App() {
   const { user } = useAuth();
+
   const [pendingRating, setPendingRating] =
     useState<PendingProductRating | null>(null);
 
@@ -311,6 +332,7 @@ export default function App() {
     (async () => {
       try {
         const res = await getPendingProductRating();
+
         if (!cancelled) {
           setPendingRating((res as PendingProductRating | null) ?? null);
         }
@@ -337,7 +359,9 @@ export default function App() {
           <main className="flex-fill">
             <React.Suspense
               fallback={
-                <div className="container-xxl py-5 text-muted">Chargement…</div>
+                <div className="container-xxl py-5 text-muted">
+                  Chargement…
+                </div>
               }
             >
               <Routes>
@@ -350,6 +374,17 @@ export default function App() {
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/cart" element={<CartPage />} />
+
+                <Route path="/affiliate" element={<AffiliateDashboardPage />} />
+                <Route path="/affilie" element={<AffiliateDashboardPage />} />
+                <Route
+                  path="/affiliate/dashboard"
+                  element={<AffiliateDashboardPage />}
+                />
+                <Route
+                  path="/affilie/dashboard"
+                  element={<AffiliateDashboardPage />}
+                />
 
                 <Route path="/african-food" element={<AfricanFood />} />
                 <Route
@@ -421,10 +456,7 @@ export default function App() {
                       path="reports/sales/:id"
                       element={<ReportSalesViewPage />}
                     />
-                    <Route
-                      path="/admin/affiliates"
-                      element={<AffiliatesPage />}
-                    />
+                    <Route path="affiliates" element={<AffiliatesPage />} />
                     <Route
                       path="produits"
                       element={<Navigate to="/admin/products" replace />}

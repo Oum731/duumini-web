@@ -1,16 +1,20 @@
 import React, { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, useLocation } from "react-router-dom";
+
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap/dist/js/bootstrap.bundle.min.js";
+
 import "./theme.css";
 
 import App from "./App";
+
 import { AuthProvider } from "./context/AuthContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
 import { LocationProvider } from "./context/LocationContext";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
 import { trackPageView } from "./utils/metaPixel";
 import { initAffiliateTracking } from "./services/affiliateTracking";
 
@@ -38,11 +42,12 @@ function AffiliateTrackerBootstrap() {
     const currentPath = `${location.pathname}${location.search}${location.hash}`;
 
     if (lastTrackedRef.current === currentPath) return;
+
     lastTrackedRef.current = currentPath;
 
     initAffiliateTracking(undefined, {
-      source: "production",
-      trackClick: true,
+      source: "WEB_REF",
+      trackClick: false,
       removeFromUrl: false,
     });
   }, [location.pathname, location.search, location.hash]);
@@ -58,6 +63,7 @@ function MetaPageTracker() {
     const currentPath = `${location.pathname}${location.search}${location.hash}`;
 
     if (lastTrackedRef.current === currentPath) return;
+
     lastTrackedRef.current = currentPath;
 
     trackPageView(buildPageViewEventId(currentPath));
@@ -87,5 +93,5 @@ createRoot(document.getElementById("root")!).render(
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );
