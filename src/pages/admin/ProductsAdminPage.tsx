@@ -365,10 +365,21 @@ export default function ProductsAdminPage() {
   }, []);
 
   const openCreate = useCallback(() => {
-    setFormErr(null);
-    setEditing(undefined);
-    setOpenForm(true);
-  }, []);
+  setFormErr(null);
+  setEditing(undefined);
+
+  // Si une seule boutique existe, on la présélectionne automatiquement
+  // dans le formulaire de création du produit.
+  if (shops.length === 1) {
+    const onlyShop = shops[0];
+
+    setEditing({
+      shop_id: Number(onlyShop.id),
+    } as FullProduct);
+  }
+
+  setOpenForm(true);
+}, [shops]);
 
   const openEdit = useCallback(
     async (id: number) => {
