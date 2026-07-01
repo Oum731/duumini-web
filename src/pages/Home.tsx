@@ -22,21 +22,8 @@ import {
 } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories } from "../services/subCategories";
-import { API_BASE } from "../services/http";
-
-/* ===== Helpers ===== */
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  if (u.startsWith("http")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
-}
-
-function moneyMAD(n?: number | null) {
-  return `${Number(n || 0).toLocaleString("fr-FR", {
-    maximumFractionDigits: 0,
-  })} MAD`;
-}
+import { moneyMAD } from "../utils/money";
+import { imgUrl } from "../utils/media";
 
 /* ===== Offline banner ===== */
 function OfflineBanner() {

@@ -3,42 +3,11 @@ import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Eye, ShoppingCart, Star } from "lucide-react";
 import type { Product } from "../services/products";
-import { API_BASE } from "../services/http";
 import { useCart } from "../store/cart";
 import ProductRating from "./ProductRating";
 import { trackAddToCart } from "../lib/analytics";
-
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  const s = String(u);
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("/")) return `${API_BASE}${s}`;
-  return s;
-}
-
-function toNum(x: any): number {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : 0;
-}
-function toCents(x: any): number {
-  return Math.round(toNum(x) * 100);
-}
-function fromCents(c: any): number {
-  const n = Number(c);
-  return Number.isFinite(n) ? Math.round(n) / 100 : 0;
-}
-function roundToMAD(cents: number) {
-  return Math.round((cents || 0) / 100) * 100;
-}
-function moneyMAD(n?: number | null) {
-  const cents = roundToMAD(toCents(n ?? 0));
-  const v = fromCents(cents);
-  const s = new Intl.NumberFormat("fr-FR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(v);
-  return `${s} MAD`;
-}
+import { moneyMAD, toNum, toCents, fromCents, roundToMAD } from "../utils/money";
+import { imgUrl } from "../utils/media";
 
 function shortText(s?: string | null, max = 140) {
   const t = String(s || "").trim();

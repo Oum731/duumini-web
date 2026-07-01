@@ -1,40 +1,10 @@
 // src/components/PromotionsSection.tsx
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { API_BASE, api } from "../services/http";
+import { api } from "../services/http";
 import type { Product } from "../services/products";
-
-/* ===== Helpers ===== */
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
-}
-
-/* ✅ stable: MAD entier (0 décimale) */
-function toNum(x: any): number {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : 0;
-}
-function toCents(x: any) {
-  return Math.round(toNum(x) * 100);
-}
-function roundToMAD(cents: number) {
-  return Math.round((cents || 0) / 100) * 100;
-}
-function fromCents(c: any) {
-  const n = Number(c);
-  return Number.isFinite(n) ? Math.round(n) / 100 : 0;
-}
-function moneyMAD(n?: number | null) {
-  const cents = roundToMAD(toCents(n ?? 0));
-  const v = fromCents(cents);
-  return `${new Intl.NumberFormat("fr-FR", {
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
-  }).format(v)} MAD`;
-}
+import { moneyMAD, toNum, toCents, fromCents, roundToMAD } from "../utils/money";
+import { imgUrl } from "../utils/media";
 
 type PromoDiscountType = "PERCENT" | "AMOUNT";
 

@@ -4,6 +4,8 @@ import { me } from "../../services/auth";
 import { listCategories, createCategory, type Category } from "../../services/categories";
 import { listSubCategories, type SubCategory as SvcSubCategory } from "../../services/subCategories";
 
+import { moneyMAD } from "../../utils/money";
+import { imgUrl } from "../../utils/media";
 import ProductForm, {
   type Draft,
   type FullProduct,
@@ -13,8 +15,6 @@ import ProductForm, {
   type SubCategory,
   type VariantDraft,
   cleanVariantsForApi,
-  imgUrl,
-  moneyMAD,
   isActive,
   hasRealPromo,
   promoLabel,

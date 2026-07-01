@@ -44,6 +44,7 @@ import {
   getAffiliateTrackingUrlByCode,
 } from "../../services/affiliates";
 import { api } from "../../services/http";
+import { moneyMAD } from "../../utils/money";
 
 type AffiliateStatus = "ACTIVE" | "INACTIVE";
 type CommissionStatus = "PENDING" | "APPROVED" | "PAID" | "CANCELLED";
@@ -197,12 +198,7 @@ const PRODUCT_ROUTE_PREFIX =
   "/products";
 
 function formatMoney(value: unknown) {
-  const n = Number(value || 0);
-  return new Intl.NumberFormat("fr-MA", {
-    style: "currency",
-    currency: "MAD",
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(n) ? n : 0);
+  return moneyMAD(Number(value || 0), 2);
 }
 
 function formatNumber(value: unknown) {

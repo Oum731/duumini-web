@@ -2,8 +2,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { me } from "../../services/auth";
-import { API_BASE } from "../../services/http";
 import { listMyShops, getShop, updateShop, type Shop } from "../../services/shops";
+import { imgUrl } from "../../utils/media";
 
 type AnyObj = Record<string, any>;
 
@@ -24,14 +24,6 @@ const VENDOR_ROUTES = {
 function isVendorRole(role?: string) {
   const r = String(role || "").toUpperCase();
   return r === "VENDEUR" || r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
-}
-
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  const s = String(u);
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("/")) return `${API_BASE}${s}`;
-  return s;
 }
 
 function toInput(v: any) {

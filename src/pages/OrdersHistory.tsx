@@ -10,19 +10,11 @@ import {
   type OrderStatus,
   type OrderItem,
 } from "../services/orders";
-import { mad } from "../store/cart";
-import { API_BASE } from "../services/http";
+import { moneyMAD as mad } from "../utils/money";
+import { imgUrl } from "../utils/media";
 
 import OrderReceiptButton from "../components/orders/OrderReceiptButton";
 import OrderReceiptTicket from "../components/orders/OrderReceiptTicket";
-
-/* ===== Helpers image ===== */
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
-}
 
 /** Image de produit robuste (pour l’UI, PAS WhatsApp) */
 function getItemImage(it: OrderItem): string {

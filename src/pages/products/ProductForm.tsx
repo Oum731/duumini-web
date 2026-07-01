@@ -1,6 +1,5 @@
 // src/pages/products/ProductForm.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../../services/http";
 import type { Category } from "../../services/categories";
 import type {
   Product,
@@ -8,6 +7,8 @@ import type {
   PromoDiscountType as SvcPromoDiscountType,
 } from "../../services/products";
 import { listProductVariants, removeProductVariant } from "../../services/products";
+import { toCents, fromCents, moneyMAD } from "../../utils/money";
+import { imgUrl } from "../../utils/media";
 
 /* ================= Types ================= */
 
@@ -66,42 +67,10 @@ export type Draft = {
   is_active?: 0 | 1 | null;
 };
 
-/* ================= Helpers (exported for Admin pages) ================= */
+/* ================= Helpers ================= */
 
-const MAD_SCALE = 100;
-
-function toCents(n: any): number {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round(x * MAD_SCALE);
-}
-function fromCents(c: any): number {
-  const x = Number(c);
-  if (!Number.isFinite(x)) return 0;
-  return x / MAD_SCALE;
-}
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
-}
-
-export function moneyMAD(n?: number | null, digits: 0 | 2 = 0) {
-  const v = Number(n ?? 0);
-  const safe = Number.isFinite(v) ? v : 0;
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "MAD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(safe);
-}
-
-export function imgUrl(u?: string | null) {
-  if (!u) return "";
-  const s = String(u).trim();
-  if (!s) return "";
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("/")) return `${API_BASE}${s}`;
-  return `${API_BASE}/${s}`;
 }
 
 function computePromoPrice(price: number, type: PromoDiscountType, value: number) {

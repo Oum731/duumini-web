@@ -7,8 +7,8 @@ import {
   type OrderStatus,
   type PaymentStatus,
 } from "../../services/orders";
-import { API_BASE } from "../../services/http";
 import { listAllAdminUsers, type AdminUser } from "../../services/adminUsers";
+import { imgUrl } from "../../utils/media";
 
 type AnyObj = Record<string, any>;
 
@@ -98,14 +98,6 @@ function computePayStatus(total: number, paid: number): PaymentStatus {
   if (t <= 0 || p <= 0) return "UNPAID";
   if (p >= t) return "PAID";
   return "PARTIAL";
-}
-
-function imgUrl(u?: string | null) {
-  const s = String(u || "").trim();
-  if (!s) return "";
-  if (s.startsWith("http")) return s;
-  if (s.startsWith("/")) return `${API_BASE}${s}`;
-  return s;
 }
 
 function getProductThumb(p: Product): string {

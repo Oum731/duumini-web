@@ -1,6 +1,7 @@
 // src/store/cart.ts
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { Product } from "../services/products";
+import { moneyMAD } from "../utils/money";
 
 export type CartVariant = {
   variant_id: number | null;
@@ -59,10 +60,6 @@ type CartState = {
 
 const CartCtx = createContext<CartState | null>(null);
 const LS_KEY = "duumini.cart.v3";
-
-function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", { style: "currency", currency: "MAD" }).format(Number(n || 0));
-}
 
 function makeLineId(productId: number, variantKey: string) {
   const key = String(variantKey || "default").trim() || "default";

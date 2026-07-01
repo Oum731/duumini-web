@@ -1,32 +1,10 @@
+import { toCents, fromCents, moneyMAD } from "../../utils/money";
+
 export type PromoDiscountType = "PERCENT" | "AMOUNT";
-
-const MAD_SCALE = 100;
-
-export function toCents(n: any): number {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.round(x * MAD_SCALE);
-}
-
-export function fromCents(c: any): number {
-  const x = Number(c);
-  if (!Number.isFinite(x)) return 0;
-  return x / MAD_SCALE;
-}
+export { toCents, fromCents, moneyMAD };
 
 export function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
-}
-
-export function moneyMAD(n?: number | null, digits: 0 | 2 = 0) {
-  const v = Number(n ?? 0);
-  const safe = Number.isFinite(v) ? v : 0;
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "MAD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(safe);
 }
 
 export function isActive(p: any): 0 | 1 {

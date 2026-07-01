@@ -1,9 +1,11 @@
 // src/components/PromotionsCarousel.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE, api } from "../services/http";
+import { api } from "../services/http";
 import type { Product } from "../services/products";
 import CanKickLottie, { type CanOffer } from "./CanKickLottie";
+import { moneyMAD, toNum, toCents, fromCents, roundToMAD } from "../utils/money";
+import { imgUrl } from "../utils/media";
 
 type PromoDiscountType = "PERCENT" | "AMOUNT";
 const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
@@ -11,40 +13,6 @@ const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
 // ✅ Texte info livraison (à afficher dans la section promo)
 const DELIVERY_INFO =
   "🚚 Livraison Casablanca 25 DH • Hors Casablanca dès 60 DH (selon la ville).";
-
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
-}
-
-/* =========================
- * ✅ Prix robustes: centimes + arrondi MAD (entier)
- * =======================*/
-function toNum(x: any): number {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : 0;
-}
-function toCents(x: any): number {
-  return Math.round(toNum(x) * 100);
-}
-function fromCents(c: any): number {
-  const n = Number(c);
-  return Number.isFinite(n) ? Math.round(n) / 100 : 0;
-}
-/** ✅ arrondi à 1 MAD (100 cents) */
-function roundToMAD(cents: number) {
-  return Math.round((cents || 0) / 100) * 100;
-}
-function moneyMAD(n?: number | null) {
-  const cents = roundToMAD(toCents(n ?? 0));
-  const v = fromCents(cents);
-  return `${new Intl.NumberFormat("fr-FR", {
-    maximumFractionDigits: 0,
-    minimumFractionDigits: 0,
-  }).format(v)} MAD`;
-}
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));

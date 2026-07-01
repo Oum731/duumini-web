@@ -1,15 +1,9 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useCart, mad } from "../store/cart";
-import { API_BASE } from "../services/http";
+import { useCart } from "../store/cart";
 import { listProducts, type Product } from "../services/products";
-
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
-}
+import { moneyMAD as mad } from "../utils/money";
+import { imgUrl } from "../utils/media";
 
 const DRINK_WORDS = [
   "boisson",

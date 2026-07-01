@@ -23,6 +23,7 @@ import {
   type Vertical as SubVertical,
 } from "../../services/subCategories";
 
+import { moneyMAD } from "../../utils/money";
 import ProductForm, {
   type Draft,
   type FullProduct,
@@ -31,7 +32,6 @@ import ProductForm, {
   type SubCategory,
   type VariantDraft,
   cleanVariantsForApi,
-  moneyMAD,
   isActive,
   basePriceForAdmin,
 } from "./ProductForm";

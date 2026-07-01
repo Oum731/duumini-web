@@ -1,7 +1,9 @@
 // src/components/ordersAdmin/orderUtils.ts
 import type { Product } from "../../services/products";
-import { API_BASE } from "../../services/http";
 import type { OrderStatus, PayStatus as SvcPayStatus } from "../../services/orders";
+import { moneyMAD } from "../../utils/money";
+import { imgUrl } from "../../utils/media";
+export { imgUrl };
 
 export type AnyObj = Record<string, any>;
 
@@ -16,24 +18,11 @@ export const BADGE: Record<OrderStatus, string> = {
 };
 
 /* ====== Money ====== */
-export const mad = (n?: number | null) =>
-  new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "MAD",
-    maximumFractionDigits: 0,
-  }).format(Number(n || 0));
+export const mad = moneyMAD;
 
 export function numSafe(v: any) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
-}
-
-/* ===== Helpers image ===== */
-export function imgUrl(u?: string | null) {
-  if (!u) return "";
-  if (u.startsWith("http://") || u.startsWith("https://")) return u;
-  if (u.startsWith("/")) return `${API_BASE}${u}`;
-  return u;
 }
 
 /** Image produit robuste (utilise product_cover renvoyé par GET /api/orders/:id) */

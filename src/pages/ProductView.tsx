@@ -14,25 +14,8 @@ import {
   type Role as AuthRole,
 } from "../services/auth";
 import { metaAddToCart, metaViewContent } from "../lib/metaPixel";
-
-/* =========================
- * Helpers
- * =======================*/
-function imgUrl(u?: string | null) {
-  if (!u) return "";
-  const s = String(u);
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("/")) return `${API_BASE}${s}`;
-  return s;
-}
-
-function moneyMAD(n?: number | null) {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "MAD",
-    maximumFractionDigits: 0,
-  }).format(Number(n || 0));
-}
+import { moneyMAD } from "../utils/money";
+import { imgUrl } from "../utils/media";
 
 function shortText(s?: string | null, max = 180) {
   const t = String(s || "").trim();
