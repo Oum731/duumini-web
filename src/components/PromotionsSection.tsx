@@ -145,7 +145,7 @@ export default function PromotionsSection({
     <section className="promo-section my-4">
       <style>{`
         .promo-section{
-          border-radius: 18px;
+          border-radius: var(--duu-radius-md);
           background:
             radial-gradient(1200px 220px at 20% 0%, rgba(255,213,79,.35), transparent 60%),
             radial-gradient(900px 240px at 85% 10%, rgba(229,57,53,.10), transparent 55%),
@@ -159,7 +159,7 @@ export default function PromotionsSection({
         }
         .promo-title{
           margin:0;
-          font-weight: 800;
+          font-weight: 900;
           letter-spacing: .2px;
           color: var(--duu-black);
         }
@@ -187,13 +187,14 @@ export default function PromotionsSection({
         @media(min-width: 576px){ .promo-col{ grid-column: span 6; } }
         @media(min-width: 992px){ .promo-col{ grid-column: span 3; } }
         .promo-card{
-          border-radius: 16px;
+          border-radius: var(--duu-radius-md);
           overflow: hidden;
           transition: transform .15s ease, box-shadow .15s ease;
+          box-shadow: var(--duu-shadow-sm);
         }
         .promo-card:hover{
           transform: translateY(-2px);
-          box-shadow: 0 .75rem 1.5rem rgba(0,0,0,.08) !important;
+          box-shadow: var(--duu-shadow-md) !important;
         }
         .promo-media{
           aspect-ratio: 1 / 1;
@@ -207,10 +208,10 @@ export default function PromotionsSection({
           background: var(--duu-red);
           color:#fff;
           border-radius: 999px;
-          padding: 6px 10px;
-          font-weight: 800;
-          font-size: .75rem;
-          box-shadow: 0 10px 20px rgba(229,57,53,.22);
+          padding: 8px 12px;
+          font-weight: 900;
+          font-size: .78rem;
+          box-shadow: var(--duu-shadow-sm);
         }
         .promo-shop{
           color: rgba(0,0,0,.6);

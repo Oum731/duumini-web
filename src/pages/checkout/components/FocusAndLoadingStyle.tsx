@@ -52,14 +52,14 @@ export const FocusAndLoadingStyle = () => (
     .mini-note{ font-size:.92rem; color:rgba(0,0,0,.65); }
     .rib-box{
       border:1px dashed rgba(0,0,0,.2);
-      border-radius:12px;
+      border-radius: var(--duu-radius-sm);
       padding:.75rem;
       background:rgba(255,255,255,.6);
     }
 
     .gps-box{
       border:1px dashed rgba(0,0,0,.16);
-      border-radius:12px;
+      border-radius: var(--duu-radius-sm);
       padding:.75rem;
       background:#fffdf4;
     }

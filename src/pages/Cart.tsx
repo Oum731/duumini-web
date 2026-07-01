@@ -196,7 +196,7 @@ function FocusAndLoadingStyle() {
         width: min(980px, 100%);
         max-height: 90vh;
         overflow: hidden;
-        border-radius: 24px;
+        border-radius: var(--duu-radius-xl);
         background:
           radial-gradient(700px 260px at 0% 0%, rgba(255, 193, 7, .18), transparent 60%),
           radial-gradient(650px 220px at 100% 0%, rgba(229, 57, 53, .10), transparent 55%),
@@ -233,7 +233,7 @@ function FocusAndLoadingStyle() {
         background: #fff;
         width: 42px;
         height: 42px;
-        border-radius: 14px;
+        border-radius: var(--duu-radius-sm);
         font-size: 20px;
         line-height: 1;
         font-weight: 900;
@@ -273,10 +273,10 @@ function FocusAndLoadingStyle() {
       .drink-card{
         height: 100%;
         border: 1px solid rgba(0,0,0,.08);
-        border-radius: 20px;
+        border-radius: var(--duu-radius-lg);
         overflow: hidden;
         background: #fff;
-        box-shadow: 0 10px 20px rgba(0,0,0,.05);
+        box-shadow: var(--duu-shadow-sm);
       }
 
       .drink-card-img{

@@ -344,7 +344,7 @@ export default function Fashion() {
     <section className="container-xxl py-4">
       <style>{`
         .fa-skeleton-card{
-          border-radius: 18px;
+          border-radius: var(--duu-radius-lg);
           overflow: hidden;
           border: 1px solid rgba(0,0,0,.06);
         }
@@ -364,7 +364,7 @@ export default function Fashion() {
           color: #1f1f1f;
           border: none;
           font-weight: 900;
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
         }
         .btn-duu:hover{ filter: brightness(.96); }
         .btn-duu:focus,
@@ -374,14 +374,14 @@ export default function Fashion() {
         }
 
         .fashion-hero{
-          border-radius: 22px;
+          border-radius: var(--duu-radius-xl);
           border: 1px solid rgba(0,0,0,.08);
           background:
             radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
             radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
             #fff;
           padding: 18px;
-          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+          box-shadow: var(--duu-shadow-md);
         }
 
         .fashion-kicker{
@@ -426,7 +426,7 @@ export default function Fashion() {
         .fashion-filter-icon{
           width: 42px;
           height: 42px;
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           border: 1px solid rgba(0,0,0,.10);
           background: rgba(255,255,255,.94);
           display:flex;
@@ -442,7 +442,7 @@ export default function Fashion() {
           color: var(--duu-black) !important;
           background: rgba(255,255,255,.96) !important;
           font-weight: 900;
-          border-radius: 14px !important;
+          border-radius: var(--duu-radius-sm) !important;
           min-height: 42px;
           padding: 9px 12px !important;
         }
@@ -470,7 +470,7 @@ export default function Fashion() {
         }
         .fashion-search .form-control{
           min-height: 46px;
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           padding-left: 42px;
           border-color: rgba(0,0,0,.10);
         }
@@ -488,7 +488,7 @@ export default function Fashion() {
           z-index: 2;
         }
         .fashion-clear-btn{
-          border-radius: 12px !important;
+          border-radius: var(--duu-radius-sm) !important;
           font-weight: 900 !important;
         }
 
@@ -515,7 +515,7 @@ export default function Fashion() {
         .soft-clear{
           border: 1px solid rgba(0,0,0,.12);
           background: #fff;
-          border-radius: 12px;
+          border-radius: var(--duu-radius-sm);
           font-weight: 800;
         }
 
@@ -547,12 +547,12 @@ export default function Fashion() {
 
         .promo-wrap{
           border: 1px solid rgba(0,0,0,.08);
-          border-radius: 22px;
+          border-radius: var(--duu-radius-lg);
           background:
             radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
             radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.10), transparent 55%),
             #fff;
-          box-shadow: 0 10px 24px rgba(0,0,0,.05);
+          box-shadow: var(--duu-shadow-md);
           overflow: hidden;
         }
         .promo-head{
@@ -594,7 +594,7 @@ export default function Fashion() {
         }
         .fashion-pagination .btn-group .btn{
           min-width: 42px;
-          border-radius: 12px !important;
+          border-radius: var(--duu-radius-sm) !important;
           font-weight: 900;
         }
 

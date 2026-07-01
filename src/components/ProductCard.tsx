@@ -514,17 +514,17 @@ function ProductCardInner({
     >
       <style>{`
         .duu-card{
-          border-radius: 22px;
+          border-radius: var(--duu-radius-lg);
           overflow: hidden;
           background: #fff;
           border: 1px solid rgba(17,17,17,.06);
-          box-shadow: 0 10px 24px rgba(0,0,0,.06) !important;
+          box-shadow: var(--duu-shadow-sm) !important;
           transition: transform .18s ease, box-shadow .18s ease;
           height: 100%;
         }
         .duu-card:hover{
           transform: translateY(-2px);
-          box-shadow: 0 16px 34px rgba(0,0,0,.08) !important;
+          box-shadow: var(--duu-shadow-md) !important;
         }
 
         .duu-card--default .card-body,
@@ -565,19 +565,19 @@ function ProductCardInner({
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          padding: 7px 10px;
+          padding: 8px 12px;
           border-radius: 999px;
-          font-size: .76rem;
+          font-size: .78rem;
           font-weight: 950;
           line-height: 1;
-          box-shadow: 0 8px 18px rgba(0,0,0,.12);
+          box-shadow: var(--duu-shadow-sm);
         }
         .duu-badge--promo{
           background: var(--duu-yellow);
           color: var(--duu-black);
         }
         .duu-badge--danger{
-          background: rgba(17,17,17,.86);
+          background: var(--duu-red);
           color: #fff;
         }
 
@@ -647,10 +647,10 @@ function ProductCardInner({
         .duu-status{
           margin-top: 10px;
           padding: 8px 10px;
-          border-radius: 12px;
-          background: rgba(217,45,32,.08);
-          border: 1px solid rgba(217,45,32,.14);
-          color: #a61b12;
+          border-radius: var(--duu-radius-sm);
+          background: rgba(var(--duu-red-rgb),.08);
+          border: 1px solid rgba(var(--duu-red-rgb),.18);
+          color: var(--duu-red);
           font-size: .78rem;
           font-weight: 800;
           line-height: 1.3;
@@ -665,7 +665,7 @@ function ProductCardInner({
 
         .duu-variant-wrap{ margin-top: 10px; }
         .duu-select{
-          border-radius: 12px;
+          border-radius: var(--duu-radius-sm);
           min-height: 38px;
           font-size: .86rem;
         }
@@ -685,7 +685,7 @@ function ProductCardInner({
 
         .duu-action-main{
           min-height: 42px;
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           border: none;
           background: var(--duu-yellow);
           color: var(--duu-black);
@@ -694,6 +694,10 @@ function ProductCardInner({
           align-items: center;
           justify-content: center;
           gap: 8px;
+          transition: filter .15s ease;
+        }
+        .duu-action-main:hover:not(:disabled){
+          filter: brightness(.96);
         }
         .duu-action-main:disabled{
           opacity: .6;
@@ -702,7 +706,7 @@ function ProductCardInner({
         .duu-icon-main{
           min-height: 42px;
           min-width: 48px;
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           border: 1px solid rgba(17,17,17,.08);
           background: #fff;
           color: var(--duu-black);

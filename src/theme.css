@@ -6,6 +6,23 @@
   /* helpers */
   --duu-yellow-rgb: 253, 220, 0; /* pour box-shadow */
   --duu-red-rgb: 229, 57, 53;
+
+  /* échelle de rayons */
+  --duu-radius-sm: 14px;   /* boutons, inputs, select */
+  --duu-radius-md: 18px;   /* petites cartes, badges larges */
+  --duu-radius-lg: 22px;   /* cartes produit, cartes section */
+  --duu-radius-xl: 26px;   /* hero, grands blocs */
+
+  /* échelle d'ombres */
+  --duu-shadow-sm: 0 6px 16px rgba(17,17,17,.05);
+  --duu-shadow-md: 0 12px 26px rgba(17,17,17,.07);
+  --duu-shadow-lg: 0 18px 40px rgba(17,17,17,.08);
+
+  /* échelle d'espacement */
+  --duu-space-1: 8px;
+  --duu-space-2: 12px;
+  --duu-space-3: 16px;
+  --duu-space-4: 24px;
 }
 
 /* =========================

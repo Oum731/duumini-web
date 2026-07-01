@@ -461,7 +461,7 @@ export default function AfricanMarket() {
         }
 
         .am-skeleton-card{
-          border-radius: 20px;
+          border-radius: var(--duu-radius-lg);
           overflow: hidden;
           border: 1px solid rgba(0,0,0,.06);
           background: #fff;
@@ -472,7 +472,7 @@ export default function AfricanMarket() {
           color: #111;
           border: none;
           font-weight: 900;
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
         }
         .btn-duu:hover{ filter: brightness(.97); }
         .btn-duu:focus,
@@ -482,13 +482,13 @@ export default function AfricanMarket() {
         }
 
         .am-hero{
-          border-radius: 24px;
+          border-radius: var(--duu-radius-xl);
           border: 1px solid rgba(0,0,0,.08);
           background:
             radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
             radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.08), transparent 55%),
             #fff;
-          box-shadow: 0 14px 30px rgba(0,0,0,.06);
+          box-shadow: var(--duu-shadow-md);
           padding: 16px;
         }
 
@@ -520,7 +520,7 @@ export default function AfricanMarket() {
 
         .am-market-strip{
           margin-top: 12px;
-          border-radius: 18px;
+          border-radius: var(--duu-radius-md);
           background: linear-gradient(90deg, #111111 0%, #1a1a1a 100%);
           color: #fff;
           padding: 12px 14px;
@@ -571,14 +571,14 @@ export default function AfricanMarket() {
         .am-filter-icon{
           width:46px;
           height:46px;
-          border-radius:16px;
+          border-radius: var(--duu-radius-sm);
           border:1px solid rgba(0,0,0,.10);
           background: rgba(255,255,255,.94);
           display:flex;
           align-items:center;
           justify-content:center;
           flex: 0 0 auto;
-          box-shadow: 0 6px 16px rgba(0,0,0,.04);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .duu-filter-btn .btn,
@@ -588,10 +588,10 @@ export default function AfricanMarket() {
           color: var(--duu-black) !important;
           background: #fff !important;
           font-weight: 900;
-          border-radius: 16px !important;
+          border-radius: var(--duu-radius-sm) !important;
           min-height: 46px;
           padding: 10px 14px !important;
-          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .am-search{
@@ -600,10 +600,10 @@ export default function AfricanMarket() {
 
         .am-search .form-control{
           min-height: 48px;
-          border-radius: 16px;
+          border-radius: var(--duu-radius-sm);
           padding-left: 44px;
           border-color: rgba(0,0,0,.10);
-          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .am-search .form-control:focus{
@@ -622,7 +622,7 @@ export default function AfricanMarket() {
         }
 
         .am-clear-btn{
-          border-radius: 14px !important;
+          border-radius: var(--duu-radius-sm) !important;
           font-weight: 900 !important;
         }
 
@@ -644,7 +644,7 @@ export default function AfricanMarket() {
           align-items:center;
           gap: 8px;
           color: var(--duu-black);
-          box-shadow: 0 6px 16px rgba(0,0,0,.03);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .am-soft-btn{
@@ -688,12 +688,12 @@ export default function AfricanMarket() {
 
         .promo-wrap{
           border: 1px solid rgba(0,0,0,.08);
-          border-radius: 22px;
+          border-radius: var(--duu-radius-lg);
           background:
             radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
             radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.09), transparent 55%),
             #fff;
-          box-shadow: 0 12px 26px rgba(0,0,0,.05);
+          box-shadow: var(--duu-shadow-md);
           overflow: hidden;
         }
 
@@ -733,7 +733,7 @@ export default function AfricanMarket() {
 
         .am-empty{
           border: 1px dashed rgba(0,0,0,.14);
-          border-radius: 22px;
+          border-radius: var(--duu-radius-lg);
           background: rgba(255,255,255,.72);
           text-align:center;
           color: rgba(0,0,0,.55);
@@ -749,7 +749,7 @@ export default function AfricanMarket() {
         }
         .am-pagination .btn-group .btn{
           min-width: 44px;
-          border-radius: 14px !important;
+          border-radius: var(--duu-radius-sm) !important;
           font-weight: 900;
         }
 
@@ -804,7 +804,7 @@ export default function AfricanMarket() {
           width: min(520px, calc(100% - 22px));
           z-index: 1029;
           background: #fff;
-          border-radius: 22px;
+          border-radius: var(--duu-radius-lg);
           box-shadow: 0 18px 40px rgba(0,0,0,.18);
           border: 1px solid rgba(0,0,0,.08);
           overflow: hidden;

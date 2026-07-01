@@ -886,18 +886,18 @@ export default function ProductView() {
         }
 
         .pv-hero{
-          border-radius: 20px;
+          border-radius: var(--duu-radius-xl);
           border: 1px solid rgba(0,0,0,.08);
           background:
             radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
             radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.08), transparent 55%),
             #fff;
-          box-shadow: 0 10px 26px rgba(0,0,0,.05);
+          box-shadow: var(--duu-shadow-md);
           overflow: hidden;
         }
 
         .pv-gallery{
-          border-radius: 18px;
+          border-radius: var(--duu-radius-md);
           overflow: hidden;
           background: #f6f6f6;
           border: 1px solid rgba(0,0,0,.06);
@@ -922,7 +922,7 @@ export default function ProductView() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          padding: 7px 11px;
+          padding: 8px 12px;
           border-radius: 999px;
           font-size: .8rem;
           font-weight: 900;
@@ -970,7 +970,7 @@ export default function ProductView() {
           align-items: center;
           justify-content: center;
           font-weight: 900;
-          box-shadow: 0 10px 16px rgba(0,0,0,.08);
+          box-shadow: var(--duu-shadow-sm);
         }
         .pv-arrow:hover{ background: #fff; }
         .pv-arrow--left{ left: 12px; }
@@ -984,7 +984,7 @@ export default function ProductView() {
         }
         .pv-thumb{
           border: 1px solid rgba(0,0,0,.08);
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           overflow: hidden;
           background: #fff;
           width: 78px;
@@ -1007,8 +1007,8 @@ export default function ProductView() {
         .pv-related-card{
           background: #fff;
           border: 1px solid rgba(0,0,0,.08);
-          border-radius: 18px;
-          box-shadow: 0 10px 22px rgba(0,0,0,.04);
+          border-radius: var(--duu-radius-md);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .pv-info-card{
@@ -1080,7 +1080,7 @@ export default function ProductView() {
         }
 
         .pv-select{
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           min-height: 44px;
         }
         .pv-select:focus{
@@ -1106,7 +1106,7 @@ export default function ProductView() {
         }
 
         .pv-main-actions .btn{
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           min-height: 48px;
           font-weight: 900;
         }

@@ -262,13 +262,13 @@ export default function PromotionsCarousel({
         .can-ticket{
           position:relative;
           border: 1px solid rgba(0,0,0,.07);
-          border-radius: 18px;
+          border-radius: var(--duu-radius-md);
           overflow: hidden;
           background:
             radial-gradient(1200px 320px at 15% 0%, rgba(255,213,79,.42), transparent 60%),
             radial-gradient(900px 280px at 90% 10%, rgba(229,57,53,.18), transparent 55%),
             linear-gradient(180deg, rgba(255,255,255,.74), rgba(255,255,255,.48));
-          box-shadow: 0 .9rem 2.2rem rgba(0,0,0,.10);
+          box-shadow: var(--duu-shadow-md);
         }
 
         .can-banner{
@@ -277,7 +277,7 @@ export default function PromotionsCarousel({
           justify-content:space-between;
           gap:10px;
           padding: 10px 12px;
-          background: var(--duu-yellow, #FFD54F);
+          background: var(--duu-yellow);
           border-bottom: 1px solid rgba(0,0,0,.10);
         }
         .can-banner-left{
@@ -288,7 +288,7 @@ export default function PromotionsCarousel({
           flex: 1 1 auto;
         }
         .can-banner-title{
-          font-weight: 990;
+          font-weight: 900;
           color: rgba(0,0,0,.92);
           line-height: 1.05;
           letter-spacing: .2px;
@@ -354,10 +354,10 @@ export default function PromotionsCarousel({
           border-radius: 999px;
           background: rgba(0,0,0,.86);
           color:#fff;
-          font-weight: 980;
+          font-weight: 900;
           letter-spacing: .2px;
           border: 1px solid rgba(255,255,255,.18);
-          box-shadow: 0 .5rem 1.1rem rgba(0,0,0,.12);
+          box-shadow: var(--duu-shadow-sm);
           white-space: nowrap;
           margin-left: 6px;
         }
@@ -396,11 +396,11 @@ export default function PromotionsCarousel({
         }
 
         .can-visual{
-          border-radius: 18px;
+          border-radius: var(--duu-radius-md);
           overflow:hidden;
           border: 1px solid rgba(0,0,0,.08);
           background: rgba(255,255,255,.25);
-          box-shadow: 0 .8rem 2.2rem rgba(0,0,0,.10);
+          box-shadow: var(--duu-shadow-md);
           min-height: 210px;
         }
 
@@ -417,11 +417,11 @@ export default function PromotionsCarousel({
           align-items:center;
           gap:10px;
           padding: 10px 12px;
-          border-radius: 14px;
-          background: var(--duu-yellow, #FFD54F);
+          border-radius: var(--duu-radius-sm);
+          background: var(--duu-yellow);
           border: 1px solid rgba(0,0,0,.14);
           color:#111;
-          font-weight: 980;
+          font-weight: 900;
           box-shadow: 0 .6rem 1.3rem rgba(255,213,79,.35);
           white-space: nowrap;
         }
@@ -442,7 +442,7 @@ export default function PromotionsCarousel({
           align-items:center;
           gap:8px;
           padding: 10px 12px;
-          border-radius: 14px;
+          border-radius: var(--duu-radius-sm);
           border: 1px solid rgba(0,0,0,.10);
           background: rgba(255,255,255,.86);
           font-weight: 950;
@@ -469,18 +469,18 @@ export default function PromotionsCarousel({
         .duu-card{
           width: 220px;
           flex: 0 0 auto;
-          border-radius: 16px;
+          border-radius: var(--duu-radius-md);
           overflow:hidden;
           cursor:pointer;
           transition: transform .15s ease, box-shadow .15s ease;
           scroll-snap-align: start;
-          box-shadow: 0 .35rem 1.25rem rgba(0,0,0,.06);
+          box-shadow: var(--duu-shadow-sm);
           background: #fff;
           border: 1px solid rgba(0,0,0,.06);
         }
         .duu-card:hover{
           transform: translateY(-2px);
-          box-shadow: 0 .75rem 1.5rem rgba(0,0,0,.10);
+          box-shadow: var(--duu-shadow-md);
         }
         .duu-img{ width:100%; height:160px; object-fit:cover; background: rgba(0,0,0,.05); }
 
@@ -489,15 +489,16 @@ export default function PromotionsCarousel({
           display:inline-flex;
           align-items:center;
           gap:6px;
-          background: var(--duu-red, #E53935);
+          background: var(--duu-red);
           color:#fff;
-          font-weight:980;
-          padding:6px 10px;
+          font-weight:900;
+          padding:8px 12px;
           border-radius:999px;
-          font-size:.75rem;
+          font-size:.78rem;
           letter-spacing:.2px;
           max-width: calc(100% - 20px);
           white-space: nowrap;
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .duu-badge-can{
@@ -507,14 +508,14 @@ export default function PromotionsCarousel({
           display:inline-flex;
           align-items:center;
           gap:6px;
-          padding:6px 10px;
+          padding:8px 12px;
           border-radius:999px;
-          font-size:.75rem;
-          font-weight:980;
+          font-size:.78rem;
+          font-weight:900;
           color:#fff;
           background: linear-gradient(90deg, rgba(229,57,53,1), rgba(255,213,79,1));
           border: 1px solid rgba(0,0,0,.12);
-          box-shadow: 0 .5rem 1.25rem rgba(0,0,0,.12);
+          box-shadow: var(--duu-shadow-sm);
           max-width: calc(100% - 20px);
           white-space: nowrap;
         }
@@ -526,7 +527,7 @@ export default function PromotionsCarousel({
           .can-visual{ min-height: 230px; }
         }
         @media (max-width: 576px){
-          .duu-card{ width: 172px; border-radius: 14px; }
+          .duu-card{ width: 172px; border-radius: var(--duu-radius-sm); }
           .duu-img{ height: 132px; }
           .can-banner-title{ font-size: .94rem; }
           .delivery-pill{ font-size: .74rem; }

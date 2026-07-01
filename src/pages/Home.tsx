@@ -567,11 +567,11 @@ export default function Home() {
         }
 
         .home-hero{
-          border-radius: 26px;
+          border-radius: var(--duu-radius-xl);
           border: 1px solid rgba(0,0,0,.08);
           background:
             linear-gradient(180deg, rgba(255,255,255,.98), rgba(255,255,255,.94));
-          box-shadow: 0 18px 40px rgba(0,0,0,.05);
+          box-shadow: var(--duu-shadow-lg);
           padding: 20px;
           overflow: hidden;
           position: relative;
@@ -610,7 +610,7 @@ export default function Home() {
           font-size:.84rem;
           font-weight:800;
           color: var(--duu-black);
-          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .home-top-actions{
@@ -640,7 +640,7 @@ export default function Home() {
           display:inline-flex;
           align-items:center;
           gap: 6px;
-          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+          box-shadow: var(--duu-shadow-sm);
           transition: .18s ease;
         }
         .soft-action:hover{
@@ -663,10 +663,10 @@ export default function Home() {
           color: var(--duu-black) !important;
           background: #fff !important;
           font-weight: 900;
-          border-radius: 16px !important;
+          border-radius: var(--duu-radius-sm) !important;
           min-height: 46px;
           padding: 10px 14px !important;
-          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+          box-shadow: var(--duu-shadow-sm);
         }
         .duu-filter-btn .btn:hover,
         .duu-filter-btn .dropdown > .btn:hover,
@@ -688,13 +688,13 @@ export default function Home() {
         .filter-icon{
           width: 46px;
           height: 46px;
-          border-radius: 16px;
+          border-radius: var(--duu-radius-sm);
           border: 1px solid rgba(0,0,0,.10);
           background: #fff;
           display:flex;
           align-items:center;
           justify-content:center;
-          box-shadow: 0 8px 18px rgba(0,0,0,.04);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .home-mini-link{
@@ -705,11 +705,11 @@ export default function Home() {
         }
 
         .home-mini-card{
-          border-radius: 20px;
+          border-radius: var(--duu-radius-lg);
           border: 1px solid rgba(0,0,0,.06);
           background: #fff;
           overflow: hidden;
-          box-shadow: 0 12px 24px rgba(0,0,0,.05);
+          box-shadow: var(--duu-shadow-sm);
         }
 
         .home-mini-media{
@@ -790,11 +790,11 @@ export default function Home() {
         }
 
         .sec{
-          border-radius: 22px;
+          border-radius: var(--duu-radius-lg);
           border: 1px solid rgba(0,0,0,.08);
           background: #fff;
           overflow: hidden;
-          box-shadow: 0 14px 28px rgba(0,0,0,.05);
+          box-shadow: var(--duu-shadow-md);
         }
 
         .sec-head{
@@ -834,7 +834,7 @@ export default function Home() {
         }
 
         .home-empty{
-          border-radius: 22px;
+          border-radius: var(--duu-radius-lg);
           border: 1px dashed rgba(0,0,0,.12);
           background: rgba(255,255,255,.75);
           padding: 54px 18px;
@@ -879,7 +879,7 @@ export default function Home() {
           }
 
           .home-hero{
-            border-radius: 22px;
+            border-radius: var(--duu-radius-lg);
             padding: 16px;
           }
           .home-mini-link{
