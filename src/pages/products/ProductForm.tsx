@@ -667,6 +667,11 @@ export default function ProductForm({
       return;
     }
 
+    if (isVendor && safeShops.length > 1 && !draft.shop_id) {
+      setFormError("Sélectionne une boutique.");
+      return;
+    }
+
     if (isCustomCategory) {
       if (!newCategoryName.trim()) {
         setFormError("Renseigne le nom de la nouvelle catégorie.");

@@ -466,7 +466,7 @@ export default function ProductsAdminPage() {
       put("category_id", draft.category_id);
       put("sub_category_id", draft.sub_category_id);
 
-      if (!isVendor) put("shop_id", draft.shop_id);
+      put("shop_id", draft.shop_id);
 
       put("promo_discount_type", draft.promo_discount_type || "PERCENT");
       put("promo_discount_value", draft.promo_discount_value);

@@ -1132,14 +1132,11 @@ export default function ProductView() {
           </Link>
         </div>
 
-        <span className="badge text-bg-light border">
-          Rôle: <strong className="ms-1">{viewerRole}</strong>
-          {viewerUser?.impersonation?.impersonate_shop_id ? (
-            <span className="ms-2 text-muted">
-              (shop #{viewerUser.impersonation.impersonate_shop_id})
-            </span>
-          ) : null}
-        </span>
+        {viewerUser?.impersonation?.impersonate_shop_id ? (
+          <span className="badge text-bg-light border">
+            Vue admin — boutique #{viewerUser.impersonation.impersonate_shop_id}
+          </span>
+        ) : null}
       </div>
 
       <div className="pv-hero p-3 p-lg-4">

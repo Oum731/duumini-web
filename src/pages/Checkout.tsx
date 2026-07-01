@@ -12,310 +12,33 @@ import { normalizePhoneInput, isValidPhoneIntl } from "../utils/phone";
 import { trackPurchase } from "../lib/analytics";
 import {
   useLocationCity,
-  CITY_OPTIONS,
   type CityCode,
 } from "../context/LocationContext";
 import { api } from "../services/http";
 import { metaInitiateCheckout, metaPurchase } from "../lib/metaPixel";
-
-const FocusAndLoadingStyle = () => (
-  <style>{`
-    .checkout .btn:focus,
-    .checkout .btn:focus-visible {
-      outline: none !important;
-      box-shadow: 0 0 0 .25rem rgba(229, 57, 53, .35) !important;
-      border-color: #E53935 !important;
-    }
-    .checkout .btn-duu:focus,
-    .checkout .btn-duu:focus-visible {
-      box-shadow: 0 0 0 .3rem rgba(229, 57, 53, .35) !important;
-    }
-    .btn[aria-busy="true"] { pointer-events: none; opacity: .9; }
-    .btn .visually-hidden {
-      position: absolute !important;
-      width: 1px !important;
-      height: 1px !important;
-      padding: 0 !important;
-      margin: -1px !important;
-      overflow: hidden !important;
-      clip: rect(0, 0, 0, 0) !important;
-      white-space: nowrap !important;
-      border: 0 !important;
-    }
-
-    .addr-pill{
-      display:inline-flex;
-      align-items:center;
-      gap:.5rem;
-      padding:.35rem .6rem;
-      border-radius:999px;
-      border:1px solid rgba(0,0,0,.08);
-      background:rgba(255,255,255,.7);
-      font-weight:700;
-      color:#111;
-      max-width:100%;
-    }
-    .addr-pill small{
-      font-weight:600;
-      color:rgba(0,0,0,.62);
-    }
-
-    .btn-duu{
-      background: var(--duu-yellow);
-      color: #1f1f1f;
-      border: none;
-    }
-    .btn-duu:hover{ filter: brightness(0.95); }
-
-    .seg { display:flex; gap:.5rem; flex-wrap:wrap; }
-    .seg .btn{ border-radius:999px !important; }
-    .mini-note{ font-size:.92rem; color:rgba(0,0,0,.65); }
-    .rib-box{
-      border:1px dashed rgba(0,0,0,.2);
-      border-radius:12px;
-      padding:.75rem;
-      background:rgba(255,255,255,.6);
-    }
-
-    .gps-box{
-      border:1px dashed rgba(0,0,0,.16);
-      border-radius:12px;
-      padding:.75rem;
-      background:#fffdf4;
-    }
-  `}</style>
-);
-
-type LocationSuggestion = { value: string; count?: number };
-type ItemsEnvelope<T> = { items: T[] };
-type FulfillmentMode = "DELIVERY" | "PICKUP" | "EXPEDITION";
-type PaymentMethod = "BMCE" | "GAZHALA" | "CASH";
-
-function normalizePaymentMethod(method: PaymentMethod) {
-  if (method === "BMCE" || method === "GAZHALA") return "BANK_TRANSFER";
-  return "CASH";
-}
-
-function paymentMethodLabel(method: PaymentMethod) {
-  if (method === "BMCE") return "BMCE";
-  if (method === "GAZHALA") return "GAZHALA";
-  return "CASH";
-}
-
-function normalizeSuggestionItems(input: any): LocationSuggestion[] {
-  const arr = input?.items ?? input ?? [];
-  if (!Array.isArray(arr)) return [];
-  if (arr.length && typeof arr[0] === "string") {
-    return arr.map((s: string) => ({ value: String(s) }));
-  }
-  return arr
-    .map((x: any) => ({
-      value: String(x?.value ?? x?.name ?? "").trim(),
-      count: x?.count != null ? Number(x.count) || 0 : undefined,
-    }))
-    .filter((x: LocationSuggestion) => !!x.value);
-}
-
-async function listCommunesByCity(ville?: string, signal?: AbortSignal) {
-  const v = String(ville || "").trim();
-  if (!v) return [] as LocationSuggestion[];
-  const res = await api.get<ItemsEnvelope<any>>("/api/locations/communes", {
-    query: { ville: v, limit: 30 },
-    // @ts-ignore
-    signal,
-  });
-  return normalizeSuggestionItems(res);
-}
-
-async function listQuartiersByCityCommune(
-  ville?: string,
-  commune?: string,
-  signal?: AbortSignal,
-) {
-  const v = String(ville || "").trim();
-  const c = String(commune || "").trim();
-  if (!v || !c) return [] as LocationSuggestion[];
-  const res = await api.get<ItemsEnvelope<any>>("/api/locations/quartiers", {
-    query: { ville: v, commune: c, limit: 30 },
-    // @ts-ignore
-    signal,
-  });
-  return normalizeSuggestionItems(res);
-}
-
-async function trackLocationSuggestion(
-  kind: "VILLE" | "COMMUNE" | "QUARTIER",
-  payload: { ville?: string; commune?: string; quartier?: string },
-) {
-  try {
-    await api.post("/api/locations/track", { kind, ...payload });
-  } catch {}
-}
-
-function normToken(x: any) {
-  return String(x ?? "")
-    .trim()
-    .toLowerCase();
-}
-
-function productSubToken(p: any) {
-  const bySlug = normToken(p?.sub_category_slug);
-  if (bySlug) return bySlug;
-
-  const byName = normToken(p?.sub_category_name);
-  if (byName) return byName;
-
-  const id = p?.sub_category_id;
-  if (id != null && String(id).trim() !== "") return normToken(String(id));
-
-  return "";
-}
-
-function isFoodLike(p: any) {
-  const t = productSubToken(p);
-  if (t)
-    return t === "food" || t.includes("food") || t.includes("alimentation");
-  return normToken(p?.category) === "food";
-}
-
-const DELIVERY_RULES = {
-  CASABLANCA_FEE: 25,
-  DEFAULT_FEE_OUTSIDE_CASA: 0,
-  EXPEDITION_DROP_FEE: 0,
-};
-
-const BANK_RIB = {
-  account_name: "LE BESOIN GROUP",
-  rib: "011 450 0000122100028446 74",
-  iban: "MA64 0114 5000 0012 2100 0284 4674",
-  bic: "BMCEMAMC",
-};
-
-const GAZHALA_PAYMENT = {
-  account_name: "GAZHALA",
-  note: "Paiement / dépôt GAZHALA",
-};
-
-function isCasablanca(label: string) {
-  const s = String(label || "")
-    .trim()
-    .toLowerCase();
-  return s.includes("casa");
-}
-
-function computeDeliveryFeeByCity(cityText: string) {
-  if (!cityText) return 0;
-  if (isCasablanca(cityText)) return DELIVERY_RULES.CASABLANCA_FEE;
-  return 0;
-}
-
-function getLineVariantKey(l: any) {
-  return String(l?.variant?.variant_key || "default").trim() || "default";
-}
-
-function getLineVariantLabel(l: any) {
-  return String(l?.variant?.label || "").trim();
-}
-
-function getLineVariantId(l: any) {
-  const id = l?.variant?.variant_id ?? null;
-  const n = id == null ? 0 : Number(id) || 0;
-  return n > 0 ? n : null;
-}
-
-function lineKey(l: any) {
-  const lid = String(l?.line_id || "").trim();
-  if (lid) return lid;
-  const pid = Number(l?.id ?? 0) || 0;
-  return `${pid}:${getLineVariantKey(l)}`;
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(t);
-  }, [value, delayMs]);
-  return debounced;
-}
-
-function normalizeCityName(input?: string | null) {
-  const v = String(input || "").trim();
-  if (!v) return "";
-  return v
-    .replace(/\bprovince\b/gi, "")
-    .replace(/\bprefecture\b/gi, "")
-    .replace(/\bpréfecture\b/gi, "")
-    .replace(/\bregion\b/gi, "")
-    .replace(/\brégion\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function cityCodeFromText(input?: string | null): CityCode | null {
-  const v = normalizeCityName(input).toLowerCase();
-  if (!v) return null;
-
-  const direct = CITY_OPTIONS.find((c) => c.code.toLowerCase() === v);
-  if (direct) return direct.code as CityCode;
-
-  const byLabel = CITY_OPTIONS.find((c) => c.label.toLowerCase() === v);
-  if (byLabel) return byLabel.code as CityCode;
-
-  const fuzzy = CITY_OPTIONS.find((c) => {
-    const label = c.label.toLowerCase();
-    const code = c.code.toLowerCase();
-    return (
-      label.includes(v) ||
-      v.includes(label) ||
-      code.includes(v) ||
-      v.includes(code)
-    );
-  });
-  if (fuzzy) return fuzzy.code as CityCode;
-
-  if (v.includes("casa")) return "CASABLANCA" as CityCode;
-  if (v.includes("marr")) return "MARRAKECH" as CityCode;
-
-  return null;
-}
-
-function parseGpsInput(raw?: string | null) {
-  const txt = String(raw || "").trim();
-  if (!txt) return null;
-
-  const clean = txt.replace(/\s+/g, " ");
-
-  let m = clean.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
-  if (m) {
-    const lat = Number(m[1]);
-    const lng = Number(m[2]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  }
-
-  m = clean.match(/q=(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/i);
-  if (m) {
-    const lat = Number(m[1]);
-    const lng = Number(m[2]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  }
-
-  m = clean.match(/@(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i);
-  if (m) {
-    const lat = Number(m[1]);
-    const lng = Number(m[2]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  }
-
-  const nums = clean.match(/-?\d+(?:\.\d+)?/g);
-  if (nums && nums.length >= 2) {
-    const lat = Number(nums[0]);
-    const lng = Number(nums[1]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  }
-
-  return null;
-}
+import type { FulfillmentMode, PaymentMethod, LocationSuggestion } from "./checkout/types";
+import {
+  normalizePaymentMethod,
+  paymentMethodLabel,
+  isFoodLike,
+  DELIVERY_RULES,
+  BANK_RIB,
+  GAZHALA_PAYMENT,
+  isCasablanca,
+  computeDeliveryFeeByCity,
+  getLineVariantLabel,
+  getLineVariantId,
+  lineKey,
+  cityCodeFromText,
+  parseGpsInput,
+} from "./checkout/helpers";
+import {
+  listCommunesByCity,
+  listQuartiersByCityCommune,
+  trackLocationSuggestion,
+} from "./checkout/api";
+import { useDebouncedValue } from "./profile/hooks/useDebouncedValue";
+import { FocusAndLoadingStyle } from "./checkout/components/FocusAndLoadingStyle";
 
 export default function CheckoutPage() {
   const nav = useNavigate();

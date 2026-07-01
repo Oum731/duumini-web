@@ -720,18 +720,18 @@ export default function CartPage() {
             <table className="table align-middle">
               <thead>
                 <tr>
-                  <th style={{ width: 80 }}>Image</th>
-                  <th>Produit</th>
-                  <th className="text-end" style={{ width: 140 }}>
+                  <th style={{ width: 56 }}>Image</th>
+                  <th style={{ maxWidth: 160 }}>Produit</th>
+                  <th className="text-end d-none d-md-table-cell" style={{ width: 140 }}>
                     Prix
                   </th>
-                  <th className="text-center" style={{ width: 200 }}>
+                  <th className="text-center" style={{ width: 150 }}>
                     Quantité
                   </th>
-                  <th className="text-end" style={{ width: 140 }}>
+                  <th className="text-end" style={{ width: 110 }}>
                     Total
                   </th>
-                  <th style={{ width: 60 }} />
+                  <th style={{ width: 44 }} />
                 </tr>
               </thead>
 
@@ -749,16 +749,20 @@ export default function CartPage() {
                             src={imgUrl(l.cover)}
                             alt={l.name}
                             className="rounded"
-                            style={{ width: 56, height: 56, objectFit: "cover" }}
+                            style={{ width: 48, height: 48, objectFit: "cover" }}
                             loading="lazy"
                           />
                         ) : (
-                          <div className="bg-light rounded" style={{ width: 56, height: 56 }} />
+                          <div className="bg-light rounded" style={{ width: 48, height: 48 }} />
                         )}
                       </td>
 
-                      <td>
-                        <Link to={`/products/${l.id}`} className="text-decoration-none text-dark">
+                      <td style={{ maxWidth: 160 }}>
+                        <Link
+                          to={`/products/${l.id}`}
+                          className="text-decoration-none text-dark text-truncate d-inline-block w-100"
+                          title={l.name}
+                        >
                           {l.name}
                         </Link>
 
@@ -767,9 +771,11 @@ export default function CartPage() {
                             {variantLabel}
                           </div>
                         )}
+
+                        <div className="small text-muted mt-1 d-md-none">{mad(l.price)}</div>
                       </td>
 
-                      <td className="text-end fw-semibold">{mad(l.price)}</td>
+                      <td className="text-end fw-semibold d-none d-md-table-cell">{mad(l.price)}</td>
 
                       <td className="text-center">
                         <div
