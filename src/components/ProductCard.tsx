@@ -759,7 +759,7 @@ function ProductCardInner({
         </div>
 
         <Link to={productPath} className="duu-title-link">
-          <h3 className="duu-title">{String(anyP.name || "")}</h3>
+          <h3 className="duu-title" title={String(anyP.name || "")}>{String(anyP.name || "")}</h3>
         </Link>
 
         {!!anyP.description && (

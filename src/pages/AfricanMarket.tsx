@@ -156,6 +156,14 @@ export default function AfricanMarket() {
     return () => window.clearTimeout(t);
   }, [q]);
 
+  // ✅ Décale le bouton panier flottant au-dessus de la barre Filtres/Tri mobile
+  useEffect(() => {
+    document.documentElement.style.setProperty("--duu-cart-fab-offset", "68px");
+    return () => {
+      document.documentElement.style.removeProperty("--duu-cart-fab-offset");
+    };
+  }, []);
+
   const abortProductsRef = useRef<AbortController | null>(null);
   const abortMetaRef = useRef<AbortController | null>(null);
 

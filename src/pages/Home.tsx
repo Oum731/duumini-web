@@ -139,7 +139,7 @@ function MiniCard({
         </div>
 
         <div className="home-mini-body">
-          <div className="home-mini-name">{name}</div>
+          <div className="home-mini-name" title={name}>{name}</div>
           <div className="home-mini-price">{moneyMAD(price)}</div>
           {hint ? <div className="home-mini-hint">{hint}</div> : null}
         </div>

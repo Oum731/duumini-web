@@ -29,7 +29,7 @@ export default function FloatingCartButton() {
       style={{
         position: "fixed", // ✅ ne dépend plus de Bootstrap
         right: 16,
-        bottom: 16,
+        bottom: "calc(16px + var(--duu-cart-fab-offset, 0px))",
         background: "var(--duu-black)",
         color: "#fff",
         padding: "12px 16px",
