@@ -62,6 +62,7 @@ import VendorHome from "./pages/vendor/VendorHome";
 import MyShopPage from "./pages/vendor/MyShopPage";
 
 import ManageProductsPage from "./pages/products/ManageProductsPage";
+import CompaniesPage from "./pages/companies/CompaniesPage";
 import RequireAuth from "./components/RequireCaps";
 import { useViewer } from "./hooks/useViewer";
 import PublicReceiptPage from "./pages/PublicReceiptPage";
@@ -516,6 +517,8 @@ export default function App() {
                     path="/vendeur/promotions"
                     element={<PromotionsAdminPage />}
                   />
+
+                  <Route path="/entreprise" element={<CompaniesPage />} />
                 </Route>
 
                 <Route path="*" element={<Page title="Page introuvable" />} />

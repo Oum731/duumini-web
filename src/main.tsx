@@ -12,6 +12,7 @@ import App from "./App";
 import { AuthProvider } from "./context/AuthContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
 import { LocationProvider } from "./context/LocationContext";
+import { CompanyProvider } from "./context/CompanyContext";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -87,7 +88,9 @@ createRoot(document.getElementById("root")!).render(
         <AuthProvider>
           <RealtimeProvider>
             <LocationProvider>
-              <App />
+              <CompanyProvider>
+                <App />
+              </CompanyProvider>
             </LocationProvider>
           </RealtimeProvider>
         </AuthProvider>
