@@ -179,7 +179,11 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
     roleUp === "VENDEUR" ||
     roleUp === "SELLER" ||
     roleUp === "BOUTIQUE" ||
-    roleUp === "SHOP";
+    roleUp === "SHOP" ||
+    // ✅ Le backend traite RESTAURANT comme VENDEUR pour le choix de
+    // boutique (isActingVendorOrRestaurant côté API) — le front doit
+    // suivre la même règle pour activer le sélecteur de boutique.
+    roleUp === "RESTAURANT";
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
@@ -317,7 +321,8 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
           uRole === "VENDEUR" ||
           uRole === "SELLER" ||
           uRole === "BOUTIQUE" ||
-          uRole === "SHOP";
+          uRole === "SHOP" ||
+          uRole === "RESTAURANT";
 
         await loadCatalogs(vendorMode);
       } catch (e: any) {
