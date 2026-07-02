@@ -29,6 +29,10 @@ import CheckoutPage from "./pages/Checkout";
 import OrdersHistoryPage from "./pages/OrdersHistory";
 import ContactPage from "./pages/Contact";
 import AboutPage from "./pages/About";
+import CommentCaMarchePage from "./pages/CommentCaMarchePage";
+import SolutionsPage from "./pages/SolutionsPage";
+import PaysPage from "./pages/PaysPage";
+import BlogPage from "./pages/BlogPage";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import ReturnsPolicy from "./pages/legal/ReturnsPolicy";
 import Terms from "./pages/legal/Terms";
@@ -48,6 +52,7 @@ import TopProductsPage from "./pages/TopProductsPage";
 import GuestOrderWidget from "./components/GuestOrderWidget";
 import LocationGate from "./components/LocationGate";
 import NotificationBubble from "./components/NotificationBubble";
+import SellIntentGate from "./pages/home/SellIntentGate";
 
 import { trackPageView } from "./lib/analytics";
 import { trackMetricoolPageView } from "./lib/metricool";
@@ -374,6 +379,10 @@ export default function App() {
                 <Route path="/orders" element={<OrdersHistoryPage />} />
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/about" element={<AboutPage />} />
+                <Route path="/comment-ca-marche" element={<CommentCaMarchePage />} />
+                <Route path="/solutions" element={<SolutionsPage />} />
+                <Route path="/pays" element={<PaysPage />} />
+                <Route path="/blog" element={<BlogPage />} />
                 <Route path="/cart" element={<CartPage />} />
 
                 <Route path="/affiliate" element={<AffiliateDashboardPage />} />
@@ -531,6 +540,7 @@ export default function App() {
           <FloatingCartGuard />
           <Footer />
           <NotificationBubble />
+          <SellIntentGate />
 
           {pendingRating && (
             <GlobalRatingModal

@@ -7,6 +7,12 @@
   --duu-yellow-rgb: 253, 220, 0; /* pour box-shadow */
   --duu-red-rgb: 229, 57, 53;
 
+  /* Nouvelle identité B2B (vitrine + navbar uniquement, voir plan Phase A) */
+  --duu-orange: #F5821F;
+  --duu-green:  #0B5D3B;
+  --duu-orange-rgb: 245, 130, 31;
+  --duu-green-rgb: 11, 93, 59;
+
   /* échelle de rayons */
   --duu-radius-sm: 14px;   /* boutons, inputs, select */
   --duu-radius-md: 18px;   /* petites cartes, badges larges */
@@ -95,6 +101,22 @@
   transform: translateY(0);
   filter: brightness(.94);
 }
+
+/* Nouvelle identité B2B (vitrine + navbar) */
+.btn-duu-orange{
+  background: var(--duu-orange);
+  color: #1f1f1f;
+  border: none;
+  font-weight: 800;
+}
+.btn-duu-orange:hover{ filter: brightness(.96); color: #1f1f1f; }
+.btn-duu-green{
+  background: var(--duu-green);
+  color: #fff;
+  border: none;
+  font-weight: 800;
+}
+.btn-duu-green:hover{ filter: brightness(1.12); color: #fff; }
 
 /* Badge */
 .badge-duu{

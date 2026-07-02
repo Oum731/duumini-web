@@ -6,7 +6,9 @@ export default function ReturnsPolicy() {
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>
           Politique de retour et d’annulation de commande
         </h1>
-        <p className="text-muted mb-0">Dernière mise à jour : 30 octobre 2025</p>
+        <p className="text-muted mb-0">
+          Dernière révision : 2 juillet 2026 (première publication : 30 octobre 2025)
+        </p>
       </header>
 
       <div className="vstack gap-3">

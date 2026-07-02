@@ -15,7 +15,7 @@ export default function AboutPage() {
       {/* Bandeau statut */}
       <div className="alert alert-warning border-0 shadow-sm">
         <div className="d-flex flex-column">
-          <strong>Dernière mise à jour : 30 octobre 2025</strong>
+          <strong>Dernière révision : 2 juillet 2026 (première publication : 30 octobre 2025)</strong>
           <span className="mt-1">
             ℹ️ <strong>Statut du service</strong> : <em>Phase pilote (test)</em>. duumini n’est pas encore immatriculée en société.
             Les commandes sont traitées à titre expérimental, avec périmètre et volumes limités.
@@ -28,38 +28,42 @@ export default function AboutPage() {
           <div className="card border-0 shadow-sm">
             <div className="card-body">
               <p className="lead mb-3" style={{ color: "var(--duu-black)" }}>
-                duumini, le marché des produits africains au Maroc.
+                duumini, la plateforme qui connecte vendeurs, fournisseurs et producteurs à travers l’Afrique.
               </p>
               <p className="text-muted">
-                Notre mission est simple : faciliter l’accès aux produits authentiques de l’Afrique pour la diaspora
-                et tous les amoureux du continent.
+                Notre mission : faire circuler les produits africains d’un pays à l’autre — pas seulement les livrer
+                à la diaspora installée au Maroc, mais mettre en relation directe ceux qui produisent, ceux qui
+                fournissent et ceux qui vendent, où qu’ils soient sur le continent. Le corridor Maroc ↔ Côte d’Ivoire
+                est notre premier maillon ; d’autres pays africains suivront.
               </p>
 
               <h2 className="h6 mt-4" style={{ color: "var(--duu-black)" }}>Impact & ambition</h2>
               <p className="text-muted">
-                duumini veut booster l’activité économique de la diaspora africaine au Maroc en leur offrant plus de
-                commandes, des outils pour se professionnaliser et une visibilité durable.
+                duumini veut ouvrir de nouveaux débouchés aux vendeurs, fournisseurs et producteurs africains, en
+                leur donnant accès à des marchés au-delà de leurs frontières, avec des outils pour se
+                professionnaliser et une visibilité durable.
               </p>
 
               <h2 className="h6 mt-4" style={{ color: "var(--duu-black)" }}>Notre credo</h2>
               <p className="text-muted">
-                Professionnaliser et réguler la niche de vente de produits africains au Maroc — du sourcing à la
-                livraison — pour tirer tout l’écosystème vers le haut.
+                Professionnaliser et fiabiliser le commerce interafricain de produits authentiques — du sourcing
+                chez le producteur à la livraison chez le vendeur ou le client final, en traversant les frontières —
+                pour tirer tout l’écosystème vers le haut.
               </p>
 
               <h2 className="h6 mt-4" style={{ color: "var(--duu-black)" }}>Ce que nous faisons concrètement</h2>
               <ul className="text-muted mb-3">
-                <li><strong>Centrale d’achat & marketplace</strong> : un guichet unique pour sourcer, référencer et vendre des produits africains (alimentaires & culturels).</li>
+                <li><strong>Mise en relation vendeurs ↔ fournisseurs</strong> : un guichet unique pour sourcer, référencer et vendre des produits africains (alimentaires & culturels) d’un pays à l’autre.</li>
                 <li><strong>Standards qualité</strong> : traçabilité, contrôles, chaîne du froid, étiquetage conforme.</li>
-                <li><strong>Professionnalisation des vendeurs</strong> : onboarding, fiches produits normées, outils de facturation et de suivi, coaching.</li>
-                <li><strong>Logistique & paiement</strong> : solutions adaptées au Maroc, options de livraison fiables, paiements sécurisés.</li>
+                <li><strong>Professionnalisation des vendeurs et fournisseurs</strong> : onboarding, fiches produits normées, outils de facturation et de suivi, coaching.</li>
+                <li><strong>Logistique & paiement transfrontaliers</strong> : transport sécurisé sur les corridors actifs (aujourd’hui Maroc ↔ Côte d’Ivoire), paiements centralisés et reversés de façon transparente.</li>
                 <li><strong>Transparence</strong> : informations claires sur l’origine, les ingrédients et les conditions de conservation.</li>
               </ul>
 
               <h2 className="h6 mt-4" style={{ color: "var(--duu-black)" }}>Nos engagements</h2>
               <ul className="text-muted mb-0">
                 <li>Qualité et sécurité des produits.</li>
-                <li>Commerce équitable avec nos partenaires.</li>
+                <li>Commerce équitable avec nos partenaires, où qu’ils soient sur le continent.</li>
                 <li>Service client réactif et empathique.</li>
                 <li>Protection des données personnelles et transparence.</li>
               </ul>

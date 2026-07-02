@@ -6,7 +6,9 @@ export default function PrivacyPolicy() {
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>
           Politique de confidentialité (Confidentialité du traitement des données)
         </h1>
-        <p className="text-muted mb-0">Dernière mise à jour : 30 octobre 2025</p>
+        <p className="text-muted mb-0">
+          Dernière révision : 2 juillet 2026 (première publication : 30 octobre 2025)
+        </p>
       </header>
 
       <div className="vstack gap-3">
@@ -59,15 +61,17 @@ export default function PrivacyPolicy() {
           <ul className="text-muted mb-0">
             <li>Équipes internes habilitées</li>
             <li>Prestataires (paiement, logistique, hébergement, emailing, analytique) liés par contrat et obligations de confidentialité</li>
-            <li>Pas de transmission systématique aux commerçants d’approvisionnement : par défaut, les achats sont réalisés par nos équipes sans partager vos données personnelles avec les commerces partenaires. En cas de commande spéciale nécessitant une mise à disposition nominative, nous sollicitons votre accord et limitons l’information transmise au strict nécessaire (ex. nom pour un retrait spécifique).</li>
+            <li>Vendeurs et fournisseurs partenaires : lorsque votre commande implique un vendeur ou un fournisseur d’un autre pays du réseau duumini (ex. corridor Maroc ↔ Côte d’Ivoire), les informations strictement nécessaires à l’exécution de la commande (nom, adresse de livraison, contenu de la commande) peuvent leur être transmises, dans les mêmes conditions de confidentialité.</li>
             <li>Autorités légalement habilitées</li>
           </ul>
         </Card>
 
         <Card title="6. Transferts internationaux">
           <p className="text-muted mb-0">
-            Si des données sont hébergées ou traitées hors du Maroc, duumini s’assure du respect des règles applicables
-            (formalités CNDP, clauses contractuelles, encadrement du transfert) et met en place des garanties appropriées.
+            duumini connecte des vendeurs, fournisseurs et clients situés dans plusieurs pays africains (aujourd’hui le
+            Maroc et la Côte d’Ivoire, avec d’autres pays à venir). Lorsque des données sont hébergées, traitées ou
+            transmises hors du Maroc dans ce cadre, duumini s’assure du respect des règles applicables (formalités
+            CNDP, clauses contractuelles, encadrement du transfert) et met en place des garanties appropriées.
           </p>
         </Card>
 

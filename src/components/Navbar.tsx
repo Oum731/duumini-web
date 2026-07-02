@@ -14,6 +14,11 @@ import {
   ArrowLeft,
   Settings,
   BadgePercent,
+  Workflow,
+  Briefcase,
+  Globe2,
+  BookOpen,
+  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { DUUMINI_SLOGAN } from "../lib/brand";
@@ -23,6 +28,23 @@ type Role = "MEMBER" | "VENDEUR" | "LIVREUR" | "ADMIN";
 type Props = {
   cartCount?: number;
 };
+
+type NavLinkDef = {
+  to: string;
+  label: string;
+  Icon: LucideIcon;
+  end?: boolean;
+};
+
+// ✅ Liens publics de la vitrine (masqués pour Admin/Vendeur, cf. !isPro plus bas)
+const PUBLIC_NAV_LINKS: NavLinkDef[] = [
+  { to: "/comment-ca-marche", label: "Comment ça marche", Icon: Workflow },
+  { to: "/solutions", label: "Solutions", Icon: Briefcase },
+  { to: "/pays", label: "Pays", Icon: Globe2 },
+  { to: "/about", label: "À propos", Icon: Info },
+  { to: "/blog", label: "Blog", Icon: BookOpen },
+  { to: "/contact", label: "Contact", Icon: Mail },
+];
 
 export default function Navbar({ cartCount = 0 }: Props) {
   const [open, setOpen] = useState(false);
@@ -58,7 +80,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
     Icon?: React.ComponentType<any>,
     opts?: { end?: boolean; onClick?: () => void }
   ) => (
-    <li className="nav-item">
+    <li className="nav-item" key={to}>
       <NavLink
         to={to}
         end={opts?.end}
@@ -80,11 +102,25 @@ export default function Navbar({ cartCount = 0 }: Props) {
   return (
     <nav
       className="navbar navbar-expand-lg navbar-light sticky-top"
-      style={{ backgroundColor: "var(--duu-yellow)" }}
+      style={{ backgroundColor: "#fff" }}
       role="navigation"
       aria-label="Navigation principale"
     >
       <style>{`
+        /* ✅ Navbar B2B : hover/actif/focus recolorés en orange, scopé à cette
+           navbar uniquement (le .nav-link/.active::after global de theme.css
+           reste rouge pour AdminTopNav et les autres usages). */
+        .navbar .nav-link:hover{ color: var(--duu-orange) !important; }
+        .navbar .nav-link.active::after,
+        .navbar .nav-link:focus-visible::after{
+          background: var(--duu-orange) !important;
+        }
+        .navbar .nav-link:focus-visible{
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-orange-rgb), .35) !important;
+        }
+        .navbar .navbar-toggler:focus{
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-orange-rgb), .35) !important;
+        }
         .duu-brand-wrap{ min-width: 0; }
         .duu-brand-slogan{
           font-weight: 800;
@@ -144,8 +180,9 @@ export default function Navbar({ cartCount = 0 }: Props) {
           <img src="/logo.jpeg" alt="Duumini" height={32} className="rounded" />
 
           <div className="duu-brand-wrap">
-            <span className="fw-bold" style={{ color: "var(--duu-black)" }}>
-              Duumini
+            <span className="fw-bold">
+              <span style={{ color: "var(--duu-orange)" }}>DUU</span>
+              <span style={{ color: "var(--duu-green)" }}>MINI</span>
             </span>
 
             <div className="duu-brand-slogan" title={DUUMINI_SLOGAN}>
@@ -175,10 +212,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
           <ul className="navbar-nav mb-2 mb-lg-0 me-lg-3">
             {navItem("/", "Accueil", Home, { end: true })}
 
-           
-            {/* ✅ Contact/À propos cachés pour Admin/Vendeur */}
-            {!isPro && navItem("/contact", "Contact", Mail)}
-            {!isPro && navItem("/about", "À propos", Info)}
+            {/* ✅ Liens vitrine publics cachés pour Admin/Vendeur */}
+            {!isPro &&
+              PUBLIC_NAV_LINKS.map((l) =>
+                navItem(l.to, l.label, l.Icon, { end: l.end })
+              )}
 
             {isLoggedIn && navItem("/orders", "Mes commandes", Package)}
 
@@ -279,7 +317,19 @@ export default function Navbar({ cartCount = 0 }: Props) {
             {navItem("/profile", isLoggedIn ? "Profil" : "Se connecter", UserRound)}
           </ul>
 
-          <ul className="navbar-nav align-items-lg-center">
+          <ul className="navbar-nav align-items-lg-center gap-lg-2">
+            {!isPro && (
+              <li className="nav-item">
+                <Link
+                  to="/contact?intent=join"
+                  className="btn btn-duu-green"
+                  onClick={closeMenus}
+                >
+                  Rejoindre DUUMINI
+                </Link>
+              </li>
+            )}
+
             <li className="nav-item">
               <NavLink
                 to="/cart"

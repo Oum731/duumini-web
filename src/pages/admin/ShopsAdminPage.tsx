@@ -21,6 +21,7 @@ import {
 
 import { API_BASE } from "../../services/http";
 import { me } from "../../services/auth";
+import { listActiveCountries, type CountryConfig } from "../../services/countries";
 
 type Draft = Partial<Shop> & { description?: string | null };
 
@@ -93,11 +94,25 @@ function ShopForm({
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
+  const [countries, setCountries] = useState<CountryConfig[]>([]);
+
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const coverInputRef = useRef<HTMLInputElement | null>(null);
 
   const existingLogoUrl = shopLogoUrl((initial as any)?.logo || null);
   const existingCoverUrl = shopLogoUrl((initial as any)?.cover || null);
+
+  useEffect(() => {
+    let mounted = true;
+    listActiveCountries()
+      .then((items) => {
+        if (mounted) setCountries(items);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -163,12 +178,15 @@ function ShopForm({
           value={draft.country_code || "MA"}
           onChange={(e) => {
             const code = e.target.value;
-            const label = code === "CI" ? "Côte d'Ivoire" : "Maroc";
+            const label = countries.find((c) => c.code === code)?.label || code;
             setDraft((d) => ({ ...d, country_code: code, country: label }));
           }}
         >
-          <option value="MA">Maroc</option>
-          <option value="CI">Côte d'Ivoire</option>
+          {countries.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.label}
+            </option>
+          ))}
         </select>
       </div>
 

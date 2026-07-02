@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { me } from "../../services/auth";
 import { listMyShops, getShop, updateShop, type Shop } from "../../services/shops";
+import { listActiveCountries, type CountryConfig } from "../../services/countries";
 import { imgUrl } from "../../utils/media";
 
 type AnyObj = Record<string, any>;
@@ -128,6 +129,7 @@ export default function MyShopPage() {
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
   const [countryCode, setCountryCode] = useState("MA");
+  const [countries, setCountries] = useState<CountryConfig[]>([]);
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -159,6 +161,19 @@ export default function MyShopPage() {
         setUser(null);
       }
     })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Liste des pays actifs pour le sélecteur "Pays"
+  useEffect(() => {
+    let mounted = true;
+    listActiveCountries()
+      .then((items) => {
+        if (mounted) setCountries(items);
+      })
+      .catch(() => {});
     return () => {
       mounted = false;
     };
@@ -243,7 +258,7 @@ export default function MyShopPage() {
         description: description.trim() || null,
         city: city.trim() || null,
         address: address.trim() || null,
-        country: countryCode === "CI" ? "Côte d'Ivoire" : "Maroc",
+        country: countries.find((c) => c.code === countryCode)?.label || countryCode,
         country_code: countryCode,
       };
 
@@ -460,8 +475,11 @@ export default function MyShopPage() {
                         onChange={(e) => setCountryCode(e.target.value)}
                         disabled={saving}
                       >
-                        <option value="MA">Maroc</option>
-                        <option value="CI">Côte d'Ivoire</option>
+                        {countries.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
 

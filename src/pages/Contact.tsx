@@ -1,6 +1,6 @@
 // src/pages/Contact.tsx
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Mail, Phone, MessageSquare, MapPin } from "lucide-react";
 
 const RAW_WHATSAPP = "+21262367784";
@@ -18,12 +18,19 @@ function normalizePhoneIntl(p?: string) {
 }
 
 export default function ContactPage() {
+  const [searchParams] = useSearchParams();
+  const wantsToSell = searchParams.get("intent") === "join";
+
   const phoneIntl = useMemo(() => normalizePhoneIntl(RAW_WHATSAPP), []);
   const waLink = useMemo(() => {
-    const text = encodeURIComponent("Bonjour, j’aimerais avoir des informations, merci.");
+    const text = encodeURIComponent(
+      wantsToSell
+        ? "Bonjour, je souhaite vendre mes produits sur DUUMINI."
+        : "Bonjour, j’aimerais avoir des informations, merci."
+    );
     const num = phoneIntl.replace(/^\+/, "");
     return `https://wa.me/${num}?text=${text}`;
-  }, [phoneIntl]);
+  }, [phoneIntl, wantsToSell]);
 
   const telLink = `tel:${phoneIntl}`;
 
@@ -33,6 +40,20 @@ export default function ContactPage() {
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>Contact</h1>
         <Link to="/" className="btn btn-outline-dark">Accueil</Link>
       </div>
+
+      {wantsToSell && (
+        <div
+          className="alert mb-4"
+          style={{
+            background: "rgba(var(--duu-green-rgb), .08)",
+            border: "1px solid rgba(var(--duu-green-rgb), .25)",
+            color: "var(--duu-green)",
+          }}
+        >
+          Vous souhaitez vendre sur DUUMINI ? Écrivez-nous, nous vous
+          recontactons sous 24h.
+        </div>
+      )}
 
       <p className="text-muted mb-4">
         Une question sur un produit, une commande ou une livraison&nbsp;? Écrivez-nous ou contactez-nous directement.

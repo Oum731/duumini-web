@@ -6,7 +6,9 @@ export default function Terms() {
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>
           Conditions d’utilisation (CGU) de www.duumini.com
         </h1>
-        <p className="text-muted mb-0">Dernière mise à jour : 30 octobre 2025</p>
+        <p className="text-muted mb-0">
+          Dernière révision : 2 juillet 2026 (première publication : 30 octobre 2025)
+        </p>
       </header>
 
       <div className="alert alert-warning border-0 shadow-sm mb-3">
@@ -18,20 +20,24 @@ export default function Terms() {
           <ul className="text-muted mb-0">
             <li><strong>Utilisateur</strong> : toute personne qui visite le Site.</li>
             <li><strong>Client</strong> : tout Utilisateur qui passe commande sur le Site.</li>
-            <li><strong>duumini</strong> : l’opérateur du Site et seul vendeur des produits proposés. duumini agit en centrale d’achat/revente et en service d’approvisionnement à la demande (pas de vendeurs tiers sur la Plateforme à ce jour).</li>
+            <li><strong>Vendeur</strong> : professionnel référencé sur duumini qui propose ses propres produits à la vente sur la Plateforme.</li>
+            <li><strong>Fournisseur</strong> : professionnel référencé sur duumini qui approvisionne des Vendeurs ou des Clients professionnels, notamment dans le cadre du commerce interafricain (ex. corridor Maroc ↔ Côte d’Ivoire).</li>
+            <li><strong>duumini</strong> : l’opérateur de la Plateforme, qui met en relation Vendeurs, Fournisseurs et Clients à travers plusieurs pays africains, et assure la centralisation des commandes, le paiement et la logistique transfrontalière.</li>
           </ul>
         </Card>
 
         <Card title="2. Objet">
           <p className="text-muted mb-2">
-            duumini propose un catalogue de produits dont la vente est opérée par duumini. Les visuels sont réalisés
-            par duumini et servent d’illustration des références disponibles. Lorsque le Client passe commande, duumini
-            procure le produit auprès d’un commerçant/fournisseur de proximité répondant à nos standards (qualité,
-            traçabilité, conditions de conservation), puis assure la livraison au Client.
+            duumini est une plateforme de mise en relation entre Vendeurs, Fournisseurs et Clients à travers l’Afrique.
+            Les Vendeurs et Fournisseurs référencent et vendent leurs propres produits sur la Plateforme ; duumini
+            centralise les commandes, sécurise le paiement, et assure ou coordonne le transport — y compris entre pays
+            (aujourd’hui le corridor Maroc ↔ Côte d’Ivoire, avec d’autres pays à venir).
           </p>
           <p className="text-muted mb-0">
-            <strong>Important</strong> : il n’existe pas de vendeurs tiers listant eux-mêmes leurs produits sur le Site.
-            duumini reste l’unique interlocuteur commercial (facturation, service client).
+            <strong>Rôle de duumini</strong> : duumini n’est pas systématiquement le vendeur des produits présentés —
+            chaque fiche produit indique la boutique/Vendeur responsable. duumini reste néanmoins l’interlocuteur
+            unique du Client pour la commande, le paiement et le service après-vente, et supervise la conformité des
+            Vendeurs et Fournisseurs référencés sur la Plateforme.
           </p>
         </Card>
 
@@ -69,15 +75,15 @@ export default function Terms() {
 
         <Card title="6. Livraison">
           <ul className="text-muted mb-0">
-            <li>Zones, délais indicatifs, frais et modes de livraison affichés au moment de la commande.</li>
+            <li>Zones, délais indicatifs, frais et modes de livraison affichés au moment de la commande — y compris pour les livraisons transfrontalières sur les corridors actifs (aujourd’hui Maroc ↔ Côte d’Ivoire).</li>
             <li>Le transfert des risques intervient à la remise au Client (ou au point relais). Vérifiez l’état du colis à réception et signalez toute anomalie selon la Politique de retour.</li>
           </ul>
         </Card>
 
         <Card title="7. Modèle opérationnel et responsabilité">
           <ul className="text-muted mb-0">
-            <li>duumini est vendeur de l’ensemble des produits présentés et demeure responsable de la conformité et de la sécurité des denrées vendues, sans préjudice des garanties légales.</li>
-            <li>Les commerçants/fournisseurs locaux interviennent comme sources d’approvisionnement et ne sont pas des vendeurs tiers sur le Site. duumini est votre seul point de contact (commande, facturation, SAV, retours).</li>
+            <li>Chaque Vendeur ou Fournisseur référencé est responsable de la conformité, de la qualité et de la sécurité des produits qu’il propose, sans préjudice des garanties légales applicables au Client.</li>
+            <li>duumini supervise le référencement (standards qualité, traçabilité, conditions de conservation) et reste le point de contact unique du Client pour la commande, le paiement, la facturation et le service après-vente, y compris lorsque le produit provient d’un Vendeur ou Fournisseur situé dans un autre pays du réseau duumini.</li>
           </ul>
         </Card>
 
