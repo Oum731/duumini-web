@@ -85,6 +85,7 @@ function ShopForm({
     address: initial?.address ?? "",
     city: initial?.city ?? "",
     country: initial?.country ?? "",
+    country_code: initial?.country_code ?? "MA",
     lat: initial?.lat ?? null,
     lng: initial?.lng ?? null,
   });
@@ -113,6 +114,7 @@ function ShopForm({
       address: (draft.address ?? "") as string,
       city: (draft.city ?? "") as string,
       country: (draft.country ?? "") as string,
+      country_code: (draft.country_code ?? "MA") as string,
     };
 
     onSubmit(finalDraft, { logo: logoFile, cover: coverFile });
@@ -153,6 +155,22 @@ function ShopForm({
           <small className="text-muted">Généré automatiquement à partir du nom.</small>
         </div>
       )}
+
+      <div className="mb-2">
+        <label className="form-label">Pays</label>
+        <select
+          className="form-select"
+          value={draft.country_code || "MA"}
+          onChange={(e) => {
+            const code = e.target.value;
+            const label = code === "CI" ? "Côte d'Ivoire" : "Maroc";
+            setDraft((d) => ({ ...d, country_code: code, country: label }));
+          }}
+        >
+          <option value="MA">Maroc</option>
+          <option value="CI">Côte d'Ivoire</option>
+        </select>
+      </div>
 
       <div className="mb-2">
         <label className="form-label">Ville</label>
@@ -519,6 +537,7 @@ export default function ShopsAdminPage() {
       address: draft.address ?? null,
       city: draft.city ?? null,
       country: draft.country ?? null,
+      country_code: draft.country_code ?? "MA",
       lat: draft.lat ?? null,
       lng: draft.lng ?? null,
     };

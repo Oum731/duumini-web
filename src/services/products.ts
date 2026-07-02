@@ -76,6 +76,7 @@ export type SupplierAgg = {
 export type Product = SupplierAgg & {
   id: number;
   shop_id: number | null;
+  country_code?: string | null;
 
   category_id?: number | null;
   sub_category_id?: number | null;

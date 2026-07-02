@@ -205,6 +205,7 @@ export type OrderTotals = {
 export type Order = {
   id: number;
   display_code?: string | null;
+  country_code?: string | null;
 
   user_id?: number | null;
   customer_role?: CustomerRole | string | null;

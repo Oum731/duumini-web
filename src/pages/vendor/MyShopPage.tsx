@@ -127,6 +127,7 @@ export default function MyShopPage() {
   const [description, setDescription] = useState("");
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
+  const [countryCode, setCountryCode] = useState("MA");
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -172,6 +173,7 @@ export default function MyShopPage() {
     setDescription(toInput((s as any).description));
     setCity(toInput((s as any).city));
     setAddress(toInput((s as any).address));
+    setCountryCode(toInput((s as any).country_code) || "MA");
   }
 
   // 2) Charger boutique (shopId OU fallback /mine)
@@ -241,7 +243,8 @@ export default function MyShopPage() {
         description: description.trim() || null,
         city: city.trim() || null,
         address: address.trim() || null,
-        country: "Maroc",
+        country: countryCode === "CI" ? "Côte d'Ivoire" : "Maroc",
+        country_code: countryCode,
       };
 
       const updated = await updateShop(shop.id, payload, { logo: logoFile, cover: coverFile });
@@ -450,11 +453,24 @@ export default function MyShopPage() {
                     </div>
 
                     <div className="col-12 col-md-6">
+                      <label className="form-label">Pays</label>
+                      <select
+                        className="form-select"
+                        value={countryCode}
+                        onChange={(e) => setCountryCode(e.target.value)}
+                        disabled={saving}
+                      >
+                        <option value="MA">Maroc</option>
+                        <option value="CI">Côte d'Ivoire</option>
+                      </select>
+                    </div>
+
+                    <div className="col-12 col-md-6">
                       <label className="form-label">Ville</label>
                       <input className="form-control" value={city} onChange={(e) => setCity(e.target.value)} disabled={saving} />
                     </div>
 
-                    <div className="col-12 col-md-6">
+                    <div className="col-12">
                       <label className="form-label">Adresse</label>
                       <input className="form-control" value={address} onChange={(e) => setAddress(e.target.value)} disabled={saving} />
                     </div>
@@ -469,6 +485,7 @@ export default function MyShopPage() {
                         setDescription(toInput((shop as any)?.description));
                         setCity(toInput((shop as any)?.city));
                         setAddress(toInput((shop as any)?.address));
+                        setCountryCode(toInput((shop as any)?.country_code) || "MA");
                         setLogoFile(null);
                         setCoverFile(null);
                         if (logoInputRef.current) logoInputRef.current.value = "";

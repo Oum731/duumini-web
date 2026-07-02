@@ -18,6 +18,7 @@ export type Shop = {
   address?: string | null;
   city?: string | null;
   country?: string | null;
+  country_code?: string | null;
   logo?: string | null;
   cover?: string | null;
   lat?: number | null;
@@ -180,6 +181,7 @@ function buildShopFormData(
   if (payload.address != null) fd.append("address", String(payload.address));
   if (payload.city != null) fd.append("city", String(payload.city));
   if (payload.country != null) fd.append("country", String(payload.country));
+  if (payload.country_code != null) fd.append("country_code", String(payload.country_code));
   if (payload.lat != null) fd.append("lat", String(payload.lat));
   if (payload.lng != null) fd.append("lng", String(payload.lng));
 
