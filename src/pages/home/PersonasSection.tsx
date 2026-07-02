@@ -2,28 +2,22 @@
 import { Link } from "react-router-dom";
 import { PERSONAS, type Persona } from "./data";
 
-// Isolé pour pouvoir être remplacé par une vraie photo plus tard sans
-// toucher à la mise en page de la carte.
+// Isolé pour pouvoir être remplacé par une vraie photo de marque plus tard
+// sans toucher à la mise en page de la carte.
 function PersonaVisual({ persona }: { persona: Persona }) {
-  const gradient =
-    persona.tint === "orange"
-      ? "linear-gradient(135deg, #FDECD8, #FBD8AE)"
-      : "linear-gradient(135deg, #E3F0EA, #C7E3D5)";
-  const Icon = persona.icon;
-  const color = persona.tint === "orange" ? "var(--duu-orange)" : "var(--duu-green)";
-
   return (
-    <div
-      className="d-none d-md-flex align-items-center justify-content-center flex-shrink-0"
+    <img
+      src={persona.photo}
+      alt={persona.title}
+      className="d-none d-md-block flex-shrink-0"
       style={{
         width: 90,
         height: 90,
+        objectFit: "cover",
         borderRadius: "var(--duu-radius-md)",
-        background: gradient,
       }}
-    >
-      <Icon size={34} color={color} />
-    </div>
+      loading="lazy"
+    />
   );
 }
 
