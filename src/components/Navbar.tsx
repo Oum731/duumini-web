@@ -23,7 +23,13 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { DUUMINI_SLOGAN } from "../lib/brand";
 
-type Role = "MEMBER" | "VENDEUR" | "LIVREUR" | "ADMIN";
+type Role =
+  | "MEMBER"
+  | "VENDEUR"
+  | "FOURNISSEUR"
+  | "RESTAURANT"
+  | "LIVREUR"
+  | "ADMIN";
 
 type Props = {
   cartCount?: number;
@@ -36,7 +42,9 @@ type NavLinkDef = {
   end?: boolean;
 };
 
-// ✅ Liens publics de la vitrine (masqués pour Admin/Vendeur, cf. !isPro plus bas)
+// ✅ Liens publics de la vitrine, visibles pour tout le monde (voir isPro
+// plus bas pour le dropdown "Espace pro" ajouté en plus pour les comptes
+// admin/vendeur/fournisseur/restaurant).
 const PUBLIC_NAV_LINKS: NavLinkDef[] = [
   { to: "/comment-ca-marche", label: "Comment ça marche", Icon: Workflow },
   { to: "/solutions", label: "Solutions", Icon: Briefcase },
@@ -52,19 +60,24 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const { isLoggedIn, isAdmin, isVendor, isPro } = useMemo(() => {
-    const role = (user?.role ? String(user.role) : "")
-      .trim()
-      .toUpperCase() as Role | "";
-    const isAdmin = role === "ADMIN";
-    const isVendor = role === "VENDEUR";
-    return {
-      isLoggedIn: !!user,
-      isAdmin,
-      isVendor,
-      isPro: isAdmin || isVendor,
-    };
-  }, [user]);
+  const { isLoggedIn, isAdmin, isVendor, isSupplier, isRestaurantRole, isPro } =
+    useMemo(() => {
+      const role = (user?.role ? String(user.role) : "")
+        .trim()
+        .toUpperCase() as Role | "";
+      const isAdmin = role === "ADMIN";
+      const isVendor = role === "VENDEUR";
+      const isSupplier = role === "FOURNISSEUR";
+      const isRestaurantRole = role === "RESTAURANT";
+      return {
+        isLoggedIn: !!user,
+        isAdmin,
+        isVendor,
+        isSupplier,
+        isRestaurantRole,
+        isPro: isAdmin || isVendor || isSupplier || isRestaurantRole,
+      };
+    }, [user]);
 
   // ✅ vendeur -> /ma-boutique (VendorHome), admin -> /admin
   const proDashboardPath = isAdmin ? "/admin" : "/ma-boutique";
@@ -212,11 +225,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
           <ul className="navbar-nav mb-2 mb-lg-0 me-lg-3">
             {navItem("/", "Accueil", Home, { end: true })}
 
-            {/* ✅ Liens vitrine publics cachés pour Admin/Vendeur */}
-            {!isPro &&
-              PUBLIC_NAV_LINKS.map((l) =>
-                navItem(l.to, l.label, l.Icon, { end: l.end })
-              )}
+            {/* ✅ Liens vitrine publics — toujours visibles, y compris pour
+                les comptes pro (admin/vendeur/fournisseur/restaurant) */}
+            {PUBLIC_NAV_LINKS.map((l) =>
+              navItem(l.to, l.label, l.Icon, { end: l.end })
+            )}
 
             {isLoggedIn && navItem("/orders", "Mes commandes", Package)}
 
@@ -283,7 +296,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
                       </>
                     )}
 
-                    {isVendor && !isAdmin && (
+                    {(isVendor || isSupplier || isRestaurantRole) && !isAdmin && (
                       <>
                         <div className="pro-sep" />
                         <div className="pro-mini">Outils vendeur</div>

@@ -109,14 +109,41 @@
   border: none;
   font-weight: 800;
 }
-.btn-duu-orange:hover{ filter: brightness(.96); color: #1f1f1f; }
+.btn-duu-orange:hover,
+.btn-duu-orange:focus,
+.btn-duu-orange:focus-visible,
+.btn-duu-orange:active{
+  background: var(--duu-orange) !important;
+  color: #1f1f1f !important;
+  border-color: transparent !important;
+  filter: brightness(.96);
+}
+.btn-duu-orange:focus,
+.btn-duu-orange:focus-visible{
+  outline: none !important;
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-orange-rgb), .35) !important;
+}
+
 .btn-duu-green{
   background: var(--duu-green);
   color: #fff;
   border: none;
   font-weight: 800;
 }
-.btn-duu-green:hover{ filter: brightness(1.12); color: #fff; }
+.btn-duu-green:hover,
+.btn-duu-green:focus,
+.btn-duu-green:focus-visible,
+.btn-duu-green:active{
+  background: var(--duu-green) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  filter: brightness(1.12);
+}
+.btn-duu-green:focus,
+.btn-duu-green:focus-visible{
+  outline: none !important;
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-green-rgb), .35) !important;
+}
 
 /* Badge */
 .badge-duu{

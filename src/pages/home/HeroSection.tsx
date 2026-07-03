@@ -1,19 +1,24 @@
 // src/pages/home/HeroSection.tsx
 import { Link } from "react-router-dom";
-import NetworkIllustration from "./NetworkIllustration";
 
-// Isolé dans son propre composant pour pouvoir être remplacé par une vraie
+// Isolé dans son propre composant pour pouvoir être remplacé par une autre
 // photo de marque plus tard sans toucher au reste du hero.
 function HeroVisual() {
   return (
     <div
       className="position-relative overflow-hidden"
       style={{
-        aspectRatio: "4 / 3",
+        aspectRatio: "930 / 345",
         borderRadius: "var(--duu-radius-xl)",
       }}
     >
-      <NetworkIllustration />
+      <img
+        src="/hero-photo.png"
+        alt="Une commerçante consulte son téléphone, entourée de produits africains, avec un avion et un conteneur DUUMINI en arrière-plan symbolisant le transport entre pays"
+        className="w-100 h-100"
+        style={{ objectFit: "cover" }}
+        loading="lazy"
+      />
     </div>
   );
 }
