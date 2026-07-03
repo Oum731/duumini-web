@@ -85,7 +85,9 @@ export default function Footer() {
             <div className="duu-footer-slogan">{DUUMINI_SLOGAN}</div>
 
             <p className="text-muted mb-2" style={{ maxWidth: 420 }}>
-              Produits et saveurs d’Afrique subsaharienne — livrés partout au Maroc.
+              DUUMINI est le réseau qui met en relation vendeurs, fournisseurs
+              et producteurs à travers l’Afrique — le commerce circule d’un
+              pays à l’autre, dans les deux sens.
             </p>
 
             <div className="d-flex gap-2">

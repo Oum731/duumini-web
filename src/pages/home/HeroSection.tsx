@@ -1,8 +1,6 @@
 // src/pages/home/HeroSection.tsx
 import { Link } from "react-router-dom";
-
-const HERO_IMAGE =
-  "https://images.unsplash.com/photo-1545921406-e8a234c30d85?w=1000&h=750&fit=crop&crop=faces&q=80&auto=format";
+import NetworkIllustration from "./NetworkIllustration";
 
 // Isolé dans son propre composant pour pouvoir être remplacé par une vraie
 // photo de marque plus tard sans toucher au reste du hero.
@@ -15,13 +13,7 @@ function HeroVisual() {
         borderRadius: "var(--duu-radius-xl)",
       }}
     >
-      <img
-        src={HERO_IMAGE}
-        alt="Une commerçante consulte son téléphone, entourée de produits africains prêts à être expédiés"
-        className="w-100 h-100"
-        style={{ objectFit: "cover" }}
-        loading="lazy"
-      />
+      <NetworkIllustration />
     </div>
   );
 }

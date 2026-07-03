@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Modal } from "../profile/components/Modal";
-import InterconnexionIllustration from "./InterconnexionIllustration";
+import NetworkIllustration from "./NetworkIllustration";
 
 const STORAGE_KEY = "duumini:sellIntentGate:v1";
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
@@ -77,15 +77,15 @@ export default function SellIntentGate() {
 
   return (
     <Modal open={open} title="Vous souhaitez vendre sur DUUMINI ?" onClose={handleNo}>
-      <div className="mb-3">
-        <InterconnexionIllustration />
+      <div className="mb-3" style={{ aspectRatio: "4 / 3", maxHeight: 180, margin: "0 auto" }}>
+        <NetworkIllustration />
       </div>
 
       <p className="text-muted">
         DUUMINI connecte vendeurs, fournisseurs et producteurs à travers
-        l'Afrique — vos produits peuvent circuler du Maroc vers la Côte
-        d'Ivoire, puis vers d'autres pays du continent. Écrivez-nous, nous
-        vous recontactons rapidement pour démarrer.
+        l'Afrique — vos produits peuvent circuler entre le Maroc, la Côte
+        d'Ivoire et d'autres pays du continent, dans les deux sens. Écrivez-nous,
+        nous vous recontactons rapidement pour démarrer.
       </p>
       <div className="d-flex gap-2 justify-content-end mt-3">
         <button type="button" className="btn btn-outline-secondary" onClick={handleNo}>
