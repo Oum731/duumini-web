@@ -165,7 +165,7 @@ function SectionIcon({
 }) {
   return (
     <div className="mb-5 flex items-start gap-3">
-      <div className="rounded-2xl bg-[rgba(255,210,74,0.14)] p-3 text-[#d39a00]">
+      <div className="rounded-2xl bg-[rgba(245,130,31,0.14)] p-3 text-[#F5821F]">
         {icon}
       </div>
       <div>
@@ -225,7 +225,7 @@ export default function ExpensesPage() {
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [newCategory, setNewCategory] = useState("");
-  const [newCategoryColor, setNewCategoryColor] = useState("#f4b400");
+  const [newCategoryColor, setNewCategoryColor] = useState("#F5821F");
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -383,7 +383,7 @@ export default function ExpensesPage() {
         category_name: createdObj.name,
       }));
       setNewCategory("");
-      setNewCategoryColor("#f4b400");
+      setNewCategoryColor("#F5821F");
     } catch (e: any) {
       setError(safeErrorMessage(e));
     } finally {
@@ -491,7 +491,7 @@ export default function ExpensesPage() {
               <div
                 className="rounded-3xl p-3"
                 style={{
-                  background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                  background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
                   color: "#111",
                 }}
               >
@@ -532,7 +532,7 @@ export default function ExpensesPage() {
                 type="button"
                 className="btn border-0 text-black"
                 style={{
-                  background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                  background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
                 }}
                 onClick={() =>
                   exportCsv(
@@ -635,7 +635,7 @@ export default function ExpensesPage() {
                       type="button"
                       className="btn border-0 text-black"
                       style={{
-                        background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                        background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
                       }}
                       onClick={handleCreateCategory}
                       disabled={creatingCategory}
@@ -735,7 +735,7 @@ export default function ExpensesPage() {
                     type="submit"
                     className="btn flex-1 border-0 text-black"
                     style={{
-                      background: "linear-gradient(135deg, #FFD24A 0%, #F4B400 100%)",
+                      background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
                     }}
                     disabled={saving}
                   >
@@ -771,7 +771,7 @@ export default function ExpensesPage() {
                   <PieChart>
                     <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} label>
                       {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color || "#f4b400"} />
+                        <Cell key={`cell-${index}`} fill={entry.color || "#F5821F"} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
@@ -960,7 +960,7 @@ export default function ExpensesPage() {
                     <XAxis dataKey="period" />
                     <YAxis />
                     <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
-                    <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#f4b400" />
+                    <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#F5821F" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

@@ -28,8 +28,8 @@ export function HeroHeader({
         className="mb-4 p-4 p-lg-5"
         style={cardStyle({
           background:
-            "radial-gradient(circle at top right, rgba(255,213,74,0.28), transparent 35%), linear-gradient(135deg, #111111 0%, #1B1B1B 100%)",
-          border: "1px solid rgba(255,213,74,0.16)",
+            "radial-gradient(circle at top right, rgba(245,130,31,0.28), transparent 35%), linear-gradient(135deg, #111111 0%, #1B1B1B 100%)",
+          border: "1px solid rgba(245,130,31,0.16)",
         })}
       >
         <div className="row g-4 align-items-center">
@@ -38,9 +38,9 @@ export function HeroHeader({
               className="d-inline-flex align-items-center gap-2 px-3 py-2 mb-3"
               style={{
                 borderRadius: 999,
-                background: "rgba(255,213,74,0.14)",
+                background: "rgba(245,130,31,0.14)",
                 color: DUU.yellow,
-                border: "1px solid rgba(255,213,74,0.24)",
+                border: "1px solid rgba(245,130,31,0.24)",
                 fontWeight: 700,
                 fontSize: ".9rem",
               }}

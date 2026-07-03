@@ -2,9 +2,9 @@ import type { CSSProperties } from "react";
 import { moneyMAD } from "../../../utils/money";
 
 export const DUU = {
-  yellow: "#FFD54A",
-  yellowSoft: "#FFF7D6",
-  yellowBorder: "rgba(255, 213, 74, 0.45)",
+  yellow: "#F5821F",
+  yellowSoft: "rgba(245, 130, 31, 0.12)",
+  yellowBorder: "rgba(245, 130, 31, 0.45)",
   black: "#111111",
   gray: "#6B7280",
   line: "rgba(17,17,17,0.08)",
@@ -113,7 +113,7 @@ export function statusBadgeClass(status: string) {
     case "CANCELLED":
       return { background: "rgba(107,114,128,0.14)", color: "#4B5563" };
     case "PENDING":
-      return { background: "rgba(255,213,74,0.20)", color: "#8A6200" };
+      return { background: DUU.yellowSoft, color: "#8A4400" };
     default:
       return { background: "rgba(17,17,17,0.08)", color: DUU.black };
   }

@@ -11,6 +11,7 @@ import {
   Store,
   Wallet,
   BadgePercent,
+  UserPlus,
 } from "lucide-react";
 import { me } from "../../services/auth";
 
@@ -94,6 +95,13 @@ export default function AdminTopNav({
       { to: "/admin/products", label: "Produits", icon: Boxes },
       { to: "/admin/promotions", label: "Promotions", icon: Percent },
       { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
+      { to: "/affiliate", label: "Mon espace affilié", icon: BadgePercent },
+      {
+        to: "/admin/candidatures",
+        label: "Candidatures",
+        icon: UserPlus,
+        adminOnly: true,
+      },
       {
         to: "/admin/affiliates",
         label: "Affiliés",
@@ -169,8 +177,8 @@ export default function AdminTopNav({
               <span
                 className="rounded-pill px-3 py-2"
                 style={{
-                  background: "#FFF6D8",
-                  color: "#9A6B00",
+                  background: "rgba(var(--duu-orange-rgb), .14)",
+                  color: "var(--duu-orange)",
                   fontSize: "0.85rem",
                   fontWeight: 600,
                 }}
@@ -211,10 +219,10 @@ export default function AdminTopNav({
                   <div
                     className="d-flex align-items-center gap-2 px-3 py-2 rounded-pill"
                     style={{
-                      background: isActive ? "#111111" : "#F7F7F7",
-                      color: isActive ? "#FFD24A" : "#222222",
+                      background: isActive ? "var(--duu-orange)" : "#F7F7F7",
+                      color: isActive ? "#ffffff" : "#222222",
                       border: isActive
-                        ? "1px solid #111111"
+                        ? "1px solid var(--duu-orange)"
                         : "1px solid rgba(0,0,0,0.06)",
                       transition: "all 0.2s ease",
                       fontWeight: 600,

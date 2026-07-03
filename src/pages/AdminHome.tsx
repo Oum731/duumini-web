@@ -19,6 +19,18 @@ import {
 } from "recharts";
 import { subscribeSSE, type ServerEvent } from "../services/events";
 import { getAccessToken, me } from "../services/auth";
+import { listVendorApplications } from "../services/vendorApplications";
+import { getAffiliatesRevenueSummary } from "../services/affiliates";
+import { PageHeader, KpiCard, SectionCard } from "../components/admin/adminUI";
+import {
+  Wallet,
+  BadgePercent,
+  ShoppingBag,
+  Package,
+  Store,
+  Users,
+  UserPlus,
+} from "lucide-react";
 
 type AnyObj = Record<string, any>;
 
@@ -475,6 +487,13 @@ export default function AdminHome() {
   const [selectedProductMessage, setSelectedProductMessage] = useState(defaultProductOutMessage());
   const [productActionLoading, setProductActionLoading] = useState(false);
 
+  const [pendingApplications, setPendingApplications] = useState<number | null>(null);
+  const [affiliateSummary, setAffiliateSummary] = useState<{
+    clicks: number;
+    orders: number;
+    earnings: number;
+  } | null>(null);
+
   const chartHeight = useChartHeight();
   const isMobile = useIsMobile(576);
 
@@ -542,6 +561,30 @@ export default function AdminHome() {
       setProductsQuick([]);
     } finally {
       setProductsQuickLoading(false);
+    }
+  }, [isVendor]);
+
+  const loadPendingApplications = useCallback(async () => {
+    if (isVendor) return;
+    try {
+      const res = await listVendorApplications({ status: "PENDING", pageSize: 1 });
+      setPendingApplications(res?.pageInfo?.total ?? 0);
+    } catch {
+      setPendingApplications(null);
+    }
+  }, [isVendor]);
+
+  const loadAffiliateSummary = useCallback(async () => {
+    if (isVendor) return;
+    try {
+      const res = await getAffiliatesRevenueSummary("MONTH");
+      setAffiliateSummary({
+        clicks: Number(res?.global?.clicks_count || 0),
+        orders: Number(res?.global?.orders_count || 0),
+        earnings: Number(res?.global?.commission_total || 0),
+      });
+    } catch {
+      setAffiliateSummary(null);
     }
   }, [isVendor]);
 
@@ -646,7 +689,9 @@ export default function AdminHome() {
     if (isVendor) return;
     loadSiteStatus();
     loadQuickProducts();
-  }, [isVendor, loadSiteStatus, loadQuickProducts]);
+    loadPendingApplications();
+    loadAffiliateSummary();
+  }, [isVendor, loadSiteStatus, loadQuickProducts, loadPendingApplications, loadAffiliateSummary]);
 
   useEffect(() => {
     if (!selectedProduct) {
@@ -844,9 +889,18 @@ export default function AdminHome() {
 
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
+      <PageHeader
+        title={isVendor ? "Mon espace vendeur" : "Tableau de bord"}
+        subtitle={
+          isVendor
+            ? "Suivez vos ventes, vos produits et vos promotions en un coup d'œil."
+            : "Vue d'ensemble de l'activité Duumini : ventes, boutiques, candidatures et affiliation."
+        }
+      />
+
       {!isVendor && (
         <div className="row g-2 g-sm-3 mb-3">
-          <div className="col-12 col-xl-6">
+          <div className="col-12 col-lg-6 col-xl-4">
             <div className="card h-100 shadow-sm border-0">
               <div className="card-body">
                 <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-3">
@@ -927,7 +981,7 @@ export default function AdminHome() {
             </div>
           </div>
 
-          <div className="col-12 col-xl-6">
+          <div className="col-12 col-lg-6 col-xl-4">
             <div className="card h-100 shadow-sm border-0">
               <div className="card-body">
                 <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-3">
@@ -1025,62 +1079,91 @@ export default function AdminHome() {
               </div>
             </div>
           </div>
+
+          <div className="col-12 col-lg-6 col-xl-4">
+            <SectionCard
+              title="Candidatures"
+              subtitle="Vendeurs, fournisseurs et restaurants en attente de validation"
+              icon={UserPlus}
+              className="h-100"
+            >
+              <div className="d-flex align-items-end justify-content-between gap-2 mb-3">
+                <div
+                  className="fw-bold"
+                  style={{ fontSize: "2rem", color: "#111111", lineHeight: 1 }}
+                >
+                  {pendingApplications ?? "—"}
+                </div>
+                <div className="text-muted small text-end">
+                  candidature{(pendingApplications ?? 0) > 1 ? "s" : ""} en attente
+                </div>
+              </div>
+              <Link to="/admin/candidatures" className="btn btn-sm btn-duu-orange w-100">
+                Voir les candidatures
+              </Link>
+            </SectionCard>
+          </div>
         </div>
       )}
 
       <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
         <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">CA (aujourd&apos;hui, hors livraison)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {mad(kpi?.revenue_today)}
-              </div>
-              <div className="text-muted small">Sous-total produits des commandes DONE</div>
-            </div>
-          </div>
+          <KpiCard
+            icon={Wallet}
+            label="CA (aujourd'hui, hors livraison)"
+            value={mad(kpi?.revenue_today)}
+            sublabel="Sous-total produits des commandes DONE"
+          />
         </div>
 
         <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">CA (semaine, hors livraison)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {mad(kpi?.revenue_week)}
-              </div>
-              <div className="text-muted small">Lun → aujourd’hui</div>
-            </div>
-          </div>
+          <KpiCard
+            icon={Wallet}
+            label="CA (semaine, hors livraison)"
+            value={mad(kpi?.revenue_week)}
+            sublabel="Lun → aujourd’hui"
+          />
         </div>
 
         <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">CA (mois, hors livraison)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {mad(kpi?.revenue_month)}
-              </div>
-              <div className="text-muted small">1 → aujourd’hui</div>
-            </div>
-          </div>
+          <KpiCard
+            icon={Wallet}
+            label="CA (mois, hors livraison)"
+            value={mad(kpi?.revenue_month)}
+            sublabel="1 → aujourd’hui"
+          />
         </div>
 
         <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">CA (année, hors livraison)</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {mad(kpi?.revenue_year)}
-              </div>
-              <div className="text-muted small">01/01 → aujourd’hui</div>
-            </div>
-          </div>
+          <KpiCard
+            icon={Wallet}
+            label="CA (année, hors livraison)"
+            value={mad(kpi?.revenue_year)}
+            sublabel="01/01 → aujourd’hui"
+          />
         </div>
 
         <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small mb-1">Commission Duumini</div>
+          <div
+            className="card h-100 border-0"
+            style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+          >
+            <div className="card-body p-3 p-sm-4">
+              <div className="d-flex align-items-center justify-content-between mb-2">
+                <div className="text-muted small">Commission Duumini</div>
+                <span
+                  className="d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "var(--duu-radius-md)",
+                    background: "rgba(var(--duu-green-rgb), .12)",
+                    color: "var(--duu-green)",
+                  }}
+                >
+                  <BadgePercent size={16} strokeWidth={2.2} />
+                </span>
+              </div>
               <select
                 className="form-select form-select-sm mb-1"
                 value={commissionFilter}
@@ -1091,62 +1174,70 @@ export default function AdminHome() {
                 <option value="month">Mois</option>
                 <option value="year">Année</option>
               </select>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
+              <div className="fw-bold text-truncate" style={{ color: "#111111", fontSize: "1.4rem" }}>
                 {mad(commissionValue)}
               </div>
-              <div className="text-muted small">{commissionLabel}</div>
+              <div className="text-muted small mt-1">{commissionLabel}</div>
             </div>
           </div>
         </div>
 
         <div className="col-12 col-sm-6 col-xl-2">
-          <div className="card h-100 shadow-sm">
-            <div className="card-body py-3 py-sm-3">
-              <div className="text-muted small">Cmd en attente</div>
-              <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                {kpi?.orders_pending ?? 0}
-              </div>
-              <div className="text-muted small">OPEN + PREPARATION</div>
-            </div>
-          </div>
+          <KpiCard
+            icon={ShoppingBag}
+            label="Cmd en attente"
+            value={kpi?.orders_pending ?? 0}
+            sublabel="OPEN + PREPARATION"
+          />
         </div>
 
         {!isVendor && (
           <>
             <div className="col-12 col-sm-6 col-xl-2">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body py-3 py-sm-3">
-                  <div className="text-muted small">Produits actifs</div>
-                  <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                    {kpi?.products_active ?? 0}
-                  </div>
-                  <div className="text-muted small">Total catalogue</div>
-                </div>
-              </div>
+              <KpiCard
+                icon={Package}
+                label="Produits actifs"
+                value={kpi?.products_active ?? 0}
+                sublabel="Total catalogue"
+                accent="neutral"
+              />
             </div>
 
             <div className="col-12 col-sm-6 col-xl-2">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body py-3 py-sm-3">
-                  <div className="text-muted small">Boutiques</div>
-                  <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                    {kpi?.shops_total ?? 0}
-                  </div>
-                  <div className="text-muted small">Enregistrées</div>
-                </div>
-              </div>
+              <KpiCard
+                icon={Store}
+                label="Boutiques"
+                value={kpi?.shops_total ?? 0}
+                sublabel="Enregistrées"
+                accent="neutral"
+                to="/admin/shops"
+              />
             </div>
 
             <div className="col-12 col-sm-6 col-xl-2">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body py-3 py-sm-3">
-                  <div className="text-muted small">Utilisateurs</div>
-                  <div className="fs-5 fs-sm-4 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
-                    {kpi?.users_total ?? 0}
-                  </div>
-                  <div className="text-muted small">Inscrits</div>
-                </div>
-              </div>
+              <KpiCard
+                icon={Users}
+                label="Utilisateurs"
+                value={kpi?.users_total ?? 0}
+                sublabel="Inscrits"
+                accent="neutral"
+                to="/admin/users"
+              />
+            </div>
+
+            <div className="col-12 col-sm-6 col-xl-2">
+              <KpiCard
+                icon={BadgePercent}
+                label="Affiliation (ce mois)"
+                value={mad(affiliateSummary?.earnings ?? 0)}
+                sublabel={
+                  affiliateSummary
+                    ? `${affiliateSummary.clicks} clics · ${affiliateSummary.orders} commandes`
+                    : "Chargement…"
+                }
+                accent="green"
+                to="/admin/affiliates"
+              />
             </div>
           </>
         )}
@@ -1188,7 +1279,13 @@ export default function AdminHome() {
                         tick={{ fontSize: isMobile ? 10 : 12 }}
                       />
                       <Tooltip formatter={(v: any) => [mad(Number(v)), "CA hors livraison"]} />
-                      <Line type="monotone" dataKey="revenue" dot={false} strokeWidth={2} />
+                      <Line
+                        type="monotone"
+                        dataKey="revenue"
+                        dot={false}
+                        strokeWidth={2}
+                        stroke="var(--duu-orange)"
+                      />
                     </LineChart>
                   </ResponsiveContainer>
                 )}
@@ -1222,7 +1319,12 @@ export default function AdminHome() {
                       <XAxis dataKey="date" tick={{ fontSize: isMobile ? 10 : 12 }} />
                       <YAxis tick={{ fontSize: isMobile ? 10 : 12 }} />
                       <Tooltip />
-                      <Bar dataKey="orders" maxBarSize={isMobile ? 18 : 28} />
+                      <Bar
+                        dataKey="orders"
+                        maxBarSize={isMobile ? 18 : 28}
+                        fill="var(--duu-green)"
+                        radius={[6, 6, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -1234,17 +1336,16 @@ export default function AdminHome() {
 
       <div className="row g-2 g-sm-3">
         <div className={`col-12 ${isVendor ? "" : "col-xxl-6"}`}>
-          <div className="card h-100 shadow-sm">
-            <div className="card-body">
-              <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
-                  {isVendor ? "Mes dernières commandes" : "Dernières commandes"}
-                </h2>
-                <Link to="/admin/orders" className="btn btn-sm btn-duu w-100 w-sm-auto">
-                  Tout voir
-                </Link>
-              </div>
-
+          <SectionCard
+            icon={ShoppingBag}
+            title={isVendor ? "Mes dernières commandes" : "Dernières commandes"}
+            right={
+              <Link to="/admin/orders" className="btn btn-sm btn-duu-orange">
+                Tout voir
+              </Link>
+            }
+            className="h-100"
+          >
               {!orders ? (
                 <div className="text-muted small">Chargement…</div>
               ) : orders.length === 0 ? (
@@ -1290,24 +1391,22 @@ export default function AdminHome() {
                   Rafraîchir
                 </button>
               </div>
-            </div>
-          </div>
+          </SectionCard>
         </div>
 
         {!isVendor && (
           <>
             <div className="col-12 col-xxl-6">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body">
-                  <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                    <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
-                      Boutiques récentes
-                    </h2>
-                    <Link to="/admin/shops" className="btn btn-sm btn-duu w-100 w-sm-auto">
-                      Gérer
-                    </Link>
-                  </div>
-
+              <SectionCard
+                icon={Store}
+                title="Boutiques récentes"
+                right={
+                  <Link to="/admin/shops" className="btn btn-sm btn-duu-orange">
+                    Gérer
+                  </Link>
+                }
+                className="h-100"
+              >
                   {!shops ? (
                     <div className="text-muted small">Chargement…</div>
                   ) : shops.length === 0 ? (
@@ -1336,22 +1435,20 @@ export default function AdminHome() {
                       </table>
                     </div>
                   )}
-                </div>
-              </div>
+              </SectionCard>
             </div>
 
             <div className="col-12">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body">
-                  <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-                    <h2 className="h6 mb-0 text-truncate" style={{ color: "var(--duu-black)" }}>
-                      Derniers utilisateurs inscrits
-                    </h2>
-                    <Link to="/admin/users" className="btn btn-sm btn-duu w-100 w-sm-auto">
-                      Gérer
-                    </Link>
-                  </div>
-
+              <SectionCard
+                icon={Users}
+                title="Derniers utilisateurs inscrits"
+                right={
+                  <Link to="/admin/users" className="btn btn-sm btn-duu-orange">
+                    Gérer
+                  </Link>
+                }
+                className="h-100"
+              >
                   {!users ? (
                     <div className="text-muted small">Chargement…</div>
                   ) : users.length === 0 ? (
@@ -1390,8 +1487,7 @@ export default function AdminHome() {
                       </table>
                     </div>
                   )}
-                </div>
-              </div>
+              </SectionCard>
             </div>
           </>
         )}
@@ -1404,15 +1500,12 @@ export default function AdminHome() {
       ) : null}
 
       <style>{`
-        .btn-duu{
-          background: var(--duu-yellow);
-          color: #1f1f1f;
-          border: none;
-        }
-        .btn-duu:hover{ filter: brightness(0.95); }
-
         .card{
-          border-radius: 16px;
+          border-radius: var(--duu-radius-lg);
+        }
+        .admin-kpi-link:hover .card{
+          box-shadow: var(--duu-shadow-md) !important;
+          transform: translateY(-1px);
         }
       `}</style>
     </div>
