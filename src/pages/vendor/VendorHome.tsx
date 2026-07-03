@@ -2,8 +2,10 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { me, getAccessToken } from "../../services/auth";
-import { listOrders, type Order } from "../../services/orders";
+import { listOrders, getOrdersSummary, type Order } from "../../services/orders";
 import { listProducts, type Product } from "../../services/products";
+import { listMyShops } from "../../services/shops";
+import { getExpensesSummary } from "../../services/expenses";
 import { subscribeSSE, type ServerEvent } from "../../services/events";
 import {
   LineChart,
@@ -73,38 +75,6 @@ function duuCommissionDone(o: AnyObj): number {
     0;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-/* ====== Filtrage “commande appartient au vendeur” ====== */
-function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
-  if (!user) return false;
-  if (!isVendorRole(user.role)) return true;
-
-  const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;
-  const myShop = user.shop_id != null ? Number(user.shop_id) : null;
-
-  const oVendor = order?.vendor_id ?? order?.vendorId ?? order?.seller_id ?? order?.sellerId ?? null;
-  const oShop = order?.shop_id ?? order?.shopId ?? order?.store_id ?? order?.storeId ?? null;
-
-  if (oVendor != null && uid && Number(oVendor) === uid) return true;
-  if (myShop != null && oShop != null && Number(oShop) === Number(myShop)) return true;
-
-  const items: AnyObj[] = Array.isArray(order?.items)
-    ? order.items
-    : Array.isArray(order?.order_items)
-      ? order.order_items
-      : Array.isArray(order?.lines)
-        ? order.lines
-        : [];
-
-  for (const it of items) {
-    const itShop = it?.shop_id ?? it?.shopId ?? it?.store_id ?? it?.storeId ?? null;
-    const itVendor = it?.vendor_id ?? it?.vendorId ?? it?.seller_id ?? it?.sellerId ?? null;
-    if (itVendor != null && uid && Number(itVendor) === uid) return true;
-    if (myShop != null && itShop != null && Number(itShop) === Number(myShop)) return true;
-  }
-
-  return false;
 }
 
 /* ======= TZ helpers (Africa/Casablanca) ======= */
@@ -178,6 +148,9 @@ type Summary = {
   orders_pending: number;
   products_count: number;
 
+  expenses_month: number;
+  net_balance_month: number;
+
   sales_series: SalesPoint[];
   last_orders: Order[];
 };
@@ -197,13 +170,17 @@ async function fetchManyOrders(params: AnyObj) {
   return all;
 }
 
-async function fetchManyProducts() {
+async function fetchManyProducts(shopId: number | null) {
   const maxPages = 20;
   const pageSize = 200;
   const all: Product[] = [];
 
   for (let page = 1; page <= maxPages; page++) {
-    const res = await listProducts({ page, pageSize } as any);
+    const res = await listProducts({
+      page,
+      pageSize,
+      ...(shopId ? { shop_id: shopId } : {}),
+    } as any);
     const items: Product[] = Array.isArray(res?.items) ? res.items : [];
     if (!items.length) break;
     all.push(...items);
@@ -212,36 +189,24 @@ async function fetchManyProducts() {
   return all;
 }
 
-function productBelongsToUser(p: AnyObj, user: CurrentUser | null) {
-  if (!user) return false;
-  if (!isVendorRole(user.role)) return true;
+async function buildVendorSummary(): Promise<Summary> {
+  // ✅ Le backend scope déjà les commandes à la boutique du vendeur connecté
+  // (jointure order_items → products → shops.owner_id côté GET /api/orders) —
+  // pas de re-filtrage client nécessaire. Idem pour les produits une fois
+  // qu'on passe explicitement le shop_id du vendeur en paramètre.
+  const myShops = await listMyShops().catch(() => []);
+  const myShopId = myShops?.[0]?.id != null ? Number(myShops[0].id) : null;
 
-  const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;
-  const myShop = user.shop_id != null ? Number(user.shop_id) : null;
-
-  const pVendor = p?.vendor_id ?? p?.vendorId ?? p?.seller_id ?? p?.sellerId ?? null;
-  const pShop = p?.shop_id ?? p?.shopId ?? p?.store_id ?? p?.storeId ?? null;
-
-  if (pVendor != null && uid && Number(pVendor) === uid) return true;
-  if (myShop != null && pShop != null && Number(pShop) === Number(myShop)) return true;
-
-  return false;
-}
-
-async function buildVendorSummary(user: CurrentUser): Promise<Summary> {
-  const [doneAll, openAll, prepAll, delivAll, productsAll] = await Promise.all([
-    fetchManyOrders({ status: "DONE" }),
-    fetchManyOrders({ status: "OPEN" }),
-    fetchManyOrders({ status: "PREPARATION" }),
-    fetchManyOrders({ status: "DELIVERY" }),
-    fetchManyProducts(),
-  ]);
-
-  const doneMine = doneAll.filter((o) => orderBelongsToUser(o as AnyObj, user));
-  const openMine = openAll.filter((o) => orderBelongsToUser(o as AnyObj, user));
-  const prepMine = prepAll.filter((o) => orderBelongsToUser(o as AnyObj, user));
-  const delivMine = delivAll.filter((o) => orderBelongsToUser(o as AnyObj, user));
-  const productsMine = productsAll.filter((p) => productBelongsToUser(p as AnyObj, user));
+  const [doneMine, openMine, prepMine, delivMine, productsMine, revenueSummary, expensesSummary] =
+    await Promise.all([
+      fetchManyOrders({ status: "DONE" }),
+      fetchManyOrders({ status: "OPEN" }),
+      fetchManyOrders({ status: "PREPARATION" }),
+      fetchManyOrders({ status: "DELIVERY" }),
+      fetchManyProducts(myShopId),
+      getOrdersSummary().catch(() => null),
+      getExpensesSummary().catch(() => null),
+    ]);
 
   const TZ = "Africa/Casablanca";
   const today = new Date();
@@ -350,6 +315,20 @@ async function buildVendorSummary(user: CurrentUser): Promise<Summary> {
     return db - da;
   });
 
+  // ✅ CA calculé côté serveur (mêmes bornes de période que les dépenses,
+  // via CURDATE()/YEARWEEK(...,1)) pour un solde net cohérent — remplace le
+  // calcul JS ci-dessus qui reste utile pour le graphique 30 jours et la
+  // commission Duumini.
+  if (revenueSummary) {
+    revenue_today = revenueSummary.today;
+    revenue_week = revenueSummary.week;
+    revenue_month = revenueSummary.month;
+    revenue_year = revenueSummary.year;
+  }
+
+  const expenses_month = expensesSummary?.month ?? 0;
+  const net_balance_month = revenue_month - expenses_month;
+
   return {
     revenue_today,
     revenue_week,
@@ -361,6 +340,8 @@ async function buildVendorSummary(user: CurrentUser): Promise<Summary> {
     duumini_commission_year: duu_year,
     orders_pending,
     products_count: productsMine.length,
+    expenses_month,
+    net_balance_month,
     sales_series,
     last_orders: lastAll.slice(0, 8),
   };
@@ -415,7 +396,7 @@ export default function VendorHome() {
     setError(null);
 
     try {
-      const sum = await buildVendorSummary(user);
+      const sum = await buildVendorSummary();
       setKpi(sum);
     } catch (e: any) {
       setError(e?.message || "Erreur de chargement du dashboard vendeur.");
@@ -536,6 +517,43 @@ export default function VendorHome() {
                 {kpi?.orders_pending ?? 0}
               </div>
               <div className="text-muted small">Produits: {kpi?.products_count ?? 0}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="row g-2 g-sm-3 mb-3 mb-sm-4">
+        <div className="col-12 col-sm-6">
+          <div className="card h-100 shadow-sm">
+            <div className="card-body py-3 d-flex align-items-center justify-content-between gap-2">
+              <div>
+                <div className="text-muted small">Dépenses (mois)</div>
+                <div className="fs-5 fw-semibold text-truncate" style={{ color: "var(--duu-black)" }}>
+                  {mad(kpi?.expenses_month)}
+                </div>
+              </div>
+              <Link to="/admin/expenses" className="btn btn-sm btn-outline-dark text-nowrap">
+                Gérer
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-12 col-sm-6">
+          <div className="card h-100 shadow-sm">
+            <div className="card-body py-3">
+              <div className="text-muted small">Solde net (mois) — CA − dépenses</div>
+              <div
+                className="fs-5 fw-semibold text-truncate"
+                style={{
+                  color:
+                    (kpi?.net_balance_month ?? 0) >= 0
+                      ? "var(--duu-green, #198754)"
+                      : "var(--bs-danger, #dc3545)",
+                }}
+              >
+                {mad(kpi?.net_balance_month)}
+              </div>
             </div>
           </div>
         </div>

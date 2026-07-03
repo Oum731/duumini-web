@@ -1,7 +1,7 @@
 // src/pages/AdminHome.tsx
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { listOrders, type Order } from "../services/orders";
+import { listOrders, getOrdersSummary, type Order } from "../services/orders";
 import { listProducts } from "../services/products";
 import { listShops, type Shop } from "../services/shops";
 import { listUsers, type User } from "../services/users";
@@ -203,40 +203,12 @@ function isVendorRole(role?: string) {
   return r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
 }
 
-function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
-  if (!user) return false;
-  if (!isVendorRole(user.role)) return true;
-
-  const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;
-  const myShop = user.shop_id != null ? Number(user.shop_id) : null;
-
-  const oVendor =
-    order?.vendor_id ?? order?.vendorId ?? order?.seller_id ?? order?.sellerId ?? null;
-  const oShop = order?.shop_id ?? order?.shopId ?? order?.store_id ?? order?.storeId ?? null;
-
-  if (oVendor != null && uid && Number(oVendor) === uid) return true;
-  if (myShop != null && oShop != null && Number(oShop) === Number(myShop)) return true;
-
-  const items: AnyObj[] = Array.isArray(order?.items)
-    ? order.items
-    : Array.isArray(order?.order_items)
-      ? order.order_items
-      : Array.isArray(order?.lines)
-        ? order.lines
-        : [];
-
-  if (items.length) {
-    for (const it of items) {
-      const itShop = it?.shop_id ?? it?.shopId ?? it?.store_id ?? it?.storeId ?? null;
-      const itVendor = it?.vendor_id ?? it?.vendorId ?? it?.seller_id ?? it?.sellerId ?? null;
-
-      if (itVendor != null && uid && Number(itVendor) === uid) return true;
-      if (myShop != null && itShop != null && Number(itShop) === Number(myShop)) return true;
-    }
-  }
-
-  return false;
-}
+// ✅ Le backend (GET /api/orders) scope déjà correctement les commandes
+// d'un vendeur/fournisseur/restaurant (jointure order_items → products →
+// shops.owner_id) : pas besoin de re-filtrer côté client. L'ancien filtre
+// `orderBelongsToUser` reposait sur des champs qui n'existent pas sur la
+// ligne de commande (order.shop_id/vendor_id) et pouvait donc masquer à
+// tort des commandes pourtant correctement renvoyées par l'API.
 
 function statusClass(s: string) {
   const st = String(s || "").toUpperCase();
@@ -422,13 +394,25 @@ async function buildSummaryAdmin(): Promise<Summary> {
   const ordersDone = await fetchOrdersByStatusPaginated("DONE", 20, 200);
   const core = computeSummaryFromDoneOrders(ordersDone);
 
-  const [openRes, prepRes] = await Promise.all([
+  const [openRes, prepRes, revenueSummary] = await Promise.all([
     listOrders({ page: 1, pageSize: 1, status: "OPEN" } as any),
     listOrders({ page: 1, pageSize: 1, status: "PREPARATION" } as any),
+    getOrdersSummary().catch(() => null),
   ]);
 
   return {
     ...core,
+    // ✅ CA calculé côté serveur (mêmes bornes de période que les
+    // dépenses) pour un solde net cohérent — remplace le calcul JS ci-dessus
+    // qui reste utile pour le graphique 30 jours et la commission.
+    ...(revenueSummary
+      ? {
+          revenue_today: revenueSummary.today,
+          revenue_week: revenueSummary.week,
+          revenue_month: revenueSummary.month,
+          revenue_year: revenueSummary.year,
+        }
+      : {}),
     orders_pending: readTotalFromPaged(openRes) + readTotalFromPaged(prepRes),
     products_active: readTotalFromPaged(productsRes),
     shops_total: readTotalFromPaged(shopsRes),
@@ -436,21 +420,29 @@ async function buildSummaryAdmin(): Promise<Summary> {
   };
 }
 
-async function buildSummaryVendor(user: CurrentUser): Promise<Summary> {
-  const ordersDoneAll = await fetchOrdersByStatusPaginated("DONE", 20, 200);
-  const ordersDone = ordersDoneAll.filter((o) => orderBelongsToUser(o as AnyObj, user));
+async function buildSummaryVendor(): Promise<Summary> {
+  // ✅ Le backend scope déjà ces listes à la boutique du vendeur connecté —
+  // pas de re-filtrage client nécessaire (voir note plus haut).
+  const ordersDone = await fetchOrdersByStatusPaginated("DONE", 20, 200);
   const core = computeSummaryFromDoneOrders(ordersDone);
 
-  const [openAll, prepAll] = await Promise.all([
+  const [openAll, prepAll, revenueSummary] = await Promise.all([
     fetchOrdersByStatusPaginated("OPEN", 10, 200),
     fetchOrdersByStatusPaginated("PREPARATION", 10, 200),
+    getOrdersSummary().catch(() => null),
   ]);
-  const pending =
-    openAll.filter((o) => orderBelongsToUser(o as AnyObj, user)).length +
-    prepAll.filter((o) => orderBelongsToUser(o as AnyObj, user)).length;
+  const pending = openAll.length + prepAll.length;
 
   return {
     ...core,
+    ...(revenueSummary
+      ? {
+          revenue_today: revenueSummary.today,
+          revenue_week: revenueSummary.week,
+          revenue_month: revenueSummary.month,
+          revenue_year: revenueSummary.year,
+        }
+      : {}),
     orders_pending: pending,
     products_active: 0,
     shops_total: 0,
@@ -598,7 +590,7 @@ export default function AdminHome() {
 
       if (curUser && isVendorRole(curUser.role)) {
         const [sum, lastOrdersOpen, lastOrdersPrep, lastOrdersDeliv] = await Promise.all([
-          buildSummaryVendor(curUser),
+          buildSummaryVendor(),
           listOrders({ page: 1, pageSize: 6, status: "OPEN" } as any).catch(() => ({ items: [] })),
           listOrders({ page: 1, pageSize: 6, status: "PREPARATION" } as any).catch(() => ({ items: [] })),
           listOrders({ page: 1, pageSize: 6, status: "DELIVERY" } as any).catch(() => ({ items: [] })),
@@ -611,7 +603,6 @@ export default function AdminHome() {
         ] as Order[];
 
         const mine = combined
-          .filter((o) => orderBelongsToUser(o as AnyObj, curUser))
           .sort((a: any, b: any) => {
             const ta = new Date(a?.created_at || 0).getTime();
             const tb = new Date(b?.created_at || 0).getTime();

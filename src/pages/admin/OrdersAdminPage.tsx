@@ -34,7 +34,6 @@ import {
   getPaymentFromOrder,
   getOrderDisplayCode,
   isVendorRole,
-  orderBelongsToUser,
   numSafe,
   waHref,
 } from "../../components/ordersAdmin/orderUtils";
@@ -192,8 +191,10 @@ export default function OrdersAdminPage() {
           ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
         } as any);
 
-        const all = (res.items || []) as Order[];
-        const mine = all.filter((o) => orderBelongsToUser(o as AnyObj, user));
+        // ✅ Le backend scope déjà cette liste à la boutique du vendeur
+        // connecté (voir GET /api/orders, branche isVendor) — pas de
+        // re-filtrage client nécessaire.
+        const mine = (res.items || []) as Order[];
 
         setVendorAll(mine);
         setTotal(mine.length);
@@ -232,7 +233,7 @@ export default function OrdersAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, payFilter, isVendor, user]);
+  }, [page, pageSize, statusFilter, payFilter, isVendor]);
 
   useEffect(() => {
     if (isVendor) setPage(1);
@@ -357,11 +358,6 @@ export default function OrdersAdminPage() {
     try {
       const full = await getOrder(id);
 
-      if (!orderBelongsToUser(full as AnyObj, user)) {
-        setError("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
-
       setEditId(full.id);
       setEditStatus(full.status);
     } catch (e: any) {
@@ -389,13 +385,6 @@ export default function OrdersAdminPage() {
     if (!window.confirm("Annuler cette commande ?")) return;
 
     try {
-      const full = await getOrder(id);
-
-      if (!orderBelongsToUser(full as AnyObj, user)) {
-        setError("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
-
       await cancelOrder(id);
       await refresh();
 
@@ -411,11 +400,6 @@ export default function OrdersAdminPage() {
   async function onWhatsappClick(id: number) {
     try {
       const full = await getOrder(id);
-
-      if (!orderBelongsToUser(full as AnyObj, user)) {
-        alert("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
 
       window.open(waHref(full as AnyObj), "_blank", "noopener,noreferrer");
     } catch {
@@ -437,11 +421,6 @@ export default function OrdersAdminPage() {
     try {
       const d = await getOrder(id);
 
-      if (!orderBelongsToUser(d as AnyObj, user)) {
-        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
-
       setDetail(d as any);
       setViewStatus((d as any)?.status || "OPEN");
 
@@ -461,20 +440,10 @@ export default function OrdersAdminPage() {
     setViewSaving(true);
 
     try {
-      if (detail && !orderBelongsToUser(detail as AnyObj, user)) {
-        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
-
       await updateOrderStatus(viewId, viewStatus);
       await refresh();
 
       const d = await getOrder(viewId);
-
-      if (!orderBelongsToUser(d as AnyObj, user)) {
-        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
 
       setDetail(d as any);
       setViewStatus((d as any)?.status || viewStatus);
@@ -491,20 +460,10 @@ export default function OrdersAdminPage() {
     setViewSaving(true);
 
     try {
-      if (detail && !orderBelongsToUser(detail as AnyObj, user)) {
-        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
-
       await updateOrderStatus(viewId, status);
       await refresh();
 
       const d = await getOrder(viewId);
-
-      if (!orderBelongsToUser(d as AnyObj, user)) {
-        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
 
       setDetail(d as any);
       setViewStatus((d as AnyObj)?.status || status);
@@ -518,11 +477,6 @@ export default function OrdersAdminPage() {
   async function onSavePayment() {
     if (!viewId || !detail) return;
     if (typeof updateOrderPayment !== "function") return;
-
-    if (!orderBelongsToUser(detail as AnyObj, user)) {
-      setViewErr("Accès refusé : cette commande ne vous concerne pas.");
-      return;
-    }
 
     const { total } = computeOrderAmounts(detail as AnyObj);
     const curPay = getPaymentFromOrder(detail as AnyObj);
@@ -566,11 +520,6 @@ export default function OrdersAdminPage() {
       await updateOrderPayment(viewId, payload as any);
 
       const d = await getOrder(viewId);
-
-      if (!orderBelongsToUser(d as AnyObj, user)) {
-        setViewErr("Accès refusé : cette commande ne vous concerne pas.");
-        return;
-      }
 
       setDetail(d as any);
       await refresh();

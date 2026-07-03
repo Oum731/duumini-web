@@ -569,6 +569,25 @@ export async function getOrder(id: number) {
   return api.get<OrderDetail>(`/api/orders/${id}`);
 }
 
+export type OrdersSummary = {
+  today: number;
+  week: number;
+  month: number;
+  year: number;
+  orders_count: number;
+};
+
+// ✅ CA (hors livraison, commandes DONE) calculé côté serveur avec les
+// mêmes bornes de période que GET /api/expenses/summary (CURDATE()/
+// YEARWEEK), pour permettre un solde net cohérent. Un vendeur/fournisseur
+// est automatiquement scopé sur sa propre boutique côté backend ; un
+// admin peut passer shop_id pour consulter une boutique précise.
+export async function getOrdersSummary(opts: { shop_id?: number } = {}) {
+  const query: Record<string, any> = {};
+  if (opts.shop_id) query.shop_id = opts.shop_id;
+  return api.get<OrdersSummary>("/api/orders/summary", { query });
+}
+
 export async function updateOrderStatus(id: number, status: OrderStatus) {
   return api.put<{ ok: true }>(`/api/orders/${id}/status`, { status });
 }

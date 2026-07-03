@@ -45,6 +45,7 @@ import {
   listExpenseCategories,
   type ExpenseCategory,
 } from "../../services/expenseCategories";
+import { getOrdersSummary } from "../../services/orders";
 
 function mad(n?: number | null) {
   return new Intl.NumberFormat("fr-FR", {
@@ -196,14 +197,22 @@ function FieldLabel({
 function SummaryCard({
   label,
   value,
+  signed = false,
 }: {
   label: string;
   value: number;
+  signed?: boolean;
 }) {
+  const color = signed ? (value >= 0 ? "#1B8F5A" : "#D6440F") : undefined;
   return (
     <div className="rounded-[24px] border border-black/5 bg-white p-5 shadow-sm">
       <div className="text-sm font-medium text-base-content/55">{label}</div>
-      <div className="mt-2 text-2xl font-bold text-base-content">{mad(value)}</div>
+      <div
+        className="mt-2 text-2xl font-bold text-base-content"
+        style={color ? { color } : undefined}
+      >
+        {mad(value)}
+      </div>
     </div>
   );
 }
@@ -222,6 +231,11 @@ export default function ExpensesPage() {
     year: 0,
     filtered_total: 0,
   });
+
+  // ✅ CA (ventes DONE) sur les mêmes bornes de période que les dépenses
+  // (CURDATE()/YEARWEEK(...,1) côté backend, voir GET /api/orders/summary)
+  // pour un solde net cohérent.
+  const [revenue, setRevenue] = useState({ today: 0, week: 0, month: 0, year: 0 });
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [newCategory, setNewCategory] = useState("");
@@ -272,7 +286,7 @@ export default function ExpensesPage() {
     setError("");
 
     try {
-      const [catRes, listRes, summaryRes, groupedRes, byCatRes] = await Promise.all([
+      const [catRes, listRes, summaryRes, groupedRes, byCatRes, revenueRes] = await Promise.all([
         listExpenseCategories(),
         listExpenses(params),
         getExpensesSummary({
@@ -299,6 +313,7 @@ export default function ExpensesPage() {
           payment_method: filters.payment_method || undefined,
           q: filters.q || undefined,
         }),
+        getOrdersSummary().catch(() => null),
       ]);
 
       setCategories(Array.isArray(catRes) ? catRes : (catRes as any)?.items || []);
@@ -325,6 +340,12 @@ export default function ExpensesPage() {
           : []
       );
       setByCategory(Array.isArray(byCatRes?.items) ? byCatRes.items : []);
+      setRevenue({
+        today: Number(revenueRes?.today || 0),
+        week: Number(revenueRes?.week || 0),
+        month: Number(revenueRes?.month || 0),
+        year: Number(revenueRes?.year || 0),
+      });
     } catch (e: any) {
       setItems([]);
       setGrouped([]);
@@ -336,6 +357,7 @@ export default function ExpensesPage() {
         year: 0,
         filtered_total: 0,
       });
+      setRevenue({ today: 0, week: 0, month: 0, year: 0 });
       setPageInfo({
         page: 1,
         pageSize,
@@ -466,6 +488,18 @@ export default function ExpensesPage() {
     [items]
   );
 
+  // ✅ Solde net = CA (ventes DONE, hors livraison) − dépenses, par période —
+  // "ce qui reste vraiment dans la caisse".
+  const netBalance = useMemo(
+    () => ({
+      today: revenue.today - summary.today,
+      week: revenue.week - summary.week,
+      month: revenue.month - summary.month,
+      year: revenue.year - summary.year,
+    }),
+    [revenue, summary]
+  );
+
   const pieData = useMemo(
     () =>
       byCategory.map((x) => ({
@@ -569,6 +603,18 @@ export default function ExpensesPage() {
           <SummaryCard label="Ce mois" value={summary.month} />
           <SummaryCard label="Cette année" value={summary.year} />
           <SummaryCard label="Total filtré" value={summary.filtered_total} />
+        </div>
+
+        <div>
+          <div className="mb-2 text-sm font-medium text-base-content/55">
+            Solde net (chiffre d’affaires − dépenses) — ce qui reste dans la caisse
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard label="Aujourd’hui" value={netBalance.today} signed />
+            <SummaryCard label="Cette semaine" value={netBalance.week} signed />
+            <SummaryCard label="Ce mois" value={netBalance.month} signed />
+            <SummaryCard label="Cette année" value={netBalance.year} signed />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">

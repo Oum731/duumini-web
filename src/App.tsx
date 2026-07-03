@@ -118,10 +118,12 @@ function PageViewTracker() {
 function AdminShell() {
   return (
     <div className="container-xxl py-4">
-      <div className="mb-3">
+      <div className="d-flex flex-column flex-lg-row gap-3 gap-lg-4 align-items-start">
         <AdminTopNav />
+        <div className="flex-grow-1 w-100" style={{ minWidth: 0 }}>
+          <Outlet />
+        </div>
       </div>
-      <Outlet />
     </div>
   );
 }

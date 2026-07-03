@@ -12,8 +12,11 @@ import {
   Wallet,
   BadgePercent,
   UserPlus,
+  Menu as MenuIcon,
+  X as CloseIcon,
 } from "lucide-react";
 import { me } from "../../services/auth";
+import { getMyAffiliate } from "../../services/affiliates";
 
 type AnyObj = Record<string, any>;
 
@@ -52,7 +55,11 @@ type NavItem = {
   label: string;
   icon: any;
   end?: boolean;
-  adminOnly?: boolean;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
 };
 
 export default function AdminTopNav({
@@ -63,6 +70,8 @@ export default function AdminTopNav({
   title?: string;
 }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [isAffiliate, setIsAffiliate] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -81,6 +90,24 @@ export default function AdminTopNav({
     };
   }, []);
 
+  // ✅ L'affiliation est une permission à part entière (indépendante du
+  // rôle du compte) : on ne montre "Mon espace affilié" que si l'utilisateur
+  // a effectivement un profil affilié actif.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await getMyAffiliate();
+        if (mounted) setIsAffiliate(!!res?.is_affiliate);
+      } catch {
+        if (mounted) setIsAffiliate(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const isVendor = useMemo(() => isVendorRole(user?.role), [user?.role]);
 
   const computedTitle = useMemo(() => {
@@ -88,154 +115,201 @@ export default function AdminTopNav({
     return isVendor ? "Espace vendeur" : "Espace admin";
   }, [title, isVendor]);
 
-  const items = useMemo<NavItem[]>(
-    () => [
-      { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
-      { to: "/admin/orders", label: "Commandes", icon: ShoppingBag },
-      { to: "/admin/products", label: "Produits", icon: Boxes },
-      { to: "/admin/promotions", label: "Promotions", icon: Percent },
-      { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
-      { to: "/affiliate", label: "Mon espace affilié", icon: BadgePercent },
+  const groups = useMemo<NavGroup[]>(() => {
+    const g: NavGroup[] = [
       {
-        to: "/admin/candidatures",
-        label: "Candidatures",
-        icon: UserPlus,
-        adminOnly: true,
+        label: "Vue d'ensemble",
+        items: [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }],
       },
       {
-        to: "/admin/affiliates",
-        label: "Affiliés",
-        icon: BadgePercent,
-        adminOnly: true,
+        label: "Ventes",
+        items: [
+          { to: "/admin/orders", label: "Commandes", icon: ShoppingBag },
+          { to: "/admin/products", label: "Produits", icon: Boxes },
+          { to: "/admin/promotions", label: "Promotions", icon: Percent },
+        ],
       },
       {
-        to: "/admin/reports/sales",
-        label: "Rapports",
-        icon: FileBarChart2,
-        adminOnly: true,
+        label: "Finances",
+        items: [
+          { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
+          ...(isAffiliate
+            ? [{ to: "/affiliate", label: "Mon espace affilié", icon: BadgePercent }]
+            : []),
+          ...(!isVendor
+            ? [
+                { to: "/admin/reports/sales", label: "Rapports", icon: FileBarChart2 },
+                { to: "/admin/affiliates", label: "Affiliés", icon: BadgePercent },
+              ]
+            : []),
+        ],
       },
-      {
-        to: "/admin/content-ai",
-        label: "Contenu IA",
-        icon: Sparkles,
-        adminOnly: true,
-      },
-      {
-        to: "/admin/users",
-        label: "Utilisateurs",
-        icon: Users,
-        adminOnly: true,
-      },
-      {
-        to: "/admin/shops",
-        label: "Boutiques",
-        icon: Store,
-        adminOnly: true,
-      },
-    ],
-    []
-  );
+    ];
 
-  const visibleItems = useMemo(() => {
-    return items.filter((item) => !(item.adminOnly && isVendor));
-  }, [items, isVendor]);
+    if (!isVendor) {
+      g.push({
+        label: "Réseau",
+        items: [
+          { to: "/admin/candidatures", label: "Candidatures", icon: UserPlus },
+          { to: "/admin/shops", label: "Boutiques", icon: Store },
+          { to: "/admin/users", label: "Utilisateurs", icon: Users },
+        ],
+      });
+      g.push({
+        label: "Outils",
+        items: [{ to: "/admin/content-ai", label: "Contenu IA", icon: Sparkles }],
+      });
+    }
+
+    return g;
+  }, [isVendor, isAffiliate]);
 
   return (
-    <nav aria-label="Menu admin" className="mb-4">
-      <div
-        className="rounded-4 border shadow-sm p-3 p-md-4"
-        style={{
-          background: "#ffffff",
-          borderColor: "rgba(0,0,0,0.08)",
-        }}
-      >
+    <nav aria-label="Menu admin" className="admin-sidebar">
+      <style>{`
+        .admin-sidebar{
+          width: 100%;
+        }
+        @media (min-width: 992px){
+          .admin-sidebar{
+            width: 264px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 1rem;
+          }
+        }
+        .admin-sidebar-card{
+          background: #ffffff;
+          border: 1px solid rgba(0,0,0,0.08);
+          border-radius: var(--duu-radius-lg);
+          box-shadow: var(--duu-shadow-sm);
+          padding: 1rem;
+        }
+        .admin-sidebar-mobile-toggle{
+          display: flex;
+        }
+        @media (min-width: 992px){
+          .admin-sidebar-mobile-toggle{ display: none; }
+        }
+        .admin-sidebar-body{
+          display: none;
+        }
+        .admin-sidebar-body.open{
+          display: block;
+        }
+        @media (min-width: 992px){
+          .admin-sidebar-body{ display: block; }
+        }
+        .admin-sidebar-group{ margin-bottom: 1rem; }
+        .admin-sidebar-group:last-child{ margin-bottom: 0; }
+        .admin-sidebar-group-label{
+          font-size: 0.72rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: .04em;
+          color: rgba(17,17,17,0.45);
+          padding: 0 .6rem;
+          margin-bottom: .4rem;
+        }
+        .admin-sidebar-link{
+          display: flex;
+          align-items: center;
+          gap: .6rem;
+          padding: .55rem .6rem;
+          border-radius: var(--duu-radius-md);
+          color: #222222;
+          font-weight: 600;
+          font-size: .92rem;
+          text-decoration: none;
+          margin-bottom: .2rem;
+          transition: background .15s ease, color .15s ease;
+        }
+        .admin-sidebar-link:hover{
+          background: rgba(var(--duu-orange-rgb), .08);
+          color: #111111;
+        }
+        .admin-sidebar-link.active{
+          background: var(--duu-orange);
+          color: #ffffff;
+        }
+      `}</style>
+
+      <div className="admin-sidebar-card">
         {showTitle && (
-          <div className="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
+          <div className="d-flex align-items-start justify-content-between gap-2 mb-3">
             <div>
-              <div
-                className="fw-bold"
-                style={{
-                  fontSize: "1.15rem",
-                  color: "#111111",
-                }}
-              >
+              <div className="fw-bold" style={{ fontSize: "1.1rem", color: "#111111" }}>
                 {computedTitle}
               </div>
-              <div
-                style={{
-                  fontSize: "0.92rem",
-                  color: "rgba(17,17,17,0.65)",
-                }}
-              >
+              <div style={{ fontSize: ".85rem", color: "rgba(17,17,17,0.65)" }}>
                 {isVendor
-                  ? "Gérez facilement vos ventes, produits, promotions et dépenses."
-                  : "Pilotez votre administration, vos boutiques, utilisateurs, affiliés et performances."}
+                  ? "Ventes, produits, promotions et dépenses."
+                  : "Ventes, boutiques, utilisateurs, affiliés."}
+              </div>
+              <div className="d-flex flex-wrap gap-2 mt-2">
+                <span
+                  className="rounded-pill px-3 py-1"
+                  style={{
+                    background: "rgba(var(--duu-orange-rgb), .14)",
+                    color: "var(--duu-orange)",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  {isVendor ? "Vendeur" : "Administrateur"}
+                </span>
+                {getDisplayName(user) ? (
+                  <span
+                    className="rounded-pill px-3 py-1 text-truncate"
+                    style={{
+                      background: "#F5F5F5",
+                      color: "#222",
+                      fontSize: "0.78rem",
+                      fontWeight: 500,
+                      maxWidth: 160,
+                    }}
+                  >
+                    {getDisplayName(user)}
+                  </span>
+                ) : null}
               </div>
             </div>
 
-            <div className="d-flex align-items-center gap-2 flex-wrap">
-              <span
-                className="rounded-pill px-3 py-2"
-                style={{
-                  background: "rgba(var(--duu-orange-rgb), .14)",
-                  color: "var(--duu-orange)",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                }}
-              >
-                {isVendor ? "Vendeur" : "Administrateur"}
-              </span>
-
-              {getDisplayName(user) ? (
-                <span
-                  className="rounded-pill px-3 py-2"
-                  style={{
-                    background: "#F5F5F5",
-                    color: "#222",
-                    fontSize: "0.85rem",
-                    fontWeight: 500,
-                  }}
-                >
-                  {getDisplayName(user)}
-                </span>
-              ) : null}
-            </div>
+            <button
+              type="button"
+              className="admin-sidebar-mobile-toggle btn btn-sm btn-outline-secondary"
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-expanded={mobileOpen}
+              aria-label="Basculer le menu admin"
+            >
+              {mobileOpen ? <CloseIcon size={18} /> : <MenuIcon size={18} />}
+            </button>
           </div>
         )}
 
-        <div className="d-flex flex-wrap gap-2">
-          {visibleItems.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className="text-decoration-none"
-                style={{ minWidth: "fit-content" }}
-              >
-                {({ isActive }) => (
-                  <div
-                    className="d-flex align-items-center gap-2 px-3 py-2 rounded-pill"
-                    style={{
-                      background: isActive ? "var(--duu-orange)" : "#F7F7F7",
-                      color: isActive ? "#ffffff" : "#222222",
-                      border: isActive
-                        ? "1px solid var(--duu-orange)"
-                        : "1px solid rgba(0,0,0,0.06)",
-                      transition: "all 0.2s ease",
-                      fontWeight: 600,
-                      fontSize: "0.92rem",
-                    }}
+        <div className={`admin-sidebar-body ${mobileOpen ? "open" : ""}`}>
+          {groups.map((group) => (
+            <div className="admin-sidebar-group" key={group.label}>
+              <div className="admin-sidebar-group-label">{group.label}</div>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    onClick={() => setMobileOpen(false)}
+                    className={({ isActive }) =>
+                      `admin-sidebar-link ${isActive ? "active" : ""}`
+                    }
                   >
-                    <Icon size={16} strokeWidth={2.1} />
+                    <Icon size={17} strokeWidth={2.1} />
                     <span>{item.label}</span>
-                  </div>
-                )}
-              </NavLink>
-            );
-          })}
+                  </NavLink>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
     </nav>

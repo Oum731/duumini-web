@@ -496,44 +496,6 @@ export function isVendorRole(role?: string) {
   return r === "VENDEUR" || r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE" || r === "RESTAURANT";
 }
 
-export function orderBelongsToUser(order: AnyObj, user: CurrentUser | null): boolean {
-  if (!user) return false;
-
-  const role = String(user.role || "").toUpperCase();
-  if (role === "ADMIN") return true;
-
-  if (!isVendorRole(user.role)) return true;
-
-  const uid = Number(user.id ?? user.vendor_id ?? 0) || 0;
-  const myShop = user.shop_id != null ? Number(user.shop_id) : null;
-
-  const oVendor = order?.vendor_id ?? order?.vendorId ?? order?.seller_id ?? order?.sellerId ?? null;
-  const oShop = order?.shop_id ?? order?.shopId ?? order?.store_id ?? order?.storeId ?? null;
-
-  if (oVendor != null && uid && Number(oVendor) === uid) return true;
-  if (myShop != null && oShop != null && Number(oShop) === Number(myShop)) return true;
-
-  const items: AnyObj[] = Array.isArray(order?.items)
-    ? order.items
-    : Array.isArray(order?.order_items)
-      ? order.order_items
-      : Array.isArray(order?.lines)
-        ? order.lines
-        : [];
-
-  if (items.length) {
-    for (const it of items) {
-      const itShop = it?.shop_id ?? it?.shopId ?? it?.store_id ?? it?.storeId ?? null;
-      const itVendor = it?.vendor_id ?? it?.vendorId ?? it?.seller_id ?? it?.sellerId ?? null;
-
-      if (itVendor != null && uid && Number(itVendor) === uid) return true;
-      if (myShop != null && itShop != null && Number(itShop) === Number(myShop)) return true;
-    }
-  }
-
-  return false;
-}
-
 /* ===== Reçu (helper) ===== */
 export function openReceiptPrintWindow(html: string) {
   const w = window.open("", "_blank", "noopener,noreferrer,width=420,height=720");
