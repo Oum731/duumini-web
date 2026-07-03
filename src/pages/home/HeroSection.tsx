@@ -1,98 +1,72 @@
 // src/pages/home/HeroSection.tsx
 import { Link } from "react-router-dom";
 
-// Isolé dans son propre composant pour pouvoir être remplacé par une autre
-// photo de marque plus tard sans toucher au reste du hero.
-function HeroVisual() {
-  return (
-    <div
-      className="position-relative overflow-hidden"
-      style={{
-        aspectRatio: "930 / 345",
-        borderRadius: "var(--duu-radius-xl)",
-      }}
-    >
-      <img
-        src="/hero-photo.png"
-        alt="Une commerçante consulte son téléphone, entourée de produits africains, avec un avion et un conteneur DUUMINI en arrière-plan symbolisant le transport entre pays"
-        className="w-100 h-100"
-        style={{ objectFit: "cover" }}
-        loading="lazy"
-      />
-    </div>
-  );
-}
+// L'image contient déjà le titre, le texte, les statistiques et les
+// cartes du hero (voir public/hero-stats.png, recadré depuis page.png) —
+// on ne recrée pas ce texte en HTML, on superpose uniquement des zones
+// cliquables réelles (transparentes) aux endroits des actions visibles.
+const HERO_IMAGE = "/hero-stats.png";
+
+// Positions en pourcentage de l'image (1510×545), pour rester alignées
+// quelle que soit la largeur d'écran puisque l'image garde son ratio.
+const HOTSPOTS: {
+  to: string;
+  label: string;
+  top: string;
+  left: string;
+  width: string;
+  height: string;
+}[] = [
+  {
+    to: "/solutions",
+    label: "Découvrir",
+    top: "56.5%",
+    left: "8.4%",
+    width: "7.8%",
+    height: "9.5%",
+  },
+  {
+    to: "/contact?intent=join",
+    label: "Rejoindre DUUMINI",
+    top: "56.5%",
+    left: "16.9%",
+    width: "12.4%",
+    height: "9.5%",
+  },
+  {
+    to: "/pays",
+    label: "Découvrir les corridors",
+    top: "72%",
+    left: "75.8%",
+    width: "8%",
+    height: "5.5%",
+  },
+];
 
 export default function HeroSection() {
   return (
-    <section
-      style={{
-        background: "linear-gradient(135deg, #FFF8ED, #FDECD8)",
-      }}
-    >
-      <div className="container-xxl py-5">
-        <div className="row align-items-center g-4 g-lg-5">
-          <div className="col-12 col-lg-6">
-            <h1
-              className="fw-bold mb-3"
-              style={{ color: "var(--duu-green)", fontSize: "clamp(2rem, 4vw, 3rem)" }}
-            >
-              Le commerce africain sans frontières.
-            </h1>
-            <p className="text-muted mb-4" style={{ fontSize: "1.05rem" }}>
-              DUUMINI connecte les producteurs, commerçants et consommateurs à
-              travers l'Afrique.
-            </p>
-            <div className="d-flex flex-wrap gap-2">
-              <Link to="/solutions" className="btn btn-duu-orange px-4">
-                Découvrir
-              </Link>
-              <Link to="/contact?intent=join" className="btn btn-duu-green px-4">
-                Rejoindre DUUMINI
-              </Link>
-            </div>
-          </div>
+    <section className="position-relative">
+      <img
+        src={HERO_IMAGE}
+        alt="Le commerce africain sans frontières. DUUMINI connecte les producteurs, commerçants et consommateurs à travers l'Afrique. Corridor actuel : Maroc ↔ Côte d'Ivoire. +1 000 produits authentiques disponibles, +500 vendeurs et producteurs partenaires, +10 000 clients satisfaits à travers le Maroc."
+        className="w-100"
+        style={{ display: "block" }}
+      />
 
-          <div className="col-12 col-lg-6">
-            <div className="position-relative">
-              <HeroVisual />
-
-              <div
-                className="position-absolute bg-white rounded-4 p-3 d-none d-md-block"
-                style={{
-                  top: 16,
-                  right: 16,
-                  maxWidth: 220,
-                  boxShadow: "var(--duu-shadow-md)",
-                }}
-              >
-                <div className="text-muted small mb-1">Corridor actuel</div>
-                <div className="fw-bold small mb-2">
-                  🇲🇦 Maroc ↔ Côte d'Ivoire 🇨🇮
-                </div>
-                <Link to="/pays" className="small fw-semibold text-decoration-none">
-                  Découvrir les corridors →
-                </Link>
-              </div>
-
-              <div
-                className="position-absolute bg-white rounded-4 p-3 d-none d-md-block"
-                style={{
-                  bottom: -16,
-                  left: -16,
-                  maxWidth: 220,
-                  boxShadow: "var(--duu-shadow-md)",
-                }}
-              >
-                <div className="fw-semibold small mb-1">
-                  Bientôt dans toute la CEDEAO
-                </div>
-                <div className="text-muted small">🇸🇳 🇨🇲 🇹🇳 🇳🇬 +15 pays</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {HOTSPOTS.map((h) => (
+        <Link
+          key={h.label}
+          to={h.to}
+          aria-label={h.label}
+          className="position-absolute"
+          style={{
+            top: h.top,
+            left: h.left,
+            width: h.width,
+            height: h.height,
+          }}
+        />
+      ))}
     </section>
   );
 }

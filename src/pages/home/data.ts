@@ -1,8 +1,5 @@
 // src/pages/home/data.ts
 import {
-  ShoppingCart,
-  Store,
-  Users,
   UserRound,
   Briefcase,
   Leaf,
@@ -13,34 +10,6 @@ import {
   PackageCheck,
   type LucideIcon,
 } from "lucide-react";
-
-export type StatItem = {
-  icon: LucideIcon;
-  value: string;
-  label: string;
-  tint: "orange" | "green" | "tan";
-};
-
-export const STATS: StatItem[] = [
-  {
-    icon: ShoppingCart,
-    value: "+1 000",
-    label: "Produits authentiques disponibles",
-    tint: "orange",
-  },
-  {
-    icon: Store,
-    value: "+500",
-    label: "Vendeurs et producteurs partenaires",
-    tint: "green",
-  },
-  {
-    icon: Users,
-    value: "+10 000",
-    label: "Clients satisfaits à travers le Maroc",
-    tint: "tan",
-  },
-];
 
 export type PersonaKey = "diaspora" | "entreprises" | "producteurs" | "importateurs";
 
