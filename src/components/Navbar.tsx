@@ -18,6 +18,7 @@ import {
   Briefcase,
   Globe2,
   BookOpen,
+  UserPlus,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -293,6 +294,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
                           <BadgePercent size={18} />
                           <span>Promotions</span>
                         </Link>
+
+                        <Link to="/admin/candidatures" onClick={closeMenus}>
+                          <UserPlus size={18} />
+                          <span>Candidatures</span>
+                        </Link>
                       </>
                     )}
 
@@ -334,7 +340,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
             {!isPro && (
               <li className="nav-item">
                 <Link
-                  to="/contact?intent=join"
+                  to="/rejoindre"
                   className="btn btn-duu-green"
                   onClick={closeMenus}
                 >

@@ -67,7 +67,7 @@ export default function SellIntentGate() {
   function handleYes() {
     writeStored("yes");
     setOpen(false);
-    navigate("/contact?intent=join");
+    navigate("/rejoindre");
   }
 
   function handleNo() {

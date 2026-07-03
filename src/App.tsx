@@ -12,6 +12,7 @@ import ProtectedAdmin from "./components/ProtectedAdmin";
 import AdminHome from "./pages/AdminHome";
 import OrdersAdminPage from "./pages/admin/OrdersAdminPage";
 import ShopsAdminPage from "./pages/admin/ShopsAdminPage";
+import VendorApplicationsAdminPage from "./pages/admin/VendorApplicationsAdminPage";
 import UsersAdminPage from "./pages/admin/UsersAdminPage";
 import ExpensesPage from "./pages/admin/ExpensesPage";
 
@@ -33,6 +34,7 @@ import CommentCaMarchePage from "./pages/CommentCaMarchePage";
 import SolutionsPage from "./pages/SolutionsPage";
 import PaysPage from "./pages/PaysPage";
 import BlogPage from "./pages/BlogPage";
+import RejoindrePage from "./pages/RejoindrePage";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import ReturnsPolicy from "./pages/legal/ReturnsPolicy";
 import Terms from "./pages/legal/Terms";
@@ -383,6 +385,7 @@ export default function App() {
                 <Route path="/solutions" element={<SolutionsPage />} />
                 <Route path="/pays" element={<PaysPage />} />
                 <Route path="/blog" element={<BlogPage />} />
+                <Route path="/rejoindre" element={<RejoindrePage />} />
                 <Route path="/cart" element={<CartPage />} />
 
                 <Route path="/affiliate" element={<AffiliateDashboardPage />} />
@@ -448,6 +451,10 @@ export default function App() {
                       element={<ManageProductsPage scope="admin" />}
                     />
                     <Route path="shops" element={<ShopsAdminPage />} />
+                    <Route
+                      path="candidatures"
+                      element={<VendorApplicationsAdminPage />}
+                    />
                     <Route path="users" element={<UsersAdminPage />} />
                     <Route path="expenses" element={<ExpensesPage />} />
                     <Route

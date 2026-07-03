@@ -26,7 +26,7 @@ const HOTSPOTS: {
     height: "9.5%",
   },
   {
-    to: "/contact?intent=join",
+    to: "/rejoindre",
     label: "Rejoindre DUUMINI",
     top: "56.5%",
     left: "16.9%",
