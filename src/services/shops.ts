@@ -143,6 +143,11 @@ export async function getShop(id: number) {
   return api.get<Shop>(`/api/shops/${id}`);
 }
 
+/** Vitrine publique par boutique (/boutique/:slug) */
+export async function getShopBySlug(slug: string) {
+  return api.get<Shop>(`/api/shops/by-slug/${encodeURIComponent(slug)}`);
+}
+
 /** Stats complètes d'une boutique (admin ou owner) */
 export async function getShopStats(id: number) {
   return api.get<ShopStats>(`/api/shops/${id}/stats`);

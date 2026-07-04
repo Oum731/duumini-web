@@ -122,6 +122,7 @@ export type Product = SupplierAgg & {
   cover?: string | null;
 
   shop_name?: string | null;
+  shop_slug?: string | null;
   shop_logo?: string | null;
   shop_cover?: string | null;
   shop_city?: string | null;
@@ -453,6 +454,7 @@ export async function listProducts(
     category_id?: number;
     sub_category_id?: number;
     shop_id?: number;
+    country_code?: string;
     q?: string;
     vertical?: Vertical;
     includeVariants?: boolean;
@@ -494,6 +496,10 @@ export async function listProducts(
   if (typeof opts.shop_id === "number") {
     query.shop_id = opts.shop_id;
     query.shopId = opts.shop_id;
+  }
+  if (opts.country_code && String(opts.country_code).trim()) {
+    query.country_code = String(opts.country_code).trim().toUpperCase();
+    query.countryCode = query.country_code;
   }
   if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
 
@@ -765,136 +771,6 @@ export async function removeProductOptionGroup(groupId: number): Promise<{ ok: t
     if (isNotFoundError(e)) return { ok: true };
     throw e;
   }
-}
-
-/* ======================================================================
- * Supplier (optional)
- * ===================================================================== */
-
-const SUPPLIER_BASE = "/api/suppliers";
-
-export type SupplierProduct = {
-  id: number;
-  product_id: number;
-  supplier_id?: number | null;
-  cost_price?: number | null;
-  stock?: number | null;
-  note?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-export type SupplierOrderStatus = "OPEN" | "RECEIVED" | "CANCELLED";
-
-export type SupplierOrder = {
-  id: number;
-  supplier_id?: number | null;
-  status: SupplierOrderStatus;
-  total_cost?: number | null;
-  note?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-export type SupplierOrderItem = {
-  id: number;
-  supplier_order_id: number;
-  supplier_product_id?: number | null;
-  product_id?: number | null;
-  qty: number;
-  unit_cost?: number | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-function pickSupplierAggFromProduct(p: any): SupplierAgg {
-  return {
-    supplier_stock: p?.supplier_stock == null ? null : Number(p.supplier_stock),
-    supplier_cost: p?.supplier_cost == null ? null : Number(p.supplier_cost),
-    supplier_last_supply_at: p?.supplier_last_supply_at ?? null,
-  };
-}
-
-export async function getSupplierAggForProduct(productId: number): Promise<SupplierAgg> {
-  const p = await getManageProductById(productId);
-  return pickSupplierAggFromProduct(p);
-}
-
-export async function listSupplierProducts(opts: { product_id?: number; supplier_id?: number } = {}) {
-  const query: Record<string, any> = {};
-  if (typeof opts.product_id === "number") query.product_id = opts.product_id;
-  if (typeof opts.supplier_id === "number") query.supplier_id = opts.supplier_id;
-
-  const raw = await api.get<any>(`${SUPPLIER_BASE}/products`, { query });
-  return asArray<SupplierProduct>(raw);
-}
-
-export async function createSupplierProduct(payload: Partial<SupplierProduct>) {
-  const raw = await api.post<any>(`${SUPPLIER_BASE}/products`, payload);
-  return unwrap<{ ok: true; id: number }>(raw);
-}
-
-export async function updateSupplierProduct(id: number, payload: Partial<SupplierProduct>) {
-  const raw = await api.put<any>(`${SUPPLIER_BASE}/products/${id}`, payload);
-  return unwrap<{ ok: true }>(raw);
-}
-
-export async function removeSupplierProduct(id: number) {
-  const raw = await api.delete<any>(`${SUPPLIER_BASE}/products/${id}`);
-  return unwrap<{ ok: true }>(raw);
-}
-
-export async function listSupplierOrders(
-  opts: {
-    page?: number;
-    pageSize?: number;
-    supplier_id?: number;
-    status?: SupplierOrderStatus;
-  } = {}
-) {
-  const page = opts.page ?? 1;
-  const pageSize = opts.pageSize ?? 20;
-
-  const query: Record<string, any> = {};
-  withPageCompat(query, page, pageSize);
-
-  if (typeof opts.supplier_id === "number") query.supplier_id = opts.supplier_id;
-  if (opts.status) query.status = opts.status;
-
-  const raw = await api.get<any>(`${SUPPLIER_BASE}/orders`, { query });
-  return asPaginated<SupplierOrder>(raw);
-}
-
-export async function getSupplierOrder(id: number) {
-  const raw = await api.get<any>(`${SUPPLIER_BASE}/orders/${id}`);
-  return unwrap<SupplierOrder>(raw);
-}
-
-export async function createSupplierOrder(
-  payload: Partial<SupplierOrder> & {
-    items?: Array<Partial<SupplierOrderItem> & { qty: number }>;
-  }
-) {
-  const raw = await api.post<any>(`${SUPPLIER_BASE}/orders`, payload);
-  return unwrap<{ ok: true; id: number }>(raw);
-}
-
-export async function updateSupplierOrderStatus(id: number, status: SupplierOrderStatus) {
-  const raw = await api.put<any>(`${SUPPLIER_BASE}/orders/${id}/status`, { status });
-  return unwrap<{ ok: true }>(raw);
-}
-
-export async function listSupplierOrderItems(orderId: number) {
-  const raw = await api.get<any>(`${SUPPLIER_BASE}/orders/${orderId}/items`);
-  return asArray<SupplierOrderItem>(raw);
-}
-
-export async function addSupplierOrderItems(
-  orderId: number,
-  items: Array<Partial<SupplierOrderItem> & { qty: number }>
-) {
-  const raw = await api.post<any>(`${SUPPLIER_BASE}/orders/${orderId}/items`, { items });
-  return unwrap<{ ok: true }>(raw);
 }
 
 /* ======================================================================

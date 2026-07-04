@@ -77,9 +77,6 @@ export default function Footer() {
                 height={36}
                 className="rounded"
               />
-              <span className="fw-bold" style={{ color: "var(--duu-black)" }}>
-                Duumini
-              </span>
             </div>
 
             <div className="duu-footer-slogan">{DUUMINI_SLOGAN}</div>
@@ -167,6 +164,31 @@ export default function Footer() {
               <li>
                 <TopLink className="link-dark d-block py-1" to="/about">
                   À propos
+                </TopLink>
+              </li>
+              <li>
+                <TopLink className="link-dark d-block py-1" to="/comment-ca-marche">
+                  Comment ça marche
+                </TopLink>
+              </li>
+              <li>
+                <TopLink className="link-dark d-block py-1" to="/solutions">
+                  Solutions
+                </TopLink>
+              </li>
+              <li>
+                <TopLink className="link-dark d-block py-1" to="/pays">
+                  Pays
+                </TopLink>
+              </li>
+              <li>
+                <TopLink className="link-dark d-block py-1" to="/blog">
+                  Blog
+                </TopLink>
+              </li>
+              <li>
+                <TopLink className="link-dark d-block py-1" to="/rejoindre">
+                  Devenir vendeur/fournisseur
                 </TopLink>
               </li>
             </ul>

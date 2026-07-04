@@ -75,6 +75,11 @@ export default function SellIntentGate() {
     setOpen(false);
   }
 
+  function handleBuy() {
+    writeStored("no");
+    setOpen(false);
+  }
+
   return (
     <Modal open={open} title="Vous souhaitez vendre sur DUUMINI ?" onClose={handleNo}>
       <div className="mb-3" style={{ aspectRatio: "4 / 3", maxHeight: 180, margin: "0 auto" }}>
@@ -96,20 +101,30 @@ export default function SellIntentGate() {
         </button>
       </div>
 
-      <div className="d-flex gap-3 justify-content-end mt-2">
+      <div className="text-muted small mt-3 mb-1">
+        Vous êtes plutôt client ? Achetez directement :
+      </div>
+      <div className="d-flex gap-3 justify-content-end">
         <Link
           to="/african-market"
           className="small text-decoration-none"
-          onClick={() => setOpen(false)}
+          onClick={handleBuy}
         >
           Voir Market
         </Link>
         <Link
           to="/african-food"
           className="small text-decoration-none"
-          onClick={() => setOpen(false)}
+          onClick={handleBuy}
         >
           Voir Food
+        </Link>
+        <Link
+          to="/fashion"
+          className="small text-decoration-none"
+          onClick={handleBuy}
+        >
+          Voir Fashion
         </Link>
       </div>
     </Modal>

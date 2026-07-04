@@ -42,6 +42,7 @@ import Footer from "./components/Footer";
 import ScrollTopButton from "./components/ScrollTopButton";
 
 import ProductView from "./pages/ProductView";
+import ShopStorefrontPage from "./pages/ShopStorefrontPage";
 
 import { useAuth } from "./context/AuthContext";
 import {
@@ -67,6 +68,7 @@ import AiCopyPage from "./pages/admin/AiCopyPage";
 
 import VendorHome from "./pages/vendor/VendorHome";
 import MyShopPage from "./pages/vendor/MyShopPage";
+import SupplierCatalogPage from "./pages/vendor/SupplierCatalogPage";
 
 import ManageProductsPage from "./pages/products/ManageProductsPage";
 import CompaniesPage from "./pages/companies/CompaniesPage";
@@ -388,6 +390,7 @@ export default function App() {
                 <Route path="/pays" element={<PaysPage />} />
                 <Route path="/blog" element={<BlogPage />} />
                 <Route path="/rejoindre" element={<RejoindrePage />} />
+                <Route path="/boutique/:slug" element={<ShopStorefrontPage />} />
                 <Route path="/cart" element={<CartPage />} />
 
                 <Route path="/affiliate" element={<AffiliateDashboardPage />} />
@@ -534,6 +537,10 @@ export default function App() {
                   <Route
                     path="/vendeur/promotions"
                     element={<PromotionsAdminPage />}
+                  />
+                  <Route
+                    path="/vendeur/fournisseurs"
+                    element={<SupplierCatalogPage />}
                   />
 
                   <Route path="/entreprise" element={<CompaniesPage />} />

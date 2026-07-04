@@ -7,6 +7,7 @@ import CategoriesMenu from "../components/CategoriesMenu";
 import { listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
+import { listActiveCountries, type CountryConfig } from "../services/countries";
 import { useLocationCity } from "../context/LocationContext";
 
 function GridSkeleton() {
@@ -132,6 +133,34 @@ export default function Fashion() {
     return () => window.clearTimeout(t);
   }, [q]);
 
+  // ✅ Filtres vendeur/fournisseur + pays
+  const [shopFilter, setShopFilter] = useState<number | "">("");
+  const [countryFilter, setCountryFilter] = useState<string>("");
+  const [countries, setCountries] = useState<CountryConfig[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    listActiveCountries()
+      .then((list) => {
+        if (mounted) setCountries(list);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const shopOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const p of items) {
+      const anyP = p as any;
+      const sid = Number(anyP.shop_id || 0);
+      if (!sid || map.has(sid)) continue;
+      map.set(sid, String(anyP.shop_name || `Boutique #${sid}`));
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [items]);
+
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
   useEffect(() => {
     if (page > pages) setPage(pages);
@@ -183,6 +212,8 @@ export default function Fashion() {
         pageSize,
         onlyActive: true,
         vertical: "FASHION",
+        shop_id: shopFilter || undefined,
+        country_code: countryFilter || undefined,
       } as any);
 
       if (ac.signal.aborted) return;
@@ -207,7 +238,7 @@ export default function Fashion() {
     } finally {
       if (!ac.signal.aborted) setLoading(false);
     }
-  }, [page, pageSize, city, categorySlugParam, subSlugParam]);
+  }, [page, pageSize, city, categorySlugParam, subSlugParam, shopFilter, countryFilter]);
 
   useEffect(() => {
     loadProducts();
@@ -670,6 +701,43 @@ export default function Fashion() {
                 Effacer
               </button>
             </div>
+
+            <select
+              className="form-select form-select-sm"
+              style={{ maxWidth: 220 }}
+              aria-label="Filtrer par vendeur"
+              value={shopFilter}
+              onChange={(e) => {
+                setPage(1);
+                setShopFilter(e.target.value ? Number(e.target.value) : "");
+              }}
+            >
+              <option value="">Tous les vendeurs</option>
+              {shopOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="form-select form-select-sm"
+              style={{ maxWidth: 180 }}
+              aria-label="Filtrer par pays"
+              value={countryFilter}
+              onChange={(e) => {
+                setPage(1);
+                setCountryFilter(e.target.value);
+              }}
+            >
+              <option value="">Tous les pays</option>
+              {countries.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.flag_emoji ? `${c.flag_emoji} ` : ""}
+                  {c.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           {showFiltersBar ? (

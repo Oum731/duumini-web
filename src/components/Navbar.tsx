@@ -19,6 +19,7 @@ import {
   Globe2,
   BookOpen,
   UserPlus,
+  Truck,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -55,9 +56,16 @@ const PUBLIC_NAV_LINKS: NavLinkDef[] = [
   { to: "/contact", label: "Contact", Icon: Mail },
 ];
 
+const SHOP_LINKS: NavLinkDef[] = [
+  { to: "/african-market", label: "Duumini Market", Icon: Store },
+  { to: "/african-food", label: "Duumini Food", Icon: Store },
+  { to: "/fashion", label: "Duumini Fashion", Icon: Store },
+];
+
 export default function Navbar({ cartCount = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const [proOpen, setProOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -86,6 +94,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const closeMenus = () => {
     setOpen(false);
     setProOpen(false);
+    setShopOpen(false);
   };
 
   const navItem = (
@@ -183,6 +192,13 @@ export default function Navbar({ cartCount = 0 }: Props) {
           color: rgba(0,0,0,.55);
           padding: .25rem .6rem .15rem;
         }
+        /* ✅ CTA "Acheter" : chemin client final, mis en avant en orange pour
+           se distinguer des liens B2B informatifs de PUBLIC_NAV_LINKS. */
+        .shop-cta{
+          color: var(--duu-orange) !important;
+          font-weight: 700;
+        }
+        .shop-cta:hover{ color: var(--duu-orange) !important; }
       `}</style>
 
       <div className="container-xxl">
@@ -194,10 +210,6 @@ export default function Navbar({ cartCount = 0 }: Props) {
           <img src="/logo.jpeg" alt="Duumini" height={32} className="rounded" />
 
           <div className="duu-brand-wrap">
-            <span className="fw-bold">
-              <span style={{ color: "var(--duu-orange)" }}>DUU</span>
-              <span style={{ color: "var(--duu-green)" }}>MINI</span>
-            </span>
 
             <div className="duu-brand-slogan" title={DUUMINI_SLOGAN}>
               {DUUMINI_SLOGAN}
@@ -225,6 +237,33 @@ export default function Navbar({ cartCount = 0 }: Props) {
         >
           <ul className="navbar-nav mb-2 mb-lg-0 me-lg-3">
             {navItem("/", "Accueil", Home, { end: true })}
+
+            {/* ✅ Point d'entrée client final : acheter sur Market/Food/Fashion,
+                mis en avant car absent des liens B2B ci-dessous. */}
+            <li className="nav-item pro-dd">
+              <button
+                type="button"
+                className="nav-link d-flex align-items-center gap-2 shop-cta"
+                onClick={() => setShopOpen((v) => !v)}
+                aria-expanded={shopOpen}
+                aria-label="Acheter"
+              >
+                <ShoppingCart size={18} />
+                <span>Acheter</span>
+                <ChevronDown size={16} />
+              </button>
+
+              {shopOpen && (
+                <div className="pro-menu" role="menu">
+                  {SHOP_LINKS.map((l) => (
+                    <Link key={l.to} to={l.to} onClick={closeMenus}>
+                      <l.Icon size={18} />
+                      <span>{l.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </li>
 
             {/* ✅ Liens vitrine publics — toujours visibles, y compris pour
                 les comptes pro (admin/vendeur/fournisseur/restaurant) */}
@@ -325,6 +364,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
                         <Link to="/vendeur/promotions" onClick={closeMenus}>
                           <BadgePercent size={18} />
                           <span>Promotions</span>
+                        </Link>
+
+                        <Link to="/vendeur/fournisseurs" onClick={closeMenus}>
+                          <Truck size={18} />
+                          <span>Catalogue fournisseurs</span>
                         </Link>
                       </>
                     )}

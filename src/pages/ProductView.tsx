@@ -1221,6 +1221,14 @@ export default function ProductView() {
               <div>
                 <div className="pv-kicker mb-2">{badge}</div>
                 <h1 className="h2 pv-title">{title}</h1>
+                {anyP?.shop_slug && anyP?.shop_name ? (
+                  <Link
+                    to={`/boutique/${anyP.shop_slug}`}
+                    className="small text-decoration-none text-muted"
+                  >
+                    Vendu par {anyP.shop_name} — voir la boutique
+                  </Link>
+                ) : null}
               </div>
 
               <div>
