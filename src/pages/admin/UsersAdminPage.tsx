@@ -11,6 +11,7 @@ import {
 } from "../../services/users";
 import { useAuth } from "../../context/AuthContext"; // ⬅️ pour refreshUser()
 import { getCurrentUser } from "../../services/auth"; // ⬅️ pour savoir si c’est moi
+import { listAffiliates, createAffiliate, type Affiliate } from "../../services/affiliates";
 
 const ROLES: Role[] = ["MEMBER", "VENDEUR", "LIVREUR", "ADMIN"];
 type Draft = Partial<User> & { password?: string };
@@ -32,6 +33,17 @@ export default function UsersAdminPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>({ role: "MEMBER" });
 
+  // ✅ Affiliation : chargée une fois pour toutes (programme d'affiliation
+  // toujours petit), pour savoir en un coup d'œil qui est déjà affilié
+  // sans faire un aller-retour réseau par ligne.
+  const [affiliateByUserId, setAffiliateByUserId] = useState<Map<number, Affiliate>>(new Map());
+  const [showAffiliateModal, setShowAffiliateModal] = useState(false);
+  const [affiliateTarget, setAffiliateTarget] = useState<User | null>(null);
+  const [affiliateRate, setAffiliateRate] = useState("10");
+  const [affiliateNotes, setAffiliateNotes] = useState("");
+  const [affiliateSaving, setAffiliateSaving] = useState(false);
+  const [affiliateError, setAffiliateError] = useState<string | null>(null);
+
   const pages = useMemo(
     () => Math.max(1, Math.ceil(total / pageSize)),
     [total, pageSize]
@@ -51,9 +63,61 @@ export default function UsersAdminPage() {
     }
   }, [page, pageSize, q]);
 
+  const loadAffiliates = useCallback(async () => {
+    try {
+      const res = await listAffiliates({ pageSize: 1000 });
+      const map = new Map<number, Affiliate>();
+      for (const a of res.items || []) {
+        if (a.user_id != null) map.set(Number(a.user_id), a);
+      }
+      setAffiliateByUserId(map);
+    } catch {
+      // silencieux : l'absence de badge n'empêche pas de gérer les users
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    loadAffiliates();
+  }, [loadAffiliates]);
+
+  function openAffiliate(u: User) {
+    setAffiliateTarget(u);
+    setAffiliateRate("10");
+    setAffiliateNotes("");
+    setAffiliateError(null);
+    setShowAffiliateModal(true);
+  }
+
+  async function onGrantAffiliate() {
+    if (!affiliateTarget) return;
+    setAffiliateSaving(true);
+    setAffiliateError(null);
+    try {
+      await createAffiliate({
+        user_id: affiliateTarget.id,
+        name:
+          [affiliateTarget.first_name, affiliateTarget.last_name].filter(Boolean).join(" ") ||
+          affiliateTarget.phone ||
+          `Utilisateur #${affiliateTarget.id}`,
+        phone: affiliateTarget.phone || null,
+        commission_rate: Number(affiliateRate || 10),
+        status: "ACTIVE",
+        notes: affiliateNotes || null,
+      });
+      setShowAffiliateModal(false);
+      await loadAffiliates();
+    } catch (e: any) {
+      setAffiliateError(
+        e?.payload?.message || e?.message || "Impossible de créer l'affilié."
+      );
+    } finally {
+      setAffiliateSaving(false);
+    }
+  }
 
   function openCreate() {
     setEditId(null);
@@ -182,6 +246,7 @@ export default function UsersAdminPage() {
                     <th>Téléphone</th>
                     <th>Nom</th>
                     <th>Rôle</th>
+                    <th>Affiliation</th>
                     <th>Inscription</th>
                     <th></th>
                   </tr>
@@ -200,6 +265,26 @@ export default function UsersAdminPage() {
                         <span className="badge bg-secondary">{u.role}</span>
                         {myId === u.id && (
                           <span className="ms-2 badge bg-info">Moi</span>
+                        )}
+                      </td>
+                      <td>
+                        {affiliateByUserId.has(u.id) ? (
+                          <span
+                            className={`badge ${
+                              affiliateByUserId.get(u.id)?.status === "ACTIVE"
+                                ? "bg-success"
+                                : "bg-secondary"
+                            }`}
+                          >
+                            Affilié
+                          </span>
+                        ) : (
+                          <button
+                            className="btn btn-sm btn-outline-success"
+                            onClick={() => openAffiliate(u)}
+                          >
+                            Rendre affilié
+                          </button>
                         )}
                       </td>
                       <td>
@@ -346,6 +431,81 @@ export default function UsersAdminPage() {
                 </button>
                 <button className="btn btn-dark" onClick={onSave}>
                   Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAffiliateModal && affiliateTarget && (
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          style={{ background: "rgba(0,0,0,.2)" }}
+        >
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Rendre affilié</h5>
+                <button
+                  className="btn-close"
+                  onClick={() => setShowAffiliateModal(false)}
+                />
+              </div>
+              <div className="modal-body">
+                {affiliateError && (
+                  <div className="alert alert-danger">{affiliateError}</div>
+                )}
+                <div className="mb-3">
+                  <label className="form-label">Utilisateur</label>
+                  <input
+                    className="form-control"
+                    disabled
+                    value={
+                      [affiliateTarget.first_name, affiliateTarget.last_name]
+                        .filter(Boolean)
+                        .join(" ") ||
+                      affiliateTarget.phone ||
+                      `#${affiliateTarget.id}`
+                    }
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Taux de commission (%)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={affiliateRate}
+                    onChange={(e) => setAffiliateRate(e.target.value)}
+                    min={0}
+                    max={100}
+                    step={0.5}
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="form-label">Notes (optionnel)</label>
+                  <textarea
+                    className="form-control"
+                    rows={2}
+                    value={affiliateNotes}
+                    onChange={(e) => setAffiliateNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={() => setShowAffiliateModal(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  className="btn btn-success"
+                  onClick={onGrantAffiliate}
+                  disabled={affiliateSaving}
+                >
+                  {affiliateSaving ? "Création…" : "Rendre affilié"}
                 </button>
               </div>
             </div>

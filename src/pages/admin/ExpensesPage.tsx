@@ -230,12 +230,13 @@ export default function ExpensesPage() {
     month: 0,
     year: 0,
     filtered_total: 0,
+    all_time: 0,
   });
 
   // ✅ CA (ventes DONE) sur les mêmes bornes de période que les dépenses
   // (CURDATE()/YEARWEEK(...,1) côté backend, voir GET /api/orders/summary)
   // pour un solde net cohérent.
-  const [revenue, setRevenue] = useState({ today: 0, week: 0, month: 0, year: 0 });
+  const [revenue, setRevenue] = useState({ today: 0, week: 0, month: 0, year: 0, all_time: 0 });
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [newCategory, setNewCategory] = useState("");
@@ -330,6 +331,7 @@ export default function ExpensesPage() {
         month: Number(summaryRes?.month || 0),
         year: Number(summaryRes?.year || 0),
         filtered_total: Number(summaryRes?.filtered_total || 0),
+        all_time: Number(summaryRes?.all_time || 0),
       });
       setGrouped(
         Array.isArray(groupedRes?.items)
@@ -345,6 +347,7 @@ export default function ExpensesPage() {
         week: Number(revenueRes?.week || 0),
         month: Number(revenueRes?.month || 0),
         year: Number(revenueRes?.year || 0),
+        all_time: Number(revenueRes?.all_time || 0),
       });
     } catch (e: any) {
       setItems([]);
@@ -356,8 +359,9 @@ export default function ExpensesPage() {
         month: 0,
         year: 0,
         filtered_total: 0,
+        all_time: 0,
       });
-      setRevenue({ today: 0, week: 0, month: 0, year: 0 });
+      setRevenue({ today: 0, week: 0, month: 0, year: 0, all_time: 0 });
       setPageInfo({
         page: 1,
         pageSize,
@@ -496,6 +500,7 @@ export default function ExpensesPage() {
       week: revenue.week - summary.week,
       month: revenue.month - summary.month,
       year: revenue.year - summary.year,
+      all_time: revenue.all_time - summary.all_time,
     }),
     [revenue, summary]
   );
@@ -596,6 +601,16 @@ export default function ExpensesPage() {
             <span>{error}</span>
           </div>
         )}
+
+        <div>
+          <div className="mb-2 text-sm font-medium text-base-content/55">
+            Vue globale (depuis le début) — le vrai total, indépendant des filtres
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SummaryCard label="Total dépenses (global)" value={summary.all_time} />
+            <SummaryCard label="Solde net (global)" value={netBalance.all_time} signed />
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <SummaryCard label="Aujourd’hui" value={summary.today} />

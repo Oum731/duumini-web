@@ -37,6 +37,7 @@ export type ExpensesSummary = {
   month: number;
   year: number;
   filtered_total: number;
+  all_time: number;
 };
 
 export type GroupedExpenseItem = {
@@ -131,6 +132,7 @@ export async function getExpensesSummary(
     month: Number(data?.month || 0),
     year: Number(data?.year || 0),
     filtered_total: Number(data?.filtered_total || 0),
+    all_time: Number(data?.all_time || 0),
   };
 }
 

@@ -333,6 +333,7 @@ export async function listAffiliates(
     pageSize?: number;
     q?: string;
     status?: AffiliateStatus | "ALL" | "";
+    user_id?: number;
   } = {},
 ) {
   const query: Record<string, any> = {
@@ -342,6 +343,7 @@ export async function listAffiliates(
 
   if (opts.q && cleanString(opts.q)) query.q = cleanString(opts.q);
   if (opts.status && opts.status !== "ALL") query.status = opts.status;
+  if (opts.user_id) query.user_id = opts.user_id;
 
   return api.get<Paginated<Affiliate>>("/api/affiliates", { query });
 }

@@ -574,6 +574,7 @@ export type OrdersSummary = {
   week: number;
   month: number;
   year: number;
+  all_time: number;
   orders_count: number;
 };
 
