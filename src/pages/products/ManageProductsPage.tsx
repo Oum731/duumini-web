@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { me } from "../../services/auth";
 import { api, API_BASE } from "../../services/http";
 
@@ -35,6 +36,7 @@ import ProductForm, {
   isActive,
   basePriceForAdmin,
 } from "./ProductForm";
+import QrLabelsModal from "./QrLabelsModal";
 
 type Scope = "admin" | "vendor";
 type Vertical = "FOOD" | "MARKET" | "FASHION";
@@ -169,8 +171,10 @@ function Modal({
 }
 
 export default function ManageProductsPage({ scope }: { scope: Scope }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [qrProduct, setQrProduct] = useState<{ id: number; name: string } | null>(null);
 
   const roleUp = String(user?.role || "").toUpperCase();
   const isVendor =
@@ -400,6 +404,19 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
     },
     [loadProductById]
   );
+
+  useEffect(() => {
+    if (booting) return;
+    const editId = searchParams.get("edit");
+    if (!editId) return;
+    const n = Number(editId);
+    if (!n) return;
+    openEdit(n);
+    const next = new URLSearchParams(searchParams);
+    next.delete("edit");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booting, searchParams]);
 
   const closeForm = useCallback(() => {
     setOpenForm(false);
@@ -679,6 +696,13 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                           </button>
 
                           <button
+                            className="btn btn-sm btn-outline-dark"
+                            onClick={() => setQrProduct({ id: Number(p.id), name: p.name })}
+                          >
+                            Étiquettes QR
+                          </button>
+
+                          <button
                             className="btn btn-sm btn-outline-warning"
                             onClick={() => onToggleActive(p)}
                           >
@@ -755,6 +779,13 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
           />
         )}
       </Modal>
+
+      <QrLabelsModal
+        open={!!qrProduct}
+        onClose={() => setQrProduct(null)}
+        productId={qrProduct?.id || 0}
+        productName={qrProduct?.name || ""}
+      />
     </div>
   );
 }

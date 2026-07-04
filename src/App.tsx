@@ -69,6 +69,7 @@ import AiCopyPage from "./pages/admin/AiCopyPage";
 import VendorHome from "./pages/vendor/VendorHome";
 import MyShopPage from "./pages/vendor/MyShopPage";
 import SupplierCatalogPage from "./pages/vendor/SupplierCatalogPage";
+import ProductStockLookupPage from "./pages/products/ProductStockLookupPage";
 
 import ManageProductsPage from "./pages/products/ManageProductsPage";
 import CompaniesPage from "./pages/companies/CompaniesPage";
@@ -541,6 +542,10 @@ export default function App() {
                   <Route
                     path="/vendeur/fournisseurs"
                     element={<SupplierCatalogPage />}
+                  />
+                  <Route
+                    path="/gestion/produit/:id"
+                    element={<ProductStockLookupPage />}
                   />
 
                   <Route path="/entreprise" element={<CompaniesPage />} />

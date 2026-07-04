@@ -1,271 +1,58 @@
 // src/pages/products/ProductForm.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import type { Category } from "../../services/categories";
-import type {
-  Product,
-  ProductVariant,
-  PromoDiscountType as SvcPromoDiscountType,
-} from "../../services/products";
+import type { ProductVariant } from "../../services/products";
 import { listProductVariants, removeProductVariant } from "../../services/products";
-import { toCents, fromCents, moneyMAD } from "../../utils/money";
+import { moneyMAD } from "../../utils/money";
 import { imgUrl } from "../../utils/media";
 
-/* ================= Types ================= */
+import type {
+  Draft,
+  FullProduct,
+  ProductImage,
+  ProductStyle,
+  PromoDiscountType,
+  Shop,
+  SubCategory,
+  Vertical,
+  VariantDraft,
+} from "./productForm/types";
+import {
+  basePriceForAdmin,
+  cleanVariantsForApi,
+  computePromoPrice,
+  hasRealPromo,
+  inferStyleFromProduct,
+  isActive,
+  normalizeVertical,
+  promoLabel,
+  promoPriceForAdmin,
+  splitNames,
+  styleToVertical,
+} from "./productForm/helpers";
+import ImagePicker from "./productForm/ImagePicker";
+import VariantMatrix from "./productForm/VariantMatrix";
+import VariantBulkEditBar from "./productForm/VariantBulkEditBar";
 
-export type ProductImage = { id: number; url: string; sort_order: number };
-
-export type FullProduct = Product &
-  { images?: ProductImage[] } & {
-    shop_name?: string | null;
-    sub_category_name?: string | null;
-  };
-
-export type Shop = {
-  id: number;
-  name: string;
-  logo?: string | null;
-  cover?: string | null;
+export type {
+  Draft,
+  FullProduct,
+  ProductImage,
+  ProductStyle,
+  PromoDiscountType,
+  Shop,
+  SubCategory,
+  Vertical,
+  VariantDraft,
 };
-
-export type Vertical = "FOOD" | "MARKET" | "FASHION";
-
-export type SubCategory = {
-  id: number;
-  category_id: number;
-  name: string;
-  slug: string;
-  category_name?: string | null;
-  category_slug?: string | null;
-  vertical?: Vertical | null;
+export {
+  basePriceForAdmin,
+  cleanVariantsForApi,
+  hasRealPromo,
+  isActive,
+  promoLabel,
+  promoPriceForAdmin,
 };
-
-export type ProductStyle = "food" | "market" | "fashion";
-export type PromoDiscountType = SvcPromoDiscountType;
-
-export type Draft = {
-  style?: ProductStyle | "";
-  vertical?: Vertical | null;
-
-  name: string;
-  price?: number | null;
-  currency?: string | null;
-  description?: string | null;
-  stock?: number | null;
-
-  is_featured?: 0 | 1 | null;
-  promo_eligible?: 0 | 1 | null;
-
-  category_id?: number | null;
-  sub_category_id?: number | null;
-
-  shop_id?: number | null;
-
-  promo_discount_type?: PromoDiscountType | null;
-  promo_discount_value?: number | null;
-  promo_free_delivery?: 0 | 1 | null;
-
-  is_active?: 0 | 1 | null;
-};
-
-/* ================= Helpers ================= */
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function computePromoPrice(price: number, type: PromoDiscountType, value: number) {
-  const priceC = toCents(price);
-  const v = Number(value);
-  if (priceC <= 0 || !Number.isFinite(v) || v <= 0) return fromCents(priceC);
-
-  if (type === "PERCENT") {
-    const pct = clamp(v, 0, 100);
-    const discountC = Math.round((priceC * pct) / 100);
-    const outC = Math.max(0, priceC - discountC);
-    return fromCents(outC);
-  }
-
-  const discountC = toCents(v);
-  const outC = Math.max(0, priceC - discountC);
-  return fromCents(outC);
-}
-
-export function isActive(p: any): 0 | 1 {
-  const v =
-    p?.is_active != null
-      ? Number(p.is_active)
-      : p?.active != null
-      ? Number(p.active)
-      : 1;
-  return (v === 0 ? 0 : 1) as 0 | 1;
-}
-
-export function hasRealPromo(p: any): boolean {
-  const eligible = Number(p?.promo_eligible || 0) === 1;
-  const val = Number(p?.promo_discount_value || 0);
-  return eligible && Number.isFinite(val) && val > 0;
-}
-
-export function promoLabel(p: any): string {
-  if (!hasRealPromo(p)) return "—";
-  const t = String(p?.promo_discount_type || "").toUpperCase();
-  const v = Number(p?.promo_discount_value || 0);
-  if (!Number.isFinite(v) || v <= 0) return "—";
-  return t === "AMOUNT" ? `-${moneyMAD(v)}` : `-${Math.round(v)}%`;
-}
-
-export function basePriceForAdmin(p: any): number {
-  const n = Number(p?.price ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-export function promoPriceForAdmin(p: any): number | null {
-  if (!hasRealPromo(p)) return null;
-  const price = basePriceForAdmin(p);
-  const t: PromoDiscountType =
-    String(p?.promo_discount_type || "").toUpperCase() === "AMOUNT"
-      ? "AMOUNT"
-      : "PERCENT";
-  const v = Number(p?.promo_discount_value || 0);
-  if (price <= 0 || !Number.isFinite(v) || v <= 0) return null;
-  return computePromoPrice(price, t, v);
-}
-
-function splitNames(raw: string) {
-  return String(raw || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 30);
-}
-
-function normalizeVertical(v: any): Vertical | null {
-  const x = String(v ?? "").trim().toUpperCase();
-  if (x === "FOOD" || x === "MARKET" || x === "FASHION") return x as Vertical;
-  return null;
-}
-
-function inferStyleFromProduct(p: any): ProductStyle | "" {
-  const v = normalizeVertical(p?.vertical);
-  if (v === "FOOD") return "food";
-  if (v === "MARKET") return "market";
-  if (v === "FASHION") return "fashion";
-  return "";
-}
-
-function styleToVertical(st: any): Vertical | null {
-  const s = String(st || "").trim().toLowerCase();
-  if (s === "food") return "FOOD";
-  if (s === "market") return "MARKET";
-  if (s === "fashion") return "FASHION";
-  return null;
-}
-
-/* ================= Variants helpers (API + UI) ================= */
-
-export type VariantDraft = {
-  id?: number;
-  size?: string | null;
-  color?: string | null;
-  sku?: string | null;
-  stock?: number;
-  price_override?: number | null;
-  is_active?: 0 | 1 | null;
-};
-
-function normStr(x: any, max = 60): string | null {
-  const s = String(x ?? "").trim();
-  if (!s) return null;
-  return s.slice(0, max);
-}
-function normStock(x: any): number {
-  const n = Number(x);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.floor(n);
-}
-function normPriceOverride(x: any): number | null {
-  if (x === "" || x == null) return null;
-  const n = Number(x);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
-}
-
-export function cleanVariantsForApi(
-  list: VariantDraft[]
-): Array<Partial<ProductVariant> & { stock?: number }> {
-  const out: Array<Partial<ProductVariant> & { stock?: number }> = [];
-  for (const v of list || []) {
-    const size = normStr(v.size, 20);
-    const color = normStr(v.color, 40);
-    const sku = normStr(v.sku, 80);
-
-    if (!size || !color) continue;
-
-    out.push({
-      size,
-      color,
-      sku,
-      stock: normStock(v.stock),
-      price_override: normPriceOverride(v.price_override),
-      is_active: (v.is_active ?? 1) as any,
-    });
-  }
-  return out;
-}
-
-function toUpperSku(s?: string | null) {
-  const x = String(s ?? "").trim();
-  if (!x) return "";
-  return x.toUpperCase().replace(/\s+/g, "-").slice(0, 80);
-}
-
-function buildSkuAuto(name: string, size?: string | null, color?: string | null) {
-  const n = String(name || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 18);
-  const s = String(size || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 8);
-  const c = String(color || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 10);
-
-  const parts = [n || "DUU", s || "X", c || "X"].filter(Boolean);
-  return parts.join("-").slice(0, 80);
-}
-
-// UI keys
-function normKeyPart(x: any) {
-  return String(x ?? "").trim().toLowerCase();
-}
-function vKey(size?: string | null, color?: string | null) {
-  return `${normKeyPart(size)}|${normKeyPart(color)}`;
-}
-function uniq(list: string[]) {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const x of list) {
-    const t = String(x ?? "").trim();
-    if (!t) continue;
-    const k = t.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(t);
-  }
-  return out;
-}
 
 /* ================= Component ================= */
 
@@ -387,9 +174,6 @@ export default function ProductForm({
   const [newSubCatsRaw, setNewSubCatsRaw] = useState("");
   const [createdSubCatsPreview, setCreatedSubCatsPreview] = useState<string[]>([]);
 
-  const [galleryInput, setGalleryInput] = useState<HTMLInputElement | null>(null);
-  const [cameraInput, setCameraInput] = useState<HTMLInputElement | null>(null);
-
   const [formError, setFormError] = useState<string | null>(null);
 
   const [variantsLoading, setVariantsLoading] = useState(false);
@@ -397,42 +181,25 @@ export default function ProductForm({
   const [variantsOk, setVariantsOk] = useState<string | null>(null);
   const [variants, setVariants] = useState<VariantDraft[]>([]);
   const [variantsTouched, setVariantsTouched] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
-  const sizesPreset = ["XS", "S", "M", "L", "XL", "XXL", "36", "38", "40", "42", "44"];
-  const colorsPreset = ["Noir", "Blanc", "Rouge", "Bleu", "Vert", "Jaune", "Beige", "Gris", "Marron", "Rose"];
+  function mutateVariants(updater: (prev: VariantDraft[]) => VariantDraft[]) {
+    setVariantsTouched(true);
+    setVariants(updater);
+  }
 
-  const [activeSize, setActiveSize] = useState<string>(sizesPreset[0]);
-  const [customSize, setCustomSize] = useState("");
-  const [customColor, setCustomColor] = useState("");
-  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
+  function toggleKey(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   const productId = Number((initial as any)?.id || 0);
   const isFashion = String(draft.style || "").toLowerCase() === "fashion";
   const isEdit = !!productId;
-
-  function addFiles(list: FileList | null) {
-    if (!list || !list.length) return;
-    const current = [...files];
-    for (const f of Array.from(list)) {
-      if (current.length >= 8) break;
-      current.push(f);
-    }
-    setFiles(current.slice(0, 8));
-  }
-
-  function removeAt(i: number) {
-    const arr = [...files];
-    arr.splice(i, 1);
-    setFiles(arr);
-  }
-
-  const previews = useMemo(() => files.map((f) => ({ f, url: URL.createObjectURL(f) })), [files]);
-
-  useEffect(() => {
-    return () => {
-      for (const p of previews) URL.revokeObjectURL(p.url);
-    };
-  }, [previews]);
 
   const hasExistingImages = Array.isArray((initial as any)?.images) && (initial as any)?.images?.length > 0;
   const selectedShop = safeShops.find((s) => s.id === (draft.shop_id ?? undefined));
@@ -472,9 +239,7 @@ export default function ProductForm({
     setVariantsOk(null);
     setVariantsTouched(false);
     setVariants([]);
-    setActiveSize(sizesPreset[0]);
-    setCustomSize("");
-    setCustomColor("");
+    setSelectedKeys(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.style]);
 
@@ -505,7 +270,7 @@ export default function ProductForm({
       setVariantsLoading(true);
       try {
         const rows = await listProductVariants(productId);
-        const mapped: VariantDraft[] = (rows || []).map((v) => ({
+        const mapped: VariantDraft[] = (rows || []).map((v: ProductVariant) => ({
           id: v.id,
           size: v.size ?? null,
           color: v.color ?? null,
@@ -544,81 +309,6 @@ export default function ProductForm({
     return null;
   }
 
-  function hasVariant(size: string, color: string) {
-    const k = vKey(size, color);
-    return (variants || []).some((v) => vKey(v.size, v.color) === k);
-  }
-
-  function upsertVariant(size: string, color: string, patch?: Partial<VariantDraft>) {
-    const k = vKey(size, color);
-    setVariantsTouched(true);
-    setVariants((prev) => {
-      const arr = [...(prev || [])];
-      const idx = arr.findIndex((v) => vKey(v.size, v.color) === k);
-      if (idx >= 0) {
-        arr[idx] = { ...arr[idx], ...patch, size, color };
-        return arr;
-      }
-      return [
-        ...arr,
-        {
-          size,
-          color,
-          sku: null,
-          stock: 0,
-          price_override: null,
-          is_active: 1,
-          ...(patch || {}),
-        },
-      ];
-    });
-    setLastAddedKey(k);
-    window.setTimeout(() => setLastAddedKey(null), 900);
-  }
-
-  function removeVariant(size: string, color: string) {
-    const k = vKey(size, color);
-    setVariantsTouched(true);
-    setVariants((prev) => (prev || []).filter((v) => vKey(v.size, v.color) !== k));
-  }
-
-  function patchVariantByKey(size: string, color: string, patch: Partial<VariantDraft>) {
-    const k = vKey(size, color);
-    setVariantsTouched(true);
-    setVariants((prev) =>
-      (prev || []).map((v) => (vKey(v.size, v.color) === k ? { ...v, ...patch } : v))
-    );
-  }
-
-  const variantsBySize = useMemo(() => {
-    const map = new Map<string, VariantDraft[]>();
-    for (const v of variants || []) {
-      const s = String(v.size ?? "").trim();
-      const c = String(v.color ?? "").trim();
-      if (!s || !c) continue;
-      if (!map.has(s)) map.set(s, []);
-      map.get(s)!.push(v);
-    }
-    for (const [, arr] of map.entries()) {
-      arr.sort((a, b) =>
-        String(a.color || "").localeCompare(String(b.color || ""), "fr", { sensitivity: "base" })
-      );
-    }
-    return Array.from(map.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0], "fr", { sensitivity: "base" })
-    );
-  }, [variants]);
-
-  const allSizesUI = useMemo(
-    () => uniq([...sizesPreset, ...variantsBySize.map(([s]) => s)]),
-    [variantsBySize]
-  );
-  const allColorsUI = useMemo(() => {
-    const fromVariants: string[] = [];
-    for (const [, arr] of variantsBySize) for (const v of arr) fromVariants.push(String(v.color || ""));
-    return uniq([...colorsPreset, ...fromVariants]);
-  }, [variantsBySize]);
-
   async function cleanAllVariants() {
     if (!isEdit || !isFashion) return;
     if (!confirm("Supprimer TOUTES les variantes de ce produit ?")) return;
@@ -631,6 +321,7 @@ export default function ProductForm({
       for (const v of rows || []) await removeProductVariant(v.id);
       setVariants([]);
       setVariantsTouched(true);
+      setSelectedKeys(new Set());
       setVariantsOk("Toutes les variantes ont été supprimées.");
       window.setTimeout(() => setVariantsOk(null), 1600);
     } catch (e: any) {
@@ -796,18 +487,6 @@ export default function ProductForm({
           cursor:pointer;
           user-select:none;
         }
-        .duu-chip.flash{
-          box-shadow: 0 0 0 .22rem rgba(253,220,0,.35);
-          border-color: rgba(229,57,53,.35);
-        }
-        .duu-variant-mini{
-          background:#fff;
-          border:1px solid rgba(0,0,0,.08);
-          border-radius: 14px;
-          padding: 10px 12px;
-          box-shadow: 0 10px 22px rgba(0,0,0,.06);
-        }
-        .duu-variant-mini .lbl{ font-size:.82rem; color: rgba(0,0,0,.55); font-weight:800; }
         .duu-muted{ color: rgba(0,0,0,.58); }
       `}</style>
 
@@ -1089,337 +768,28 @@ export default function ProductForm({
 
           {/* ✅ Variants block (Fashion only) */}
           {isFashion && (
-            <div className="duu-admin-soft mt-3 p-3">
-              <div className="d-flex align-items-start justify-content-between gap-2 flex-wrap">
-                <div>
-                  <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <div className="fw-semibold">Variantes (Fashion)</div>
-                    <span className="duu-pill">
-                      <small>Total</small> {variants.length}
-                    </span>
-                    <span className="duu-pill">
-                      <small>Actives</small> {variants.filter((v) => (v.is_active ?? 1) === 1).length}
-                    </span>
-                  </div>
-                  <div className="small text-muted mt-1">
-                    Choisis une <b>taille</b>, puis coche une ou plusieurs <b>couleurs</b>.
-                  </div>
-                  <div className="small duu-muted mt-1">
-                    Prix produit: <b>{safeBasePrice > 0 ? moneyMAD(safeBasePrice) : "—"}</b> • Prix variante (optionnel)
-                    remplace le prix produit.
-                  </div>
-                </div>
-
-                <div className="d-flex gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-dark"
-                    onClick={() => {
-                      setVariantsTouched(true);
-                      setVariants((prev) =>
-                        (prev || []).map((v) => ({
-                          ...v,
-                          sku: v.sku && String(v.sku).trim() ? toUpperSku(v.sku) : v.sku,
-                        }))
-                      );
-                      setVariantsOk("SKU normalisés.");
-                      window.setTimeout(() => setVariantsOk(null), 1400);
-                    }}
-                    disabled={variantsLoading || !variants.length}
-                    title="Met en MAJ et remplace espaces par -"
-                  >
-                    Nettoyer SKU
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-secondary"
-                    onClick={() => {
-                      if (!draft.name.trim()) {
-                        setVariantsErr("Renseigne le nom du produit avant de générer des SKU.");
-                        return;
-                      }
-                      setVariantsErr(null);
-                      setVariantsTouched(true);
-                      setVariants((prev) =>
-                        (prev || []).map((v) => ({
-                          ...v,
-                          sku:
-                            v.sku && String(v.sku).trim()
-                              ? toUpperSku(v.sku)
-                              : buildSkuAuto(draft.name, v.size ?? null, v.color ?? null),
-                        }))
-                      );
-                      setVariantsOk("SKU générés.");
-                      window.setTimeout(() => setVariantsOk(null), 1400);
-                    }}
-                    disabled={variantsLoading || !variants.length}
-                  >
-                    Générer SKU
-                  </button>
-
-                  {isEdit ? (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={cleanAllVariants}
-                      disabled={variantsLoading}
-                    >
-                      Supprimer tout
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {variantsLoading ? <div className="text-muted small mt-2">Chargement variantes…</div> : null}
-              {variantsOk ? <div className="alert alert-success py-2 mt-2 mb-0">{variantsOk}</div> : null}
-              {variantsErr ? <div className="alert alert-danger py-2 mt-2 mb-0">{variantsErr}</div> : null}
-
-              {/* 1) Tailles */}
-              <div className="mt-3">
-                <div className="fw-semibold mb-2">1) Taille</div>
-
-                <div className="d-flex flex-wrap gap-2">
-                  {allSizesUI.map((s) => {
-                    const checked = String(activeSize) === String(s);
-                    return (
-                      <label
-                        key={s}
-                        className="duu-chip"
-                        style={{
-                          borderColor: checked ? "rgba(229,57,53,.35)" : "rgba(0,0,0,.10)",
-                          boxShadow: checked ? "0 0 0 .18rem rgba(253,220,0,.28)" : "none",
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="sizeRadio"
-                          checked={checked}
-                          onChange={() => setActiveSize(s)}
-                          style={{ marginRight: 6 }}
-                        />
-                        {s}
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-2 d-flex gap-2 flex-wrap">
-                  <input
-                    className="form-control duu-focus"
-                    style={{ maxWidth: 260 }}
-                    placeholder="Ajouter une taille (ex: 46)"
-                    value={customSize}
-                    onChange={(e) => setCustomSize(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-outline-dark"
-                    onClick={() => {
-                      const s = String(customSize || "").trim();
-                      if (!s) return;
-                      setActiveSize(s);
-                      setCustomSize("");
-                    }}
-                  >
-                    Ajouter taille
-                  </button>
-                </div>
-              </div>
-
-              {/* 2) Couleurs */}
-              <div className="mt-3">
-                <div className="fw-semibold mb-2">
-                  2) Couleurs pour : <span className="badge text-bg-dark">{activeSize}</span>
-                </div>
-
-                <div className="d-flex flex-wrap gap-2">
-                  {allColorsUI.map((c) => {
-                    const checked = hasVariant(activeSize, c);
-                    const k = vKey(activeSize, c);
-                    return (
-                      <label key={k} className={`duu-chip ${lastAddedKey === k ? "flash" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => (e.target.checked ? upsertVariant(activeSize, c) : removeVariant(activeSize, c))}
-                          style={{ marginRight: 6 }}
-                        />
-                        {c}
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-2 d-flex gap-2 flex-wrap">
-                  <input
-                    className="form-control duu-focus"
-                    style={{ maxWidth: 260 }}
-                    placeholder="Ajouter une couleur (ex: Orange)"
-                    value={customColor}
-                    onChange={(e) => setCustomColor(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-outline-dark"
-                    onClick={() => {
-                      const c = String(customColor || "").trim();
-                      if (!c) return;
-                      if (hasVariant(activeSize, c)) {
-                        setCustomColor("");
-                        return;
-                      }
-                      upsertVariant(activeSize, c);
-                      setCustomColor("");
-                    }}
-                  >
-                    Ajouter couleur
-                  </button>
-                </div>
-              </div>
-
-              {/* Grouped view */}
-              <div className="mt-4">
-                <div className="fw-semibold mb-2">Variantes ajoutées</div>
-
-                {variantsBySize.length === 0 ? (
-                  <div className="text-muted small">
-                    Aucune variante. Choisis une taille, puis coche une ou plusieurs couleurs.
-                  </div>
-                ) : (
-                  <div className="d-flex flex-column gap-3">
-                    {variantsBySize.map(([size, arr]) => (
-                      <div key={size} className="p-2 rounded" style={{ background: "rgba(0,0,0,.03)" }}>
-                        <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-2">
-                          <div className="fw-semibold">
-                            Taille : <span className="badge text-bg-dark">{size}</span>
-                            <span className="ms-2 small text-muted">({arr.length} couleur(s))</span>
-                          </div>
-
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() => {
-                              if (!confirm(`Supprimer toutes les couleurs pour la taille "${size}" ?`)) return;
-                              setVariantsTouched(true);
-                              setVariants((prev) =>
-                                (prev || []).filter((v) => String(v.size || "").trim() !== String(size).trim())
-                              );
-                            }}
-                          >
-                            Tout supprimer (taille)
-                          </button>
-                        </div>
-
-                        <div className="row g-2">
-                          {arr.map((v) => {
-                            const color = String(v.color || "");
-                            const isOn = (v.is_active ?? 1) === 1;
-                            const stock = normStock(v.stock ?? 0);
-                            const override = v.price_override != null ? Number(v.price_override) : null;
-                            const priceFinal = override != null && override > 0 ? override : safeBasePrice;
-
-                            return (
-                              <div className="col-12 col-md-6" key={vKey(size, color)}>
-                                <div className="duu-variant-mini">
-                                  <div className="d-flex align-items-center justify-content-between gap-2">
-                                    <div className="fw-semibold">
-                                      <span className="badge bg-light text-dark border">{color}</span>
-                                      {!isOn ? (
-                                        <span className="ms-2 badge bg-secondary">Off</span>
-                                      ) : stock <= 0 ? (
-                                        <span className="ms-2 badge bg-danger">Rupture</span>
-                                      ) : (
-                                        <span className="ms-2 badge bg-success">OK</span>
-                                      )}
-                                    </div>
-
-                                    <div className="d-flex gap-2">
-                                      <button
-                                        type="button"
-                                        className={`btn btn-sm ${isOn ? "btn-outline-dark" : "btn-dark"}`}
-                                        onClick={() => patchVariantByKey(size, color, { is_active: isOn ? 0 : 1 })}
-                                      >
-                                        {isOn ? "Désactiver" : "Activer"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="btn btn-sm btn-outline-danger"
-                                        onClick={() => removeVariant(size, color)}
-                                        title="Supprimer cette variante"
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  <div className="row g-2 mt-2">
-                                    <div className="col-6">
-                                      <div className="lbl mb-1">Stock</div>
-                                      <input
-                                        type="number"
-                                        className="form-control duu-focus"
-                                        value={stock}
-                                        min={0}
-                                        onChange={(e) => patchVariantByKey(size, color, { stock: Number(e.target.value || 0) })}
-                                      />
-                                    </div>
-
-                                    <div className="col-6">
-                                      <div className="lbl mb-1">Prix var. (opt)</div>
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        className="form-control duu-focus"
-                                        value={v.price_override ?? ""}
-                                        placeholder="= prix produit"
-                                        onChange={(e) =>
-                                          patchVariantByKey(size, color, {
-                                            price_override: e.target.value === "" ? null : Number(e.target.value),
-                                          })
-                                        }
-                                      />
-                                    </div>
-
-                                    <div className="col-12">
-                                      <div className="lbl mb-1">SKU (opt)</div>
-                                      <div className="input-group">
-                                        <input
-                                          className="form-control duu-focus"
-                                          value={v.sku ?? ""}
-                                          onChange={(e) => patchVariantByKey(size, color, { sku: e.target.value })}
-                                          placeholder="Optionnel"
-                                        />
-                                        <button
-                                          type="button"
-                                          className="btn btn-outline-secondary"
-                                          onClick={() => patchVariantByKey(size, color, { sku: buildSkuAuto(draft.name, size, color) })}
-                                          title="Auto"
-                                        >
-                                          Auto
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="small text-muted mt-2">
-                                    Aperçu : <b>{moneyMAD(priceFinal)}</b> • Stock <b>{stock}</b>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="small text-muted mt-3">
-                  Important : à l’enregistrement, seules les variantes avec <strong>taille + couleur</strong> seront envoyées à l’API.
-                </div>
-              </div>
-            </div>
+            <>
+              <VariantMatrix
+                variants={variants}
+                mutateVariants={mutateVariants}
+                variantsLoading={variantsLoading}
+                variantsErr={variantsErr}
+                variantsOk={variantsOk}
+                setVariantsErr={setVariantsErr}
+                setVariantsOk={setVariantsOk}
+                isEdit={isEdit}
+                productName={draft.name || ""}
+                basePrice={safeBasePrice}
+                onCleanAll={cleanAllVariants}
+                selectedKeys={selectedKeys}
+                onToggleKey={toggleKey}
+              />
+              <VariantBulkEditBar
+                selectedKeys={selectedKeys}
+                onClearSelection={() => setSelectedKeys(new Set())}
+                mutateVariants={mutateVariants}
+              />
+            </>
           )}
 
           <div className="row g-2 mt-1">
@@ -1532,103 +902,13 @@ export default function ProductForm({
           </div>
         </div>
 
-        <div className="col-12 col-md-4">
-          <label className="form-label d-flex align-items-center justify-content-between">
-            Images <small className="text-muted">Galerie / Caméra</small>
-          </label>
-
-          {hasExistingImages && !files.length && !replaceImages ? (
-            <div className="mb-2">
-              <div className="small text-muted mb-1">Images existantes :</div>
-              <div className="row g-2">
-                {(initial as any).images.map((img: ProductImage) => (
-                  <div className="col-4" key={img.id}>
-                    <img
-                      src={imgUrl(img.url)}
-                      alt="existing"
-                      className="w-100 rounded border"
-                      style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="d-flex flex-wrap gap-2 mb-2">
-            <button type="button" className="btn btn-outline-dark btn-sm" onClick={() => galleryInput?.click()}>
-              Depuis la galerie
-            </button>
-            <button type="button" className="btn btn-dark btn-sm" onClick={() => cameraInput?.click()}>
-              Ouvrir la caméra
-            </button>
-            <button
-              type="button"
-              className="btn btn-outline-secondary btn-sm"
-              onClick={() => setFiles([])}
-              disabled={!files.length}
-            >
-              Vider
-            </button>
-          </div>
-
-          <input
-            ref={(el) => setGalleryInput(el)}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(ev) => addFiles(ev.target.files)}
-          />
-          <input
-            ref={(el) => setCameraInput(el)}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            hidden
-            onChange={(ev) => addFiles(ev.target.files)}
-          />
-
-          <div className="form-check mb-2">
-            <input
-              id="replace_images"
-              className="form-check-input"
-              type="checkbox"
-              checked={replaceImages}
-              onChange={(ev) => setReplaceImages(ev.target.checked)}
-            />
-            <label htmlFor="replace_images" className="form-check-label">
-              Remplacer la galerie existante
-            </label>
-          </div>
-
-          {files.length > 0 ? (
-            <div className="row g-2">
-              {previews.map((p, i) => (
-                <div className="col-4" key={i}>
-                  <div className="position-relative border rounded overflow-hidden">
-                    <img
-                      src={p.url}
-                      alt={`img-${i}`}
-                      className="w-100"
-                      style={{ aspectRatio: "1 / 1", objectFit: "cover" }}
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger position-absolute"
-                      style={{ top: 6, right: 6 }}
-                      onClick={() => removeAt(i)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : !hasExistingImages ? (
-            <div className="text-muted small">Aucune image sélectionnée.</div>
-          ) : null}
-        </div>
+        <ImagePicker
+          files={files}
+          setFiles={setFiles}
+          replaceImages={replaceImages}
+          setReplaceImages={setReplaceImages}
+          existingImages={hasExistingImages ? (initial as any).images : undefined}
+        />
       </div>
 
       <div className="d-flex justify-content-between align-items-center mt-3">
