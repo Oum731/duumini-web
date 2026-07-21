@@ -589,6 +589,25 @@ export async function getOrdersSummary(opts: { shop_id?: number } = {}) {
   return api.get<OrdersSummary>("/api/orders/summary", { query });
 }
 
+export type TopCustomer = {
+  customer_key: string;
+  name: string;
+  phone: string | null;
+  orders_count: number;
+  revenue: number;
+  last_order_at: string | null;
+};
+
+// ✅ Classement clients (commandes DONE), même scoping boutique que
+// GET /api/orders/summary — un vendeur/fournisseur voit ses propres
+// clients, un admin peut passer shop_id pour une boutique précise.
+export async function getTopCustomers(opts: { shop_id?: number; limit?: number } = {}) {
+  const query: Record<string, any> = {};
+  if (opts.shop_id) query.shop_id = opts.shop_id;
+  if (opts.limit) query.limit = opts.limit;
+  return api.get<{ items: TopCustomer[] }>("/api/orders/top-customers", { query });
+}
+
 export async function updateOrderStatus(id: number, status: OrderStatus) {
   return api.put<{ ok: true }>(`/api/orders/${id}/status`, { status });
 }

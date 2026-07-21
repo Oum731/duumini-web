@@ -12,7 +12,7 @@ const EMPHASIS_BG: Record<string, string> = {
 
 export default function HowItWorksSection() {
   return (
-    <section className="container-xxl py-5">
+    <section className="container-xxl py-3 py-md-5">
       <h2 className="fw-bold mb-4">Comment ça fonctionne ?</h2>
 
       <div className="row g-4 g-lg-0 align-items-start">

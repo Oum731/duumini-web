@@ -18,6 +18,7 @@ import { me } from "../../services/auth";
 import OrdersStatsCards from "../../components/ordersAdmin/OrdersStatsCards";
 import OrdersFiltersBar from "../../components/ordersAdmin/OrdersFiltersBar";
 import OrdersTable from "../../components/ordersAdmin/OrdersTable";
+import TopCustomersTab from "../../components/ordersAdmin/TopCustomersTab";
 import EditStatusModal from "../../components/ordersAdmin/EditStatusModal";
 import OrderViewModal from "../../components/ordersAdmin/OrderViewModal";
 import PosSaleModal from "../../components/ordersAdmin/PosSaleModal";
@@ -136,6 +137,7 @@ export default function OrdersAdminPage() {
   const [total, setTotal] = useState(0);
 
   const [q, setQ] = useState("");
+  const [qDebounced, setQDebounced] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | OrderStatus>("ALL");
   const [payFilter, setPayFilter] = useState<"ALL" | PayStatus>("ALL");
   const [divineOnly, setDivineOnly] = useState(false);
@@ -160,6 +162,8 @@ export default function OrdersAdminPage() {
   const [openPos, setOpenPos] = useState(false);
   const [openAdminOrder, setOpenAdminOrder] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<"orders" | "top-customers">("orders");
+
   useEffect(() => {
     let mounted = true;
 
@@ -179,6 +183,13 @@ export default function OrdersAdminPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setQDebounced(q.trim());
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [q]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
 
@@ -189,6 +200,7 @@ export default function OrdersAdminPage() {
           pageSize: 500,
           ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
           ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
+          ...(qDebounced ? { q: qDebounced } : {}),
         } as any);
 
         // ✅ Le backend scope déjà cette liste à la boutique du vendeur
@@ -209,6 +221,7 @@ export default function OrdersAdminPage() {
         pageSize,
         ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
         ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
+        ...(qDebounced ? { q: qDebounced } : {}),
       } as any);
 
       setItems(res.items || []);
@@ -220,6 +233,7 @@ export default function OrdersAdminPage() {
         pageSize: DIVINE_LOAD_LIMIT,
         ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
         ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
+        ...(qDebounced ? { q: qDebounced } : {}),
       } as any);
 
       const divineAll = ((divineRes.items || []) as Order[]).filter((o) =>
@@ -233,7 +247,7 @@ export default function OrdersAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, statusFilter, payFilter, isVendor]);
+  }, [page, pageSize, statusFilter, payFilter, qDebounced, isVendor]);
 
   useEffect(() => {
     if (isVendor) setPage(1);
@@ -293,17 +307,17 @@ export default function OrdersAdminPage() {
   }, [dataset, q]);
 
   const displayed = useMemo(() => {
-    if (!isVendor && !divineOnly && !q.trim()) return searched;
+    if (!isVendor && !divineOnly) return searched;
 
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
 
     return searched.slice(start, end);
-  }, [searched, isVendor, divineOnly, q, page, pageSize]);
+  }, [searched, isVendor, divineOnly, page, pageSize]);
 
   const effectiveTotal = useMemo(
-    () => (isVendor || divineOnly || q.trim() ? searched.length : total),
-    [isVendor, divineOnly, q, searched.length, total],
+    () => (isVendor || divineOnly ? searched.length : total),
+    [isVendor, divineOnly, searched.length, total],
   );
 
   const effectivePages = useMemo(
@@ -562,6 +576,31 @@ export default function OrdersAdminPage() {
         </div>
       </div>
 
+      <ul className="nav nav-tabs mb-3">
+        <li className="nav-item">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === "orders" ? "active" : ""}`}
+            onClick={() => setActiveTab("orders")}
+          >
+            Commandes
+          </button>
+        </li>
+        <li className="nav-item">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === "top-customers" ? "active" : ""}`}
+            onClick={() => setActiveTab("top-customers")}
+          >
+            Top clients
+          </button>
+        </li>
+      </ul>
+
+      {activeTab === "top-customers" && <TopCustomersTab />}
+
+      {activeTab === "orders" && (
+        <>
       <OrdersStatsCards
         caNet={globalStats.caNet}
         caDelivery={globalStats.caDelivery}
@@ -679,6 +718,8 @@ export default function OrdersAdminPage() {
           </div>
         </div>
       </div>
+        </>
+      )}
 
       <EditStatusModal
         open={editId !== null}

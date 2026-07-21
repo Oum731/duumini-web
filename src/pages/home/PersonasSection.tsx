@@ -23,7 +23,7 @@ function PersonaVisual({ persona }: { persona: Persona }) {
 
 export default function PersonasSection() {
   return (
-    <section className="container-xxl py-5">
+    <section className="container-xxl py-3 py-md-5">
       <h2 className="fw-bold mb-4">Pour qui ?</h2>
 
       <div className="d-flex flex-column gap-3">
