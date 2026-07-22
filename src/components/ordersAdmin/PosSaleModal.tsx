@@ -8,6 +8,7 @@ import {
   type OrderStatus,
   type PaymentStatus,
 } from "../../services/orders";
+import { normalizePhone, isValidPhoneIntl } from "../../utils/phone";
 
 type AnyObj = Record<string, any>;
 type CustomerRole = "CLIENT" | "VENDEUR";
@@ -390,6 +391,11 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       return;
     }
 
+    if (cPhone.trim() && !isValidPhoneIntl(cPhone)) {
+      alert("Le numéro de téléphone n'est pas valide (format international, ex: +212...).");
+      return;
+    }
+
     const role = normalizeCustomerRole(customerRole);
 
     if (role === "VENDEUR") {
@@ -408,7 +414,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     const remain = computeRemaining(total, paid);
     const status = computePayStatus(total, paid);
 
-    const normalizedPhone = String(cPhone || "").trim();
+    const normalizedPhone = cPhone.trim() ? normalizePhone(cPhone) : null;
     const paymentMethodLabel = getPaymentMethodLabel(payMethod);
     const paymentMethodNormalized = normalizePaymentMethod(payMethod);
 
@@ -428,7 +434,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
       contact: {
         first_name: cFirst || "Client",
         last_name: cLast || "POS",
-        phone: normalizedPhone || "+0000000000",
+        phone: normalizedPhone,
         city: cCity || null,
         commune: cCommune || null,
         district: cDistrict || null,

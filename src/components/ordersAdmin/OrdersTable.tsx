@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import type { Order } from "../../services/orders";
 import type { AnyObj, CurrentUser } from "./orderUtils";
+import { formatPhoneDisplay } from "../../utils/phone";
 import {
   BADGE,
   computeOrderAmounts,
@@ -265,7 +266,7 @@ export default function OrdersTable(props: {
                     <td style={{ minWidth: 170 }}>
                       <div className="d-flex flex-column">
                         <small className="text-muted text-break">
-                          {phone || "—"}
+                          {formatPhoneDisplay(phone) || "—"}
                         </small>
                         <div className="d-flex gap-1 mt-1 flex-wrap">
                           <button

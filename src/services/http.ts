@@ -89,15 +89,19 @@ function mergeSignals(a?: AbortSignal, b?: AbortSignal): AbortSignal | undefined
   if (!b) return a;
 
   const controller = new AbortController();
-  const abort = () => controller.abort();
+  const abort = (source: AbortSignal) => controller.abort(source.reason ?? new Error("Requête annulée"));
 
-  if (a.aborted || b.aborted) {
-    controller.abort();
+  if (a.aborted) {
+    controller.abort(a.reason ?? new Error("Requête annulée"));
+    return controller.signal;
+  }
+  if (b.aborted) {
+    controller.abort(b.reason ?? new Error("Requête annulée"));
     return controller.signal;
   }
 
-  a.addEventListener("abort", abort, { once: true });
-  b.addEventListener("abort", abort, { once: true });
+  a.addEventListener("abort", () => abort(a), { once: true });
+  b.addEventListener("abort", () => abort(b), { once: true });
 
   return controller.signal;
 }
@@ -109,7 +113,10 @@ async function fetchWithTimeout(
   signal?: AbortSignal
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeout);
+  const timer = window.setTimeout(
+    () => controller.abort(new Error(`Délai dépassé (${Math.round(timeout / 1000)}s)`)),
+    timeout
+  );
   const mergedSignal = mergeSignals(signal, controller.signal);
 
   try {

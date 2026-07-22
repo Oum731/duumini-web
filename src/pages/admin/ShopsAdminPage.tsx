@@ -356,6 +356,12 @@ export default function ShopsAdminPage() {
   const [total, setTotal] = useState(0);
 
   const [q, setQ] = useState("");
+  const [qDebounced, setQDebounced] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const [showForm, setShowForm] = useState(false);
   const [edit, setEdit] = useState<Shop | null>(null);
@@ -420,7 +426,7 @@ export default function ShopsAdminPage() {
       }
 
       // ✅ admin => pagination
-      const res = await listShops({ page, pageSize });
+      const res = await listShops({ page, pageSize, ...(qDebounced ? { q: qDebounced } : {}) });
       const list = res.items || [];
       setItems(list);
       setTotal(res.pageInfo?.total ?? list.length);
@@ -442,7 +448,7 @@ export default function ShopsAdminPage() {
       await refresh();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize]);
+  }, [page, pageSize, qDebounced]);
 
   // Stats par boutique
   useEffect(() => {

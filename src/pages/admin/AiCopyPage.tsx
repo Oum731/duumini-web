@@ -14,7 +14,7 @@ const TASKS = [
 
 type TaskType = (typeof TASKS)[number];
 
-async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = 120000) {
+async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = 180000) {
   const token = getAccessToken?.() || "";
 
   const headers = new Headers(init.headers || {});
@@ -22,7 +22,10 @@ async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = 120000
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const ctrl = new AbortController();
-  const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
+  const t = window.setTimeout(
+    () => ctrl.abort(new Error(`Délai dépassé (${Math.round(timeoutMs / 1000)}s) — la génération IA a pris trop de temps.`)),
+    timeoutMs
+  );
 
   try {
     return await fetch(`${API_BASE}${path}`, {
@@ -31,6 +34,11 @@ async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = 120000
       credentials: "include",
       signal: ctrl.signal,
     });
+  } catch (e: any) {
+    if (e?.name === "AbortError" && !(e?.message || "").startsWith("Délai dépassé")) {
+      throw new Error("Requête annulée");
+    }
+    throw e;
   } finally {
     window.clearTimeout(t);
   }

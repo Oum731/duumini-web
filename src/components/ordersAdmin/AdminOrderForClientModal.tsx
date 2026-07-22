@@ -9,6 +9,7 @@ import {
 } from "../../services/orders";
 import { listAllAdminUsers, type AdminUser } from "../../services/adminUsers";
 import { imgUrl } from "../../utils/media";
+import { normalizePhoneInput } from "../../utils/phone";
 
 type AnyObj = Record<string, any>;
 
@@ -180,7 +181,7 @@ function clientLabel(c: ClientLite) {
 }
 
 function normalizePhoneKey(phone?: string | null) {
-  return String(phone || "").trim().replace(/\s+/g, "");
+  return normalizePhoneInput(String(phone || ""));
 }
 
 function normalizeCustomerRole(value?: string | null): CustomerRole {

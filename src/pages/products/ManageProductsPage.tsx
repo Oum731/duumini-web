@@ -574,7 +574,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
           <input
             className="form-control"
             style={{ maxWidth: 320 }}
-            placeholder="Rechercher (nom, boutique, id, vertical)…"
+            placeholder="Rechercher (nom, description, boutique)…"
             value={q}
             onChange={(e) => {
               setQ(e.target.value);

@@ -3,6 +3,7 @@ import type { RevenuePeriod, AffiliateDashboardResponse, AffiliateRevenueHistory
 import { DUU, cardStyle, formatMoney, formatNumber, statusBadgeClass, type PageInfo, type ProductOption } from "../shared";
 import { SectionTitle, KpiCard } from "../components";
 import { safeAffiliateName } from "../helpers";
+import { formatPhoneDisplay } from "../../../../utils/phone";
 import type { Affiliate, AffiliateCommission, AffiliateClick, CommissionStatus } from "../types";
 import { ProductLinkGenerator } from "./ProductLinkGenerator";
 import { DetailTabOverview } from "./DetailTabOverview";
@@ -209,7 +210,7 @@ export function AffiliateDetailDrawer({
                 Téléphone
               </div>
               <div style={{ color: DUU.black }}>
-                {selectedAffiliate.phone || selectedAffiliate.user?.phone || "-"}
+                {formatPhoneDisplay(selectedAffiliate.phone || selectedAffiliate.user?.phone) || "-"}
               </div>
             </div>
 

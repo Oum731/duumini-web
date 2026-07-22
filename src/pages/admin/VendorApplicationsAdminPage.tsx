@@ -1,5 +1,6 @@
 // src/pages/admin/VendorApplicationsAdminPage.tsx
 import { useEffect, useState } from "react";
+import { formatPhoneDisplay } from "../../utils/phone";
 import {
   listVendorApplications,
   approveVendorApplication,
@@ -122,6 +123,13 @@ export default function VendorApplicationsAdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "">("PENDING");
   const [selected, setSelected] = useState<VendorApplication | null>(null);
+  const [q, setQ] = useState("");
+  const [qDebounced, setQDebounced] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
 
   async function refresh() {
     setLoading(true);
@@ -129,6 +137,7 @@ export default function VendorApplicationsAdminPage() {
     try {
       const res = await listVendorApplications({
         status: statusFilter || undefined,
+        q: qDebounced || undefined,
         pageSize: 100,
       });
       setItems(res.items);
@@ -145,7 +154,7 @@ export default function VendorApplicationsAdminPage() {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, qDebounced]);
 
   return (
     <div className="container-xxl py-4">
@@ -156,7 +165,7 @@ export default function VendorApplicationsAdminPage() {
           <div className="card shadow-sm">
             <div className="card-body">
               <select
-                className="form-select mb-3"
+                className="form-select mb-2"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as ApplicationStatus | "")}
               >
@@ -165,6 +174,14 @@ export default function VendorApplicationsAdminPage() {
                 <option value="REJECTED">Rejetées</option>
                 <option value="">Toutes</option>
               </select>
+
+              <input
+                type="text"
+                className="form-control mb-3"
+                placeholder="Recherche… (nom, téléphone, email)"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
 
               {loading && <div className="text-muted">Chargement…</div>}
               {error && <div className="alert alert-danger py-2">{error}</div>}
@@ -190,7 +207,7 @@ export default function VendorApplicationsAdminPage() {
                       </span>
                     </div>
                     <div className="small text-muted">
-                      {a.applicant_type} • {a.country_code} • {a.contact_phone}
+                      {a.applicant_type} • {a.country_code} • {formatPhoneDisplay(a.contact_phone)}
                     </div>
                   </button>
                 ))}
@@ -223,7 +240,7 @@ export default function VendorApplicationsAdminPage() {
 
                   <dl className="row small">
                     <dt className="col-4">Téléphone</dt>
-                    <dd className="col-8">{selected.contact_phone}</dd>
+                    <dd className="col-8">{formatPhoneDisplay(selected.contact_phone)}</dd>
                     <dt className="col-4">Email</dt>
                     <dd className="col-8">{selected.contact_email || "—"}</dd>
                     <dt className="col-4">Message</dt>

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Crown, Repeat, Users } from "lucide-react";
 import { getTopCustomers, type TopCustomer } from "../../services/orders";
 import { moneyMAD } from "../../utils/money";
+import { formatPhoneDisplay } from "../../utils/phone";
 import { SectionCard, KpiCard, EmptyState } from "../admin/adminUI";
 
 type SortKey = "revenue" | "orders_count";
@@ -128,7 +129,7 @@ export default function TopCustomersTab({ shopId }: { shopId?: number }) {
                   <tr key={c.customer_key}>
                     <td className="text-muted">{i + 1}</td>
                     <td className="fw-semibold">{c.name}</td>
-                    <td>{c.phone || "—"}</td>
+                    <td>{formatPhoneDisplay(c.phone) || "—"}</td>
                     <td className="text-end">{c.orders_count}</td>
                     <td className="text-end">{moneyMAD(c.revenue)}</td>
                     <td className="text-muted small">

@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../../context/AuthContext"; // ⬅️ pour refreshUser()
 import { getCurrentUser } from "../../services/auth"; // ⬅️ pour savoir si c’est moi
 import { listAffiliates, createAffiliate, type Affiliate } from "../../services/affiliates";
+import { formatPhoneDisplay } from "../../utils/phone";
 
 const ROLES: Role[] = ["MEMBER", "VENDEUR", "LIVREUR", "ADMIN"];
 type Draft = Partial<User> & { password?: string };
@@ -255,7 +256,7 @@ export default function UsersAdminPage() {
                   {filtered.map((u) => (
                     <tr key={u.id}>
                       <td>{u.id}</td>
-                      <td>{u.phone}</td>
+                      <td>{formatPhoneDisplay(u.phone)}</td>
                       <td>
                         {[u.first_name, u.last_name]
                           .filter(Boolean)

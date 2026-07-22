@@ -3,6 +3,7 @@ import { DUU, cardStyle, formatMoney, formatNumber, statusBadgeClass, type PageI
 import { SectionTitle, TinyBar, PaginationBar } from "../components";
 import { safeAffiliateName, getPageTotal } from "../helpers";
 import type { Affiliate } from "../types";
+import { formatPhoneDisplay } from "../../../../utils/phone";
 
 export function AffiliatesListTable({
   loading,
@@ -66,7 +67,7 @@ export function AffiliatesListTable({
                         {safeAffiliateName(item)}
                       </div>
                       <div className="small" style={{ color: DUU.gray }}>
-                        {item.phone || item.user?.phone || "-"}
+                        {formatPhoneDisplay(item.phone || item.user?.phone) || "-"}
                       </div>
                       <div className="small" style={{ color: DUU.gray }}>
                         user_id: {item.user_id ?? "-"}

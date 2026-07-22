@@ -97,6 +97,9 @@ export function rollbackContentAi(id: number, versionId: number) {
 /**
  * Optimisation SEO backend-only (ta route IA)
  * POST /api/ai/seo/optimize-page
+ * Timeout élevé (comme aiAds.ts) : la génération OpenAI peut dépasser
+ * les 20s par défaut du client HTTP, ce qui abort la requête côté client
+ * ("signal is aborted without reason") même quand le backend répond bien.
  */
 export function optimizeSeoDraft(payload: {
   slug: string;
@@ -107,6 +110,6 @@ export function optimizeSeoDraft(payload: {
   return api.post<{ ok: boolean; draft: { id: number }; preview: any }>(
     `/api/ai/seo/optimize-page`,
     payload,
-    { credentials: "include" }
+    { credentials: "include", timeout: 180000 }
   );
 }
