@@ -2,6 +2,7 @@ import { History, Plus, RefreshCw, Search, Settings2 } from "lucide-react";
 import type { RevenuePeriod } from "../../../../services/affiliates";
 import { DUU, cardStyle } from "../shared";
 import { SectionTitle } from "../components";
+import { Spinner } from "../../../../components/ui/Spinner";
 
 export function FiltersBar({
   loading,
@@ -55,8 +56,12 @@ export function FiltersBar({
               onClick={onRefresh}
               disabled={loading}
             >
-              <RefreshCw size={16} className="me-2" />
-              {loading ? "Chargement..." : "Actualiser"}
+              {loading ? (
+                <Spinner size="xs" className="me-2" />
+              ) : (
+                <RefreshCw size={16} className="me-2" />
+              )}
+              {loading ? "Chargement…" : "Actualiser"}
             </button>
 
             <button

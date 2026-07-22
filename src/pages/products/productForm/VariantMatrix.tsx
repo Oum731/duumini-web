@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { moneyMAD } from "../../../utils/money";
 import type { VariantDraft } from "./types";
 import { buildSkuAuto, normStock, toUpperSku, uniq, vKey } from "./helpers";
+import { LoadingState } from "../../../components/ui/Spinner";
 
 const SIZES_PRESET = ["XS", "S", "M", "L", "XL", "XXL", "36", "38", "40", "42", "44"];
 const COLORS_PRESET = ["Noir", "Blanc", "Rouge", "Bleu", "Vert", "Jaune", "Beige", "Gris", "Marron", "Rose"];
@@ -206,7 +207,9 @@ export default function VariantMatrix({
         </div>
       </div>
 
-      {variantsLoading ? <div className="text-muted small mt-2">Chargement variantes…</div> : null}
+      {variantsLoading ? (
+        <LoadingState label="Chargement variantes…" size="sm" centered={false} className="small mt-2" />
+      ) : null}
       {variantsOk ? <div className="alert alert-success py-2 mt-2 mb-0">{variantsOk}</div> : null}
       {variantsErr ? <div className="alert alert-danger py-2 mt-2 mb-0">{variantsErr}</div> : null}
 

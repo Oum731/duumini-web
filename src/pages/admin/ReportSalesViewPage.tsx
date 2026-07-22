@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { toBlob, toPng } from "html-to-image";
+import { LoadingState } from "../../components/ui/Spinner";
 import {
   getSalesReport,
   parseSalesReportDetails,
@@ -846,7 +847,7 @@ export default function ReportSalesViewPage() {
         </div>
       </div>
 
-      {loading && <div className="text-muted">Chargement…</div>}
+      {loading && <LoadingState />}
       {error && <div className="alert alert-danger">{error}</div>}
 
       {!!report && (

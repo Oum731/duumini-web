@@ -6,6 +6,7 @@ import { api } from "../services/http";
 // Optionnel: si tu veux réutiliser ton reçu UI
 import OrderReceipt from "../components/ordersAdmin/OrderReceipt";
 import type { AnyObj } from "../components/ordersAdmin/orderUtils";
+import { LoadingState } from "../components/ui/Spinner";
 
 export default function PublicReceiptPage() {
   const { token } = useParams();
@@ -80,7 +81,7 @@ export default function PublicReceiptPage() {
         </div>
       </div>
 
-      {loading && <div className="text-muted">Chargement…</div>}
+      {loading && <LoadingState />}
 
       {!loading && error && (
         <div className="alert alert-danger">

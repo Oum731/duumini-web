@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../../services/http";
 import { getAccessToken } from "../../services/auth";
+import { Spinner, LoadingState } from "../../components/ui/Spinner";
 
 /* =========================
  * Types
@@ -325,7 +326,14 @@ export default function ContentAiPage() {
         </div>
 
         <button className="btn btn-outline-dark btn-sm" onClick={fetchList} disabled={loading}>
-          {loading ? "Chargement..." : "Rafraîchir"}
+          {loading ? (
+            <>
+              <Spinner size="xs" className="me-1" />
+              Chargement…
+            </>
+          ) : (
+            "Rafraîchir"
+          )}
         </button>
       </div>
 
@@ -409,7 +417,7 @@ export default function ContentAiPage() {
               </div>
 
               {loading ? (
-                <div className="text-muted">Chargement...</div>
+                <LoadingState />
               ) : items.length === 0 ? (
                 <div className="text-muted">Aucun élément.</div>
               ) : (
@@ -457,7 +465,7 @@ export default function ContentAiPage() {
               {!selectedId ? (
                 <div className="text-muted">Sélectionne un élément à gauche.</div>
               ) : itemLoading ? (
-                <div className="text-muted">Chargement...</div>
+                <LoadingState />
               ) : !selected ? (
                 <div className="text-muted">Introuvable.</div>
               ) : (
@@ -651,7 +659,7 @@ export default function ContentAiPage() {
                   {tab === "versions" && (
                     <div>
                       {versionsLoading ? (
-                        <div className="text-muted">Chargement...</div>
+                        <LoadingState />
                       ) : versions.length === 0 ? (
                         <div className="text-muted">Aucune version.</div>
                       ) : (

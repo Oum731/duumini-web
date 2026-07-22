@@ -43,6 +43,7 @@ import ScrollTopButton from "./components/ScrollTopButton";
 
 import ProductView from "./pages/ProductView";
 import ShopStorefrontPage from "./pages/ShopStorefrontPage";
+import { PageLoader } from "./components/ui/Spinner";
 
 import { useAuth } from "./context/AuthContext";
 import {
@@ -370,13 +371,7 @@ export default function App() {
           <NavbarWithCount />
 
           <main className="flex-fill">
-            <React.Suspense
-              fallback={
-                <div className="container-xxl py-5 text-muted">
-                  Chargement…
-                </div>
-              }
-            >
+            <React.Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/" element={<Home />} />
 

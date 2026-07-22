@@ -9,6 +9,7 @@ import {
   type PaymentStatus,
 } from "../../services/orders";
 import { normalizePhone, isValidPhoneIntl } from "../../utils/phone";
+import { LoadingState } from "../ui/Spinner";
 
 type AnyObj = Record<string, any>;
 type CustomerRole = "CLIENT" | "VENDEUR";
@@ -601,7 +602,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
                     <div className="mt-2 pos-scroll">
                       {searchLoading ? (
-                        <div className="text-muted">Chargement de tous les produits…</div>
+                        <LoadingState label="Chargement de tous les produits…" />
                       ) : (
                         <div className="vstack gap-2">
                           {filteredResults.map((p) => {

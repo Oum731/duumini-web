@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "../profile/components/Modal";
 import { useCompany } from "../../context/CompanyContext";
 import { getCompanyCaps } from "../../utils/capabilities";
+import { LoadingState } from "../../components/ui/Spinner";
 import {
   addCompanyMember,
   companyErrorMessage,
@@ -266,7 +267,7 @@ function MembersPanel({ companyId, myRole }: { companyId: number; myRole?: Inter
       </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
-      {loading && <div className="text-muted">Chargement…</div>}
+      {loading && <LoadingState />}
 
       {!loading && !members.length && (
         <div className="text-muted">Aucun employé pour le moment.</div>
@@ -346,7 +347,7 @@ export default function CompaniesPage() {
         Gérez vos entreprises et les employés qui y ont accès.
       </p>
 
-      {loading && !myCompanies.length && <div className="text-muted mb-4">Chargement…</div>}
+      {loading && !myCompanies.length && <LoadingState className="mb-4" />}
 
       {!!myCompanies.length && (
         <div className="card p-3 mb-4" style={{ borderRadius: "var(--duu-radius-md, 18px)" }}>

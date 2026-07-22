@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, X } from "lucide-react";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
+import { LoadingState } from "./ui/Spinner";
 
 type PageScope = "all" | "african-food" | "african-market" | "fashion";
 
@@ -160,7 +161,7 @@ export default function CategoriesMenu({
 
   function CategoryList() {
     if (loading) {
-      return <div className="text-muted small">Chargement…</div>;
+      return <LoadingState size="sm" centered={false} className="small" />;
     }
 
     if (err) {

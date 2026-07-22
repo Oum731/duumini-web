@@ -13,6 +13,7 @@ import {
   LogOut,
   Pencil,
 } from "lucide-react";
+import { PageLoader } from "../components/ui/Spinner";
 import {
   type User,
   login,
@@ -485,7 +486,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="container-xxl py-4">
-        <div className="text-muted">Chargement…</div>
+        <PageLoader />
       </div>
     );
   }

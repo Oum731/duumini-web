@@ -5,6 +5,7 @@ import { api } from "../services/http";
 import type { Product } from "../services/products";
 import { getPromoMeta, isRealPromo } from "../lib/promotions";
 import CanKickLottie, { type CanOffer } from "../components/CanKickLottie";
+import { LoadingState } from "../components/ui/Spinner";
 
 const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
 
@@ -313,7 +314,7 @@ export default function PromotionsPage() {
 
   // ✅ IMPORTANT: on mémorise le rendu de la grille => pas de rerender sur le timer du header
   const grid = useMemo(() => {
-    if (loading) return <div className="text-muted">Chargement des offres CAN…</div>;
+    if (loading) return <LoadingState label="Chargement des offres CAN…" />;
 
     if (canItems.length === 0) {
       return (

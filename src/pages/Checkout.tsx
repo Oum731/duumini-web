@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useCart, mad } from "../store/cart";
 import { me, getAccessToken } from "../services/auth";
+import { Spinner, PageLoader } from "../components/ui/Spinner";
 import {
   createOrder,
   createGuestOrder,
@@ -767,7 +768,7 @@ export default function CheckoutPage() {
   if (!isReady || loading) {
     return (
       <div className="container-xxl py-4">
-        <div className="text-muted">Chargement…</div>
+        <PageLoader />
       </div>
     );
   }
@@ -1110,10 +1111,15 @@ export default function CheckoutPage() {
                               />
                             )}
 
-                            <div className="form-text">
-                              {loadingSuggest
-                                ? "Chargement suggestions…"
-                                : "Choisissez une commune ou saisissez-la."}
+                            <div className="form-text d-flex align-items-center gap-1">
+                              {loadingSuggest ? (
+                                <>
+                                  <Spinner size="xs" />
+                                  Chargement suggestions…
+                                </>
+                              ) : (
+                                "Choisissez une commune ou saisissez-la."
+                              )}
                             </div>
                           </div>
 

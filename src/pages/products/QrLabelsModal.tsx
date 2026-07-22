@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { getProduct, type ProductVariant } from "../../services/products";
+import { LoadingState } from "../../components/ui/Spinner";
 
 type Label = {
   key: string;
@@ -93,7 +94,7 @@ export default function QrLabelsModal({
           <div style={{ overflow: "auto", maxHeight: "calc(92vh - 110px)" }}>
             <div className="p-3">
               {loading ? (
-                <div className="text-muted">Chargement…</div>
+                <LoadingState />
               ) : error ? (
                 <div className="alert alert-danger">{error}</div>
               ) : (

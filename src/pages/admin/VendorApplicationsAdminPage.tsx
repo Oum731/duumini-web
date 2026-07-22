@@ -1,6 +1,7 @@
 // src/pages/admin/VendorApplicationsAdminPage.tsx
 import { useEffect, useState } from "react";
 import { formatPhoneDisplay } from "../../utils/phone";
+import { LoadingState } from "../../components/ui/Spinner";
 import {
   listVendorApplications,
   approveVendorApplication,
@@ -183,7 +184,7 @@ export default function VendorApplicationsAdminPage() {
                 onChange={(e) => setQ(e.target.value)}
               />
 
-              {loading && <div className="text-muted">Chargement…</div>}
+              {loading && <LoadingState />}
               {error && <div className="alert alert-danger py-2">{error}</div>}
 
               {!loading && !items.length && (

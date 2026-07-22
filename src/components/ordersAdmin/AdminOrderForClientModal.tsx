@@ -10,6 +10,7 @@ import {
 import { listAllAdminUsers, type AdminUser } from "../../services/adminUsers";
 import { imgUrl } from "../../utils/media";
 import { normalizePhoneInput } from "../../utils/phone";
+import { LoadingState } from "../ui/Spinner";
 
 type AnyObj = Record<string, any>;
 
@@ -865,7 +866,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                   <div className="duu-products-list mt-3">
                     {prodLoading ? (
-                      <div className="text-muted small">Chargement de tous les produits…</div>
+                      <LoadingState label="Chargement de tous les produits…" size="sm" centered={false} className="small" />
                     ) : filteredProducts.length === 0 ? (
                       <div className="text-muted small">Aucun produit.</div>
                     ) : (
@@ -973,7 +974,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                     <div className="duu-clients-list mt-2">
                       {clientsLoading ? (
-                        <div className="text-muted small p-2">Chargement clients…</div>
+                        <LoadingState label="Chargement clients…" size="sm" centered={false} className="small p-2" />
                       ) : filteredClients.length === 0 ? (
                         <div className="text-muted small p-2">Aucun client</div>
                       ) : (
@@ -1006,7 +1007,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                     </div>
 
                     <div className="small text-muted mt-2">
-                      {clientsLoading ? "Chargement…" : `${filteredClients.length}/${clients.length} client(s)`}
+                      {clientsLoading
+                        ? "Chargement…"
+                        : `${filteredClients.length}/${clients.length} client(s)`}
                     </div>
                   </div>
 

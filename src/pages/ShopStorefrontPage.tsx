@@ -6,6 +6,7 @@ import ProductCard from "../components/ProductCard";
 import { getShopBySlug, type Shop } from "../services/shops";
 import { listProducts, type Product } from "../services/products";
 import { imgUrl } from "../utils/media";
+import { PageLoader } from "../components/ui/Spinner";
 
 async function fetchAllShopProducts(shopId: number): Promise<Product[]> {
   const maxPages = 20;
@@ -64,7 +65,7 @@ export default function ShopStorefrontPage() {
   if (loading) {
     return (
       <div className="container-xxl py-4">
-        <div className="text-muted">Chargement de la boutique…</div>
+        <PageLoader label="Chargement de la boutique…" />
       </div>
     );
   }

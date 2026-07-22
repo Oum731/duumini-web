@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { Order } from "../../services/orders";
 import type { AnyObj, CurrentUser } from "./orderUtils";
 import { formatPhoneDisplay } from "../../utils/phone";
+import { LoadingState } from "../ui/Spinner";
 import {
   BADGE,
   computeOrderAmounts,
@@ -111,7 +112,7 @@ export default function OrdersTable(props: {
     [orders]
   );
 
-  if (loading) return <div className="text-muted">Chargement…</div>;
+  if (loading) return <LoadingState />;
   if (!orders.length) return <div className="text-muted">Aucune commande.</div>;
 
   return (

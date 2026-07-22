@@ -13,6 +13,7 @@ import { useAuth } from "../../context/AuthContext"; // ⬅️ pour refreshUser(
 import { getCurrentUser } from "../../services/auth"; // ⬅️ pour savoir si c’est moi
 import { listAffiliates, createAffiliate, type Affiliate } from "../../services/affiliates";
 import { formatPhoneDisplay } from "../../utils/phone";
+import { LoadingState } from "../../components/ui/Spinner";
 
 const ROLES: Role[] = ["MEMBER", "VENDEUR", "LIVREUR", "ADMIN"];
 type Draft = Partial<User> & { password?: string };
@@ -235,7 +236,7 @@ export default function UsersAdminPage() {
       <div className="card shadow-sm">
         <div className="card-body">
           {loading ? (
-            <div className="text-muted">Chargement…</div>
+            <LoadingState />
           ) : filtered.length === 0 ? (
             <div className="text-muted">Aucun utilisateur.</div>
           ) : (

@@ -1,5 +1,6 @@
 // src/pages/admin/ShopsAdminPage.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { LoadingState } from "../../components/ui/Spinner";
 import {
   listShops,
   listMyShops,
@@ -734,7 +735,7 @@ export default function ShopsAdminPage() {
               />
 
               {loading ? (
-                <div className="text-muted">Chargement des boutiques…</div>
+                <LoadingState label="Chargement des boutiques…" />
               ) : filtered.length === 0 ? (
                 <div className="text-muted small">Aucune boutique trouvée.</div>
               ) : (
@@ -878,7 +879,7 @@ export default function ShopsAdminPage() {
 
                   {/* CA filtrable */}
                   {statsLoading ? (
-                    <div className="text-muted">Chargement des stats…</div>
+                    <LoadingState label="Chargement des stats…" />
                   ) : statsError ? (
                     <div className="alert alert-danger">{statsError}</div>
                   ) : !stats ? (
@@ -965,7 +966,7 @@ export default function ShopsAdminPage() {
                           </div>
 
                           {productsLoading ? (
-                            <div className="text-muted small">Chargement des produits…</div>
+                            <LoadingState label="Chargement des produits…" size="sm" centered={false} className="small" />
                           ) : productsError ? (
                             <div className="alert alert-warning mb-0">{productsError}</div>
                           ) : displayedProducts.length === 0 ? (

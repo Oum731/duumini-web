@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PageLoader } from "../../components/ui/Spinner";
 import {
   BadgePercent,
   BarChart3,
@@ -346,7 +347,7 @@ export default function AffiliateDashboardPage() {
   if (loading) {
     return (
       <div className="container-fluid py-4">
-        <div className="alert alert-light border">Chargement de l’espace affilié...</div>
+        <PageLoader label="Chargement de l’espace affilié…" />
       </div>
     );
   }

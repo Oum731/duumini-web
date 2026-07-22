@@ -8,6 +8,7 @@ import {
   type ProductRatingItem,
 } from "../services/productRatings";
 import { useAuth } from "../context/AuthContext";
+import { Spinner, LoadingState } from "./ui/Spinner";
 
 type Props = {
   productId: number;
@@ -304,7 +305,12 @@ export default function ProductRating({ productId }: Props) {
             </div>
           )}
 
-          {loading && <span className="small">Chargement…</span>}
+          {loading && (
+            <span className="small d-inline-flex align-items-center gap-1">
+              <Spinner size="xs" />
+              Chargement…
+            </span>
+          )}
           {error && (
             <span className="small" style={{ color: "var(--duu-red)" }}>
               {error}
@@ -355,9 +361,7 @@ export default function ProductRating({ productId }: Props) {
 
                   {/* Liste des avis */}
                   {listLoading && (
-                    <div className="small text-muted mb-2">
-                      Chargement des avis…
-                    </div>
+                    <LoadingState label="Chargement des avis…" size="sm" centered={false} className="small mb-2" />
                   )}
                   {listError && (
                     <div className="small text-danger mb-2">{listError}</div>

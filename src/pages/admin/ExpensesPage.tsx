@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { LoadingState } from "../../components/ui/Spinner";
 import {
   Download,
   Plus,
@@ -1061,7 +1062,7 @@ export default function ExpensesPage() {
                     {loading && (
                       <tr>
                         <td colSpan={9} className="py-8 text-center text-base-content/60">
-                          Chargement des dépenses...
+                          <LoadingState label="Chargement des dépenses…" size="sm" />
                         </td>
                       </tr>
                     )}

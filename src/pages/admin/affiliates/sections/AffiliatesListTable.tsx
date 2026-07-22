@@ -4,6 +4,7 @@ import { SectionTitle, TinyBar, PaginationBar } from "../components";
 import { safeAffiliateName, getPageTotal } from "../helpers";
 import type { Affiliate } from "../types";
 import { formatPhoneDisplay } from "../../../../utils/phone";
+import { LoadingState } from "../../../../components/ui/Spinner";
 
 export function AffiliatesListTable({
   loading,
@@ -182,7 +183,7 @@ export function AffiliatesListTable({
               {loading ? (
                 <tr>
                   <td colSpan={6} className="text-center py-5" style={{ color: DUU.gray }}>
-                    Chargement...
+                    <LoadingState centered />
                   </td>
                 </tr>
               ) : null}

@@ -4,6 +4,7 @@ import { Crown, Repeat, Users } from "lucide-react";
 import { getTopCustomers, type TopCustomer } from "../../services/orders";
 import { moneyMAD } from "../../utils/money";
 import { formatPhoneDisplay } from "../../utils/phone";
+import { LoadingState } from "../ui/Spinner";
 import { SectionCard, KpiCard, EmptyState } from "../admin/adminUI";
 
 type SortKey = "revenue" | "orders_count";
@@ -102,7 +103,7 @@ export default function TopCustomersTab({ shopId }: { shopId?: number }) {
         }
       >
         {loading ? (
-          <div className="text-muted">Chargement…</div>
+          <LoadingState />
         ) : error ? (
           <div className="alert alert-danger mb-0">{error}</div>
         ) : sorted.length === 0 ? (

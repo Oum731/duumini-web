@@ -5,6 +5,7 @@ import { me } from "../../services/auth";
 import { getProduct, type Product, type ProductVariant } from "../../services/products";
 import { moneyMAD } from "../../utils/money";
 import { imgUrl } from "../../utils/media";
+import { LoadingState } from "../../components/ui/Spinner";
 
 type AnyObj = Record<string, any>;
 
@@ -107,7 +108,7 @@ export default function ProductStockLookupPage() {
       </div>
 
       {loading ? (
-        <div className="text-muted">Chargement…</div>
+        <LoadingState />
       ) : error ? (
         <div className="alert alert-danger">{error}</div>
       ) : !product ? (

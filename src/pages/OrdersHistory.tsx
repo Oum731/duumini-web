@@ -10,6 +10,7 @@ import {
   type OrderStatus,
   type OrderItem,
 } from "../services/orders";
+import { LoadingState } from "../components/ui/Spinner";
 import { moneyMAD as mad } from "../utils/money";
 import { imgUrl } from "../utils/media";
 
@@ -542,7 +543,7 @@ export default function OrdersHistoryPage() {
           .orders-history .btn-duu:hover{ opacity:.92; }
         `}</style>
         <h1 className="h4 mb-3">Mes commandes</h1>
-        <div className="text-muted">Chargement…</div>
+        <LoadingState />
       </div>
     );
   }
@@ -1029,9 +1030,7 @@ export default function OrdersHistoryPage() {
             </div>
 
             <div className="modal-body-duu">
-              {receiptLoading && (
-                <div className="text-muted">Chargement du reçu…</div>
-              )}
+              {receiptLoading && <LoadingState label="Chargement du reçu…" />}
               {receiptErr && (
                 <div className="alert alert-danger">{receiptErr}</div>
               )}

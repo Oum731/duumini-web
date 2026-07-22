@@ -5,6 +5,7 @@ import { me } from "../../services/auth";
 import { listMyShops, getShop, updateShop, type Shop } from "../../services/shops";
 import { listActiveCountries, type CountryConfig } from "../../services/countries";
 import { imgUrl } from "../../utils/media";
+import { Spinner } from "../../components/ui/Spinner";
 
 type AnyObj = Record<string, any>;
 
@@ -310,7 +311,7 @@ export default function MyShopPage() {
         <div className="card shadow-sm">
           <div className="card-body py-4">
             <div className="d-flex align-items-center justify-content-center gap-2 text-muted">
-              <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+              <Spinner size="sm" />
               <span>Chargement…</span>
             </div>
           </div>

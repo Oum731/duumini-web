@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { me } from "../../services/auth";
 import { api, API_BASE } from "../../services/http";
+import { LoadingState, PageLoader } from "../../components/ui/Spinner";
 
 import {
   listManageProducts,
@@ -541,7 +542,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
   if (booting) {
     return (
       <div className="container-xxl py-4">
-        <div className="text-muted">Chargement…</div>
+        <PageLoader />
       </div>
     );
   }
@@ -628,7 +629,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
               {loading ? (
                 <tr>
                   <td colSpan={isVendor ? 7 : 8} className="text-muted p-3">
-                    Chargement…
+                    <LoadingState size="sm" />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
@@ -764,7 +765,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         {formErr ? <div className="alert alert-danger py-2">{formErr}</div> : null}
 
         {formLoading ? (
-          <div className="text-muted">Chargement du produit…</div>
+          <LoadingState label="Chargement du produit…" />
         ) : (
           <ProductForm
             initial={editing}

@@ -5,6 +5,7 @@ import { Search } from "lucide-react";
 import { me } from "../../services/auth";
 import { listSupplierProducts, type SupplierProduct } from "../../services/supplierProducts";
 import { moneyMAD } from "../../utils/money";
+import { LoadingState } from "../../components/ui/Spinner";
 
 type AnyObj = Record<string, any>;
 
@@ -113,7 +114,7 @@ export default function SupplierCatalogPage() {
       <div className="card shadow-sm">
         <div className="card-body">
           {loading ? (
-            <div className="text-muted">Chargement…</div>
+            <LoadingState />
           ) : items.length === 0 ? (
             <div className="text-muted">Aucun produit fournisseur trouvé.</div>
           ) : (

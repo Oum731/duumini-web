@@ -4,6 +4,7 @@ import { DUU, cardStyle, formatMoney, formatNumber, statusBadgeClass, type PageI
 import { SectionTitle, KpiCard } from "../components";
 import { safeAffiliateName } from "../helpers";
 import { formatPhoneDisplay } from "../../../../utils/phone";
+import { LoadingState } from "../../../../components/ui/Spinner";
 import type { Affiliate, AffiliateCommission, AffiliateClick, CommissionStatus } from "../types";
 import { ProductLinkGenerator } from "./ProductLinkGenerator";
 import { DetailTabOverview } from "./DetailTabOverview";
@@ -130,7 +131,7 @@ export function AffiliateDetailDrawer({
             Sélectionne un affilié dans la liste pour voir ses performances détaillées.
           </div>
         ) : detailLoading ? (
-          <div style={{ color: DUU.gray }}>Chargement...</div>
+          <LoadingState />
         ) : !selectedAffiliate ? (
           <div className="text-danger">Impossible de charger le détail.</div>
         ) : (

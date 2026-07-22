@@ -4,6 +4,7 @@ import { useCart } from "../store/cart";
 import { listProducts, type Product } from "../services/products";
 import { moneyMAD as mad } from "../utils/money";
 import { imgUrl } from "../utils/media";
+import { Spinner } from "../components/ui/Spinner";
 
 const DRINK_WORDS = [
   "boisson",
@@ -377,7 +378,7 @@ function DrinkUpsellModal(props: {
 
           {loading ? (
             <div className="py-4 text-center text-muted">
-              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+              <Spinner size="sm" className="me-2" />
               Chargement des boissons…
             </div>
           ) : products.length === 0 ? (
@@ -429,7 +430,7 @@ function DrinkUpsellModal(props: {
                         >
                           {busy ? (
                             <>
-                              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                              <Spinner size="sm" className="me-2" />
                               Ajout…
                             </>
                           ) : alreadyAdded ? (
@@ -696,7 +697,7 @@ export default function CartPage() {
             >
               {clearing ? (
                 <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  <Spinner size="sm" className="me-2" />
                   Vidage…<span className="visually-hidden">du panier</span>
                 </>
               ) : (
@@ -790,7 +791,7 @@ export default function CartPage() {
                             aria-busy={changingLineId === lineId}
                           >
                             {changingLineId === lineId ? (
-                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                              <Spinner size="sm" />
                             ) : (
                               "−"
                             )}
@@ -819,7 +820,7 @@ export default function CartPage() {
                             aria-busy={changingLineId === lineId}
                           >
                             {changingLineId === lineId ? (
-                              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                              <Spinner size="sm" />
                             ) : (
                               "+"
                             )}
@@ -841,7 +842,7 @@ export default function CartPage() {
                           aria-busy={removingLineId === lineId}
                         >
                           {removingLineId === lineId ? (
-                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
+                            <Spinner size="sm" />
                           ) : (
                             "✕"
                           )}
@@ -881,7 +882,7 @@ export default function CartPage() {
             >
               {goingCheckout ? (
                 <>
-                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
+                  <Spinner size="sm" className="me-2" />
                   Redirection…<span className="visually-hidden">vers la page de paiement</span>
                 </>
               ) : (

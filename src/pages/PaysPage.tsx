@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listCountries, type CountryConfig } from "../services/countries";
+import { LoadingState } from "../components/ui/Spinner";
 
 export default function PaysPage() {
   const [countries, setCountries] = useState<CountryConfig[]>([]);
@@ -44,7 +45,7 @@ export default function PaysPage() {
         logistique et culturelle plutôt que la seule taille du marché.
       </p>
 
-      {loading && <div className="text-muted">Chargement…</div>}
+      {loading && <LoadingState />}
       {error && <div className="alert alert-warning">{error}</div>}
 
       {!loading && !error && (

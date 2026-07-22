@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { LoadingState } from "../../components/ui/Spinner";
 import {
   listSalesReports,
   parseSalesReportDetails,
@@ -606,7 +607,7 @@ export default function ReportsSalesPage() {
         </div>
       </div>
 
-      {loading && <div className="text-muted">Chargement…</div>}
+      {loading && <LoadingState />}
       {error && <div className="alert alert-danger">{error}</div>}
 
       {!loading && !error && (

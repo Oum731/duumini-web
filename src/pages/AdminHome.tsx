@@ -6,6 +6,7 @@ import { listProducts } from "../services/products";
 import { listShops, type Shop } from "../services/shops";
 import { listUsers, type User } from "../services/users";
 import { api } from "../services/http";
+import { LoadingState } from "../components/ui/Spinner";
 import {
   LineChart,
   Line,
@@ -1065,7 +1066,7 @@ export default function AdminHome() {
                 </div>
 
                 {productsQuickLoading ? (
-                  <div className="text-muted small mt-3">Chargement des produits…</div>
+                  <LoadingState label="Chargement des produits…" size="sm" centered={false} className="small mt-3" />
                 ) : null}
               </div>
             </div>
@@ -1338,7 +1339,7 @@ export default function AdminHome() {
             className="h-100"
           >
               {!orders ? (
-                <div className="text-muted small">Chargement…</div>
+                <LoadingState size="sm" centered={false} className="small" />
               ) : orders.length === 0 ? (
                 <div className="text-muted small">Aucune commande.</div>
               ) : (
@@ -1399,7 +1400,7 @@ export default function AdminHome() {
                 className="h-100"
               >
                   {!shops ? (
-                    <div className="text-muted small">Chargement…</div>
+                    <LoadingState size="sm" centered={false} className="small" />
                   ) : shops.length === 0 ? (
                     <div className="text-muted small">Aucune boutique.</div>
                   ) : (
@@ -1441,7 +1442,7 @@ export default function AdminHome() {
                 className="h-100"
               >
                   {!users ? (
-                    <div className="text-muted small">Chargement…</div>
+                    <LoadingState size="sm" centered={false} className="small" />
                   ) : users.length === 0 ? (
                     <div className="text-muted small">Aucun utilisateur.</div>
                   ) : (

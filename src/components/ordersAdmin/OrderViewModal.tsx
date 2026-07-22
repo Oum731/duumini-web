@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import type { OrderStatus } from "../../services/orders";
 import type { AnyObj, PayStatus } from "./orderUtils";
+import { LoadingState } from "../ui/Spinner";
 import {
   BADGE,
   STATUSES,
@@ -232,7 +233,7 @@ export default function OrderViewModal(props: {
             ) : null}
 
             {loading ? (
-              <div className="text-muted">Chargement…</div>
+              <LoadingState />
             ) : error ? (
               <div className="alert alert-danger" style={wrapText}>
                 {error}

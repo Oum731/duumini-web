@@ -6,6 +6,7 @@ import { listOrders, getOrdersSummary, type Order } from "../../services/orders"
 import { listProducts, type Product } from "../../services/products";
 import { listMyShops } from "../../services/shops";
 import { getExpensesSummary } from "../../services/expenses";
+import { LoadingState } from "../../components/ui/Spinner";
 import { subscribeSSE, type ServerEvent } from "../../services/events";
 import {
   LineChart,
@@ -646,7 +647,7 @@ export default function VendorHome() {
           </div>
 
           {!kpi ? (
-            <div className="text-muted small">Chargement…</div>
+            <LoadingState size="sm" centered={false} className="small" />
           ) : kpi.last_orders.length === 0 ? (
             <div className="text-muted small">Aucune commande.</div>
           ) : (

@@ -8,6 +8,7 @@ import {
   listManageProducts, // ✅ si présent dans services/products
 } from "../../services/products";
 import { me } from "../../services/auth";
+import { Spinner, LoadingState } from "../../components/ui/Spinner";
 import { api } from "../../services/http";
 
 /* ===== Utils ===== */
@@ -354,7 +355,14 @@ export default function PromotionsAdminPage() {
 
         <div className="d-flex gap-2 flex-wrap">
           <button className="btn btn-sm btn-outline-dark" onClick={load} disabled={loading || busy}>
-            {loading ? "Chargement…" : "Actualiser"}
+            {loading ? (
+              <>
+                <Spinner size="xs" className="me-1" />
+                Chargement…
+              </>
+            ) : (
+              "Actualiser"
+            )}
           </button>
         </div>
       </div>
@@ -465,7 +473,7 @@ export default function PromotionsAdminPage() {
                     {loading ? (
                       <tr>
                         <td colSpan={5} className="text-muted small py-3">
-                          Chargement…
+                          <LoadingState size="sm" centered={false} />
                         </td>
                       </tr>
                     ) : filteredAll.length === 0 ? (
@@ -565,7 +573,7 @@ export default function PromotionsAdminPage() {
                     {loading ? (
                       <tr>
                         <td colSpan={5} className="text-muted small py-3">
-                          Chargement…
+                          <LoadingState size="sm" centered={false} />
                         </td>
                       </tr>
                     ) : filteredPromo.length === 0 ? (

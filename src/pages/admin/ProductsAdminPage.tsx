@@ -6,6 +6,7 @@ import { listSubCategories, type SubCategory as SvcSubCategory } from "../../ser
 
 import { moneyMAD } from "../../utils/money";
 import { imgUrl } from "../../utils/media";
+import { LoadingState, PageLoader } from "../../components/ui/Spinner";
 import ProductForm, {
   type Draft,
   type FullProduct,
@@ -578,7 +579,7 @@ export default function ProductsAdminPage() {
   if (booting) {
     return (
       <main className="container py-4">
-        <div className="text-muted">Chargement…</div>
+        <PageLoader />
       </main>
     );
   }
@@ -807,7 +808,7 @@ export default function ProductsAdminPage() {
                 {loading ? (
                   <tr>
                     <td colSpan={7} className="text-muted p-3">
-                      Chargement…
+                      <LoadingState size="sm" />
                     </td>
                   </tr>
                 ) : items.length === 0 ? (
@@ -968,7 +969,7 @@ export default function ProductsAdminPage() {
         {formErr ? <div className="alert alert-danger py-2">{formErr}</div> : null}
 
         {formLoading ? (
-          <div className="text-muted">Chargement du produit…</div>
+          <LoadingState label="Chargement du produit…" />
         ) : (
           <ProductForm
             initial={editing}

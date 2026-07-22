@@ -6,6 +6,7 @@ import {
   listTopRatedProducts,
 } from "../services/products";
 import ProductCard from "../components/ProductCard";
+import { LoadingState } from "../components/ui/Spinner";
 
 export default function TopProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -90,7 +91,7 @@ export default function TopProductsPage() {
         </div>
       </div>
 
-      {loading && <p className="text-muted">Chargement des produits…</p>}
+      {loading && <LoadingState label="Chargement des produits…" />}
 
       {!loading && error && !products.length && (
         <p className="text-danger">{error}</p>
