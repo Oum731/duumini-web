@@ -1,10 +1,16 @@
 // src/pages/BlogPage.tsx
 import { Link } from "react-router-dom";
 import { BookOpen } from "lucide-react";
+import { Seo } from "../components/Seo";
 
 export default function BlogPage() {
   return (
     <section className="container-xxl py-5">
+      <Seo
+        title="Blog"
+        description="Actualités et articles DUUMINI sur le commerce panafricain, les corridors logistiques et les produits authentiques d'Afrique."
+        path="/blog"
+      />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
           Blog

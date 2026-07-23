@@ -6,6 +6,7 @@ import type { Product } from "../services/products";
 import { getPromoMeta, isRealPromo } from "../lib/promotions";
 import CanKickLottie, { type CanOffer } from "../components/CanKickLottie";
 import { LoadingState } from "../components/ui/Spinner";
+import { Seo } from "../components/Seo";
 
 const PROMO_END_ISO = "2026-01-22T23:59:59+01:00";
 
@@ -347,6 +348,11 @@ export default function PromotionsPage() {
 
   return (
     <div className="container-xxl py-4">
+      <Seo
+        title="Promotions"
+        description="Profitez des offres et promotions en cours sur DUUMINI, à travers l'Afrique."
+        path="/promos"
+      />
       <PromoHeader offer={offer} loading={loading} onRefresh={fetchPromos} />
 
       {err && <div className="alert alert-danger py-2">{err}</div>}

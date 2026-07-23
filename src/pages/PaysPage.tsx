@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listCountries, type CountryConfig } from "../services/countries";
 import { LoadingState } from "../components/ui/Spinner";
+import { Seo } from "../components/Seo";
 
 export default function PaysPage() {
   const [countries, setCountries] = useState<CountryConfig[]>([]);
@@ -28,6 +29,11 @@ export default function PaysPage() {
 
   return (
     <section className="container-xxl py-5">
+      <Seo
+        title="Pays et corridors"
+        description="Découvrez les corridors commerciaux actifs de DUUMINI en Afrique : Maroc, Côte d'Ivoire, et les prochains pays connectés au réseau."
+        path="/pays"
+      />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
           Pays

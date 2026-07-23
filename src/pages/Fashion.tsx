@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Search, SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import CategoriesMenu from "../components/CategoriesMenu";
+import { Seo } from "../components/Seo";
 import { listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
@@ -373,6 +374,7 @@ export default function Fashion() {
 
   return (
     <section className="container-xxl py-4">
+      <Seo title={title} description={subtitle} path="/fashion" />
       <style>{`
         .fa-skeleton-card{
           border-radius: var(--duu-radius-lg);

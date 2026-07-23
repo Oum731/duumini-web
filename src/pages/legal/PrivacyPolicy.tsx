@@ -1,7 +1,14 @@
 // src/pages/legal/PrivacyPolicy.tsx
+import { Seo } from "../../components/Seo";
+
 export default function PrivacyPolicy() {
   return (
     <section className="container-xxl py-4">
+      <Seo
+        title="Politique de confidentialité"
+        description="Politique de confidentialité et de traitement des données personnelles de DUUMINI."
+        path="/legal/privacy"
+      />
       <header className="mb-3">
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>
           Politique de confidentialité (Confidentialité du traitement des données)

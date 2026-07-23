@@ -1,5 +1,6 @@
 // src/pages/About.tsx
 import { Link } from "react-router-dom";
+import { Seo } from "../components/Seo";
 
 const MAP_Q = "33.555706,-7.704473";
 const MAP_URL = `https://maps.google.com/?q=${MAP_Q}`;
@@ -7,6 +8,11 @@ const MAP_URL = `https://maps.google.com/?q=${MAP_Q}`;
 export default function AboutPage() {
   return (
     <section className="container-xxl py-4">
+      <Seo
+        title="À propos"
+        description="DUUMINI est une plateforme de commerce panafricain qui connecte producteurs, commerçants et consommateurs entre le Maroc et la Côte d'Ivoire."
+        path="/about"
+      />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>À propos de duumini</h1>
         <Link to="/" className="btn btn-outline-dark">Accueil</Link>

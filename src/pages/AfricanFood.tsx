@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Search, SlidersHorizontal } from "lucide-react";
 import ProductCard from "../components/ProductCard";
+import { Seo } from "../components/Seo";
 import CategoriesMenu from "../components/CategoriesMenu";
 import { listManageProducts, listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
@@ -441,6 +442,7 @@ export default function AfricanFood() {
 
   return (
     <section className="container-xxl py-4">
+      <Seo title={title} description={subtitle} path="/african-food" />
       <style>{`
         .af-skeleton-card{
           border-radius: var(--duu-radius-lg);

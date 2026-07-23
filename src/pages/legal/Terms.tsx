@@ -1,7 +1,14 @@
 // src/pages/legal/Terms.tsx
+import { Seo } from "../../components/Seo";
+
 export default function Terms() {
   return (
     <section className="container-xxl py-4">
+      <Seo
+        title="Conditions d'utilisation"
+        description="Conditions générales d'utilisation (CGU) de la plateforme DUUMINI."
+        path="/legal/terms"
+      />
       <header className="mb-3">
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>
           Conditions d’utilisation (CGU) de www.duumini.com

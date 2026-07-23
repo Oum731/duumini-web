@@ -16,6 +16,7 @@ import {
 import { metaAddToCart, metaViewContent } from "../lib/metaPixel";
 import { moneyMAD } from "../utils/money";
 import { imgUrl } from "../utils/media";
+import { Seo } from "../components/Seo";
 
 function shortText(s?: string | null, max = 180) {
   const t = String(s || "").trim();
@@ -871,6 +872,14 @@ export default function ProductView() {
 
   return (
     <div className="container-xxl py-4">
+      <Seo
+        title={String(anyP?.name || "Produit")}
+        description={
+          shortText(desc, 155) ||
+          `Découvrez ${anyP?.name || "ce produit"} sur DUUMINI, livré à travers l'Afrique.`
+        }
+        image={coverUrl || undefined}
+      />
       <style>{`
         .btn-duu{
           background: var(--duu-yellow);

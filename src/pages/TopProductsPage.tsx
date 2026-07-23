@@ -7,6 +7,7 @@ import {
 } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { LoadingState } from "../components/ui/Spinner";
+import { Seo } from "../components/Seo";
 
 export default function TopProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -73,7 +74,12 @@ export default function TopProductsPage() {
 
   return (
     <main className="container-xxl py-4">
-      {/* Fil d'Ariane simple 
+      <Seo
+        title="Meilleurs produits"
+        description="Découvrez les produits les plus commandés et les mieux notés sur DUUMINI, à travers l'Afrique."
+        path="/top-products"
+      />
+      {/* Fil d'Ariane simple
       <nav className="mb-3 small">
         <Link to="/" className="text-decoration-none">
           Accueil

@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 // cartes du hero (voir public/hero-stats.png, recadré depuis page.png) —
 // on ne recrée pas ce texte en HTML, on superpose uniquement des zones
 // cliquables réelles (transparentes) aux endroits des actions visibles.
-const HERO_IMAGE = "/hero-stats.png";
+const HERO_IMAGE = "/hero-stats.webp";
 
 // Positions en pourcentage de l'image (1510×545), pour rester alignées
 // quelle que soit la largeur d'écran puisque l'image garde son ratio.
@@ -46,6 +46,12 @@ const HOTSPOTS: {
 export default function HeroSection() {
   return (
     <section className="position-relative">
+      <h1 className="visually-hidden">
+        DUUMINI — Le commerce africain sans frontières. Corridor Maroc ↔ Côte
+        d'Ivoire : producteurs, commerçants et consommateurs connectés à
+        travers l'Afrique.
+      </h1>
+
       <img
         src={HERO_IMAGE}
         alt="Le commerce africain sans frontières. DUUMINI connecte les producteurs, commerçants et consommateurs à travers l'Afrique. Corridor actuel : Maroc ↔ Côte d'Ivoire. +1 000 produits authentiques disponibles, +500 vendeurs et producteurs partenaires, +10 000 clients satisfaits à travers le Maroc."

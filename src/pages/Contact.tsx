@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Mail, Phone, MessageSquare, MapPin } from "lucide-react";
+import { Seo } from "../components/Seo";
 
 const RAW_WHATSAPP = "+21262367784";
 const EMAIL = "duuminima@gmail.com";
@@ -36,6 +37,11 @@ export default function ContactPage() {
 
   return (
     <section className="container-xxl py-4">
+      <Seo
+        title="Contact"
+        description="Contactez l'équipe DUUMINI par WhatsApp, email ou téléphone pour toute question sur nos produits, notre logistique ou pour rejoindre le réseau."
+        path="/contact"
+      />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>Contact</h1>
         <Link to="/" className="btn btn-outline-dark">Accueil</Link>

@@ -9,15 +9,15 @@ import VerifyAndResetPage from "./pages/VerifyAndReset";
 import AdminTopNav from "./components/admin/AdminTopNav";
 import ProtectedAdmin from "./components/ProtectedAdmin";
 
-import AdminHome from "./pages/AdminHome";
-import OrdersAdminPage from "./pages/admin/OrdersAdminPage";
-import ShopsAdminPage from "./pages/admin/ShopsAdminPage";
-import VendorApplicationsAdminPage from "./pages/admin/VendorApplicationsAdminPage";
-import UsersAdminPage from "./pages/admin/UsersAdminPage";
-import ExpensesPage from "./pages/admin/ExpensesPage";
+const AdminHome = React.lazy(() => import("./pages/AdminHome"));
+const OrdersAdminPage = React.lazy(() => import("./pages/admin/OrdersAdminPage"));
+const ShopsAdminPage = React.lazy(() => import("./pages/admin/ShopsAdminPage"));
+const VendorApplicationsAdminPage = React.lazy(() => import("./pages/admin/VendorApplicationsAdminPage"));
+const UsersAdminPage = React.lazy(() => import("./pages/admin/UsersAdminPage"));
+const ExpensesPage = React.lazy(() => import("./pages/admin/ExpensesPage"));
 
-import AiToolsAdminPage from "./pages/admin/AiToolsAdminPage";
-import ContentAiPage from "./pages/admin/ContentAiPage";
+const AiToolsAdminPage = React.lazy(() => import("./pages/admin/AiToolsAdminPage"));
+const ContentAiPage = React.lazy(() => import("./pages/admin/ContentAiPage"));
 
 import AfricanFood from "./pages/AfricanFood";
 import AfricanMarket from "./pages/AfricanMarket";
@@ -60,27 +60,26 @@ import SellIntentGate from "./pages/home/SellIntentGate";
 
 import { trackPageView } from "./lib/analytics";
 import { trackMetricoolPageView } from "./lib/metricool";
-import { metaPageView } from "./lib/metaPixel";
 
 import PromotionsPage from "./pages/PromotionsPage";
-import PromotionsAdminPage from "./pages/admin/PromotionsAdminPage";
+const PromotionsAdminPage = React.lazy(() => import("./pages/admin/PromotionsAdminPage"));
 import CanKickLottie from "./components/CanKickLottie";
-import AiCopyPage from "./pages/admin/AiCopyPage";
+const AiCopyPage = React.lazy(() => import("./pages/admin/AiCopyPage"));
 
-import VendorHome from "./pages/vendor/VendorHome";
-import MyShopPage from "./pages/vendor/MyShopPage";
-import SupplierCatalogPage from "./pages/vendor/SupplierCatalogPage";
-import ProductStockLookupPage from "./pages/products/ProductStockLookupPage";
+const VendorHome = React.lazy(() => import("./pages/vendor/VendorHome"));
+const MyShopPage = React.lazy(() => import("./pages/vendor/MyShopPage"));
+const SupplierCatalogPage = React.lazy(() => import("./pages/vendor/SupplierCatalogPage"));
+const ProductStockLookupPage = React.lazy(() => import("./pages/products/ProductStockLookupPage"));
 
-import ManageProductsPage from "./pages/products/ManageProductsPage";
-import CompaniesPage from "./pages/companies/CompaniesPage";
+const ManageProductsPage = React.lazy(() => import("./pages/products/ManageProductsPage"));
+const CompaniesPage = React.lazy(() => import("./pages/companies/CompaniesPage"));
 import RequireAuth from "./components/RequireCaps";
 import { useViewer } from "./hooks/useViewer";
 import PublicReceiptPage from "./pages/PublicReceiptPage";
-import ReportSalesViewPage from "./pages/admin/ReportSalesViewPage";
-import ReportsSalesPage from "./pages/admin/ReportsSalesPage";
-import AffiliatesPage from "./pages/admin/AffiliatesPage";
-import AffiliateDashboardPage from "./pages/admin/AffiliateDashboardPage";
+const ReportSalesViewPage = React.lazy(() => import("./pages/admin/ReportSalesViewPage"));
+const ReportsSalesPage = React.lazy(() => import("./pages/admin/ReportsSalesPage"));
+const AffiliatesPage = React.lazy(() => import("./pages/admin/AffiliatesPage"));
+const AffiliateDashboardPage = React.lazy(() => import("./pages/admin/AffiliateDashboardPage"));
 
 function Page({ title }: { title: string }) {
   return (
@@ -113,7 +112,6 @@ function PageViewTracker() {
 
     trackPageView(path);
     trackMetricoolPageView();
-    metaPageView(path);
   }, [pathname, search]);
 
   return null;

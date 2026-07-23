@@ -7,6 +7,7 @@ import { getShopBySlug, type Shop } from "../services/shops";
 import { listProducts, type Product } from "../services/products";
 import { imgUrl } from "../utils/media";
 import { PageLoader } from "../components/ui/Spinner";
+import { Seo } from "../components/Seo";
 
 async function fetchAllShopProducts(shopId: number): Promise<Product[]> {
   const maxPages = 20;
@@ -85,6 +86,15 @@ export default function ShopStorefrontPage() {
 
   return (
     <div className="container-xxl py-0 px-0">
+      <Seo
+        title={shop.name}
+        description={
+          shop.description
+            ? String(shop.description).slice(0, 155)
+            : `Découvrez la boutique ${shop.name} sur DUUMINI et ses produits disponibles à travers l'Afrique.`
+        }
+        image={shop.cover ? imgUrl(shop.cover) : shop.logo ? imgUrl(shop.logo) : undefined}
+      />
       <div
         style={{
           background: shop.cover

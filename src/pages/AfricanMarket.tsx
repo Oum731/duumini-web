@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import ProductCard from "../components/ProductCard";
 import CategoriesMenu from "../components/CategoriesMenu";
+import { Seo } from "../components/Seo";
 import { listManageProducts, listProducts, type Product } from "../services/products";
 import { listCategories, type Category } from "../services/categories";
 import { listSubCategories, type SubCategory } from "../services/subCategories";
@@ -491,6 +492,7 @@ export default function AfricanMarket() {
 
   return (
     <section className="container-xxl am-page py-3 py-md-4">
+      <Seo title={title} description={subtitle} path="/african-market" />
       <style>{`
         .am-page{
           padding-bottom: 96px;

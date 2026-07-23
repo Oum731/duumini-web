@@ -1,5 +1,6 @@
 // src/pages/CommentCaMarchePage.tsx
 import { Link } from "react-router-dom";
+import { Seo } from "../components/Seo";
 import { HOW_IT_WORKS_STEPS } from "./home/data";
 
 const STEP_DETAILS: string[] = [
@@ -31,6 +32,11 @@ const FAQ: { q: string; a: string }[] = [
 export default function CommentCaMarchePage() {
   return (
     <section className="container-xxl py-5">
+      <Seo
+        title="Comment ça marche"
+        description="Découvrez comment DUUMINI connecte vendeurs et acheteurs à travers l'Afrique : publication produit, logistique transfrontalière, livraison et paiement."
+        path="/comment-ca-marche"
+      />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
           Comment ça marche ?

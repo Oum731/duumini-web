@@ -1,10 +1,16 @@
 // src/pages/SolutionsPage.tsx
 import { Link } from "react-router-dom";
+import { Seo } from "../components/Seo";
 import { PERSONAS } from "./home/data";
 
 export default function SolutionsPage() {
   return (
     <section className="container-xxl py-5">
+      <Seo
+        title="Nos solutions"
+        description="Diaspora, entreprises, producteurs, importateurs : découvrez la solution DUUMINI adaptée à votre profil pour acheter, vendre ou vous approvisionner en Afrique."
+        path="/solutions"
+      />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
           Solutions

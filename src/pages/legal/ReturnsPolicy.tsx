@@ -1,7 +1,14 @@
 // src/pages/legal/ReturnsPolicy.tsx
+import { Seo } from "../../components/Seo";
+
 export default function ReturnsPolicy() {
   return (
     <section className="container-xxl py-4">
+      <Seo
+        title="Politique de retour"
+        description="Politique de retour et d'annulation de commande sur DUUMINI."
+        path="/legal/returns"
+      />
       <header className="mb-3">
         <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>
           Politique de retour et d’annulation de commande

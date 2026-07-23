@@ -1,6 +1,7 @@
 // src/pages/RejoindrePage.tsx
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Seo } from "../components/Seo";
 import { listActiveCountries, type CountryConfig } from "../services/countries";
 import {
   submitVendorApplication,
@@ -93,6 +94,11 @@ export default function RejoindrePage() {
 
   return (
     <section className="container-xxl py-5" style={{ maxWidth: 640 }}>
+      <Seo
+        title="Rejoindre DUUMINI"
+        description="Vous êtes vendeur, fournisseur ou restaurateur ? Rejoignez le réseau DUUMINI et vendez vos produits à travers l'Afrique."
+        path="/rejoindre"
+      />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
           Rejoindre DUUMINI
