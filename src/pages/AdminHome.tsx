@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { listOrders, getOrdersSummary, type Order } from "../services/orders";
-import { listProducts } from "../services/products";
+import { listProducts, listTopOrderedProducts, type Product } from "../services/products";
 import { listShops, type Shop } from "../services/shops";
 import { listUsers, type User } from "../services/users";
 import { api } from "../services/http";
@@ -22,7 +22,19 @@ import { subscribeSSE, type ServerEvent } from "../services/events";
 import { getAccessToken, me } from "../services/auth";
 import { listVendorApplications } from "../services/vendorApplications";
 import { getAffiliatesRevenueSummary } from "../services/affiliates";
-import { PageHeader, KpiCard, SectionCard } from "../components/admin/adminUI";
+import { imgUrl } from "../utils/media";
+import {
+  PageHeader,
+  KpiCard,
+  SectionCard,
+  KpiSparkCard,
+  DonutStat,
+  RankedList,
+  CountryBreakdownList,
+  type DonutSegment,
+  type RankedListItem,
+  type CountryBreakdownItem,
+} from "../components/admin/adminUI";
 import {
   Wallet,
   BadgePercent,
@@ -31,6 +43,7 @@ import {
   Store,
   Users,
   UserPlus,
+  Globe2,
 } from "lucide-react";
 
 type AnyObj = Record<string, any>;
@@ -58,6 +71,25 @@ function mad(n?: number | null) {
     currency: "MAD",
     maximumFractionDigits: 0,
   }).format(v);
+}
+
+/** Variation réelle (7 derniers jours vs 7 jours précédents) à partir de la série 30 jours. */
+function computeTrend(series: SalesPoint[], key: "revenue" | "orders"): number | null {
+  if (series.length < 14) return null;
+  const last7 = series.slice(-7).reduce((s, p) => s + p[key], 0);
+  const prev7 = series.slice(-14, -7).reduce((s, p) => s + p[key], 0);
+  if (prev7 <= 0) return null;
+  return ((last7 - prev7) / prev7) * 100;
+}
+
+const COUNTRY_LABELS: Record<string, string> = {
+  MA: "Maroc",
+  CI: "Côte d'Ivoire",
+  "N/D": "Non renseigné",
+};
+
+function countryLabel(code: string) {
+  return COUNTRY_LABELS[code] || code;
 }
 
 function shortDate(iso?: string | null) {
@@ -220,11 +252,26 @@ function statusClass(s: string) {
   return "bg-secondary";
 }
 
+type CountryBreakdown = { country_code: string; revenue: number; orders: number };
+
+type OrdersByStatus = {
+  open: number;
+  preparation: number;
+  delivery: number;
+  done: number;
+  cancelled: number;
+};
+
 type Summary = {
   revenue_today: number;
   revenue_week: number;
   revenue_month: number;
   revenue_year: number;
+
+  orders_today: number;
+  orders_week: number;
+  orders_month: number;
+  orders_year: number;
 
   duumini_commission_today: number;
   duumini_commission_week: number;
@@ -236,6 +283,8 @@ type Summary = {
   shops_total: number;
   users_total: number;
   sales_series: SalesPoint[];
+  revenue_by_country: CountryBreakdown[];
+  orders_by_status: OrdersByStatus;
 };
 
 function normalizeSiteStatusResponse(data: any): SiteStatusState {
@@ -315,10 +364,17 @@ function computeSummaryFromDoneOrders(ordersDone: Order[]) {
   let revenue_month = 0;
   let revenue_year = 0;
 
+  let orders_today = 0;
+  let orders_week = 0;
+  let orders_month = 0;
+  let orders_year = 0;
+
   let duu_today = 0;
   let duu_week = 0;
   let duu_month = 0;
   let duu_year = 0;
+
+  const countryMap = new Map<string, { revenue: number; orders: number }>();
 
   for (const o of ordersDone) {
     if (normStatus((o as any)?.status) !== "DONE") continue;
@@ -333,21 +389,35 @@ function computeSummaryFromDoneOrders(ordersDone: Order[]) {
 
     if (key === todayKey) {
       revenue_today += amount;
+      orders_today += 1;
       duu_today += commission;
     }
     if (weekKeys.has(key)) {
       revenue_week += amount;
+      orders_week += 1;
       duu_week += commission;
     }
     if (monthKeys.has(key)) {
       revenue_month += amount;
+      orders_month += 1;
       duu_month += commission;
     }
     if (yearKeys.has(key)) {
       revenue_year += amount;
+      orders_year += 1;
       duu_year += commission;
     }
+
+    const cc = String((o as any)?.country_code || "").trim().toUpperCase() || "N/D";
+    const bucket = countryMap.get(cc) || { revenue: 0, orders: 0 };
+    bucket.revenue += amount;
+    bucket.orders += 1;
+    countryMap.set(cc, bucket);
   }
+
+  const revenue_by_country: CountryBreakdown[] = Array.from(countryMap.entries())
+    .map(([country_code, v]) => ({ country_code, revenue: v.revenue, orders: v.orders }))
+    .sort((a, b) => b.revenue - a.revenue);
 
   const days = 30;
   const map = new Map<string, { revenue: number; orders: number }>();
@@ -377,11 +447,16 @@ function computeSummaryFromDoneOrders(ordersDone: Order[]) {
     revenue_week,
     revenue_month,
     revenue_year,
+    orders_today,
+    orders_week,
+    orders_month,
+    orders_year,
     duumini_commission_today: duu_today,
     duumini_commission_week: duu_week,
     duumini_commission_month: duu_month,
     duumini_commission_year: duu_year,
     sales_series,
+    revenue_by_country,
   };
 }
 
@@ -395,11 +470,21 @@ async function buildSummaryAdmin(): Promise<Summary> {
   const ordersDone = await fetchOrdersByStatusPaginated("DONE", 20, 200);
   const core = computeSummaryFromDoneOrders(ordersDone);
 
-  const [openRes, prepRes, revenueSummary] = await Promise.all([
+  const [openRes, prepRes, deliveryRes, cancelledRes, revenueSummary] = await Promise.all([
     listOrders({ page: 1, pageSize: 1, status: "OPEN" } as any),
     listOrders({ page: 1, pageSize: 1, status: "PREPARATION" } as any),
+    listOrders({ page: 1, pageSize: 1, status: "DELIVERY" } as any),
+    listOrders({ page: 1, pageSize: 1, status: "CANCELLED" } as any),
     getOrdersSummary().catch(() => null),
   ]);
+
+  const orders_by_status: OrdersByStatus = {
+    open: readTotalFromPaged(openRes),
+    preparation: readTotalFromPaged(prepRes),
+    delivery: readTotalFromPaged(deliveryRes),
+    done: ordersDone.length,
+    cancelled: readTotalFromPaged(cancelledRes),
+  };
 
   return {
     ...core,
@@ -414,10 +499,11 @@ async function buildSummaryAdmin(): Promise<Summary> {
           revenue_year: revenueSummary.year,
         }
       : {}),
-    orders_pending: readTotalFromPaged(openRes) + readTotalFromPaged(prepRes),
+    orders_pending: orders_by_status.open + orders_by_status.preparation,
     products_active: readTotalFromPaged(productsRes),
     shops_total: readTotalFromPaged(shopsRes),
     users_total: readTotalFromPaged(usersRes),
+    orders_by_status,
   };
 }
 
@@ -427,12 +513,22 @@ async function buildSummaryVendor(): Promise<Summary> {
   const ordersDone = await fetchOrdersByStatusPaginated("DONE", 20, 200);
   const core = computeSummaryFromDoneOrders(ordersDone);
 
-  const [openAll, prepAll, revenueSummary] = await Promise.all([
+  const [openAll, prepAll, deliveryAll, cancelledAll, revenueSummary] = await Promise.all([
     fetchOrdersByStatusPaginated("OPEN", 10, 200),
     fetchOrdersByStatusPaginated("PREPARATION", 10, 200),
+    fetchOrdersByStatusPaginated("DELIVERY", 10, 200),
+    fetchOrdersByStatusPaginated("CANCELLED", 10, 200),
     getOrdersSummary().catch(() => null),
   ]);
   const pending = openAll.length + prepAll.length;
+
+  const orders_by_status: OrdersByStatus = {
+    open: openAll.length,
+    preparation: prepAll.length,
+    delivery: deliveryAll.length,
+    done: ordersDone.length,
+    cancelled: cancelledAll.length,
+  };
 
   return {
     ...core,
@@ -448,6 +544,7 @@ async function buildSummaryVendor(): Promise<Summary> {
     products_active: 0,
     shops_total: 0,
     users_total: 0,
+    orders_by_status,
   };
 }
 
@@ -463,9 +560,12 @@ export default function AdminHome() {
   const [error, setError] = useState<string | null>(null);
 
   const [kpi, setKpi] = useState<Summary | null>(null);
+  const [topProducts, setTopProducts] = useState<Product[]>([]);
   const [, setLastUpdate] = useState<Date | null>(null);
 
   const [commissionFilter, setCommissionFilter] = useState<"today" | "week" | "month" | "year">("today");
+  const [earningsPeriod, setEarningsPeriod] = useState<"week" | "month" | "year">("month");
+  const [ordersPeriod, setOrdersPeriod] = useState<"week" | "month" | "year">("month");
 
   const [siteStatus, setSiteStatus] = useState<SiteStatusState>({
     is_closed: false,
@@ -581,6 +681,16 @@ export default function AdminHome() {
     }
   }, [isVendor]);
 
+  const loadTopProducts = useCallback(async () => {
+    if (isVendor) return;
+    try {
+      const items = await listTopOrderedProducts({ limit: 6, onlyActive: true });
+      setTopProducts(Array.isArray(items) ? items : []);
+    } catch {
+      setTopProducts([]);
+    }
+  }, [isVendor]);
+
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
@@ -632,6 +742,10 @@ export default function AdminHome() {
         revenue_week: 0,
         revenue_month: 0,
         revenue_year: 0,
+        orders_today: 0,
+        orders_week: 0,
+        orders_month: 0,
+        orders_year: 0,
         duumini_commission_today: 0,
         duumini_commission_week: 0,
         duumini_commission_month: 0,
@@ -641,6 +755,8 @@ export default function AdminHome() {
         shops_total: 0,
         users_total: 0,
         sales_series: [],
+        revenue_by_country: [],
+        orders_by_status: { open: 0, preparation: 0, delivery: 0, done: 0, cancelled: 0 },
       };
 
       let oItems: Order[] | null = null;
@@ -683,7 +799,15 @@ export default function AdminHome() {
     loadQuickProducts();
     loadPendingApplications();
     loadAffiliateSummary();
-  }, [isVendor, loadSiteStatus, loadQuickProducts, loadPendingApplications, loadAffiliateSummary]);
+    loadTopProducts();
+  }, [
+    isVendor,
+    loadSiteStatus,
+    loadQuickProducts,
+    loadPendingApplications,
+    loadAffiliateSummary,
+    loadTopProducts,
+  ]);
 
   useEffect(() => {
     if (!selectedProduct) {
@@ -879,6 +1003,47 @@ export default function AdminHome() {
     }
   }, [commissionFilter]);
 
+  const earningsTrend = useMemo(() => computeTrend(series, "revenue"), [series]);
+  const ordersTrend = useMemo(() => computeTrend(series, "orders"), [series]);
+
+  const donutSegments = useMemo<DonutSegment[]>(() => {
+    const s = kpi?.orders_by_status;
+    if (!s) return [];
+    return [
+      { label: "Terminées", value: s.done, color: "var(--duu-green)" },
+      { label: "En cours", value: s.open + s.preparation + s.delivery, color: "var(--duu-orange)" },
+      { label: "Annulées", value: s.cancelled, color: "var(--duu-red)" },
+    ].filter((x) => x.value > 0);
+  }, [kpi]);
+
+  const donutTotal = useMemo(
+    () => donutSegments.reduce((s, x) => s + x.value, 0),
+    [donutSegments]
+  );
+
+  const countryItems = useMemo<CountryBreakdownItem[]>(() => {
+    const rows = kpi?.revenue_by_country || [];
+    const totalRevenue = rows.reduce((s, r) => s + r.revenue, 0);
+    return rows.slice(0, 5).map((r) => ({
+      label: countryLabel(r.country_code),
+      value: `${mad(r.revenue)} · ${r.orders} cmd`,
+      percent: totalRevenue > 0 ? (r.revenue / totalRevenue) * 100 : 0,
+    }));
+  }, [kpi]);
+
+  const topProductItems = useMemo<RankedListItem[]>(
+    () =>
+      topProducts.map((p) => ({
+        id: p.id,
+        thumb: p.cover ? imgUrl(p.cover) : null,
+        title: p.name,
+        subtitle: mad(p.price),
+        valueLabel: `${Number(p.total_qty || 0)} vendu(s)`,
+        to: `/admin/products?edit=${p.id}`,
+      })),
+    [topProducts]
+  );
+
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
       <PageHeader
@@ -889,6 +1054,141 @@ export default function AdminHome() {
             : "Vue d'ensemble de l'activité Duumini : ventes, boutiques, candidatures et affiliation."
         }
       />
+
+      {!isVendor && (
+        <>
+          <div className="row g-2 g-sm-3 mb-3">
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={Wallet}
+                accent="green"
+                label="Chiffre d'affaires"
+                value={mad(kpi?.[`revenue_${earningsPeriod}`])}
+                trendPercent={earningsTrend}
+                periodOptions={[
+                  { value: "week", label: "Semaine" },
+                  { value: "month", label: "Mois" },
+                  { value: "year", label: "Année" },
+                ]}
+                period={earningsPeriod}
+                onPeriodChange={(v) => setEarningsPeriod(v as "week" | "month" | "year")}
+                sparklineData={series.slice(-7).map((p) => p.revenue)}
+              />
+            </div>
+
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={ShoppingBag}
+                accent="orange"
+                label="Commandes"
+                value={kpi?.[`orders_${ordersPeriod}`] ?? 0}
+                trendPercent={ordersTrend}
+                periodOptions={[
+                  { value: "week", label: "Semaine" },
+                  { value: "month", label: "Mois" },
+                  { value: "year", label: "Année" },
+                ]}
+                period={ordersPeriod}
+                onPeriodChange={(v) => setOrdersPeriod(v as "week" | "month" | "year")}
+                sparklineData={series.slice(-7).map((p) => p.orders)}
+                to="/admin/orders"
+              />
+            </div>
+
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={Users}
+                accent="purple"
+                label="Utilisateurs"
+                value={kpi?.users_total ?? 0}
+                to="/admin/users"
+              />
+            </div>
+
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={BadgePercent}
+                accent="blue"
+                label="Commission Duumini"
+                value={mad(commissionValue)}
+                periodOptions={[
+                  { value: "today", label: "Aujourd’hui" },
+                  { value: "week", label: "Semaine" },
+                  { value: "month", label: "Mois" },
+                  { value: "year", label: "Année" },
+                ]}
+                period={commissionFilter}
+                onPeriodChange={(v) => setCommissionFilter(v as "today" | "week" | "month" | "year")}
+              />
+            </div>
+          </div>
+
+          <div className="row g-2 g-sm-3 mb-3">
+            <div className="col-12 col-xl-6">
+              <div className="card h-100 shadow-sm border-0">
+                <div className="card-body">
+                  <div className="d-flex align-items-center justify-content-between mb-2">
+                    <h2 className="h6 mb-0" style={{ color: "var(--duu-black)" }}>
+                      Revenu (30 jours)
+                    </h2>
+                  </div>
+                  <div style={{ width: "100%", height: 260 }}>
+                    {loading ? (
+                      <div className="placeholder w-100 h-100 rounded" />
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                          <YAxis
+                            tickFormatter={(v) => `${Math.round((Number(v) || 0) / 1000)}k`}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <Tooltip formatter={(v: any) => [mad(Number(v)), "CA hors livraison"]} />
+                          <Bar dataKey="revenue" fill="var(--duu-orange)" radius={[4, 4, 0, 0]} maxBarSize={22} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-12 col-xl-3">
+              <SectionCard title="Statut des commandes" subtitle="Toutes périodes confondues" className="h-100">
+                {donutSegments.length === 0 ? (
+                  <div className="text-muted small">Aucune commande pour le moment.</div>
+                ) : (
+                  <DonutStat
+                    centerLabel="Commandes"
+                    centerValue={donutTotal}
+                    segments={donutSegments}
+                  />
+                )}
+              </SectionCard>
+            </div>
+
+            <div className="col-12 col-xl-3">
+              <SectionCard title="Top ventes" subtitle="Produits les plus commandés" className="h-100">
+                <RankedList items={topProductItems} />
+              </SectionCard>
+            </div>
+          </div>
+
+          <div className="row g-2 g-sm-3 mb-3">
+            <div className="col-12 col-lg-6">
+              <SectionCard
+                icon={Globe2}
+                title="Répartition par pays"
+                subtitle="CA (commandes DONE), tous corridors"
+                className="h-100"
+              >
+                <CountryBreakdownList items={countryItems} />
+              </SectionCard>
+            </div>
+          </div>
+        </>
+      )}
 
       {!isVendor && (
         <div className="row g-2 g-sm-3 mb-3">

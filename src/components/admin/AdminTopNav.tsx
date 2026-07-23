@@ -14,6 +14,7 @@ import {
   UserPlus,
   Menu as MenuIcon,
   X as CloseIcon,
+  ChevronDown,
 } from "lucide-react";
 import { me } from "../../services/auth";
 import { getMyAffiliate } from "../../services/affiliates";
@@ -72,6 +73,7 @@ export default function AdminTopNav({
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isAffiliate, setIsAffiliate] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let mounted = true;
@@ -203,13 +205,30 @@ export default function AdminTopNav({
         .admin-sidebar-group{ margin-bottom: 1rem; }
         .admin-sidebar-group:last-child{ margin-bottom: 0; }
         .admin-sidebar-group-label{
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          background: none;
+          border: none;
           font-size: 0.72rem;
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: .04em;
           color: rgba(17,17,17,0.45);
-          padding: 0 .6rem;
-          margin-bottom: .4rem;
+          padding: .3rem .6rem;
+          margin-bottom: .2rem;
+          cursor: pointer;
+        }
+        .admin-sidebar-group-label:hover{
+          color: rgba(17,17,17,0.75);
+        }
+        .admin-sidebar-group-chevron{
+          transition: transform .15s ease;
+          flex-shrink: 0;
+        }
+        .admin-sidebar-group-chevron.collapsed{
+          transform: rotate(-90deg);
         }
         .admin-sidebar-link{
           display: flex;
@@ -288,28 +307,51 @@ export default function AdminTopNav({
         )}
 
         <div className={`admin-sidebar-body ${mobileOpen ? "open" : ""}`}>
-          {groups.map((group) => (
-            <div className="admin-sidebar-group" key={group.label}>
-              <div className="admin-sidebar-group-label">{group.label}</div>
-              {group.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    end={item.end}
-                    onClick={() => setMobileOpen(false)}
-                    className={({ isActive }) =>
-                      `admin-sidebar-link ${isActive ? "active" : ""}`
-                    }
-                  >
-                    <Icon size={17} strokeWidth={2.1} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </div>
-          ))}
+          {groups.map((group) => {
+            const isCollapsed = collapsedGroups.has(group.label);
+            return (
+              <div className="admin-sidebar-group" key={group.label}>
+                <button
+                  type="button"
+                  className="admin-sidebar-group-label"
+                  aria-expanded={!isCollapsed}
+                  onClick={() =>
+                    setCollapsedGroups((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(group.label)) next.delete(group.label);
+                      else next.add(group.label);
+                      return next;
+                    })
+                  }
+                >
+                  <span>{group.label}</span>
+                  <ChevronDown
+                    size={14}
+                    className={`admin-sidebar-group-chevron ${isCollapsed ? "collapsed" : ""}`}
+                  />
+                </button>
+
+                {!isCollapsed &&
+                  group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.end}
+                        onClick={() => setMobileOpen(false)}
+                        className={({ isActive }) =>
+                          `admin-sidebar-link ${isActive ? "active" : ""}`
+                        }
+                      >
+                        <Icon size={17} strokeWidth={2.1} />
+                        <span>{item.label}</span>
+                      </NavLink>
+                    );
+                  })}
+              </div>
+            );
+          })}
         </div>
       </div>
     </nav>
