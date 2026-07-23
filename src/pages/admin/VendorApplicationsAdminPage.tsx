@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { formatPhoneDisplay } from "../../utils/phone";
 import { LoadingState } from "../../components/ui/Spinner";
+import { PageHeader } from "../../components/admin/adminUI";
 import {
   listVendorApplications,
   approveVendorApplication,
@@ -159,12 +160,18 @@ export default function VendorApplicationsAdminPage() {
 
   return (
     <div className="container-xxl py-4">
-      <h1 className="h5 mb-3">Candidatures vendeurs / fournisseurs</h1>
+      <PageHeader
+        title="Candidatures vendeurs / fournisseurs"
+        subtitle={`${items.length} candidature(s)`}
+      />
 
       <div className="row g-3">
         <div className="col-12 col-md-5 col-lg-4">
-          <div className="card shadow-sm">
-            <div className="card-body">
+          <div
+            className="card border-0"
+            style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+          >
+            <div className="card-body p-3 p-sm-4">
               <select
                 className="form-select mb-2"
                 value={statusFilter}
@@ -218,8 +225,11 @@ export default function VendorApplicationsAdminPage() {
         </div>
 
         <div className="col-12 col-md-7 col-lg-8">
-          <div className="card shadow-sm h-100">
-            <div className="card-body">
+          <div
+            className="card border-0 h-100"
+            style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+          >
+            <div className="card-body p-3 p-sm-4">
               {!selected ? (
                 <div className="text-muted">
                   Sélectionnez une candidature dans la liste pour voir le détail.

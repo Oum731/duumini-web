@@ -23,6 +23,7 @@ import {
 import { API_BASE } from "../../services/http";
 import { me } from "../../services/auth";
 import { listActiveCountries, type CountryConfig } from "../../services/countries";
+import { PageHeader } from "../../components/admin/adminUI";
 
 type Draft = Partial<Shop> & { description?: string | null };
 
@@ -695,34 +696,30 @@ export default function ShopsAdminPage() {
 
   return (
     <div className="container-xxl py-4">
-      {/* Header */}
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <h1 className="h5 m-0">Boutiques & performances</h1>
-
-        <div className="d-flex flex-column align-items-end gap-1">
+      <PageHeader
+        title="Boutiques & performances"
+        subtitle={isVendor ? `${myCount}/${SHOP_LIMIT} boutiques` : undefined}
+        right={
           <button
-            className="btn btn-dark"
+            className="btn btn-duu-orange"
             onClick={openCreate}
             disabled={!canCreate}
             title={!canCreate ? `Limite atteinte (${SHOP_LIMIT})` : "Créer une boutique"}
           >
             + Nouvelle boutique
           </button>
-
-          {isVendor && (
-            <div className="text-muted small">
-              {myCount}/{SHOP_LIMIT} boutiques
-            </div>
-          )}
-        </div>
-      </div>
+        }
+      />
 
       {error && <div className="alert alert-danger">{error}</div>}
 
       <div className="row g-3">
         {/* Colonne gauche : menu de boutiques */}
         <div className="col-12 col-md-4 col-lg-3">
-          <div className="card shadow-sm h-100">
+          <div
+            className="card border-0 h-100"
+            style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+          >
             <div className="card-body d-flex flex-column">
               <input
                 className="form-control mb-3"
@@ -838,7 +835,10 @@ export default function ShopsAdminPage() {
 
         {/* Colonne droite : stats & produits */}
         <div className="col-12 col-md-8 col-lg-9">
-          <div className="card shadow-sm h-100">
+          <div
+            className="card border-0 h-100"
+            style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+          >
             <div className="card-body">
               {!selected ? (
                 <div className="text-muted">
@@ -915,7 +915,10 @@ export default function ShopsAdminPage() {
 
                       <div className="row g-3 mb-4">
                         <div className="col-12 col-md-6 col-lg-4">
-                          <div className="card border-0 shadow-sm h-100">
+                          <div
+                            className="card border-0 h-100"
+                            style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+                          >
                             <div className="card-body">
                               <div className="text-muted small mb-1">{caCurrent.label}</div>
                               <div className="h5 mb-2">{mad(caCurrent.turnover)}</div>
@@ -934,7 +937,10 @@ export default function ShopsAdminPage() {
                       </div>
 
                       {/* Produits de la boutique */}
-                      <div className="card border-0 shadow-sm">
+                      <div
+                        className="card border-0"
+                        style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+                      >
                         <div className="card-body">
                           <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
                             <h6 className="m-0">Produits de la boutique</h6>

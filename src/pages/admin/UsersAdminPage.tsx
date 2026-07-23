@@ -14,6 +14,7 @@ import { getCurrentUser } from "../../services/auth"; // ⬅️ pour savoir si c
 import { listAffiliates, createAffiliate, type Affiliate } from "../../services/affiliates";
 import { formatPhoneDisplay } from "../../utils/phone";
 import { LoadingState } from "../../components/ui/Spinner";
+import { PageHeader } from "../../components/admin/adminUI";
 
 const ROLES: Role[] = ["MEMBER", "VENDEUR", "LIVREUR", "ADMIN"];
 type Draft = Partial<User> & { password?: string };
@@ -215,26 +216,35 @@ export default function UsersAdminPage() {
 
   return (
     <div className="container-xxl py-4">
-      <div className="d-flex align-items-center justify-content-between mb-3">
-        <input
-          className="form-control"
-          placeholder="Recherche tel/nom…"
-          value={q}
-          onChange={(e) => {
-            setPage(1);
-            setQ(e.target.value);
-          }}
-          style={{ maxWidth: 280 }}
-        />
-        <button className="btn btn-dark" onClick={openCreate}>
-          + Nouvel utilisateur
-        </button>
-      </div>
+      <PageHeader
+        title="Utilisateurs"
+        subtitle={`${total} élément(s)`}
+        right={
+          <>
+            <input
+              className="form-control"
+              placeholder="Recherche tel/nom…"
+              value={q}
+              onChange={(e) => {
+                setPage(1);
+                setQ(e.target.value);
+              }}
+              style={{ maxWidth: 280 }}
+            />
+            <button className="btn btn-duu-orange" onClick={openCreate}>
+              + Nouvel utilisateur
+            </button>
+          </>
+        }
+      />
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <div className="card shadow-sm">
-        <div className="card-body">
+      <div
+        className="card border-0"
+        style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+      >
+        <div className="card-body p-3 p-sm-4">
           {loading ? (
             <LoadingState />
           ) : filtered.length === 0 ? (
@@ -431,7 +441,7 @@ export default function UsersAdminPage() {
                 >
                   Fermer
                 </button>
-                <button className="btn btn-dark" onClick={onSave}>
+                <button className="btn btn-duu-orange" onClick={onSave}>
                   Enregistrer
                 </button>
               </div>

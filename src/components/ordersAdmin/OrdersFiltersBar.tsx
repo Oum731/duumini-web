@@ -33,8 +33,11 @@ export default function OrdersFiltersBar(props: {
   } = props;
 
   return (
-    <div className="card border-0 shadow-sm mb-3">
-      <div className="card-body d-flex flex-wrap gap-2 align-items-center justify-content-between">
+    <div
+      className="card border-0 mb-3"
+      style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+    >
+      <div className="card-body p-3 p-sm-4 d-flex flex-wrap gap-2 align-items-center justify-content-between">
         <div className="d-flex flex-wrap gap-2 align-items-center">
           <input
             className="form-control"

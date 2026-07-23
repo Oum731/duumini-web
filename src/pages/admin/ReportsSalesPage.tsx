@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import {
+  FileBarChart2,
+  ShoppingBag,
+  Wallet,
+  BadgePercent,
+  Boxes,
+  Percent,
+  Truck,
+} from "lucide-react";
 import { LoadingState } from "../../components/ui/Spinner";
+import { PageHeader, KpiSparkCard } from "../../components/admin/adminUI";
 import {
   listSalesReports,
   parseSalesReportDetails,
@@ -552,17 +562,16 @@ export default function ReportsSalesPage() {
 
   return (
     <div className="container-fluid py-3">
-      <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap mb-3">
-        <div>
-          <h2 className="mb-1 fw-bold">Dashboard rapports de ventes</h2>
-          <div className="text-muted small">
-            Vue synthétique des performances Duumini
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard rapports de ventes"
+        subtitle="Vue synthétique des performances Duumini"
+      />
 
-      <div className="card border-0 shadow-sm mb-3">
-        <div className="card-body">
+      <div
+        className="card border-0 mb-3"
+        style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+      >
+        <div className="card-body p-3 p-sm-4">
           <div className="row g-2">
             <div className="col-12 col-md-3">
               <label className="form-label">Type</label>
@@ -612,127 +621,102 @@ export default function ReportsSalesPage() {
 
       {!loading && !error && (
         <>
-          <div className="row g-3 mb-3">
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Nombre de rapports</div>
-                  <div className="fs-3 fw-bold">{summary.reportsCount}</div>
-                  <div className="small text-muted mt-1">
-                    Type sélectionné : {typeLabel(type)}
-                  </div>
-                </div>
-              </div>
+          <div className="row g-2 g-sm-3 mb-3">
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={FileBarChart2}
+                accent="neutral"
+                label={`Rapports (${typeLabel(type)})`}
+                value={summary.reportsCount}
+              />
             </div>
 
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Nombre de commandes</div>
-                  <div className="fs-3 fw-bold">{summary.ordersCount}</div>
-                  <div className="small text-muted mt-1">
-                    Total cumulé sur la période filtrée
-                  </div>
-                </div>
-              </div>
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={ShoppingBag}
+                accent="blue"
+                label="Nombre de commandes"
+                value={summary.ordersCount}
+              />
             </div>
 
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Total ventes</div>
-                  <div className="fs-3 fw-bold">
-                    {fmtMoney(summary.totalAmount, currency)}
-                  </div>
-                  <div className="small text-muted mt-1">
-                    Produits nets (hors livraison)
-                  </div>
-                </div>
-              </div>
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={Wallet}
+                accent="orange"
+                label="Total ventes (hors livraison)"
+                value={fmtMoney(summary.totalAmount, currency)}
+              />
             </div>
 
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Commission Duumini</div>
-                  <div className="fs-3 fw-bold">
-                    {fmtMoney(summary.commissionAmount, currency)}
-                  </div>
-                  <div className="small text-muted mt-1">
-                    Basée sur les produits nets
-                  </div>
-                </div>
-              </div>
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={BadgePercent}
+                accent="green"
+                label="Commission Duumini"
+                value={fmtMoney(summary.commissionAmount, currency)}
+              />
             </div>
           </div>
 
-          <div className="row g-3 mb-3">
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">CA brut produits</div>
-                  <div className="fs-4 fw-bold">
-                    {fmtMoney(summary.grossItemsAmount, currency)}
-                  </div>
-                </div>
-              </div>
+          <div className="row g-2 g-sm-3 mb-3">
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={Boxes}
+                accent="neutral"
+                label="CA brut produits"
+                value={fmtMoney(summary.grossItemsAmount, currency)}
+              />
             </div>
 
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Réduction admin</div>
-                  <div className="fs-4 fw-bold text-danger">
-                    {fmtMoney(summary.adminDiscountAmount, currency)}
-                  </div>
-                </div>
-              </div>
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={Percent}
+                accent="orange"
+                label="Réduction admin"
+                value={fmtMoney(summary.adminDiscountAmount, currency)}
+                valueColor="var(--duu-red)"
+              />
             </div>
 
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Produits nets</div>
-                  <div className="fs-4 fw-bold">
-                    {fmtMoney(summary.netItemsAmount, currency)}
-                  </div>
-                </div>
-              </div>
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={Boxes}
+                accent="neutral"
+                label="Produits nets"
+                value={fmtMoney(summary.netItemsAmount, currency)}
+              />
             </div>
 
-            <div className="col-12 col-md-6 col-xl-3">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Livraison</div>
-                  <div className="fs-4 fw-bold">
-                    {fmtMoney(summary.deliveryAmount, currency)}
-                  </div>
-                </div>
-              </div>
+            <div className="col-6 col-xl-3">
+              <KpiSparkCard
+                icon={Truck}
+                accent="blue"
+                label="Livraison"
+                value={fmtMoney(summary.deliveryAmount, currency)}
+              />
             </div>
           </div>
 
-          <div className="row g-3 mb-4">
+          <div className="row g-2 g-sm-3 mb-4">
             <div className="col-12 col-md-6">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Montant payé</div>
-                  <div className="fs-3 fw-bold text-success">
-                    {fmtMoney(summary.paidAmount, currency)}
-                  </div>
-                </div>
-              </div>
+              <KpiSparkCard
+                icon={Wallet}
+                accent="green"
+                label="Montant payé"
+                value={fmtMoney(summary.paidAmount, currency)}
+                valueColor="var(--duu-green)"
+              />
             </div>
 
             <div className="col-12 col-md-6">
-              <div className="card border-0 shadow-sm h-100">
-                <div className="card-body">
-                  <div className="text-muted small mb-1">Reste à payer</div>
-                  <div className="fs-3 fw-bold text-warning">
-                    {fmtMoney(summary.remainingAmount, currency)}
-                  </div>
-                </div>
-              </div>
+              <KpiSparkCard
+                icon={Wallet}
+                accent="orange"
+                label="Reste à payer"
+                value={fmtMoney(summary.remainingAmount, currency)}
+                valueColor="var(--duu-orange)"
+              />
             </div>
           </div>
         </>
@@ -743,7 +727,10 @@ export default function ReportsSalesPage() {
       )}
 
       {!!enrichedItems.length && (
-        <div className="card border-0 shadow-sm">
+        <div
+          className="card border-0"
+          style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+        >
           <div className="card-header bg-white border-0 pb-0">
             <h5 className="mb-0 fw-semibold">Liste détaillée des rapports</h5>
           </div>
@@ -813,7 +800,7 @@ export default function ReportsSalesPage() {
                     </td>
                     <td className="text-end">
                       <Link
-                        className="btn btn-sm btn-primary"
+                        className="btn btn-sm btn-duu-orange"
                         to={`/admin/reports/sales/${r.id}`}
                       >
                         Ouvrir

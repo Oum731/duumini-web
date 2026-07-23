@@ -1,6 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { LoadingState } from "../../components/ui/Spinner";
 import {
+  PageHeader,
+  SectionCard,
+  KpiSparkCard,
+  DonutStat,
+  type DonutSegment,
+} from "../../components/admin/adminUI";
+import {
   Download,
   Plus,
   Trash2,
@@ -16,6 +23,7 @@ import {
   Layers3,
   ArrowLeft,
   ArrowRight,
+  BadgePercent,
 } from "lucide-react";
 import {
   BarChart,
@@ -25,9 +33,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts";
 import {
   createExpense,
@@ -103,7 +108,7 @@ function exportCsv(filename: string, rows: Array<Record<string, any>>) {
     ),
   ].join("\n");
 
-  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -155,68 +160,7 @@ function emptyForm(): FormState {
 
 const PAYMENTS = ["cash", "card", "bank", "mobile_money", "other"];
 const STATUS_OPTIONS: ExpenseStatus[] = ["PAID", "PENDING"];
-
-function SectionIcon({
-  icon,
-  title,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="mb-5 flex items-start gap-3">
-      <div className="rounded-2xl bg-[rgba(245,130,31,0.14)] p-3 text-[#F5821F]">
-        {icon}
-      </div>
-      <div>
-        <h2 className="text-lg font-bold text-base-content">{title}</h2>
-        {subtitle ? (
-          <p className="mt-1 text-sm text-base-content/65">{subtitle}</p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function FieldLabel({
-  icon,
-  children,
-}: {
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-base-content/80">
-      {icon}
-      <span>{children}</span>
-    </label>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  signed = false,
-}: {
-  label: string;
-  value: number;
-  signed?: boolean;
-}) {
-  const color = signed ? (value >= 0 ? "#1B8F5A" : "#D6440F") : undefined;
-  return (
-    <div className="rounded-[24px] border border-black/5 bg-white p-5 shadow-sm">
-      <div className="text-sm font-medium text-base-content/55">{label}</div>
-      <div
-        className="mt-2 text-2xl font-bold text-base-content"
-        style={color ? { color } : undefined}
-      >
-        {mad(value)}
-      </div>
-    </div>
-  );
-}
+const DONUT_COLORS = ["var(--duu-orange)", "var(--duu-green)", "#7C5CFC", "#2F6FED", "#E53935", "#F5A623"];
 
 export default function ExpensesPage() {
   const [items, setItems] = useState<Expense[]>([]);
@@ -506,471 +450,317 @@ export default function ExpensesPage() {
     [revenue, summary]
   );
 
-  const pieData = useMemo(
+  const donutSegments = useMemo<DonutSegment[]>(
     () =>
-      byCategory.map((x) => ({
-        name: x.category_name || "Sans catégorie",
-        value: Number(x.total || 0),
-        color: x.color || undefined,
-      })),
+      byCategory
+        .filter((x) => Number(x.total || 0) > 0)
+        .map((x, idx) => ({
+          label: x.category_name || "Sans catégorie",
+          value: Number(x.total || 0),
+          color: x.color || DONUT_COLORS[idx % DONUT_COLORS.length],
+        })),
     [byCategory]
   );
 
+  const balanceColor = (v: number) => (v >= 0 ? "var(--duu-green)" : "var(--duu-red)");
+
+  function resetFilters() {
+    setFilters({ from: "", to: "", category_id: "", status: "", payment_method: "", q: "" });
+    setPage(1);
+  }
+
   return (
-    <div className="min-h-screen bg-[#f7f7f7] p-4 md:p-6">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-        <div
-          className="overflow-hidden rounded-[30px] border border-black/5 shadow-sm"
-          style={{
-            background:
-              "linear-gradient(135deg, #111111 0%, #1b1b1b 55%, #2a2a2a 100%)",
-          }}
-        >
-          <div className="flex flex-col gap-5 p-5 md:flex-row md:items-center md:justify-between md:p-7">
-            <div className="flex items-start gap-4">
-              <div
-                className="rounded-3xl p-3"
-                style={{
-                  background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
-                  color: "#111",
-                }}
-              >
-                <Wallet size={28} />
+    <div className="container-xxl py-0 px-2 px-sm-3">
+      <PageHeader
+        title="Gestion des dépenses"
+        subtitle="Suivi, consultation, modification et annulation des dépenses avec tableau, filtres et statistiques."
+        right={
+          <>
+            <button
+              type="button"
+              className="btn btn-outline-dark"
+              onClick={() => {
+                resetForm();
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            >
+              <Plus size={16} className="me-1" />
+              Nouvelle dépense
+            </button>
+            <button type="button" className="btn btn-outline-dark" onClick={loadAll}>
+              <RefreshCcw size={16} className="me-1" />
+              Actualiser
+            </button>
+            <button
+              type="button"
+              className="btn btn-duu-orange"
+              onClick={() =>
+                exportCsv(
+                  `depenses_${new Date().toISOString().slice(0, 10)}.csv`,
+                  items.map((x) => ({
+                    date: x.expense_date,
+                    categorie: x.category_name,
+                    libelle: x.label,
+                    description: x.description || "",
+                    montant: x.amount,
+                    paiement: paymentLabel(x.payment_method),
+                    statut: x.status,
+                    reference: x.reference || "",
+                  }))
+                )
+              }
+            >
+              <Download size={16} className="me-1" />
+              Export CSV
+            </button>
+          </>
+        }
+      />
+
+      {!!error && <div className="alert alert-danger">{error}</div>}
+
+      <div className="mb-3">
+        <div className="text-muted small mb-2">
+          Vue globale (depuis le début) — indépendant des filtres
+        </div>
+        <div className="row g-2 g-sm-3">
+          <div className="col-6 col-md-3">
+            <KpiSparkCard
+              icon={Wallet}
+              accent="orange"
+              label="Total dépenses (global)"
+              value={mad(summary.all_time)}
+            />
+          </div>
+          <div className="col-6 col-md-3">
+            <KpiSparkCard
+              icon={BadgePercent}
+              accent={netBalance.all_time >= 0 ? "green" : "orange"}
+              label="Solde net (global)"
+              value={mad(netBalance.all_time)}
+              valueColor={balanceColor(netBalance.all_time)}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="text-muted small mb-2">Dépenses par période</div>
+        <div className="row g-2 g-sm-3">
+          <div className="col-6 col-md-4 col-xl">
+            <KpiSparkCard icon={Wallet} accent="orange" label="Aujourd'hui" value={mad(summary.today)} />
+          </div>
+          <div className="col-6 col-md-4 col-xl">
+            <KpiSparkCard icon={Wallet} accent="orange" label="Cette semaine" value={mad(summary.week)} />
+          </div>
+          <div className="col-6 col-md-4 col-xl">
+            <KpiSparkCard icon={Wallet} accent="orange" label="Ce mois" value={mad(summary.month)} />
+          </div>
+          <div className="col-6 col-md-4 col-xl">
+            <KpiSparkCard icon={Wallet} accent="orange" label="Cette année" value={mad(summary.year)} />
+          </div>
+          <div className="col-6 col-md-4 col-xl">
+            <KpiSparkCard
+              icon={Wallet}
+              accent="neutral"
+              label="Total filtré"
+              value={mad(summary.filtered_total)}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="text-muted small mb-2">
+          Solde net (chiffre d’affaires − dépenses) — ce qui reste dans la caisse
+        </div>
+        <div className="row g-2 g-sm-3">
+          <div className="col-6 col-md-3">
+            <KpiSparkCard
+              icon={BadgePercent}
+              accent={netBalance.today >= 0 ? "green" : "orange"}
+              label="Aujourd'hui"
+              value={mad(netBalance.today)}
+              valueColor={balanceColor(netBalance.today)}
+            />
+          </div>
+          <div className="col-6 col-md-3">
+            <KpiSparkCard
+              icon={BadgePercent}
+              accent={netBalance.week >= 0 ? "green" : "orange"}
+              label="Cette semaine"
+              value={mad(netBalance.week)}
+              valueColor={balanceColor(netBalance.week)}
+            />
+          </div>
+          <div className="col-6 col-md-3">
+            <KpiSparkCard
+              icon={BadgePercent}
+              accent={netBalance.month >= 0 ? "green" : "orange"}
+              label="Ce mois"
+              value={mad(netBalance.month)}
+              valueColor={balanceColor(netBalance.month)}
+            />
+          </div>
+          <div className="col-6 col-md-3">
+            <KpiSparkCard
+              icon={BadgePercent}
+              accent={netBalance.year >= 0 ? "green" : "orange"}
+              label="Cette année"
+              value={mad(netBalance.year)}
+              valueColor={balanceColor(netBalance.year)}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="row g-2 g-sm-3">
+        <div className="col-12 col-xl-5">
+          <SectionCard
+            icon={FileText}
+            title={editing ? "Modifier une dépense" : "Ajouter une dépense"}
+            subtitle="Formulaire propre et rapide pour créer ou mettre à jour une dépense."
+            className="mb-3"
+          >
+            {editing && (
+              <div className="alert alert-warning d-flex align-items-center justify-content-between py-2 mb-3">
+                <span>Modification en cours.</span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-link text-decoration-underline p-0"
+                  onClick={resetForm}
+                >
+                  <X size={14} className="me-1" />
+                  Annuler
+                </button>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white md:text-3xl">Gestion des dépenses</h1>
-                <p className="mt-1 max-w-2xl text-sm text-white/70">
-                  Suivi, consultation, modification et annulation des dépenses avec tableau,
-                  filtres et statistiques.
-                </p>
-              </div>
-            </div>
+            )}
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="btn border-0 bg-white text-black hover:bg-white/90"
-                onClick={() => {
-                  resetForm();
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-              >
-                <Plus size={16} />
-                Nouvelle dépense
-              </button>
+            <form onSubmit={handleSubmit}>
+              <div className="mb-3 p-3" style={{ borderRadius: "var(--duu-radius-md)", background: "rgba(var(--duu-yellow-rgb), .08)" }}>
+                <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                  <Tag size={16} />
+                  Catégorie principale
+                </label>
+                <select
+                  className="form-select"
+                  value={form.category_id || ""}
+                  onChange={(e) => {
+                    const id = Number(e.target.value || 0);
+                    const cat = categories.find((c) => c.id === id);
+                    setForm((prev) => ({
+                      ...prev,
+                      category_id: id || null,
+                      category_name: cat?.name || "",
+                    }));
+                  }}
+                >
+                  <option value="">Sélectionner une catégorie</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
 
-              <button
-                type="button"
-                className="btn btn-ghost text-white hover:bg-white/10"
-                onClick={loadAll}
-              >
-                <RefreshCcw size={16} />
-                Actualiser
-              </button>
-
-              <button
-                type="button"
-                className="btn border-0 text-black"
-                style={{
-                  background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
-                }}
-                onClick={() =>
-                  exportCsv(
-                    `depenses_${new Date().toISOString().slice(0, 10)}.csv`,
-                    items.map((x) => ({
-                      date: x.expense_date,
-                      categorie: x.category_name,
-                      libelle: x.label,
-                      description: x.description || "",
-                      montant: x.amount,
-                      paiement: paymentLabel(x.payment_method),
-                      statut: x.status,
-                      reference: x.reference || "",
-                    }))
-                  )
-                }
-              >
-                <Download size={16} />
-                Export CSV
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {!!error && (
-          <div className="alert border-0 bg-red-50 text-red-700 shadow-sm">
-            <span>{error}</span>
-          </div>
-        )}
-
-        <div>
-          <div className="mb-2 text-sm font-medium text-base-content/55">
-            Vue globale (depuis le début) — le vrai total, indépendant des filtres
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SummaryCard label="Total dépenses (global)" value={summary.all_time} />
-            <SummaryCard label="Solde net (global)" value={netBalance.all_time} signed />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-          <SummaryCard label="Aujourd’hui" value={summary.today} />
-          <SummaryCard label="Cette semaine" value={summary.week} />
-          <SummaryCard label="Ce mois" value={summary.month} />
-          <SummaryCard label="Cette année" value={summary.year} />
-          <SummaryCard label="Total filtré" value={summary.filtered_total} />
-        </div>
-
-        <div>
-          <div className="mb-2 text-sm font-medium text-base-content/55">
-            Solde net (chiffre d’affaires − dépenses) — ce qui reste dans la caisse
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard label="Aujourd’hui" value={netBalance.today} signed />
-            <SummaryCard label="Cette semaine" value={netBalance.week} signed />
-            <SummaryCard label="Ce mois" value={netBalance.month} signed />
-            <SummaryCard label="Cette année" value={netBalance.year} signed />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
-          <div className="space-y-6">
-            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-              <SectionIcon
-                icon={<FileText size={22} />}
-                title={editing ? "Modifier une dépense" : "Ajouter une dépense"}
-                subtitle="Formulaire propre et rapide pour créer ou mettre à jour une dépense."
-              />
-
-              {editing && (
-                <div className="mb-4 flex items-center justify-between rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  <span>Modification en cours.</span>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-2 font-semibold underline"
-                    onClick={resetForm}
-                  >
-                    <X size={14} />
-                    Annuler la modification
-                  </button>
-                </div>
-              )}
-
-              <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
-                <div className="rounded-[22px] border border-black/5 bg-[rgba(255,210,74,0.06)] p-4">
-                  <FieldLabel icon={<Tag size={16} />}>Catégorie principale</FieldLabel>
-                  <select
-                    className="select select-bordered w-full bg-white"
-                    value={form.category_id || ""}
-                    onChange={(e) => {
-                      const id = Number(e.target.value || 0);
-                      const cat = categories.find((c) => c.id === id);
-                      setForm((prev) => ({
-                        ...prev,
-                        category_id: id || null,
-                        category_name: cat?.name || "",
-                      }));
-                    }}
-                  >
-                    <option value="">Sélectionner une catégorie</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_110px_auto]">
+                <div className="row g-2 mt-1">
+                  <div className="col-7">
                     <input
-                      className="input input-bordered bg-white"
+                      className="form-control"
                       value={newCategory}
                       onChange={(e) => setNewCategory(e.target.value)}
                       placeholder="Créer une nouvelle catégorie"
                     />
+                  </div>
+                  <div className="col-3">
                     <input
                       type="color"
-                      className="input input-bordered h-12 w-full bg-white p-1"
+                      className="form-control form-control-color w-100"
                       value={newCategoryColor}
                       onChange={(e) => setNewCategoryColor(e.target.value)}
                     />
+                  </div>
+                  <div className="col-2 d-grid">
                     <button
                       type="button"
-                      className="btn border-0 text-black"
-                      style={{
-                        background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
-                      }}
+                      className="btn btn-duu-orange"
                       onClick={handleCreateCategory}
                       disabled={creatingCategory}
                     >
-                      {creatingCategory ? "Ajout..." : "Ajouter"}
+                      {creatingCategory ? "…" : "OK"}
                     </button>
                   </div>
                 </div>
+              </div>
 
-                <div>
-                  <FieldLabel icon={<FileText size={16} />}>Libellé</FieldLabel>
+              <div className="mb-3">
+                <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                  <FileText size={16} />
+                  Libellé
+                </label>
+                <input
+                  className="form-control"
+                  value={form.label}
+                  onChange={(e) => setFormField("label", e.target.value)}
+                  required
+                  placeholder="Ex: Achat emballages"
+                />
+              </div>
+
+              <div className="mb-3">
+                <label className="form-label fw-semibold">Description</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={form.description}
+                  onChange={(e) => setFormField("description", e.target.value)}
+                  placeholder="Détail complémentaire sur la dépense..."
+                />
+              </div>
+
+              <div className="row g-3 mb-3">
+                <div className="col-6">
+                  <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                    <Wallet size={16} />
+                    Montant
+                  </label>
                   <input
-                    className="input input-bordered w-full bg-white"
-                    value={form.label}
-                    onChange={(e) => setFormField("label", e.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-control"
+                    value={form.amount}
+                    onChange={(e) => setFormField("amount", e.target.value)}
                     required
-                    placeholder="Ex: Achat emballages"
+                    placeholder="0.00"
                   />
                 </div>
-
-                <div>
-                  <FieldLabel>Description</FieldLabel>
-                  <textarea
-                    className="textarea textarea-bordered w-full bg-white"
-                    rows={4}
-                    value={form.description}
-                    onChange={(e) => setFormField("description", e.target.value)}
-                    placeholder="Détail complémentaire sur la dépense..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel icon={<Wallet size={16} />}>Montant</FieldLabel>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="input input-bordered w-full bg-white"
-                      value={form.amount}
-                      onChange={(e) => setFormField("amount", e.target.value)}
-                      required
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div>
-                    <FieldLabel icon={<CalendarDays size={16} />}>Date</FieldLabel>
-                    <input
-                      type="date"
-                      className="input input-bordered w-full bg-white"
-                      value={form.expense_date}
-                      onChange={(e) => setFormField("expense_date", e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel icon={<CreditCard size={16} />}>Mode de paiement</FieldLabel>
-                    <select
-                      className="select select-bordered w-full bg-white"
-                      value={form.payment_method}
-                      onChange={(e) => setFormField("payment_method", e.target.value)}
-                    >
-                      {PAYMENTS.map((x) => (
-                        <option key={x} value={x}>
-                          {paymentLabel(x)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <FieldLabel>Statut</FieldLabel>
-                    <select
-                      className="select select-bordered w-full bg-white"
-                      value={form.status}
-                      onChange={(e) => setFormField("status", e.target.value as ExpenseStatus)}
-                    >
-                      {STATUS_OPTIONS.map((x) => (
-                        <option key={x} value={x}>
-                          {x}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-base-content/65">
-                  La référence est générée automatiquement par le système.
-                </div>
-
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <button
-                    type="submit"
-                    className="btn flex-1 border-0 text-black"
-                    style={{
-                      background: "linear-gradient(135deg, #F5821F 0%, #D66A0F 100%)",
-                    }}
-                    disabled={saving}
-                  >
-                    {saving
-                      ? "Enregistrement..."
-                      : editing
-                      ? "Mettre à jour la dépense"
-                      : "Ajouter la dépense"}
-                  </button>
-
-                  {editing && (
-                    <button
-                      type="button"
-                      className="btn btn-outline"
-                      onClick={resetForm}
-                    >
-                      Annuler
-                    </button>
-                  )}
-                </div>
-              </form>
-            </div>
-
-            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-              <SectionIcon
-                icon={<Layers3 size={22} />}
-                title="Répartition par catégorie"
-                subtitle="Vue rapide des catégories qui consomment le plus."
-              />
-
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} label>
-                      {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color || "#F5821F"} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div className="mt-4 flex flex-col gap-2">
-                {byCategory.length === 0 ? (
-                  <div className="rounded-2xl bg-neutral-50 px-4 py-3 text-sm text-base-content/60">
-                    Aucune donnée disponible.
-                  </div>
-                ) : (
-                  byCategory.map((x, idx) => (
-                    <div
-                      key={`${x.category_name}-${idx}`}
-                      className="flex items-center justify-between rounded-2xl bg-neutral-50 px-3 py-2 text-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="inline-block h-3 w-3 rounded-full"
-                          style={{ backgroundColor: x.color || "#94a3b8" }}
-                        />
-                        <span>{x.category_name || "Sans catégorie"}</span>
-                      </div>
-                      <strong>{mad(x.total)}</strong>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-6">
-            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-              <SectionIcon
-                icon={<Tag size={22} />}
-                title="Filtres"
-                subtitle="Recherche rapide par période, catégorie, statut et mode de paiement."
-              />
-
-              <div className="mb-4 flex justify-end">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-ghost"
-                  onClick={() => {
-                    setFilters({
-                      from: "",
-                      to: "",
-                      category_id: "",
-                      status: "",
-                      payment_method: "",
-                      q: "",
-                    });
-                    setPage(1);
-                  }}
-                >
-                  Réinitialiser
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                <div>
-                  <FieldLabel>Du</FieldLabel>
+                <div className="col-6">
+                  <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                    <CalendarDays size={16} />
+                    Date
+                  </label>
                   <input
                     type="date"
-                    className="input input-bordered w-full bg-white"
-                    value={filters.from}
-                    onChange={(e) => {
-                      setFilters((p) => ({ ...p, from: e.target.value }));
-                      setPage(1);
-                    }}
+                    className="form-control"
+                    value={form.expense_date}
+                    onChange={(e) => setFormField("expense_date", e.target.value)}
+                    required
                   />
                 </div>
+              </div>
 
-                <div>
-                  <FieldLabel>Au</FieldLabel>
-                  <input
-                    type="date"
-                    className="input input-bordered w-full bg-white"
-                    value={filters.to}
-                    onChange={(e) => {
-                      setFilters((p) => ({ ...p, to: e.target.value }));
-                      setPage(1);
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <FieldLabel>Catégorie</FieldLabel>
+              <div className="row g-3 mb-3">
+                <div className="col-6">
+                  <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                    <CreditCard size={16} />
+                    Mode de paiement
+                  </label>
                   <select
-                    className="select select-bordered w-full bg-white"
-                    value={filters.category_id}
-                    onChange={(e) => {
-                      setFilters((p) => ({ ...p, category_id: e.target.value }));
-                      setPage(1);
-                    }}
+                    className="form-select"
+                    value={form.payment_method}
+                    onChange={(e) => setFormField("payment_method", e.target.value)}
                   >
-                    <option value="">Toutes</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <FieldLabel>Statut</FieldLabel>
-                  <select
-                    className="select select-bordered w-full bg-white"
-                    value={filters.status}
-                    onChange={(e) => {
-                      setFilters((p) => ({ ...p, status: e.target.value }));
-                      setPage(1);
-                    }}
-                  >
-                    <option value="">Tous</option>
-                    {STATUS_OPTIONS.map((x) => (
-                      <option key={x} value={x}>
-                        {x}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <FieldLabel>Paiement</FieldLabel>
-                  <select
-                    className="select select-bordered w-full bg-white"
-                    value={filters.payment_method}
-                    onChange={(e) => {
-                      setFilters((p) => ({ ...p, payment_method: e.target.value }));
-                      setPage(1);
-                    }}
-                  >
-                    <option value="">Tous</option>
                     {PAYMENTS.map((x) => (
                       <option key={x} value={x}>
                         {paymentLabel(x)}
@@ -978,220 +768,375 @@ export default function ExpensesPage() {
                     ))}
                   </select>
                 </div>
-
-                <div>
-                  <FieldLabel icon={<Search size={16} />}>Recherche</FieldLabel>
-                  <input
-                    className="input input-bordered w-full bg-white"
-                    value={filters.q}
-                    onChange={(e) => {
-                      setFilters((p) => ({ ...p, q: e.target.value }));
-                      setPage(1);
-                    }}
-                    placeholder="Libellé, référence, description..."
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold">Évolution des dépenses</h2>
-                  <p className="text-sm text-base-content/60">
-                    Suivi graphique selon la période choisie.
-                  </p>
-                </div>
-
-                <select
-                  className="select select-bordered select-sm bg-white"
-                  value={chartPeriod}
-                  onChange={(e) => setChartPeriod(e.target.value as any)}
-                >
-                  <option value="day">Jour</option>
-                  <option value="week">Semaine</option>
-                  <option value="month">Mois</option>
-                  <option value="year">Année</option>
-                </select>
-              </div>
-
-              <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={grouped}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="period" />
-                    <YAxis />
-                    <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
-                    <Bar dataKey="total" radius={[10, 10, 0, 0]} fill="#F5821F" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-black/5 bg-white p-5 shadow-sm">
-              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold">Tableau des dépenses</h2>
-                  <p className="text-sm text-base-content/60">
-                    Liste récupérée depuis l’API avec actions de modification et d’annulation.
-                  </p>
-                </div>
-
-                <div className="text-sm text-base-content/70">
-                  Total visible: <strong>{mad(totalVisible)}</strong> — Total filtré:{" "}
-                  <strong>{mad(summary.filtered_total)}</strong>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto rounded-2xl border border-black/5">
-                <table className="table">
-                  <thead className="bg-neutral-50">
-                    <tr className="text-sm text-base-content/70">
-                      <th>Date</th>
-                      <th>Catégorie</th>
-                      <th>Libellé</th>
-                      <th>Description</th>
-                      <th>Montant</th>
-                      <th>Paiement</th>
-                      <th>Statut</th>
-                      <th>Référence</th>
-                      <th className="text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading && (
-                      <tr>
-                        <td colSpan={9} className="py-8 text-center text-base-content/60">
-                          <LoadingState label="Chargement des dépenses…" size="sm" />
-                        </td>
-                      </tr>
-                    )}
-
-                    {!loading && items.length === 0 && (
-                      <tr>
-                        <td colSpan={9} className="py-8 text-center text-base-content/60">
-                          Aucune dépense trouvée.
-                        </td>
-                      </tr>
-                    )}
-
-                    {!loading &&
-                      items.map((item) => (
-                        <tr key={item.id} className="hover">
-                          <td className="whitespace-nowrap">{fmtDate(item.expense_date)}</td>
-
-                          <td>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="inline-block h-3 w-3 rounded-full"
-                                style={{ backgroundColor: item.category_color || "#94a3b8" }}
-                              />
-                              <span>{item.category_name || "—"}</span>
-                            </div>
-                          </td>
-
-                          <td className="min-w-[180px]">
-                            <div className="font-semibold text-base-content">{item.label || "—"}</div>
-                          </td>
-
-                          <td className="max-w-[240px]">
-                            <div className="truncate text-sm text-base-content/65">
-                              {item.description || "—"}
-                            </div>
-                          </td>
-
-                          <td className="whitespace-nowrap font-semibold">{mad(item.amount)}</td>
-
-                          <td className="whitespace-nowrap">
-                            {paymentLabel(item.payment_method)}
-                          </td>
-
-                          <td>
-                            <span
-                              className={`badge ${
-                                item.status === "PAID" ? "badge-success" : "badge-warning"
-                              }`}
-                            >
-                              {item.status}
-                            </span>
-                          </td>
-
-                          <td className="whitespace-nowrap text-sm text-base-content/70">
-                            {item.reference || "—"}
-                          </td>
-
-                          <td>
-                            <div className="flex justify-end gap-2">
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline"
-                                onClick={() => handleEdit(item)}
-                                title="Modifier"
-                              >
-                                <Pencil size={15} />
-                              </button>
-
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-error btn-outline"
-                                disabled={deletingId === item.id}
-                                onClick={() => handleDelete(item.id)}
-                                title="Annuler / supprimer"
-                              >
-                                {deletingId === item.id ? "..." : <Trash2 size={15} />}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="text-sm text-base-content/70">
-                  Page {pageInfo.page} / {Math.max(1, pageInfo.pages)} — {pageInfo.total} élément(s)
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="col-6">
+                  <label className="form-label fw-semibold">Statut</label>
                   <select
-                    className="select select-bordered select-sm bg-white"
-                    value={pageSize}
-                    onChange={(e) => {
-                      setPageSize(Number(e.target.value || 20));
-                      setPage(1);
-                    }}
+                    className="form-select"
+                    value={form.status}
+                    onChange={(e) => setFormField("status", e.target.value as ExpenseStatus)}
                   >
-                    {[10, 20, 50, 100].map((n) => (
-                      <option key={n} value={n}>
-                        {n} / page
+                    {STATUS_OPTIONS.map((x) => (
+                      <option key={x} value={x}>
+                        {x}
                       </option>
                     ))}
                   </select>
-
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    <ArrowLeft size={15} />
-                    Précédent
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    disabled={page >= pageInfo.pages}
-                    onClick={() => setPage((p) => Math.min(pageInfo.pages, p + 1))}
-                  >
-                    Suivant
-                    <ArrowRight size={15} />
-                  </button>
                 </div>
               </div>
+
+              <div className="text-muted small mb-3">
+                La référence est générée automatiquement par le système.
+              </div>
+
+              <div className="d-flex flex-column flex-sm-row gap-2">
+                <button type="submit" className="btn btn-duu-orange flex-fill" disabled={saving}>
+                  {saving ? "Enregistrement…" : editing ? "Mettre à jour la dépense" : "Ajouter la dépense"}
+                </button>
+                {editing && (
+                  <button type="button" className="btn btn-outline-dark" onClick={resetForm}>
+                    Annuler
+                  </button>
+                )}
+              </div>
+            </form>
+          </SectionCard>
+
+          <SectionCard
+            icon={Layers3}
+            title="Répartition par catégorie"
+            subtitle="Vue rapide des catégories qui consomment le plus."
+          >
+            {donutSegments.length === 0 ? (
+              <div className="text-muted small">Aucune donnée disponible.</div>
+            ) : (
+              <>
+                <DonutStat
+                  centerLabel="Total dépenses"
+                  centerValue={mad(donutSegments.reduce((s, x) => s + x.value, 0))}
+                  segments={donutSegments}
+                />
+                <div className="d-flex flex-column gap-2 mt-3">
+                  {byCategory.map((x, idx) => (
+                    <div
+                      key={`${x.category_name}-${idx}`}
+                      className="d-flex align-items-center justify-content-between px-3 py-2"
+                      style={{ borderRadius: "var(--duu-radius-md)", background: "rgba(17,17,17,.04)" }}
+                    >
+                      <div className="d-flex align-items-center gap-2 small">
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: "50%",
+                            background: x.color || DONUT_COLORS[idx % DONUT_COLORS.length],
+                            display: "inline-block",
+                          }}
+                        />
+                        <span>{x.category_name || "Sans catégorie"}</span>
+                      </div>
+                      <strong className="small">{mad(x.total)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </SectionCard>
+        </div>
+
+        <div className="col-12 col-xl-7">
+          <SectionCard
+            icon={Tag}
+            title="Filtres"
+            subtitle="Recherche rapide par période, catégorie, statut et mode de paiement."
+            right={
+              <button type="button" className="btn btn-sm btn-outline-dark" onClick={resetFilters}>
+                Réinitialiser
+              </button>
+            }
+            className="mb-3"
+          >
+            <div className="row g-3">
+              <div className="col-6 col-md-4">
+                <label className="form-label small">Du</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={filters.from}
+                  onChange={(e) => {
+                    setFilters((p) => ({ ...p, from: e.target.value }));
+                    setPage(1);
+                  }}
+                />
+              </div>
+              <div className="col-6 col-md-4">
+                <label className="form-label small">Au</label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={filters.to}
+                  onChange={(e) => {
+                    setFilters((p) => ({ ...p, to: e.target.value }));
+                    setPage(1);
+                  }}
+                />
+              </div>
+              <div className="col-12 col-md-4">
+                <label className="form-label small">Catégorie</label>
+                <select
+                  className="form-select"
+                  value={filters.category_id}
+                  onChange={(e) => {
+                    setFilters((p) => ({ ...p, category_id: e.target.value }));
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Toutes</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-6 col-md-4">
+                <label className="form-label small">Statut</label>
+                <select
+                  className="form-select"
+                  value={filters.status}
+                  onChange={(e) => {
+                    setFilters((p) => ({ ...p, status: e.target.value }));
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Tous</option>
+                  {STATUS_OPTIONS.map((x) => (
+                    <option key={x} value={x}>
+                      {x}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-6 col-md-4">
+                <label className="form-label small">Paiement</label>
+                <select
+                  className="form-select"
+                  value={filters.payment_method}
+                  onChange={(e) => {
+                    setFilters((p) => ({ ...p, payment_method: e.target.value }));
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Tous</option>
+                  {PAYMENTS.map((x) => (
+                    <option key={x} value={x}>
+                      {paymentLabel(x)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-12 col-md-4">
+                <label className="form-label small d-flex align-items-center gap-1">
+                  <Search size={14} />
+                  Recherche
+                </label>
+                <input
+                  className="form-control"
+                  value={filters.q}
+                  onChange={(e) => {
+                    setFilters((p) => ({ ...p, q: e.target.value }));
+                    setPage(1);
+                  }}
+                  placeholder="Libellé, référence, description..."
+                />
+              </div>
             </div>
-          </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Évolution des dépenses"
+            subtitle="Suivi graphique selon la période choisie."
+            right={
+              <select
+                className="form-select form-select-sm"
+                style={{ width: "auto" }}
+                value={chartPeriod}
+                onChange={(e) => setChartPeriod(e.target.value as any)}
+              >
+                <option value="day">Jour</option>
+                <option value="week">Semaine</option>
+                <option value="month">Mois</option>
+                <option value="year">Année</option>
+              </select>
+            }
+            className="mb-3"
+          >
+            <div style={{ width: "100%", height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={grouped}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: any) => mad(Number(v || 0))} />
+                  <Bar dataKey="total" radius={[6, 6, 0, 0]} fill="var(--duu-orange)" maxBarSize={32} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Tableau des dépenses"
+            subtitle={`Total visible : ${mad(totalVisible)} — Total filtré : ${mad(summary.filtered_total)}`}
+          >
+            <div className="table-responsive">
+              <table className="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Catégorie</th>
+                    <th>Libellé</th>
+                    <th className="d-none d-lg-table-cell">Description</th>
+                    <th className="text-end">Montant</th>
+                    <th className="d-none d-md-table-cell">Paiement</th>
+                    <th>Statut</th>
+                    <th className="d-none d-lg-table-cell">Référence</th>
+                    <th className="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading && (
+                    <tr>
+                      <td colSpan={9} className="text-center py-4">
+                        <LoadingState label="Chargement des dépenses…" size="sm" />
+                      </td>
+                    </tr>
+                  )}
+
+                  {!loading && items.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="text-center text-muted py-4">
+                        Aucune dépense trouvée.
+                      </td>
+                    </tr>
+                  )}
+
+                  {!loading &&
+                    items.map((item) => (
+                      <tr key={item.id}>
+                        <td style={{ whiteSpace: "nowrap" }}>{fmtDate(item.expense_date)}</td>
+
+                        <td>
+                          <div className="d-flex align-items-center gap-2">
+                            <span
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                background: item.category_color || "#94a3b8",
+                                display: "inline-block",
+                                flexShrink: 0,
+                              }}
+                            />
+                            <span className="text-truncate">{item.category_name || "—"}</span>
+                          </div>
+                        </td>
+
+                        <td className="text-truncate" style={{ maxWidth: 180 }}>
+                          <span className="fw-semibold">{item.label || "—"}</span>
+                        </td>
+
+                        <td className="d-none d-lg-table-cell text-truncate text-muted small" style={{ maxWidth: 240 }}>
+                          {item.description || "—"}
+                        </td>
+
+                        <td className="text-end fw-semibold" style={{ whiteSpace: "nowrap" }}>
+                          {mad(item.amount)}
+                        </td>
+
+                        <td className="d-none d-md-table-cell" style={{ whiteSpace: "nowrap" }}>
+                          {paymentLabel(item.payment_method)}
+                        </td>
+
+                        <td>
+                          <span className={`badge ${item.status === "PAID" ? "bg-success" : "bg-warning text-dark"}`}>
+                            {item.status}
+                          </span>
+                        </td>
+
+                        <td className="d-none d-lg-table-cell text-muted small" style={{ whiteSpace: "nowrap" }}>
+                          {item.reference || "—"}
+                        </td>
+
+                        <td className="text-end">
+                          <div className="btn-group">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => handleEdit(item)}
+                              title="Modifier"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              disabled={deletingId === item.id}
+                              onClick={() => handleDelete(item.id)}
+                              title="Annuler / supprimer"
+                            >
+                              {deletingId === item.id ? "…" : <Trash2 size={14} />}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mt-3">
+              <div className="text-muted small">
+                Page {pageInfo.page} / {Math.max(1, pageInfo.pages)} — {pageInfo.total} élément(s)
+              </div>
+
+              <div className="d-flex flex-wrap align-items-center gap-2">
+                <select
+                  className="form-select form-select-sm"
+                  style={{ width: "auto" }}
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value || 20));
+                    setPage(1);
+                  }}
+                >
+                  {[10, 20, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {n} / page
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-dark"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <ArrowLeft size={14} className="me-1" />
+                  Précédent
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-dark"
+                  disabled={page >= pageInfo.pages}
+                  onClick={() => setPage((p) => Math.min(pageInfo.pages, p + 1))}
+                >
+                  Suivant
+                  <ArrowRight size={14} className="ms-1" />
+                </button>
+              </div>
+            </div>
+          </SectionCard>
         </div>
       </div>
     </div>

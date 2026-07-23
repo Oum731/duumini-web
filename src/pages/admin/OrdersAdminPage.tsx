@@ -24,6 +24,8 @@ import OrderViewModal from "../../components/ordersAdmin/OrderViewModal";
 import PosSaleModal from "../../components/ordersAdmin/PosSaleModal";
 import AdminOrderForClientModal from "../../components/ordersAdmin/AdminOrderForClientModal";
 
+import { PageHeader } from "../../components/admin/adminUI";
+
 import type {
   AnyObj,
   CurrentUser,
@@ -549,32 +551,38 @@ export default function OrdersAdminPage() {
 
   return (
     <div className="container-xxl py-4">
-      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <h1 className="h5 m-0">{isVendor ? "Mes commandes" : "Commandes"}</h1>
+      <PageHeader
+        title={isVendor ? "Mes commandes" : "Commandes"}
+        subtitle={
+          isVendor
+            ? "Suivez et mettez à jour vos commandes."
+            : "Toutes les commandes Duumini, filtres, ventes sur place et top clients."
+        }
+        right={
+          <>
+            {!isVendor && (
+              <>
+                <button className="btn btn-duu-orange" onClick={() => setOpenPos(true)}>
+                  + Vente sur place
+                </button>
 
-        <div className="d-flex gap-2">
-          {!isVendor && (
-            <>
-              <button className="btn btn-duu" onClick={() => setOpenPos(true)}>
-                + Vente sur place
-              </button>
+                <button
+                  className="btn btn-outline-dark"
+                  onClick={() => setOpenAdminOrder(true)}
+                >
+                  + Commander pour un client
+                </button>
+              </>
+            )}
 
-              <button
-                className="btn btn-outline-dark"
-                onClick={() => setOpenAdminOrder(true)}
-              >
-                + Commander pour un client
-              </button>
-            </>
-          )}
-
-          {!isVendor && (
-            <Link to="/admin" className="btn btn-outline-dark">
-              Accueil admin
-            </Link>
-          )}
-        </div>
-      </div>
+            {!isVendor && (
+              <Link to="/admin" className="btn btn-outline-dark">
+                Accueil admin
+              </Link>
+            )}
+          </>
+        }
+      />
 
       <ul className="nav nav-tabs mb-3">
         <li className="nav-item">
@@ -608,7 +616,10 @@ export default function OrdersAdminPage() {
       />
 
       {!isVendor && (
-        <div className="card shadow-sm mb-3 border-0 divine-card">
+        <div
+          className="card mb-3 border-0 divine-card"
+          style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+        >
           <div className="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div>
               <div className="fw-bold">Suivi Divine</div>
@@ -678,8 +689,11 @@ export default function OrdersAdminPage() {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      <div className="card shadow-sm">
-        <div className="card-body">
+      <div
+        className="card border-0"
+        style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+      >
+        <div className="card-body p-3 p-sm-4">
           <OrdersTable
             loading={loading}
             orders={displayed}
@@ -778,16 +792,6 @@ export default function OrdersAdminPage() {
       )}
 
       <style>{`
-        .btn-duu{
-          background: var(--duu-yellow);
-          color: #1f1f1f;
-          border: none;
-        }
-
-        .btn-duu:hover{
-          filter: brightness(0.95);
-        }
-
         .divine-card{
           background: linear-gradient(135deg, #fff7d6 0%, #ffffff 70%);
         }
@@ -795,7 +799,7 @@ export default function OrdersAdminPage() {
         .divine-kpi{
           min-width: 125px;
           border: 1px solid rgba(0,0,0,.08);
-          border-radius: 14px;
+          border-radius: var(--duu-radius-md);
           padding: .55rem .75rem;
           background: #fff;
         }

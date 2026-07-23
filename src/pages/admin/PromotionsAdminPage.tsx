@@ -10,6 +10,7 @@ import {
 import { me } from "../../services/auth";
 import { Spinner, LoadingState } from "../../components/ui/Spinner";
 import { api } from "../../services/http";
+import { PageHeader } from "../../components/admin/adminUI";
 
 /* ===== Utils ===== */
 function mad(n?: number | null) {
@@ -340,21 +341,14 @@ export default function PromotionsAdminPage() {
   return (
     <div className="container-xxl py-3 px-2 px-sm-3">
       <style>{`
-        .btn-duu{ background: var(--duu-yellow, #fddc00); color:#1f1f1f; border:none; font-weight:900; }
-        .btn-duu:hover{ filter: brightness(.96); }
         .badge-duu{ background: var(--duu-red, #e53935); }
       `}</style>
 
-      <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2 mb-2">
-        <div>
-          <div className="fw-semibold" style={{ color: "var(--duu-black)" }}>
-            Promotions
-          </div>
-          <div className="text-muted small">Sélectionne des produits puis applique / retire une réduction.</div>
-        </div>
-
-        <div className="d-flex gap-2 flex-wrap">
-          <button className="btn btn-sm btn-outline-dark" onClick={load} disabled={loading || busy}>
+      <PageHeader
+        title="Promotions"
+        subtitle="Sélectionne des produits puis applique / retire une réduction."
+        right={
+          <button className="btn btn-outline-dark" onClick={load} disabled={loading || busy}>
             {loading ? (
               <>
                 <Spinner size="xs" className="me-1" />
@@ -364,8 +358,8 @@ export default function PromotionsAdminPage() {
               "Actualiser"
             )}
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {isVendor ? (
         <div className="alert alert-info py-2 mb-2">
@@ -375,18 +369,21 @@ export default function PromotionsAdminPage() {
 
       {error ? <div className="alert alert-danger py-2 mb-2">{error}</div> : null}
 
-      <div className="card shadow-sm">
-        <div className="card-body">
+      <div
+        className="card border-0"
+        style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+      >
+        <div className="card-body p-3 p-sm-4">
           <div className="d-flex gap-2 flex-wrap mb-2">
             <button
-              className={`btn btn-sm ${tab === "ADD" ? "btn-duu" : "btn-outline-dark"}`}
+              className={`btn btn-sm ${tab === "ADD" ? "btn-duu-orange" : "btn-outline-dark"}`}
               onClick={() => setTab("ADD")}
               disabled={busy}
             >
               Ajouter une promotion
             </button>
             <button
-              className={`btn btn-sm ${tab === "REMOVE" ? "btn-duu" : "btn-outline-dark"}`}
+              className={`btn btn-sm ${tab === "REMOVE" ? "btn-duu-orange" : "btn-outline-dark"}`}
               onClick={() => setTab("REMOVE")}
               disabled={busy}
             >
@@ -411,7 +408,7 @@ export default function PromotionsAdminPage() {
                     Tout décocher
                   </button>
                   <button
-                    className="btn btn-sm btn-duu"
+                    className="btn btn-sm btn-duu-orange"
                     onClick={openApplyModal}
                     disabled={busy || loading || selectedAddIds.length === 0}
                   >
@@ -435,7 +432,7 @@ export default function PromotionsAdminPage() {
                     Tout décocher
                   </button>
                   <button
-                    className="btn btn-sm btn-duu"
+                    className="btn btn-sm btn-duu-orange"
                     onClick={disablePromo}
                     disabled={busy || loading || selectedRemoveIds.length === 0}
                   >
@@ -720,7 +717,7 @@ export default function PromotionsAdminPage() {
                 <button className="btn btn-outline-dark" onClick={() => setModalOpen(false)} disabled={busy}>
                   Annuler
                 </button>
-                <button className="btn btn-duu" onClick={applyPromo} disabled={busy}>
+                <button className="btn btn-duu-orange" onClick={applyPromo} disabled={busy}>
                   {busy ? "Application…" : "Appliquer"}
                 </button>
               </div>

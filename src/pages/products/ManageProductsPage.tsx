@@ -26,6 +26,7 @@ import {
 } from "../../services/subCategories";
 
 import { moneyMAD } from "../../utils/money";
+import { PageHeader } from "../../components/admin/adminUI";
 import ProductForm, {
   type Draft,
   type FullProduct,
@@ -562,53 +563,54 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
         .row-click:hover{ background: rgba(0,0,0,.02); }
       `}</style>
 
-      <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
-        <div>
-          <h1 className="h4 mb-1">{isVendor ? "Mes produits" : "Gestion des produits"}</h1>
-          <div className="text-muted small">
-            {loading ? "Chargement…" : `${pageInfo.total} produit(s)`}
-          </div>
-          {err ? <div className="alert alert-danger py-2 mt-2 mb-0">{err}</div> : null}
-        </div>
+      <PageHeader
+        title={isVendor ? "Mes produits" : "Gestion des produits"}
+        subtitle={loading ? "Chargement…" : `${pageInfo.total} produit(s)`}
+        right={
+          <>
+            <input
+              className="form-control"
+              style={{ maxWidth: 320 }}
+              placeholder="Rechercher (nom, description, boutique)…"
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                setPage(1);
+              }}
+            />
 
-        <div className="d-flex gap-2 flex-wrap align-items-center">
-          <input
-            className="form-control"
-            style={{ maxWidth: 320 }}
-            placeholder="Rechercher (nom, description, boutique)…"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
-          />
+            <select
+              className="form-select"
+              style={{ width: 120 }}
+              value={String(pageSize)}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+            >
+              {pageSizeOptions.map((n) => (
+                <option key={n} value={n}>
+                  {n}/page
+                </option>
+              ))}
+            </select>
 
-          <select
-            className="form-select"
-            style={{ width: 120 }}
-            value={String(pageSize)}
-            onChange={(e) => {
-              setPageSize(Number(e.target.value));
-              setPage(1);
-            }}
-          >
-            {pageSizeOptions.map((n) => (
-              <option key={n} value={n}>
-                {n}/page
-              </option>
-            ))}
-          </select>
+            <button className="btn btn-duu-orange" onClick={openCreate}>
+              + Ajouter
+            </button>
+            <button className="btn btn-outline-dark" onClick={refresh} disabled={loading}>
+              Rafraîchir
+            </button>
+          </>
+        }
+      />
 
-          <button className="btn btn-dark" onClick={openCreate}>
-            + Ajouter
-          </button>
-          <button className="btn btn-outline-secondary" onClick={refresh} disabled={loading}>
-            Rafraîchir
-          </button>
-        </div>
-      </div>
+      {err ? <div className="alert alert-danger py-2 mb-3">{err}</div> : null}
 
-      <div className="card shadow-sm">
+      <div
+        className="card border-0"
+        style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+      >
         <div className="table-responsive">
           <table className="table align-middle mb-0">
             <thead>

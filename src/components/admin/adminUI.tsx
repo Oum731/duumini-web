@@ -279,6 +279,7 @@ export function KpiSparkCard({
   onPeriodChange,
   sparklineData,
   to,
+  valueColor,
 }: {
   icon: LucideIcon;
   accent?: Accent;
@@ -291,6 +292,8 @@ export function KpiSparkCard({
   onPeriodChange?: (value: string) => void;
   sparklineData?: number[];
   to?: string;
+  /** Couleur explicite de la valeur (ex: solde négatif en rouge) ; sinon #111111. */
+  valueColor?: string;
 }) {
   const { bg, fg } = accentVars(accent);
   const hasTrend = typeof trendPercent === "number" && Number.isFinite(trendPercent);
@@ -351,7 +354,7 @@ export function KpiSparkCard({
         <div className="text-muted small text-truncate mb-1">{label}</div>
         <div
           className="fw-bold text-truncate mb-2"
-          style={{ color: "#111111", fontSize: "1.4rem", letterSpacing: "-0.01em" }}
+          style={{ color: valueColor || "#111111", fontSize: "1.4rem", letterSpacing: "-0.01em" }}
         >
           {value}
         </div>
