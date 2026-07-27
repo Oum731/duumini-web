@@ -392,14 +392,14 @@ export function DonutStat({
 
   return (
     <div>
-      <div style={{ position: "relative", width: "100%", height: 220 }}>
+      <div style={{ position: "relative", width: "100%", height: 240 }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={segments}
               dataKey="value"
               nameKey="label"
-              innerRadius="62%"
+              innerRadius="58%"
               outerRadius="92%"
               paddingAngle={2}
               stroke="none"
@@ -421,10 +421,25 @@ export function DonutStat({
             alignItems: "center",
             justifyContent: "center",
             pointerEvents: "none",
+            textAlign: "center",
           }}
         >
-          <div className="text-muted small">{centerLabel}</div>
-          <div className="fw-bold" style={{ fontSize: "1.3rem", color: "#111111" }}>
+          <div
+            className="text-muted small text-truncate"
+            style={{ maxWidth: "48%", fontSize: ".72rem" }}
+          >
+            {centerLabel}
+          </div>
+          <div
+            className="fw-bold"
+            style={{
+              fontSize: ".92rem",
+              color: "#111111",
+              lineHeight: 1.2,
+              maxWidth: "48%",
+              overflowWrap: "break-word",
+            }}
+          >
             {centerValue}
           </div>
         </div>

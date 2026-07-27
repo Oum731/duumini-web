@@ -19,7 +19,6 @@ import {
   CreditCard,
   FileText,
   Search,
-  X,
   Layers3,
   ArrowLeft,
   ArrowRight,
@@ -211,6 +210,10 @@ export default function ExpensesPage() {
     q: "",
   });
 
+  const [showFormModal, setShowFormModal] = useState(false);
+  const [expensePeriod, setExpensePeriod] = useState<"today" | "week" | "month" | "year">("month");
+  const [balancePeriod, setBalancePeriod] = useState<"today" | "week" | "month" | "year">("month");
+
   const editing = !!form.id;
 
   const params = useMemo(
@@ -391,6 +394,7 @@ export default function ExpensesPage() {
       }
 
       resetForm();
+      setShowFormModal(false);
       setPage(1);
       await loadAll();
     } catch (e: any) {
@@ -413,7 +417,7 @@ export default function ExpensesPage() {
       status: (item.status || "PAID") as ExpenseStatus,
     });
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setShowFormModal(true);
   }
 
   async function handleDelete(id: number) {
@@ -481,7 +485,7 @@ export default function ExpensesPage() {
               className="btn btn-outline-dark"
               onClick={() => {
                 resetForm();
-                window.scrollTo({ top: 0, behavior: "smooth" });
+                setShowFormModal(true);
               }}
             >
               <Plus size={16} className="me-1" />
@@ -519,292 +523,174 @@ export default function ExpensesPage() {
 
       {!!error && <div className="alert alert-danger">{error}</div>}
 
-      <div className="mb-3">
-        <div className="text-muted small mb-2">
-          Vue globale (depuis le début) — indépendant des filtres
+      <div className="row g-2 g-sm-3 mb-3">
+        <div className="col-6 col-xl-3">
+          <KpiSparkCard
+            icon={Wallet}
+            accent="orange"
+            label="Total dépenses (global)"
+            value={mad(summary.all_time)}
+          />
         </div>
-        <div className="row g-2 g-sm-3">
-          <div className="col-6 col-md-3">
-            <KpiSparkCard
-              icon={Wallet}
-              accent="orange"
-              label="Total dépenses (global)"
-              value={mad(summary.all_time)}
-            />
-          </div>
-          <div className="col-6 col-md-3">
-            <KpiSparkCard
-              icon={BadgePercent}
-              accent={netBalance.all_time >= 0 ? "green" : "orange"}
-              label="Solde net (global)"
-              value={mad(netBalance.all_time)}
-              valueColor={balanceColor(netBalance.all_time)}
-            />
-          </div>
+        <div className="col-6 col-xl-3">
+          <KpiSparkCard
+            icon={BadgePercent}
+            accent={netBalance.all_time >= 0 ? "green" : "orange"}
+            label="Solde net (global)"
+            value={mad(netBalance.all_time)}
+            valueColor={balanceColor(netBalance.all_time)}
+          />
         </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="text-muted small mb-2">Dépenses par période</div>
-        <div className="row g-2 g-sm-3">
-          <div className="col-6 col-md-4 col-xl">
-            <KpiSparkCard icon={Wallet} accent="orange" label="Aujourd'hui" value={mad(summary.today)} />
-          </div>
-          <div className="col-6 col-md-4 col-xl">
-            <KpiSparkCard icon={Wallet} accent="orange" label="Cette semaine" value={mad(summary.week)} />
-          </div>
-          <div className="col-6 col-md-4 col-xl">
-            <KpiSparkCard icon={Wallet} accent="orange" label="Ce mois" value={mad(summary.month)} />
-          </div>
-          <div className="col-6 col-md-4 col-xl">
-            <KpiSparkCard icon={Wallet} accent="orange" label="Cette année" value={mad(summary.year)} />
-          </div>
-          <div className="col-6 col-md-4 col-xl">
-            <KpiSparkCard
-              icon={Wallet}
-              accent="neutral"
-              label="Total filtré"
-              value={mad(summary.filtered_total)}
-            />
-          </div>
+        <div className="col-6 col-xl-3">
+          <KpiSparkCard
+            icon={Wallet}
+            accent="orange"
+            label="Dépenses"
+            value={mad(summary[expensePeriod])}
+            periodOptions={[
+              { value: "today", label: "Aujourd’hui" },
+              { value: "week", label: "Semaine" },
+              { value: "month", label: "Mois" },
+              { value: "year", label: "Année" },
+            ]}
+            period={expensePeriod}
+            onPeriodChange={(v) => setExpensePeriod(v as typeof expensePeriod)}
+          />
         </div>
-      </div>
-
-      <div className="mb-3">
-        <div className="text-muted small mb-2">
-          Solde net (chiffre d’affaires − dépenses) — ce qui reste dans la caisse
-        </div>
-        <div className="row g-2 g-sm-3">
-          <div className="col-6 col-md-3">
-            <KpiSparkCard
-              icon={BadgePercent}
-              accent={netBalance.today >= 0 ? "green" : "orange"}
-              label="Aujourd'hui"
-              value={mad(netBalance.today)}
-              valueColor={balanceColor(netBalance.today)}
-            />
-          </div>
-          <div className="col-6 col-md-3">
-            <KpiSparkCard
-              icon={BadgePercent}
-              accent={netBalance.week >= 0 ? "green" : "orange"}
-              label="Cette semaine"
-              value={mad(netBalance.week)}
-              valueColor={balanceColor(netBalance.week)}
-            />
-          </div>
-          <div className="col-6 col-md-3">
-            <KpiSparkCard
-              icon={BadgePercent}
-              accent={netBalance.month >= 0 ? "green" : "orange"}
-              label="Ce mois"
-              value={mad(netBalance.month)}
-              valueColor={balanceColor(netBalance.month)}
-            />
-          </div>
-          <div className="col-6 col-md-3">
-            <KpiSparkCard
-              icon={BadgePercent}
-              accent={netBalance.year >= 0 ? "green" : "orange"}
-              label="Cette année"
-              value={mad(netBalance.year)}
-              valueColor={balanceColor(netBalance.year)}
-            />
-          </div>
+        <div className="col-6 col-xl-3">
+          <KpiSparkCard
+            icon={BadgePercent}
+            accent={netBalance[balancePeriod] >= 0 ? "green" : "orange"}
+            label="Solde net"
+            value={mad(netBalance[balancePeriod])}
+            valueColor={balanceColor(netBalance[balancePeriod])}
+            periodOptions={[
+              { value: "today", label: "Aujourd’hui" },
+              { value: "week", label: "Semaine" },
+              { value: "month", label: "Mois" },
+              { value: "year", label: "Année" },
+            ]}
+            period={balancePeriod}
+            onPeriodChange={(v) => setBalancePeriod(v as typeof balancePeriod)}
+          />
         </div>
       </div>
 
-      <div className="row g-2 g-sm-3">
-        <div className="col-12 col-xl-5">
-          <SectionCard
-            icon={FileText}
-            title={editing ? "Modifier une dépense" : "Ajouter une dépense"}
-            subtitle="Formulaire propre et rapide pour créer ou mettre à jour une dépense."
-            className="mb-3"
-          >
-            {editing && (
-              <div className="alert alert-warning d-flex align-items-center justify-content-between py-2 mb-3">
-                <span>Modification en cours.</span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-link text-decoration-underline p-0"
-                  onClick={resetForm}
-                >
-                  <X size={14} className="me-1" />
-                  Annuler
-                </button>
-              </div>
-            )}
+      <SectionCard
+        icon={Tag}
+        title="Filtres"
+        subtitle="Recherche rapide par période, catégorie, statut et mode de paiement."
+        right={
+          <button type="button" className="btn btn-sm btn-outline-dark" onClick={resetFilters}>
+            Réinitialiser
+          </button>
+        }
+        className="mb-3"
+      >
+        <div className="row g-3">
+          <div className="col-6 col-md-4">
+            <label className="form-label small">Du</label>
+            <input
+              type="date"
+              className="form-control"
+              value={filters.from}
+              onChange={(e) => {
+                setFilters((p) => ({ ...p, from: e.target.value }));
+                setPage(1);
+              }}
+            />
+          </div>
+          <div className="col-6 col-md-4">
+            <label className="form-label small">Au</label>
+            <input
+              type="date"
+              className="form-control"
+              value={filters.to}
+              onChange={(e) => {
+                setFilters((p) => ({ ...p, to: e.target.value }));
+                setPage(1);
+              }}
+            />
+          </div>
+          <div className="col-12 col-md-4">
+            <label className="form-label small">Catégorie</label>
+            <select
+              className="form-select"
+              value={filters.category_id}
+              onChange={(e) => {
+                setFilters((p) => ({ ...p, category_id: e.target.value }));
+                setPage(1);
+              }}
+            >
+              <option value="">Toutes</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-6 col-md-4">
+            <label className="form-label small">Statut</label>
+            <select
+              className="form-select"
+              value={filters.status}
+              onChange={(e) => {
+                setFilters((p) => ({ ...p, status: e.target.value }));
+                setPage(1);
+              }}
+            >
+              <option value="">Tous</option>
+              {STATUS_OPTIONS.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-6 col-md-4">
+            <label className="form-label small">Paiement</label>
+            <select
+              className="form-select"
+              value={filters.payment_method}
+              onChange={(e) => {
+                setFilters((p) => ({ ...p, payment_method: e.target.value }));
+                setPage(1);
+              }}
+            >
+              <option value="">Tous</option>
+              {PAYMENTS.map((x) => (
+                <option key={x} value={x}>
+                  {paymentLabel(x)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-12 col-md-4">
+            <label className="form-label small d-flex align-items-center gap-1">
+              <Search size={14} />
+              Recherche
+            </label>
+            <input
+              className="form-control"
+              value={filters.q}
+              onChange={(e) => {
+                setFilters((p) => ({ ...p, q: e.target.value }));
+                setPage(1);
+              }}
+              placeholder="Libellé, référence, description..."
+            />
+          </div>
+        </div>
+      </SectionCard>
 
-            <form onSubmit={handleSubmit}>
-              <div className="mb-3 p-3" style={{ borderRadius: "var(--duu-radius-md)", background: "rgba(var(--duu-yellow-rgb), .08)" }}>
-                <label className="form-label fw-semibold d-flex align-items-center gap-2">
-                  <Tag size={16} />
-                  Catégorie principale
-                </label>
-                <select
-                  className="form-select"
-                  value={form.category_id || ""}
-                  onChange={(e) => {
-                    const id = Number(e.target.value || 0);
-                    const cat = categories.find((c) => c.id === id);
-                    setForm((prev) => ({
-                      ...prev,
-                      category_id: id || null,
-                      category_name: cat?.name || "",
-                    }));
-                  }}
-                >
-                  <option value="">Sélectionner une catégorie</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="row g-2 mt-1">
-                  <div className="col-7">
-                    <input
-                      className="form-control"
-                      value={newCategory}
-                      onChange={(e) => setNewCategory(e.target.value)}
-                      placeholder="Créer une nouvelle catégorie"
-                    />
-                  </div>
-                  <div className="col-3">
-                    <input
-                      type="color"
-                      className="form-control form-control-color w-100"
-                      value={newCategoryColor}
-                      onChange={(e) => setNewCategoryColor(e.target.value)}
-                    />
-                  </div>
-                  <div className="col-2 d-grid">
-                    <button
-                      type="button"
-                      className="btn btn-duu-orange"
-                      onClick={handleCreateCategory}
-                      disabled={creatingCategory}
-                    >
-                      {creatingCategory ? "…" : "OK"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-3">
-                <label className="form-label fw-semibold d-flex align-items-center gap-2">
-                  <FileText size={16} />
-                  Libellé
-                </label>
-                <input
-                  className="form-control"
-                  value={form.label}
-                  onChange={(e) => setFormField("label", e.target.value)}
-                  required
-                  placeholder="Ex: Achat emballages"
-                />
-              </div>
-
-              <div className="mb-3">
-                <label className="form-label fw-semibold">Description</label>
-                <textarea
-                  className="form-control"
-                  rows={3}
-                  value={form.description}
-                  onChange={(e) => setFormField("description", e.target.value)}
-                  placeholder="Détail complémentaire sur la dépense..."
-                />
-              </div>
-
-              <div className="row g-3 mb-3">
-                <div className="col-6">
-                  <label className="form-label fw-semibold d-flex align-items-center gap-2">
-                    <Wallet size={16} />
-                    Montant
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="form-control"
-                    value={form.amount}
-                    onChange={(e) => setFormField("amount", e.target.value)}
-                    required
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="col-6">
-                  <label className="form-label fw-semibold d-flex align-items-center gap-2">
-                    <CalendarDays size={16} />
-                    Date
-                  </label>
-                  <input
-                    type="date"
-                    className="form-control"
-                    value={form.expense_date}
-                    onChange={(e) => setFormField("expense_date", e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="row g-3 mb-3">
-                <div className="col-6">
-                  <label className="form-label fw-semibold d-flex align-items-center gap-2">
-                    <CreditCard size={16} />
-                    Mode de paiement
-                  </label>
-                  <select
-                    className="form-select"
-                    value={form.payment_method}
-                    onChange={(e) => setFormField("payment_method", e.target.value)}
-                  >
-                    {PAYMENTS.map((x) => (
-                      <option key={x} value={x}>
-                        {paymentLabel(x)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-6">
-                  <label className="form-label fw-semibold">Statut</label>
-                  <select
-                    className="form-select"
-                    value={form.status}
-                    onChange={(e) => setFormField("status", e.target.value as ExpenseStatus)}
-                  >
-                    {STATUS_OPTIONS.map((x) => (
-                      <option key={x} value={x}>
-                        {x}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="text-muted small mb-3">
-                La référence est générée automatiquement par le système.
-              </div>
-
-              <div className="d-flex flex-column flex-sm-row gap-2">
-                <button type="submit" className="btn btn-duu-orange flex-fill" disabled={saving}>
-                  {saving ? "Enregistrement…" : editing ? "Mettre à jour la dépense" : "Ajouter la dépense"}
-                </button>
-                {editing && (
-                  <button type="button" className="btn btn-outline-dark" onClick={resetForm}>
-                    Annuler
-                  </button>
-                )}
-              </div>
-            </form>
-          </SectionCard>
-
+      <div className="row g-2 g-sm-3 mb-3">
+        <div className="col-12 col-xl-6">
           <SectionCard
             icon={Layers3}
             title="Répartition par catégorie"
             subtitle="Vue rapide des catégories qui consomment le plus."
+            className="h-100"
           >
             {donutSegments.length === 0 ? (
               <div className="text-muted small">Aucune donnée disponible.</div>
@@ -815,7 +701,7 @@ export default function ExpensesPage() {
                   centerValue={mad(donutSegments.reduce((s, x) => s + x.value, 0))}
                   segments={donutSegments}
                 />
-                <div className="d-flex flex-column gap-2 mt-3">
+                <div className="d-flex flex-column gap-2 mt-3" style={{ maxHeight: 260, overflowY: "auto" }}>
                   {byCategory.map((x, idx) => (
                     <div
                       key={`${x.category_name}-${idx}`}
@@ -843,118 +729,11 @@ export default function ExpensesPage() {
           </SectionCard>
         </div>
 
-        <div className="col-12 col-xl-7">
-          <SectionCard
-            icon={Tag}
-            title="Filtres"
-            subtitle="Recherche rapide par période, catégorie, statut et mode de paiement."
-            right={
-              <button type="button" className="btn btn-sm btn-outline-dark" onClick={resetFilters}>
-                Réinitialiser
-              </button>
-            }
-            className="mb-3"
-          >
-            <div className="row g-3">
-              <div className="col-6 col-md-4">
-                <label className="form-label small">Du</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={filters.from}
-                  onChange={(e) => {
-                    setFilters((p) => ({ ...p, from: e.target.value }));
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <div className="col-6 col-md-4">
-                <label className="form-label small">Au</label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={filters.to}
-                  onChange={(e) => {
-                    setFilters((p) => ({ ...p, to: e.target.value }));
-                    setPage(1);
-                  }}
-                />
-              </div>
-              <div className="col-12 col-md-4">
-                <label className="form-label small">Catégorie</label>
-                <select
-                  className="form-select"
-                  value={filters.category_id}
-                  onChange={(e) => {
-                    setFilters((p) => ({ ...p, category_id: e.target.value }));
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Toutes</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-6 col-md-4">
-                <label className="form-label small">Statut</label>
-                <select
-                  className="form-select"
-                  value={filters.status}
-                  onChange={(e) => {
-                    setFilters((p) => ({ ...p, status: e.target.value }));
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Tous</option>
-                  {STATUS_OPTIONS.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-6 col-md-4">
-                <label className="form-label small">Paiement</label>
-                <select
-                  className="form-select"
-                  value={filters.payment_method}
-                  onChange={(e) => {
-                    setFilters((p) => ({ ...p, payment_method: e.target.value }));
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Tous</option>
-                  {PAYMENTS.map((x) => (
-                    <option key={x} value={x}>
-                      {paymentLabel(x)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-12 col-md-4">
-                <label className="form-label small d-flex align-items-center gap-1">
-                  <Search size={14} />
-                  Recherche
-                </label>
-                <input
-                  className="form-control"
-                  value={filters.q}
-                  onChange={(e) => {
-                    setFilters((p) => ({ ...p, q: e.target.value }));
-                    setPage(1);
-                  }}
-                  placeholder="Libellé, référence, description..."
-                />
-              </div>
-            </div>
-          </SectionCard>
-
+        <div className="col-12 col-xl-6">
           <SectionCard
             title="Évolution des dépenses"
             subtitle="Suivi graphique selon la période choisie."
+            className="h-100"
             right={
               <select
                 className="form-select form-select-sm"
@@ -968,9 +747,8 @@ export default function ExpensesPage() {
                 <option value="year">Année</option>
               </select>
             }
-            className="mb-3"
           >
-            <div style={{ width: "100%", height: 260 }}>
+            <div style={{ width: "100%", height: 320 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={grouped}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -982,163 +760,367 @@ export default function ExpensesPage() {
               </ResponsiveContainer>
             </div>
           </SectionCard>
-
-          <SectionCard
-            title="Tableau des dépenses"
-            subtitle={`Total visible : ${mad(totalVisible)} — Total filtré : ${mad(summary.filtered_total)}`}
-          >
-            <div className="table-responsive">
-              <table className="table table-sm align-middle mb-0">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Catégorie</th>
-                    <th>Libellé</th>
-                    <th className="d-none d-lg-table-cell">Description</th>
-                    <th className="text-end">Montant</th>
-                    <th className="d-none d-md-table-cell">Paiement</th>
-                    <th>Statut</th>
-                    <th className="d-none d-lg-table-cell">Référence</th>
-                    <th className="text-end">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading && (
-                    <tr>
-                      <td colSpan={9} className="text-center py-4">
-                        <LoadingState label="Chargement des dépenses…" size="sm" />
-                      </td>
-                    </tr>
-                  )}
-
-                  {!loading && items.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="text-center text-muted py-4">
-                        Aucune dépense trouvée.
-                      </td>
-                    </tr>
-                  )}
-
-                  {!loading &&
-                    items.map((item) => (
-                      <tr key={item.id}>
-                        <td style={{ whiteSpace: "nowrap" }}>{fmtDate(item.expense_date)}</td>
-
-                        <td>
-                          <div className="d-flex align-items-center gap-2">
-                            <span
-                              style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: "50%",
-                                background: item.category_color || "#94a3b8",
-                                display: "inline-block",
-                                flexShrink: 0,
-                              }}
-                            />
-                            <span className="text-truncate">{item.category_name || "—"}</span>
-                          </div>
-                        </td>
-
-                        <td className="text-truncate" style={{ maxWidth: 180 }}>
-                          <span className="fw-semibold">{item.label || "—"}</span>
-                        </td>
-
-                        <td className="d-none d-lg-table-cell text-truncate text-muted small" style={{ maxWidth: 240 }}>
-                          {item.description || "—"}
-                        </td>
-
-                        <td className="text-end fw-semibold" style={{ whiteSpace: "nowrap" }}>
-                          {mad(item.amount)}
-                        </td>
-
-                        <td className="d-none d-md-table-cell" style={{ whiteSpace: "nowrap" }}>
-                          {paymentLabel(item.payment_method)}
-                        </td>
-
-                        <td>
-                          <span className={`badge ${item.status === "PAID" ? "bg-success" : "bg-warning text-dark"}`}>
-                            {item.status}
-                          </span>
-                        </td>
-
-                        <td className="d-none d-lg-table-cell text-muted small" style={{ whiteSpace: "nowrap" }}>
-                          {item.reference || "—"}
-                        </td>
-
-                        <td className="text-end">
-                          <div className="btn-group">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-dark"
-                              onClick={() => handleEdit(item)}
-                              title="Modifier"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-danger"
-                              disabled={deletingId === item.id}
-                              onClick={() => handleDelete(item.id)}
-                              title="Annuler / supprimer"
-                            >
-                              {deletingId === item.id ? "…" : <Trash2 size={14} />}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mt-3">
-              <div className="text-muted small">
-                Page {pageInfo.page} / {Math.max(1, pageInfo.pages)} — {pageInfo.total} élément(s)
-              </div>
-
-              <div className="d-flex flex-wrap align-items-center gap-2">
-                <select
-                  className="form-select form-select-sm"
-                  style={{ width: "auto" }}
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value || 20));
-                    setPage(1);
-                  }}
-                >
-                  {[10, 20, 50, 100].map((n) => (
-                    <option key={n} value={n}>
-                      {n} / page
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-dark"
-                  disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  <ArrowLeft size={14} className="me-1" />
-                  Précédent
-                </button>
-
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-dark"
-                  disabled={page >= pageInfo.pages}
-                  onClick={() => setPage((p) => Math.min(pageInfo.pages, p + 1))}
-                >
-                  Suivant
-                  <ArrowRight size={14} className="ms-1" />
-                </button>
-              </div>
-            </div>
-          </SectionCard>
         </div>
       </div>
+
+      <SectionCard
+        title="Tableau des dépenses"
+        subtitle={`Total visible : ${mad(totalVisible)} — Total filtré : ${mad(summary.filtered_total)}`}
+      >
+        <div className="table-responsive">
+          <table className="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Catégorie</th>
+                <th>Libellé</th>
+                <th className="d-none d-lg-table-cell">Description</th>
+                <th className="text-end">Montant</th>
+                <th className="d-none d-md-table-cell">Paiement</th>
+                <th>Statut</th>
+                <th className="d-none d-lg-table-cell">Référence</th>
+                <th className="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={9} className="text-center py-4">
+                    <LoadingState label="Chargement des dépenses…" size="sm" />
+                  </td>
+                </tr>
+              )}
+
+              {!loading && items.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="text-center text-muted py-4">
+                    Aucune dépense trouvée.
+                  </td>
+                </tr>
+              )}
+
+              {!loading &&
+                items.map((item) => (
+                  <tr key={item.id}>
+                    <td style={{ whiteSpace: "nowrap" }}>{fmtDate(item.expense_date)}</td>
+
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: "50%",
+                            background: item.category_color || "#94a3b8",
+                            display: "inline-block",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span className="text-truncate">{item.category_name || "—"}</span>
+                      </div>
+                    </td>
+
+                    <td className="text-truncate" style={{ maxWidth: 180 }}>
+                      <span className="fw-semibold">{item.label || "—"}</span>
+                    </td>
+
+                    <td className="d-none d-lg-table-cell text-truncate text-muted small" style={{ maxWidth: 240 }}>
+                      {item.description || "—"}
+                    </td>
+
+                    <td className="text-end fw-semibold" style={{ whiteSpace: "nowrap" }}>
+                      {mad(item.amount)}
+                    </td>
+
+                    <td className="d-none d-md-table-cell" style={{ whiteSpace: "nowrap" }}>
+                      {paymentLabel(item.payment_method)}
+                    </td>
+
+                    <td>
+                      <span className={`badge ${item.status === "PAID" ? "bg-success" : "bg-warning text-dark"}`}>
+                        {item.status}
+                      </span>
+                    </td>
+
+                    <td className="d-none d-lg-table-cell text-muted small" style={{ whiteSpace: "nowrap" }}>
+                      {item.reference || "—"}
+                    </td>
+
+                    <td className="text-end">
+                      <div className="btn-group">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-dark"
+                          onClick={() => handleEdit(item)}
+                          title="Modifier"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          disabled={deletingId === item.id}
+                          onClick={() => handleDelete(item.id)}
+                          title="Annuler / supprimer"
+                        >
+                          {deletingId === item.id ? "…" : <Trash2 size={14} />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mt-3">
+          <div className="text-muted small">
+            Page {pageInfo.page} / {Math.max(1, pageInfo.pages)} — {pageInfo.total} élément(s)
+          </div>
+
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <select
+              className="form-select form-select-sm"
+              style={{ width: "auto" }}
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value || 20));
+                setPage(1);
+              }}
+            >
+              {[10, 20, 50, 100].map((n) => (
+                <option key={n} value={n}>
+                  {n} / page
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ArrowLeft size={14} className="me-1" />
+              Précédent
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pageInfo.pages}
+              onClick={() => setPage((p) => Math.min(pageInfo.pages, p + 1))}
+            >
+              Suivant
+              <ArrowRight size={14} className="ms-1" />
+            </button>
+          </div>
+        </div>
+      </SectionCard>
+
+      {showFormModal && (
+        <div
+          className="modal d-block"
+          tabIndex={-1}
+          style={{ background: "rgba(0,0,0,.45)" }}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              resetForm();
+              setShowFormModal(false);
+            }
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered modal-lg">
+            <div className="modal-content border-0" style={{ borderRadius: "var(--duu-radius-lg)" }}>
+              <div className="modal-header">
+                <h5 className="modal-title d-flex align-items-center gap-2 mb-0">
+                  <FileText size={18} />
+                  {editing ? "Modifier une dépense" : "Ajouter une dépense"}
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    resetForm();
+                    setShowFormModal(false);
+                  }}
+                />
+              </div>
+
+              <div className="modal-body">
+                <form onSubmit={handleSubmit}>
+                  <div className="mb-3 p-3" style={{ borderRadius: "var(--duu-radius-md)", background: "rgba(var(--duu-yellow-rgb), .08)" }}>
+                    <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                      <Tag size={16} />
+                      Catégorie principale
+                    </label>
+                    <select
+                      className="form-select"
+                      value={form.category_id || ""}
+                      onChange={(e) => {
+                        const id = Number(e.target.value || 0);
+                        const cat = categories.find((c) => c.id === id);
+                        setForm((prev) => ({
+                          ...prev,
+                          category_id: id || null,
+                          category_name: cat?.name || "",
+                        }));
+                      }}
+                    >
+                      <option value="">Sélectionner une catégorie</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="row g-2 mt-1">
+                      <div className="col-7">
+                        <input
+                          className="form-control"
+                          value={newCategory}
+                          onChange={(e) => setNewCategory(e.target.value)}
+                          placeholder="Créer une nouvelle catégorie"
+                        />
+                      </div>
+                      <div className="col-3">
+                        <input
+                          type="color"
+                          className="form-control form-control-color w-100"
+                          value={newCategoryColor}
+                          onChange={(e) => setNewCategoryColor(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-2 d-grid">
+                        <button
+                          type="button"
+                          className="btn btn-duu-orange"
+                          onClick={handleCreateCategory}
+                          disabled={creatingCategory}
+                        >
+                          {creatingCategory ? "…" : "OK"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                      <FileText size={16} />
+                      Libellé
+                    </label>
+                    <input
+                      className="form-control"
+                      value={form.label}
+                      onChange={(e) => setFormField("label", e.target.value)}
+                      required
+                      placeholder="Ex: Achat emballages"
+                    />
+                  </div>
+
+                  <div className="mb-3">
+                    <label className="form-label fw-semibold">Description</label>
+                    <textarea
+                      className="form-control"
+                      rows={3}
+                      value={form.description}
+                      onChange={(e) => setFormField("description", e.target.value)}
+                      placeholder="Détail complémentaire sur la dépense..."
+                    />
+                  </div>
+
+                  <div className="row g-3 mb-3">
+                    <div className="col-6">
+                      <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                        <Wallet size={16} />
+                        Montant
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="form-control"
+                        value={form.amount}
+                        onChange={(e) => setFormField("amount", e.target.value)}
+                        required
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                        <CalendarDays size={16} />
+                        Date
+                      </label>
+                      <input
+                        type="date"
+                        className="form-control"
+                        value={form.expense_date}
+                        onChange={(e) => setFormField("expense_date", e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="row g-3 mb-3">
+                    <div className="col-6">
+                      <label className="form-label fw-semibold d-flex align-items-center gap-2">
+                        <CreditCard size={16} />
+                        Mode de paiement
+                      </label>
+                      <select
+                        className="form-select"
+                        value={form.payment_method}
+                        onChange={(e) => setFormField("payment_method", e.target.value)}
+                      >
+                        {PAYMENTS.map((x) => (
+                          <option key={x} value={x}>
+                            {paymentLabel(x)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label fw-semibold">Statut</label>
+                      <select
+                        className="form-select"
+                        value={form.status}
+                        onChange={(e) => setFormField("status", e.target.value as ExpenseStatus)}
+                      >
+                        {STATUS_OPTIONS.map((x) => (
+                          <option key={x} value={x}>
+                            {x}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="text-muted small mb-3">
+                    La référence est générée automatiquement par le système.
+                  </div>
+
+                  <div className="d-flex flex-column flex-sm-row gap-2">
+                    <button type="submit" className="btn btn-duu-orange flex-fill" disabled={saving}>
+                      {saving ? "Enregistrement…" : editing ? "Mettre à jour la dépense" : "Ajouter la dépense"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline-dark"
+                      onClick={() => {
+                        resetForm();
+                        setShowFormModal(false);
+                      }}
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
