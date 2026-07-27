@@ -8,7 +8,7 @@ export default function SolutionsPage() {
     <section className="container-xxl py-5">
       <Seo
         title="Nos solutions"
-        description="Diaspora, entreprises, producteurs, importateurs : découvrez la solution DUUMINI adaptée à votre profil pour acheter, vendre ou vous approvisionner en Afrique."
+        description="Fournisseur, revendeur, client ou partenaire : découvrez la solution DUUMINI adaptée à votre profil pour acheter, vendre ou vous approvisionner en Afrique."
         path="/solutions"
       />
       <div className="d-flex align-items-center justify-content-between mb-3">
@@ -25,9 +25,8 @@ export default function SolutionsPage() {
         acheter, vendre ou vous approvisionner à travers l'Afrique.
       </p>
 
-      <div className="d-flex flex-column gap-5">
+      <div className="row g-3">
         {PERSONAS.map((p) => {
-          const Icon = p.icon;
           const color = p.tint === "orange" ? "var(--duu-orange)" : "var(--duu-green)";
           const bg =
             p.tint === "orange"
@@ -35,24 +34,34 @@ export default function SolutionsPage() {
               : "rgba(var(--duu-green-rgb), .12)";
 
           return (
-            <div id={p.key} key={p.key} style={{ scrollMarginTop: 90 }}>
-              <div className="d-flex align-items-center gap-3 mb-3">
-                <div
-                  className="d-flex align-items-center justify-content-center flex-shrink-0"
-                  style={{ width: 56, height: 56, borderRadius: "50%", background: bg }}
-                >
-                  <Icon size={26} color={color} />
+            <div className="col-12 col-md-6" key={p.key}>
+              <Link
+                to={`/solutions/${p.key}`}
+                className="d-block h-100 text-decoration-none p-4"
+                style={{
+                  borderRadius: "var(--duu-radius-lg)",
+                  background: "#fff",
+                  boxShadow: "var(--duu-shadow-sm)",
+                  color: "var(--duu-black)",
+                }}
+              >
+                <div className="d-flex align-items-center gap-3 mb-2">
+                  <div
+                    className="d-flex align-items-center justify-content-center flex-shrink-0"
+                    style={{ width: 52, height: 52, borderRadius: "50%", background: bg, fontSize: "1.4rem" }}
+                    aria-hidden="true"
+                  >
+                    {p.emoji}
+                  </div>
+                  <h2 className="h5 m-0" style={{ color }}>
+                    {p.title}
+                  </h2>
                 </div>
-                <h2 className="h4 m-0" style={{ color }}>
-                  {p.title}
-                </h2>
-              </div>
-
-              {p.detail.map((paragraph, i) => (
-                <p className="text-muted" key={i} style={{ maxWidth: 720 }}>
-                  {paragraph}
-                </p>
-              ))}
+                <p className="text-muted mb-2">{p.description}</p>
+                <span className="small fw-semibold" style={{ color }}>
+                  Découvrir la solution →
+                </span>
+              </Link>
             </div>
           );
         })}

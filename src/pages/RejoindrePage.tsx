@@ -1,6 +1,6 @@
 // src/pages/RejoindrePage.tsx
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Seo } from "../components/Seo";
 import { listActiveCountries, type CountryConfig } from "../services/countries";
 import {
@@ -15,12 +15,22 @@ const APPLICANT_TYPES: { value: ApplicantType; label: string }[] = [
   { value: "RESTAURANT", label: "Restaurant" },
 ];
 
+// Préremplissage depuis les pages Solutions (?type=fournisseur|revendeur, +
+// name/phone/email optionnels transmis depuis le mini-formulaire de contact).
+const TYPE_FROM_PERSONA: Record<string, ApplicantType> = {
+  fournisseur: "FOURNISSEUR",
+  revendeur: "VENDEUR",
+};
+
 export default function RejoindrePage() {
+  const [searchParams] = useSearchParams();
   const [countries, setCountries] = useState<CountryConfig[]>([]);
-  const [applicantType, setApplicantType] = useState<ApplicantType>("VENDEUR");
-  const [legalName, setLegalName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const [applicantType, setApplicantType] = useState<ApplicantType>(
+    TYPE_FROM_PERSONA[searchParams.get("type") || ""] || "VENDEUR"
+  );
+  const [legalName, setLegalName] = useState(searchParams.get("name") || "");
+  const [phone, setPhone] = useState(searchParams.get("phone") || "");
+  const [email, setEmail] = useState(searchParams.get("email") || "");
   const [countryCode, setCountryCode] = useState("MA");
   const [city, setCity] = useState("");
   const [message, setMessage] = useState("");

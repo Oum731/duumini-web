@@ -32,6 +32,8 @@ import ContactPage from "./pages/Contact";
 import AboutPage from "./pages/About";
 import CommentCaMarchePage from "./pages/CommentCaMarchePage";
 import SolutionsPage from "./pages/SolutionsPage";
+import SolutionDetailPage from "./pages/solutions/SolutionDetailPage";
+import CataloguePage from "./pages/CataloguePage";
 import PaysPage from "./pages/PaysPage";
 import BlogPage from "./pages/BlogPage";
 import RejoindrePage from "./pages/RejoindrePage";
@@ -381,6 +383,8 @@ export default function App() {
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/comment-ca-marche" element={<CommentCaMarchePage />} />
                 <Route path="/solutions" element={<SolutionsPage />} />
+                <Route path="/solutions/:persona" element={<SolutionDetailPage />} />
+                <Route path="/catalogue" element={<CataloguePage />} />
                 <Route path="/pays" element={<PaysPage />} />
                 <Route path="/blog" element={<BlogPage />} />
                 <Route path="/rejoindre" element={<RejoindrePage />} />

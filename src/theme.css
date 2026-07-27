@@ -1,5 +1,5 @@
 :root{
-  --duu-yellow: #fddc00;   /* ✅ Duumini */
+  --duu-yellow: #fddc00;   /* ✅ Duumini — couleur dominante (identité officielle) */
   --duu-red:    #E53935;
   --duu-black:  #111111;
 
@@ -7,10 +7,11 @@
   --duu-yellow-rgb: 253, 220, 0; /* pour box-shadow */
   --duu-red-rgb: 229, 57, 53;
 
-  /* Nouvelle identité B2B (vitrine + navbar uniquement, voir plan Phase A) */
-  --duu-orange: #F5821F;
+  /* ✅ --duu-orange conserve son nom historique (utilisé dans ~18 fichiers)
+     mais porte désormais la couleur secondaire officielle : terracotta. */
+  --duu-orange: #B5533C;
   --duu-green:  #0B5D3B;
-  --duu-orange-rgb: 245, 130, 31;
+  --duu-orange-rgb: 181, 83, 60;
   --duu-green-rgb: 11, 93, 59;
 
   /* échelle de rayons */
@@ -133,9 +134,10 @@
   filter: brightness(.94);
 }
 
-/* Nouvelle identité B2B (vitrine + navbar) */
+/* ✅ .btn-duu-orange conserve son nom historique mais est désormais un
+   alias du bouton primaire jaune (identité DUUMINI dominante). */
 .btn-duu-orange{
-  background: var(--duu-orange);
+  background: var(--duu-yellow);
   color: #1f1f1f;
   border: none;
   font-weight: 800;
@@ -144,7 +146,7 @@
 .btn-duu-orange:focus,
 .btn-duu-orange:focus-visible,
 .btn-duu-orange:active{
-  background: var(--duu-orange) !important;
+  background: var(--duu-yellow) !important;
   color: #1f1f1f !important;
   border-color: transparent !important;
   filter: brightness(.96);
@@ -152,7 +154,7 @@
 .btn-duu-orange:focus,
 .btn-duu-orange:focus-visible{
   outline: none !important;
-  box-shadow: 0 0 0 .2rem rgba(var(--duu-orange-rgb), .35) !important;
+  box-shadow: 0 0 0 .2rem rgba(var(--duu-yellow-rgb), .35) !important;
 }
 
 .btn-duu-green{

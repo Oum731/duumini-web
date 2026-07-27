@@ -17,6 +17,7 @@ import { metaAddToCart, metaViewContent } from "../lib/metaPixel";
 import { moneyMAD } from "../utils/money";
 import { imgUrl } from "../utils/media";
 import { Seo } from "../components/Seo";
+import { listActiveCountries, type CountryConfig } from "../services/countries";
 
 function shortText(s?: string | null, max = 180) {
   const t = String(s || "").trim();
@@ -387,6 +388,19 @@ export default function ProductView() {
 
   const [selectedKey, setSelectedKey] = useState<string>("");
   const [galleryIndex, setGalleryIndex] = useState(0);
+
+  const [countries, setCountries] = useState<CountryConfig[]>([]);
+  useEffect(() => {
+    let stop = false;
+    listActiveCountries()
+      .then((items) => {
+        if (!stop) setCountries(items);
+      })
+      .catch(() => {});
+    return () => {
+      stop = true;
+    };
+  }, []);
 
   useEffect(() => {
     let stop = false;
@@ -1239,6 +1253,30 @@ export default function ProductView() {
                   </Link>
                 ) : null}
               </div>
+
+              {(anyP?.brand || anyP?.country_code || anyP?.conditionnement) ? (
+                <div className="d-flex flex-wrap gap-2">
+                  {anyP?.brand ? (
+                    <span className="badge text-bg-light border">Marque : {anyP.brand}</span>
+                  ) : null}
+                  {anyP?.country_code ? (
+                    <span className="badge text-bg-light border">
+                      Origine :{" "}
+                      {(() => {
+                        const c = countries.find(
+                          (x) => x.code === String(anyP.country_code).toUpperCase()
+                        );
+                        return c ? `${c.flag_emoji || ""} ${c.label}`.trim() : anyP.country_code;
+                      })()}
+                    </span>
+                  ) : null}
+                  {anyP?.conditionnement ? (
+                    <span className="badge text-bg-light border">
+                      Conditionnement : {anyP.conditionnement}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div>
                 <ProductRating productId={Number(anyP?.id)} />

@@ -1,9 +1,9 @@
 // src/pages/home/data.ts
 import {
-  UserRound,
-  Briefcase,
-  Leaf,
-  Globe2,
+  Factory,
+  ShoppingCart,
+  ShoppingBag,
+  Handshake,
   Smartphone,
   Package,
   Truck,
@@ -11,11 +11,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type PersonaKey = "diaspora" | "entreprises" | "producteurs" | "importateurs";
+export type PersonaKey = "fournisseur" | "revendeur" | "client" | "partenaire";
 
 export type Persona = {
   key: PersonaKey;
   icon: LucideIcon;
+  emoji: string;
   title: string;
   description: string;
   tint: "orange" | "green";
@@ -25,36 +26,11 @@ export type Persona = {
 
 export const PERSONAS: Persona[] = [
   {
-    key: "diaspora",
-    icon: UserRound,
-    title: "Diaspora & communautés africaines",
-    description: "Accédez aux produits qui circulent d'un pays africain à l'autre, où que vous soyez.",
-    tint: "orange",
-    photo:
-      "https://images.unsplash.com/photo-1752070182361-9fa562ed7f97?w=200&h=200&fit=crop&q=80&auto=format",
-    detail: [
-      "Attiéké, placali, huile de palme, épices, produits cosmétiques traditionnels : DUUMINI fait circuler ces produits entre pays africains, pas seulement du pays d'origine vers vous.",
-      "Chaque commande s'appuie sur le même réseau de vendeurs et fournisseurs vérifiés que celui utilisé par les entreprises et importateurs — vous profitez de la même interconnexion panafricaine.",
-    ],
-  },
-  {
-    key: "entreprises",
-    icon: Briefcase,
-    title: "Entreprises",
-    description: "Développez votre activité grâce à notre réseau et nos solutions B2B.",
-    tint: "green",
-    photo:
-      "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=200&h=200&fit=crop&q=80&auto=format",
-    detail: [
-      "Sourcez des produits africains authentiques auprès de fournisseurs vérifiés, sans avoir à gérer vous-même la logistique transfrontalière.",
-      "Que vous soyez restaurateur, épicier ou distributeur, DUUMINI vous met en relation directe avec des producteurs et grossistes du corridor Maroc–Côte d'Ivoire.",
-    ],
-  },
-  {
-    key: "producteurs",
-    icon: Leaf,
-    title: "Producteurs",
-    description: "Vendez vos produits à de nouveaux marchés en toute simplicité.",
+    key: "fournisseur",
+    icon: Factory,
+    emoji: "🏭",
+    title: "Fournisseur",
+    description: "Producteurs, fabricants et marques africaines : développez votre présence au Maroc.",
     tint: "orange",
     photo:
       "https://images.unsplash.com/photo-1741874299706-2b8e16839aaa?w=200&h=200&fit=crop&q=80&auto=format",
@@ -64,16 +40,45 @@ export const PERSONAS: Persona[] = [
     ],
   },
   {
-    key: "importateurs",
-    icon: Globe2,
-    title: "Importateurs",
-    description: "Accédez à une centrale d'achat fiable et compétitive à travers l'Afrique.",
+    key: "revendeur",
+    icon: ShoppingCart,
+    emoji: "🛒",
+    title: "Revendeur",
+    description: "Épiceries, restaurants, hôtels, grossistes et distributeurs : approvisionnez-vous en toute confiance.",
+    tint: "green",
+    photo:
+      "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=200&h=200&fit=crop&q=80&auto=format",
+    detail: [
+      "Sourcez des produits africains authentiques auprès de fournisseurs vérifiés, sans avoir à gérer vous-même la logistique transfrontalière.",
+      "Que vous soyez restaurateur, épicier ou distributeur, DUUMINI vous met en relation directe avec des producteurs et grossistes du corridor Maroc–Côte d'Ivoire.",
+    ],
+  },
+  {
+    key: "client",
+    icon: ShoppingBag,
+    emoji: "🛍",
+    title: "Client",
+    description: "Consommateurs souhaitant acheter des produits africains authentiques, où que vous soyez.",
+    tint: "orange",
+    photo:
+      "https://images.unsplash.com/photo-1752070182361-9fa562ed7f97?w=200&h=200&fit=crop&q=80&auto=format",
+    detail: [
+      "Attiéké, placali, huile de palme, épices, produits cosmétiques traditionnels : DUUMINI fait circuler ces produits entre pays africains, pas seulement du pays d'origine vers vous.",
+      "Chaque commande s'appuie sur le même réseau de vendeurs et fournisseurs vérifiés que celui utilisé par les revendeurs et partenaires — vous profitez de la même interconnexion panafricaine.",
+    ],
+  },
+  {
+    key: "partenaire",
+    icon: Handshake,
+    emoji: "🤝",
+    title: "Partenaire",
+    description: "Investisseurs, logisticiens, institutions et incubateurs : construisons ensemble l'infrastructure commerciale de demain.",
     tint: "green",
     photo:
       "https://images.unsplash.com/photo-1773126378915-793b5c48fb38?w=200&h=200&fit=crop&q=80&auto=format",
     detail: [
-      "Approvisionnez-vous auprès de plusieurs fournisseurs vérifiés à travers un point d'entrée unique, avec un suivi de commande transparent de bout en bout.",
-      "Le corridor Maroc–Côte d'Ivoire est le premier maillon d'un réseau destiné à s'étendre à toute la zone CEDEAO.",
+      "DUUMINI n'est pas une simple marketplace mais une infrastructure commerciale : nous cherchons des partenaires logistiques, institutionnels et financiers pour accompagner sa croissance.",
+      "Que vous soyez investisseur, distributeur ou organisation d'accompagnement, prenez contact pour identifier ensemble les opportunités de collaboration autour du corridor Maroc–Côte d'Ivoire et de son extension à d'autres pays africains.",
     ],
   },
 ];

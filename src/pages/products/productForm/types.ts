@@ -36,9 +36,11 @@ export type Draft = {
   vertical?: Vertical | null;
 
   name: string;
+  brand?: string | null;
   price?: number | null;
   currency?: string | null;
   description?: string | null;
+  conditionnement?: string | null;
   stock?: number | null;
 
   is_featured?: 0 | 1 | null;

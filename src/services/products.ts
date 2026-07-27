@@ -90,6 +90,7 @@ export type Product = SupplierAgg & {
   vertical?: "FOOD" | "MARKET" | "FASHION" | null;
 
   name: string;
+  brand?: string | null;
   slug: string;
 
   price: number;
@@ -101,6 +102,7 @@ export type Product = SupplierAgg & {
 
   currency?: string | null;
   description?: string | null;
+  conditionnement?: string | null;
 
   stock?: number | null;
 
@@ -455,6 +457,7 @@ export async function listProducts(
     sub_category_id?: number;
     shop_id?: number;
     country_code?: string;
+    brand?: string;
     q?: string;
     vertical?: Vertical;
     includeVariants?: boolean;
@@ -501,6 +504,7 @@ export async function listProducts(
     query.country_code = String(opts.country_code).trim().toUpperCase();
     query.countryCode = query.country_code;
   }
+  if (opts.brand && String(opts.brand).trim()) query.brand = String(opts.brand).trim();
   if (opts.q && String(opts.q).trim()) query.q = String(opts.q).trim();
 
   if (opts.includeVariants) query.includeVariants = 1;
@@ -512,6 +516,18 @@ export async function listProducts(
 
   if (onlyActive) return { ...res, items: filterActive(res.items) };
   return res;
+}
+
+export type ProductBrand = { brand: string; count: number };
+
+export async function listProductBrands(opts: { vertical?: Vertical } = {}) {
+  const query: Record<string, any> = {};
+  const vert = normalizeVertical(opts.vertical);
+  if (vert) query.vertical = vert;
+
+  const raw = await api.get<any>("/api/products/brands", { query });
+  const data = unwrap<any>(raw);
+  return (Array.isArray(data?.items) ? data.items : []) as ProductBrand[];
 }
 
 export async function listPromotions(

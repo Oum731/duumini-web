@@ -99,8 +99,10 @@ export default function ProductForm({
       vertical: initVertical ?? null,
 
       name: anyInit?.name || "",
+      brand: anyInit?.brand || "",
       price: anyInit?.price ?? null,
       description: anyInit?.description || "",
+      conditionnement: anyInit?.conditionnement || "",
       stock: anyInit?.stock ?? null,
       currency: anyInit?.currency || "MAD",
 
@@ -493,7 +495,7 @@ export default function ProductForm({
       <div className="row g-2">
         <div className="col-12 col-md-8">
           <div className="row g-2">
-            <div className="col-8">
+            <div className="col-8 col-md-5">
               <label className="form-label">Nom</label>
               <input
                 className="form-control duu-focus"
@@ -503,7 +505,17 @@ export default function ProductForm({
               />
             </div>
 
-            <div className="col-4">
+            <div className="col-4 col-md-3">
+              <label className="form-label">Marque (optionnel)</label>
+              <input
+                className="form-control duu-focus"
+                value={draft.brand || ""}
+                onChange={(ev) => setDraft((d) => ({ ...d, brand: ev.target.value }))}
+                placeholder="Ex: Attieké Konan"
+              />
+            </div>
+
+            <div className="col-4 col-md-4">
               <label className="form-label">Actif</label>
               <select
                 className="form-select duu-focus"
@@ -898,6 +910,16 @@ export default function ProductForm({
               rows={3}
               value={draft.description || ""}
               onChange={(ev) => setDraft((d) => ({ ...d, description: ev.target.value }))}
+            />
+          </div>
+
+          <div className="mt-2">
+            <label className="form-label">Conditionnement (optionnel)</label>
+            <input
+              className="form-control duu-focus"
+              value={draft.conditionnement || ""}
+              onChange={(ev) => setDraft((d) => ({ ...d, conditionnement: ev.target.value }))}
+              placeholder="Ex: Sachet 500g, carton de 12, bouteille 1L..."
             />
           </div>
         </div>

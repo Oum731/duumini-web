@@ -20,6 +20,7 @@ import {
   BookOpen,
   UserPlus,
   Truck,
+  LayoutGrid,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -57,6 +58,7 @@ const PUBLIC_NAV_LINKS: NavLinkDef[] = [
 ];
 
 const SHOP_LINKS: NavLinkDef[] = [
+  { to: "/catalogue", label: "Catalogue", Icon: LayoutGrid },
   { to: "/african-market", label: "Duumini Market", Icon: Store },
   { to: "/african-food", label: "Duumini Food", Icon: Store },
   { to: "/fashion", label: "Duumini Fashion", Icon: Store },

@@ -2,7 +2,12 @@
 import { Seo } from "../components/Seo";
 import HeroSection from "./home/HeroSection";
 import PersonasSection from "./home/PersonasSection";
+import MissionSection from "./home/MissionSection";
+import CategoriesSection from "./home/CategoriesSection";
 import HowItWorksSection from "./home/HowItWorksSection";
+import WhyDuuminiSection from "./home/WhyDuuminiSection";
+import PartnersSection from "./home/PartnersSection";
+import FinalCtaSection from "./home/FinalCtaSection";
 
 export default function Home() {
   return (
@@ -14,7 +19,12 @@ export default function Home() {
       />
       <HeroSection />
       <PersonasSection />
+      <MissionSection />
+      <CategoriesSection />
       <HowItWorksSection />
+      <WhyDuuminiSection />
+      <PartnersSection />
+      <FinalCtaSection />
     </>
   );
 }

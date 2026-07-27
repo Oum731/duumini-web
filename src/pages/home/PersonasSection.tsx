@@ -1,34 +1,17 @@
 // src/pages/home/PersonasSection.tsx
 import { Link } from "react-router-dom";
-import { PERSONAS, type Persona } from "./data";
-
-// Isolé pour pouvoir être remplacé par une vraie photo de marque plus tard
-// sans toucher à la mise en page de la carte.
-function PersonaVisual({ persona }: { persona: Persona }) {
-  return (
-    <img
-      src={persona.photo}
-      alt={persona.title}
-      className="d-none d-md-block flex-shrink-0"
-      style={{
-        width: 90,
-        height: 90,
-        objectFit: "cover",
-        borderRadius: "var(--duu-radius-md)",
-      }}
-      loading="lazy"
-    />
-  );
-}
+import { PERSONAS } from "./data";
 
 export default function PersonasSection() {
   return (
-    <section className="container-xxl py-3 py-md-5">
-      <h2 className="fw-bold mb-4">Pour qui ?</h2>
+    <section className="container-xxl py-4 py-md-5">
+      <h2 className="fw-bold mb-1">Choisissez votre profil</h2>
+      <p className="text-muted mb-4" style={{ maxWidth: 560 }}>
+        DUUMINI s'adapte à qui vous êtes : chaque profil a son propre parcours.
+      </p>
 
-      <div className="d-flex flex-column gap-3">
+      <div className="row g-3">
         {PERSONAS.map((p) => {
-          const Icon = p.icon;
           const iconBg =
             p.tint === "orange"
               ? "rgba(var(--duu-orange-rgb), .14)"
@@ -36,43 +19,52 @@ export default function PersonasSection() {
           const iconColor = p.tint === "orange" ? "var(--duu-orange)" : "var(--duu-green)";
 
           return (
-            <div
-              className="row align-items-center g-3 p-3 p-md-4 mx-0"
-              key={p.key}
-              style={{
-                borderRadius: "var(--duu-radius-lg)",
-                background: p.key === "diaspora" ? "rgba(var(--duu-orange-rgb), .06)" : "#fff",
-                boxShadow: "var(--duu-shadow-sm)",
-              }}
-            >
-              <div className="col-auto">
-                <div
-                  className="d-flex align-items-center justify-content-center"
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: "50%",
-                    background: iconBg,
-                  }}
-                >
-                  <Icon size={24} color={iconColor} />
+            <div className="col-6 col-lg-3" key={p.key}>
+              <Link
+                to={`/solutions/${p.key}`}
+                className="d-block h-100 text-decoration-none"
+                style={{
+                  borderRadius: "var(--duu-radius-lg)",
+                  background: "#fff",
+                  boxShadow: "var(--duu-shadow-sm)",
+                  transition: "transform .15s ease, box-shadow .15s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-3px)";
+                  e.currentTarget.style.boxShadow = "var(--duu-shadow-md)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "var(--duu-shadow-sm)";
+                }}
+              >
+                <div className="p-3 p-md-4 h-100 d-flex flex-column">
+                  <div
+                    className="d-flex align-items-center justify-content-center mb-3"
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: "50%",
+                      background: iconBg,
+                      fontSize: "1.5rem",
+                    }}
+                    aria-hidden="true"
+                  >
+                    {p.emoji}
+                  </div>
+
+                  <div className="fw-bold mb-1" style={{ color: "var(--duu-black)" }}>
+                    Je suis {p.title.toLowerCase()}
+                  </div>
+                  <div className="text-muted small flex-grow-1">{p.description}</div>
+                  <div
+                    className="small fw-semibold mt-2"
+                    style={{ color: iconColor }}
+                  >
+                    En savoir plus →
+                  </div>
                 </div>
-              </div>
-
-              <div className="col">
-                <div className="fw-bold mb-1">{p.title}</div>
-                <div className="text-muted small mb-1">{p.description}</div>
-                <Link
-                  to={`/solutions#${p.key}`}
-                  className="small fw-semibold text-decoration-none"
-                >
-                  En savoir plus →
-                </Link>
-              </div>
-
-              <div className="col-auto">
-                <PersonaVisual persona={p} />
-              </div>
+              </Link>
             </div>
           );
         })}
