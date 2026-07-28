@@ -16,6 +16,10 @@ dist-ssr
 # Env
 .env
 
+# Local Claude Code dev-server launcher config (machine-specific, can
+# reference other local projects — never shared across repos)
+.claude/launch.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
