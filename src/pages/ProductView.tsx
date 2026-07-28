@@ -1,6 +1,12 @@
 // src/pages/ProductView.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import type { Product } from "../services/products";
 import ProductCard from "../components/ProductCard";
 import { API_BASE } from "../services/http";
@@ -851,7 +857,15 @@ export default function ProductView() {
     );
   }
 
-  if (error || !product || !productIsActive) {
+  // Produit vraiment introuvable (supprimé, mauvais slug/id, erreur réseau) :
+  // redirection directe vers le catalogue plutôt qu'un message bloquant —
+  // utile notamment pour les anciens liens indexés par les moteurs de
+  // recherche qui pointent vers des produits retirés du catalogue.
+  if (error || !product) {
+    return <Navigate to="/catalogue" replace />;
+  }
+
+  if (!productIsActive) {
     return (
       <div className="container-xxl py-4">
         <div className="d-flex flex-wrap gap-2 mb-3">
@@ -872,11 +886,7 @@ export default function ProductView() {
           role="alert"
         >
           <span className="me-2">⚠️</span>
-          <span>
-            {product && !productIsActive
-              ? "Ce produit n'est plus disponible."
-              : error || "Produit introuvable"}
-          </span>
+          <span>Ce produit n'est plus disponible.</span>
         </div>
       </div>
     );
