@@ -1,7 +1,8 @@
 // src/pages/RejoindrePage.tsx
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Seo } from "../components/Seo";
+import { PERSONAS, type PersonaKey } from "./home/data";
 import { listActiveCountries, type CountryConfig } from "../services/countries";
 import {
   submitVendorApplication,
@@ -9,25 +10,111 @@ import {
   type ApplicantType,
 } from "../services/vendorApplications";
 
-const APPLICANT_TYPES: { value: ApplicantType; label: string }[] = [
-  { value: "VENDEUR", label: "Vendeur" },
-  { value: "FOURNISSEUR", label: "Fournisseur" },
-  { value: "RESTAURANT", label: "Restaurant" },
-];
-
-// Préremplissage depuis les pages Solutions (?type=fournisseur|revendeur, +
-// name/phone/email optionnels transmis depuis le mini-formulaire de contact).
-const TYPE_FROM_PERSONA: Record<string, ApplicantType> = {
+// Fournisseur/Revendeur/Partenaire passent par la candidature vétée
+// (examinée par l'équipe admin) ; Client n'y figure pas — voir plus bas.
+const TYPE_FROM_PERSONA: Partial<Record<PersonaKey, ApplicantType>> = {
   fournisseur: "FOURNISSEUR",
   revendeur: "VENDEUR",
+  partenaire: "PARTENAIRE",
 };
+
+const FORM_COPY: Partial<
+  Record<PersonaKey, { title: string; intro: string; nameLabel: string; namePlaceholder: string; showDocs: boolean }>
+> = {
+  fournisseur: {
+    title: "Devenir fournisseur DUUMINI",
+    intro:
+      "Producteur, fabricant ou marque africaine : dites-nous qui vous êtes, nous vous recontactons pour finaliser votre inscription. Deux documents sont nécessaires : votre Déclaration Fiscale d'Existence (DFE) et votre Registre de Commerce.",
+    nameLabel: "Nom légal de l'entreprise",
+    namePlaceholder: "Ex. Duumini Distribution SARL",
+    showDocs: true,
+  },
+  revendeur: {
+    title: "Devenir revendeur DUUMINI",
+    intro:
+      "Épicerie, restaurant, hôtel, grossiste ou distributeur : dites-nous qui vous êtes, nous vous recontactons pour finaliser votre inscription. Deux documents sont nécessaires : votre Déclaration Fiscale d'Existence (DFE) et votre Registre de Commerce.",
+    nameLabel: "Nom légal de l'entreprise",
+    namePlaceholder: "Ex. Duumini Distribution SARL",
+    showDocs: true,
+  },
+  partenaire: {
+    title: "Devenir partenaire DUUMINI",
+    intro:
+      "Investisseur, logisticien, institution, incubateur ou organisation : présentez votre structure, notre équipe vous recontacte pour identifier ensemble les opportunités de collaboration.",
+    nameLabel: "Nom de l'organisation",
+    namePlaceholder: "Ex. Nom de votre structure",
+    showDocs: false,
+  },
+};
+
+function ProfilePicker() {
+  const navigate = useNavigate();
+
+  return (
+    <section className="container-xxl py-5" style={{ maxWidth: 900 }}>
+      <Seo
+        title="Rejoindre DUUMINI"
+        description="Fournisseur, revendeur, client ou partenaire : choisissez votre profil pour rejoindre le réseau DUUMINI."
+        path="/rejoindre"
+      />
+      <div className="d-flex align-items-center justify-content-between mb-3">
+        <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
+          Rejoindre DUUMINI
+        </h1>
+        <Link to="/" className="btn btn-outline-dark">
+          Accueil
+        </Link>
+      </div>
+
+      <p className="text-muted mb-4">Choisissez le profil qui vous correspond.</p>
+
+      <div className="row g-3">
+        {PERSONAS.map((p) => (
+          <div className="col-12 col-sm-6" key={p.key}>
+            <button
+              type="button"
+              className="card border-0 shadow-sm w-100 h-100 text-start p-4"
+              style={{ borderRadius: "var(--duu-radius-xl)", background: "#fff" }}
+              onClick={() =>
+                p.key === "client"
+                  ? navigate("/profile")
+                  : navigate(`/rejoindre?type=${p.key}`)
+              }
+            >
+              <div className="fs-2 mb-2" aria-hidden="true">
+                {p.emoji}
+              </div>
+              <div className="fw-bold mb-1">Je suis {p.title.toLowerCase()}</div>
+              <div className="text-muted small">{p.description}</div>
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function RejoindrePage() {
   const [searchParams] = useSearchParams();
+  const personaParam = (searchParams.get("type") || "") as PersonaKey;
+  const applicantType = TYPE_FROM_PERSONA[personaParam];
+
+  if (!applicantType) {
+    return <ProfilePicker />;
+  }
+
+  return <ApplicationForm persona={personaParam} applicantType={applicantType} />;
+}
+
+function ApplicationForm({
+  persona,
+  applicantType,
+}: {
+  persona: PersonaKey;
+  applicantType: ApplicantType;
+}) {
+  const [searchParams] = useSearchParams();
   const [countries, setCountries] = useState<CountryConfig[]>([]);
-  const [applicantType, setApplicantType] = useState<ApplicantType>(
-    TYPE_FROM_PERSONA[searchParams.get("type") || ""] || "VENDEUR"
-  );
   const [legalName, setLegalName] = useState(searchParams.get("name") || "");
   const [phone, setPhone] = useState(searchParams.get("phone") || "");
   const [email, setEmail] = useState(searchParams.get("email") || "");
@@ -40,6 +127,8 @@ export default function RejoindrePage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  const copy = FORM_COPY[persona]!;
 
   useEffect(() => {
     let mounted = true;
@@ -73,7 +162,7 @@ export default function RejoindrePage() {
           city: city.trim() || null,
           message: message.trim() || null,
         },
-        { dfe: dfeFile, rc: rcFile }
+        copy.showDocs ? { dfe: dfeFile, rc: rcFile } : {}
       );
       setDone(true);
     } catch (e: any) {
@@ -88,7 +177,7 @@ export default function RejoindrePage() {
       <section className="container-xxl py-5" style={{ maxWidth: 640 }}>
         <div className="card border-0 shadow-sm p-4 text-center">
           <h1 className="h4 mb-3" style={{ color: "var(--duu-green)" }}>
-            Candidature envoyée
+            {persona === "partenaire" ? "Demande envoyée" : "Candidature envoyée"}
           </h1>
           <p className="text-muted mb-4">
             Merci ! Votre demande a bien été transmise. Notre équipe l'examine
@@ -105,45 +194,25 @@ export default function RejoindrePage() {
   return (
     <section className="container-xxl py-5" style={{ maxWidth: 640 }}>
       <Seo
-        title="Rejoindre DUUMINI"
-        description="Vous êtes vendeur, fournisseur ou restaurateur ? Rejoignez le réseau DUUMINI et vendez vos produits à travers l'Afrique."
+        title={copy.title}
+        description="Fournisseur, revendeur, client ou partenaire ? Rejoignez le réseau DUUMINI."
         path="/rejoindre"
       />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
-          Rejoindre DUUMINI
+          {copy.title}
         </h1>
-        <Link to="/" className="btn btn-outline-dark">
-          Accueil
+        <Link to="/rejoindre" className="btn btn-outline-dark">
+          Changer de profil
         </Link>
       </div>
 
-      <p className="text-muted mb-4">
-        Vendeur, fournisseur ou restaurant : dites-nous qui vous êtes, nous
-        vous recontactons pour finaliser votre inscription. Deux documents
-        sont nécessaires : votre Déclaration Fiscale d'Existence (DFE) et
-        votre Registre de Commerce.
-      </p>
+      <p className="text-muted mb-4">{copy.intro}</p>
 
       <form onSubmit={handleSubmit} className="card border-0 shadow-sm p-4">
         {error && <div className="alert alert-danger py-2">{error}</div>}
 
         <div className="row g-3">
-          <div className="col-12 col-sm-6">
-            <label className="form-label">Vous êtes</label>
-            <select
-              className="form-select"
-              value={applicantType}
-              onChange={(e) => setApplicantType(e.target.value as ApplicantType)}
-            >
-              {APPLICANT_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <div className="col-12 col-sm-6">
             <label className="form-label">Pays</label>
             <select
@@ -160,12 +229,12 @@ export default function RejoindrePage() {
           </div>
 
           <div className="col-12">
-            <label className="form-label">Nom légal de l'entreprise</label>
+            <label className="form-label">{copy.nameLabel}</label>
             <input
               className="form-control"
               value={legalName}
               onChange={(e) => setLegalName(e.target.value)}
-              placeholder="Ex. Duumini Distribution SARL"
+              placeholder={copy.namePlaceholder}
               required
             />
           </div>
@@ -211,29 +280,33 @@ export default function RejoindrePage() {
             />
           </div>
 
-          <div className="col-12 col-sm-6">
-            <label className="form-label">
-              Déclaration Fiscale d'Existence (DFE)
-            </label>
-            <input
-              type="file"
-              accept="application/pdf,image/*"
-              className="form-control"
-              onChange={(e) => setDfeFile(e.target.files?.[0] || null)}
-            />
-            {dfeFile && <div className="form-text">{dfeFile.name}</div>}
-          </div>
+          {copy.showDocs && (
+            <>
+              <div className="col-12 col-sm-6">
+                <label className="form-label">
+                  Déclaration Fiscale d'Existence (DFE)
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="form-control"
+                  onChange={(e) => setDfeFile(e.target.files?.[0] || null)}
+                />
+                {dfeFile && <div className="form-text">{dfeFile.name}</div>}
+              </div>
 
-          <div className="col-12 col-sm-6">
-            <label className="form-label">Registre de Commerce</label>
-            <input
-              type="file"
-              accept="application/pdf,image/*"
-              className="form-control"
-              onChange={(e) => setRcFile(e.target.files?.[0] || null)}
-            />
-            {rcFile && <div className="form-text">{rcFile.name}</div>}
-          </div>
+              <div className="col-12 col-sm-6">
+                <label className="form-label">Registre de Commerce</label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="form-control"
+                  onChange={(e) => setRcFile(e.target.files?.[0] || null)}
+                />
+                {rcFile && <div className="form-text">{rcFile.name}</div>}
+              </div>
+            </>
+          )}
         </div>
 
         <button
@@ -241,7 +314,7 @@ export default function RejoindrePage() {
           className="btn btn-duu-green mt-4"
           disabled={submitting}
         >
-          {submitting ? "Envoi…" : "Envoyer ma candidature"}
+          {submitting ? "Envoi…" : persona === "partenaire" ? "Envoyer ma demande" : "Envoyer ma candidature"}
         </button>
       </form>
     </section>

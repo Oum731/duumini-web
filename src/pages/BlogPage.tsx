@@ -7,13 +7,13 @@ export default function BlogPage() {
   return (
     <section className="container-xxl py-5">
       <Seo
-        title="Blog"
+        title="Ressources"
         description="Actualités et articles DUUMINI sur le commerce panafricain, les corridors logistiques et les produits authentiques d'Afrique."
         path="/blog"
       />
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h3 m-0" style={{ color: "var(--duu-green)" }}>
-          Blog
+          Ressources
         </h1>
         <Link to="/" className="btn btn-outline-dark">
           Accueil

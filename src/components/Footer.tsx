@@ -163,7 +163,7 @@ export default function Footer() {
               </li>
               <li>
                 <TopLink className="link-dark d-block py-1" to="/about">
-                  À propos
+                  Notre vision
                 </TopLink>
               </li>
               <li>
@@ -183,7 +183,7 @@ export default function Footer() {
               </li>
               <li>
                 <TopLink className="link-dark d-block py-1" to="/blog">
-                  Blog
+                  Ressources
                 </TopLink>
               </li>
               <li>

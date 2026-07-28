@@ -52,8 +52,8 @@ const PUBLIC_NAV_LINKS: NavLinkDef[] = [
   { to: "/comment-ca-marche", label: "Comment ça marche", Icon: Workflow },
   { to: "/solutions", label: "Solutions", Icon: Briefcase },
   { to: "/pays", label: "Pays", Icon: Globe2 },
-  { to: "/about", label: "À propos", Icon: Info },
-  { to: "/blog", label: "Blog", Icon: BookOpen },
+  { to: "/about", label: "Notre vision", Icon: Info },
+  { to: "/blog", label: "Ressources", Icon: BookOpen },
   { to: "/contact", label: "Contact", Icon: Mail },
 ];
 
@@ -379,7 +379,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
               </li>
             )}
 
-            {navItem("/profile", isLoggedIn ? "Profil" : "Se connecter", UserRound)}
+            {navItem("/profile", isLoggedIn ? "Mon espace" : "Se connecter", UserRound)}
           </ul>
 
           <ul className="navbar-nav align-items-lg-center gap-lg-2">

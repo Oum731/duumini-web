@@ -2,7 +2,7 @@
 import { api } from "./http";
 import type { Paginated } from "./types";
 
-export type ApplicantType = "VENDEUR" | "FOURNISSEUR" | "RESTAURANT";
+export type ApplicantType = "VENDEUR" | "FOURNISSEUR" | "RESTAURANT" | "PARTENAIRE";
 export type ApplicationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export type VendorApplication = {

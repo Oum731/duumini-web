@@ -9,12 +9,12 @@ export default function AboutPage() {
   return (
     <section className="container-xxl py-4">
       <Seo
-        title="À propos"
+        title="Notre vision"
         description="DUUMINI est une plateforme de commerce panafricain qui connecte producteurs, commerçants et consommateurs entre le Maroc et la Côte d'Ivoire."
         path="/about"
       />
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>À propos de duumini</h1>
+        <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>Notre vision</h1>
         <Link to="/" className="btn btn-outline-dark">Accueil</Link>
       </div>
 

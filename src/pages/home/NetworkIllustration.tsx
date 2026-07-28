@@ -4,19 +4,21 @@
 // Côte d'Ivoire ET de la Côte d'Ivoire vers le Maroc, et ainsi de suite
 // entre tous les pays du réseau, pas un simple corridor à sens unique.
 
-type Node = { code: string; x: number; y: number; tint: "orange" | "green" };
+type Node = { code: string; flag: string; x: number; y: number; tint: "orange" | "green" };
 
+// Mêmes emoji drapeaux que la source de vérité backend
+// (country_config.flag_emoji, cf. createCountryConfigTable.js).
 const NODES: Node[] = [
-  { code: "MA", x: 90, y: 70, tint: "orange" },
-  { code: "SN", x: 55, y: 165, tint: "green" },
-  { code: "CI", x: 150, y: 230, tint: "orange" },
-  { code: "CM", x: 260, y: 190, tint: "green" },
+  { code: "MA", flag: "🇲🇦", x: 90, y: 70, tint: "orange" },
+  { code: "SN", flag: "🇸🇳", x: 55, y: 165, tint: "green" },
+  { code: "CI", flag: "🇨🇮", x: 150, y: 230, tint: "orange" },
+  { code: "CM", flag: "🇨🇲", x: 260, y: 190, tint: "green" },
 ];
 
 // Nœuds estompés = le réseau continue de s'étendre à d'autres pays.
 const GHOST_NODES: Node[] = [
-  { code: "", x: 320, y: 90, tint: "orange" },
-  { code: "", x: 340, y: 240, tint: "green" },
+  { code: "", flag: "", x: 320, y: 90, tint: "orange" },
+  { code: "", flag: "", x: 340, y: 240, tint: "green" },
 ];
 
 const EDGES: [string, string][] = [
@@ -118,15 +120,8 @@ export default function NetworkIllustration() {
             stroke={n.tint === "orange" ? "var(--duu-orange)" : "var(--duu-green)"}
             strokeWidth="2"
           />
-          <text
-            x={n.x}
-            y={n.y + 5}
-            fontSize="14"
-            fontWeight="800"
-            textAnchor="middle"
-            fill="var(--duu-black)"
-          >
-            {n.code}
+          <text x={n.x} y={n.y + 9} fontSize="24" textAnchor="middle">
+            {n.flag}
           </text>
         </g>
       ))}
