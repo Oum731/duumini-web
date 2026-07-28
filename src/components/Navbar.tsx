@@ -45,16 +45,21 @@ type NavLinkDef = {
   end?: boolean;
 };
 
-// ✅ Liens publics de la vitrine, visibles pour tout le monde (voir isPro
-// plus bas pour le dropdown "Espace pro" ajouté en plus pour les comptes
-// admin/vendeur/fournisseur/restaurant).
+// ✅ Liens publics de la vitrine, toujours visibles au premier niveau
+// (voir isPro plus bas pour le dropdown "Espace pro" ajouté en plus pour
+// les comptes admin/vendeur/fournisseur/restaurant).
 const PUBLIC_NAV_LINKS: NavLinkDef[] = [
-  { to: "/comment-ca-marche", label: "Comment ça marche", Icon: Workflow },
   { to: "/solutions", label: "Solutions", Icon: Briefcase },
+  { to: "/contact", label: "Contact", Icon: Mail },
+];
+
+// ✅ Liens secondaires/informatifs regroupés sous "Découvrir" pour éviter
+// de surcharger la barre — sinon 12 items+ à plat débordent dès ~1440px.
+const DISCOVER_LINKS: NavLinkDef[] = [
+  { to: "/comment-ca-marche", label: "Comment ça marche", Icon: Workflow },
   { to: "/pays", label: "Pays", Icon: Globe2 },
   { to: "/about", label: "Notre vision", Icon: Info },
   { to: "/blog", label: "Ressources", Icon: BookOpen },
-  { to: "/contact", label: "Contact", Icon: Mail },
 ];
 
 const SHOP_LINKS: NavLinkDef[] = [
@@ -68,6 +73,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const [open, setOpen] = useState(false);
   const [proOpen, setProOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
+  const [discoverOpen, setDiscoverOpen] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -97,6 +103,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
     setOpen(false);
     setProOpen(false);
     setShopOpen(false);
+    setDiscoverOpen(false);
   };
 
   const navItem = (
@@ -126,7 +133,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
 
   return (
     <nav
-      className="navbar navbar-expand-lg navbar-light sticky-top"
+      className="navbar navbar-expand-xl navbar-light sticky-top"
       style={{ backgroundColor: "#fff" }}
       role="navigation"
       aria-label="Navigation principale"
@@ -145,6 +152,20 @@ export default function Navbar({ cartCount = 0 }: Props) {
         }
         .navbar .navbar-toggler:focus{
           box-shadow: 0 0 0 .2rem rgba(var(--duu-orange-rgb), .35) !important;
+        }
+        /* ✅ Barre horizontale compacte au-delà de 1200px (= navbar-expand-xl,
+           le seuil réel où la nav passe en ligne) : icônes des liens de
+           premier niveau masquées (gardées en menu mobile empilé où la
+           place ne manque pas) + padding resserré, pour éviter tout
+           débordement horizontal avec ~7 liens + logo + boutons. */
+        @media (min-width: 1200px){
+          .navbar-nav > .nav-item > .nav-link{
+            padding-left: .6rem;
+            padding-right: .6rem;
+          }
+          .navbar-nav > .nav-item > .nav-link svg:first-child{
+            display: none;
+          }
         }
         .duu-brand-wrap{ min-width: 0; }
         .duu-brand-slogan{
@@ -237,7 +258,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
             open ? "show" : ""
           }`}
         >
-          <ul className="navbar-nav mb-2 mb-lg-0 me-lg-3">
+          <ul className="navbar-nav mb-2 mb-xl-0 me-xl-3">
             {navItem("/", "Accueil", Home, { end: true })}
 
             {/* ✅ Point d'entrée client final : acheter sur Market/Food/Fashion,
@@ -246,7 +267,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
               <button
                 type="button"
                 className="nav-link d-flex align-items-center gap-2 shop-cta"
-                onClick={() => setShopOpen((v) => !v)}
+                onClick={() => {
+                  setProOpen(false);
+                  setDiscoverOpen(false);
+                  setShopOpen((v) => !v);
+                }}
                 aria-expanded={shopOpen}
                 aria-label="Acheter"
               >
@@ -273,6 +298,35 @@ export default function Navbar({ cartCount = 0 }: Props) {
               navItem(l.to, l.label, l.Icon, { end: l.end })
             )}
 
+            {/* ✅ Liens secondaires regroupés pour ne pas surcharger la barre */}
+            <li className="nav-item pro-dd">
+              <button
+                type="button"
+                className="nav-link d-flex align-items-center gap-2"
+                onClick={() => {
+                  setShopOpen(false);
+                  setProOpen(false);
+                  setDiscoverOpen((v) => !v);
+                }}
+                aria-expanded={discoverOpen}
+                aria-label="Découvrir"
+              >
+                <span>Découvrir</span>
+                <ChevronDown size={16} />
+              </button>
+
+              {discoverOpen && (
+                <div className="pro-menu" role="menu">
+                  {DISCOVER_LINKS.map((l) => (
+                    <Link key={l.to} to={l.to} onClick={closeMenus}>
+                      <l.Icon size={18} />
+                      <span>{l.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </li>
+
             {isLoggedIn && navItem("/orders", "Mes commandes", Package)}
 
             {/* ✅ Espace pro dropdown */}
@@ -281,7 +335,11 @@ export default function Navbar({ cartCount = 0 }: Props) {
                 <button
                   type="button"
                   className="nav-link d-flex align-items-center gap-2"
-                  onClick={() => setProOpen((v) => !v)}
+                  onClick={() => {
+                    setShopOpen(false);
+                    setDiscoverOpen(false);
+                    setProOpen((v) => !v);
+                  }}
                   aria-expanded={proOpen}
                   aria-label="Espace pro"
                 >
@@ -382,7 +440,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
             {navItem("/profile", isLoggedIn ? "Mon espace" : "Se connecter", UserRound)}
           </ul>
 
-          <ul className="navbar-nav align-items-lg-center gap-lg-2">
+          <ul className="navbar-nav align-items-xl-center gap-xl-2">
             {!isPro && (
               <li className="nav-item">
                 <Link
