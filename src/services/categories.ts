@@ -13,6 +13,9 @@ export type Category = {
   name: string;
   slug: string;
   vertical?: Vertical | null;
+  image_url?: string | null;
+  image_urls?: string[] | null;
+  product_count?: number;
   created_at?: string | null;
   updated_at?: string | null;
 };
