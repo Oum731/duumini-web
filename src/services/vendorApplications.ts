@@ -79,13 +79,19 @@ export async function listVendorApplications(opts: {
   pageSize?: number;
   status?: ApplicationStatus;
   q?: string;
+  applicant_type?: ApplicantType | ApplicantType[];
 } = {}) {
+  const applicantType = Array.isArray(opts.applicant_type)
+    ? opts.applicant_type.join(",")
+    : opts.applicant_type;
+
   return api.get<Paginated<VendorApplication>>("/api/vendor-applications", {
     query: {
       page: opts.page ?? 1,
       pageSize: opts.pageSize ?? 50,
       ...(opts.status ? { status: opts.status } : {}),
       ...(opts.q ? { q: opts.q } : {}),
+      ...(applicantType ? { applicant_type: applicantType } : {}),
     },
   });
 }

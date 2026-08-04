@@ -10,12 +10,26 @@ import {
   applicationErrorMessage,
   type VendorApplication,
   type ApplicationStatus,
+  type ApplicantType,
 } from "../../services/vendorApplications";
 
 const STATUS_LABEL: Record<ApplicationStatus, string> = {
   PENDING: "En attente",
   APPROVED: "Approuvée",
   REJECTED: "Rejetée",
+};
+
+const ID_DOC_LABEL: Record<string, string> = {
+  PASSPORT: "Passeport",
+  CARTE_SEJOUR: "Carte de séjour",
+  CNI: "Carte d'identité nationale",
+};
+
+type Tab = "shops" | "livreurs";
+
+const TAB_APPLICANT_TYPES: Record<Tab, ApplicantType[]> = {
+  shops: ["VENDEUR", "FOURNISSEUR", "RESTAURANT", "PARTENAIRE"],
+  livreurs: ["LIVREUR"],
 };
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
@@ -120,6 +134,7 @@ function RejectForm({
 }
 
 export default function VendorApplicationsAdminPage() {
+  const [tab, setTab] = useState<Tab>("shops");
   const [items, setItems] = useState<VendorApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +155,7 @@ export default function VendorApplicationsAdminPage() {
       const res = await listVendorApplications({
         status: statusFilter || undefined,
         q: qDebounced || undefined,
+        applicant_type: TAB_APPLICANT_TYPES[tab],
         pageSize: 100,
       });
       setItems(res.items);
@@ -156,14 +172,41 @@ export default function VendorApplicationsAdminPage() {
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, qDebounced]);
+  }, [tab, statusFilter, qDebounced]);
 
   return (
     <div className="container-xxl py-4">
       <PageHeader
-        title="Candidatures vendeurs / fournisseurs"
+        title="Candidatures"
         subtitle={`${items.length} candidature(s)`}
       />
+
+      <ul className="nav nav-tabs mb-3">
+        <li className="nav-item">
+          <button
+            type="button"
+            className={`nav-link ${tab === "shops" ? "active" : ""}`}
+            onClick={() => {
+              setSelected(null);
+              setTab("shops");
+            }}
+          >
+            Boutiques & partenaires
+          </button>
+        </li>
+        <li className="nav-item">
+          <button
+            type="button"
+            className={`nav-link ${tab === "livreurs" ? "active" : ""}`}
+            onClick={() => {
+              setSelected(null);
+              setTab("livreurs");
+            }}
+          >
+            Livreurs
+          </button>
+        </li>
+      </ul>
 
       <div className="row g-3">
         <div className="col-12 col-md-5 col-lg-4">
@@ -276,6 +319,41 @@ export default function VendorApplicationsAdminPage() {
                         "—"
                       )}
                     </dd>
+                    {(selected.id_document_url || selected.photo_url) && (
+                      <>
+                        <dt className="col-4">Pièce d'identité</dt>
+                        <dd className="col-8">
+                          {selected.id_document_url ? (
+                            <a href={selected.id_document_url} target="_blank" rel="noopener noreferrer">
+                              {selected.id_document_type
+                                ? ID_DOC_LABEL[selected.id_document_type]
+                                : "Voir le document"}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </dd>
+                        <dt className="col-4">Photo</dt>
+                        <dd className="col-8">
+                          {selected.photo_url ? (
+                            <a href={selected.photo_url} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={selected.photo_url}
+                                alt="Photo du candidat"
+                                style={{
+                                  width: 56,
+                                  height: 56,
+                                  objectFit: "cover",
+                                  borderRadius: "50%",
+                                }}
+                              />
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </dd>
+                      </>
+                    )}
                     {selected.admin_notes && (
                       <>
                         <dt className="col-4">Notes admin</dt>
