@@ -21,6 +21,7 @@ import {
   UserPlus,
   Truck,
   LayoutGrid,
+  Bike,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -67,6 +68,7 @@ const SHOP_LINKS: NavLinkDef[] = [
   { to: "/african-market", label: "Duumini Market", Icon: Store },
   { to: "/african-food", label: "Duumini Food", Icon: Store },
   { to: "/fashion", label: "Duumini Fashion", Icon: Store },
+  { to: "/courses/nouvelle", label: "Commander un livreur", Icon: Bike },
 ];
 
 export default function Navbar({ cartCount = 0 }: Props) {
@@ -77,7 +79,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const { isLoggedIn, isAdmin, isVendor, isSupplier, isRestaurantRole, isPro } =
+  const { isLoggedIn, isAdmin, isVendor, isSupplier, isRestaurantRole, isLivreurRole, isPro } =
     useMemo(() => {
       const role = (user?.role ? String(user.role) : "")
         .trim()
@@ -86,18 +88,20 @@ export default function Navbar({ cartCount = 0 }: Props) {
       const isVendor = role === "VENDEUR";
       const isSupplier = role === "FOURNISSEUR";
       const isRestaurantRole = role === "RESTAURANT";
+      const isLivreurRole = role === "LIVREUR";
       return {
         isLoggedIn: !!user,
         isAdmin,
         isVendor,
         isSupplier,
         isRestaurantRole,
-        isPro: isAdmin || isVendor || isSupplier || isRestaurantRole,
+        isLivreurRole,
+        isPro: isAdmin || isVendor || isSupplier || isRestaurantRole || isLivreurRole,
       };
     }, [user]);
 
-  // ✅ vendeur -> /ma-boutique (VendorHome), admin -> /admin
-  const proDashboardPath = isAdmin ? "/admin" : "/ma-boutique";
+  // ✅ vendeur -> /ma-boutique (VendorHome), livreur -> /livreur, admin -> /admin
+  const proDashboardPath = isAdmin ? "/admin" : isLivreurRole ? "/livreur" : "/ma-boutique";
 
   const closeMenus = () => {
     setOpen(false);
@@ -343,7 +347,13 @@ export default function Navbar({ cartCount = 0 }: Props) {
                   aria-expanded={proOpen}
                   aria-label="Espace pro"
                 >
-                  {isAdmin ? <Shield size={18} /> : <Store size={18} />}
+                  {isAdmin ? (
+                    <Shield size={18} />
+                  ) : isLivreurRole ? (
+                    <Bike size={18} />
+                  ) : (
+                    <Store size={18} />
+                  )}
                   <span>Espace pro</span>
                   <ChevronDown size={16} />
                 </button>
@@ -368,10 +378,20 @@ export default function Navbar({ cartCount = 0 }: Props) {
                     <Link
                       to={proDashboardPath}
                       onClick={closeMenus}
-                      aria-label={isAdmin ? "Dashboard admin" : "Ma boutique"}
+                      aria-label={
+                        isAdmin ? "Dashboard admin" : isLivreurRole ? "Espace livreur" : "Ma boutique"
+                      }
                     >
-                      {isAdmin ? <Shield size={18} /> : <Store size={18} />}
-                      <span>{isAdmin ? "Dashboard admin" : "Ma boutique"}</span>
+                      {isAdmin ? (
+                        <Shield size={18} />
+                      ) : isLivreurRole ? (
+                        <Bike size={18} />
+                      ) : (
+                        <Store size={18} />
+                      )}
+                      <span>
+                        {isAdmin ? "Dashboard admin" : isLivreurRole ? "Espace livreur" : "Ma boutique"}
+                      </span>
                     </Link>
 
                     {isAdmin && (

@@ -13,6 +13,8 @@ const AdminHome = React.lazy(() => import("./pages/AdminHome"));
 const OrdersAdminPage = React.lazy(() => import("./pages/admin/OrdersAdminPage"));
 const ShopsAdminPage = React.lazy(() => import("./pages/admin/ShopsAdminPage"));
 const VendorApplicationsAdminPage = React.lazy(() => import("./pages/admin/VendorApplicationsAdminPage"));
+const CourierTripsAdminPage = React.lazy(() => import("./pages/admin/CourierTripsAdminPage"));
+const LivreurProfilesAdminPage = React.lazy(() => import("./pages/admin/LivreurProfilesAdminPage"));
 const UsersAdminPage = React.lazy(() => import("./pages/admin/UsersAdminPage"));
 const ExpensesPage = React.lazy(() => import("./pages/admin/ExpensesPage"));
 
@@ -34,6 +36,10 @@ import CommentCaMarchePage from "./pages/CommentCaMarchePage";
 import SolutionsPage from "./pages/SolutionsPage";
 import SolutionDetailPage from "./pages/solutions/SolutionDetailPage";
 import CataloguePage from "./pages/CataloguePage";
+import CourierBookingPage from "./pages/CourierBookingPage";
+import MyCourierTripsPage from "./pages/MyCourierTripsPage";
+import CourierTripTrackingPage from "./pages/CourierTripTrackingPage";
+import LivreurHome from "./pages/livreur/LivreurHome";
 import PaysPage from "./pages/PaysPage";
 import BlogPage from "./pages/BlogPage";
 import RejoindrePage from "./pages/RejoindrePage";
@@ -391,6 +397,23 @@ export default function App() {
                 <Route path="/boutique/:slug" element={<ShopStorefrontPage />} />
                 <Route path="/cart" element={<CartPage />} />
 
+                <Route element={<RequireAuth />}>
+                  <Route path="/courses/nouvelle" element={<CourierBookingPage />} />
+                  <Route path="/mes-courses" element={<MyCourierTripsPage />} />
+                  <Route path="/courses/:id/suivi" element={<CourierTripTrackingPage />} />
+                </Route>
+
+                <Route
+                  element={
+                    <RequireAuth
+                      allow={(v: any) => v.role === "LIVREUR"}
+                      redirectTo="/"
+                    />
+                  }
+                >
+                  <Route path="/livreur" element={<LivreurHome />} />
+                </Route>
+
                 <Route path="/affiliate" element={<AffiliateDashboardPage />} />
                 <Route path="/affilie" element={<AffiliateDashboardPage />} />
                 <Route
@@ -458,6 +481,8 @@ export default function App() {
                       path="candidatures"
                       element={<VendorApplicationsAdminPage />}
                     />
+                    <Route path="courses" element={<CourierTripsAdminPage />} />
+                    <Route path="livreurs" element={<LivreurProfilesAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
                     <Route path="expenses" element={<ExpensesPage />} />
                     <Route

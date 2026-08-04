@@ -12,6 +12,8 @@ import {
   Wallet,
   BadgePercent,
   UserPlus,
+  Bike,
+  ShieldCheck,
   Menu as MenuIcon,
   X as CloseIcon,
   ChevronDown,
@@ -153,6 +155,8 @@ export default function AdminTopNav({
         label: "Réseau",
         items: [
           { to: "/admin/candidatures", label: "Candidatures", icon: UserPlus },
+          { to: "/admin/courses", label: "Courses livreur", icon: Bike },
+          { to: "/admin/livreurs", label: "Livreurs", icon: ShieldCheck },
           { to: "/admin/shops", label: "Boutiques", icon: Store },
           { to: "/admin/users", label: "Utilisateurs", icon: Users },
         ],

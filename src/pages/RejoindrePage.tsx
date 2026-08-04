@@ -8,18 +8,41 @@ import {
   submitVendorApplication,
   applicationErrorMessage,
   type ApplicantType,
+  type IdDocumentType,
 } from "../services/vendorApplications";
 
-// Fournisseur/Revendeur/Partenaire passent par la candidature vétée
+const ID_DOCUMENT_TYPES: { value: IdDocumentType; label: string }[] = [
+  { value: "CNI", label: "Carte d'identité nationale" },
+  { value: "CARTE_SEJOUR", label: "Carte de séjour" },
+  { value: "PASSPORT", label: "Passeport" },
+];
+
+// Livreur n'est pas un persona marketing de l'accueil (PERSONAS), c'est un
+// profil propre au flux de candidature — type étendu localement plutôt que
+// dans home/data.ts pour ne pas toucher la page d'accueil.
+type RejoindreProfileKey = PersonaKey | "livreur";
+
+// Fournisseur/Revendeur/Partenaire/Livreur passent par la candidature vétée
 // (examinée par l'équipe admin) ; Client n'y figure pas — voir plus bas.
-const TYPE_FROM_PERSONA: Partial<Record<PersonaKey, ApplicantType>> = {
+const TYPE_FROM_PERSONA: Partial<Record<RejoindreProfileKey, ApplicantType>> = {
   fournisseur: "FOURNISSEUR",
   revendeur: "VENDEUR",
   partenaire: "PARTENAIRE",
+  livreur: "LIVREUR",
 };
 
 const FORM_COPY: Partial<
-  Record<PersonaKey, { title: string; intro: string; nameLabel: string; namePlaceholder: string; showDocs: boolean }>
+  Record<
+    RejoindreProfileKey,
+    {
+      title: string;
+      intro: string;
+      nameLabel: string;
+      namePlaceholder: string;
+      showDocs: boolean;
+      showIdentityDocs?: boolean;
+    }
+  >
 > = {
   fournisseur: {
     title: "Devenir fournisseur DUUMINI",
@@ -44,6 +67,15 @@ const FORM_COPY: Partial<
     nameLabel: "Nom de l'organisation",
     namePlaceholder: "Ex. Nom de votre structure",
     showDocs: false,
+  },
+  livreur: {
+    title: "Devenir livreur DUUMINI",
+    intro:
+      "Vous avez un moyen de transport (moto, voiture, vélo) ? Rejoignez le réseau de livreurs DUUMINI et acceptez des courses près de chez vous. Après cette candidature en ligne, vous devrez vous présenter à l'agence DUUMINI avec vos documents originaux pour validation avant de pouvoir accepter des courses.",
+    nameLabel: "Nom complet",
+    namePlaceholder: "Ex. Youssef El Amrani",
+    showDocs: false,
+    showIdentityDocs: true,
   },
 };
 
@@ -89,6 +121,24 @@ function ProfilePicker() {
             </button>
           </div>
         ))}
+
+        <div className="col-12 col-sm-6">
+          <button
+            type="button"
+            className="card border-0 shadow-sm w-100 h-100 text-start p-4"
+            style={{ borderRadius: "var(--duu-radius-xl)", background: "#fff" }}
+            onClick={() => navigate("/rejoindre?type=livreur")}
+          >
+            <div className="fs-2 mb-2" aria-hidden="true">
+              🛵
+            </div>
+            <div className="fw-bold mb-1">Je suis livreur</div>
+            <div className="text-muted small">
+              Moto, voiture ou vélo : rejoignez le réseau de livreurs DUUMINI
+              et touchez une part sur chaque course.
+            </div>
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -96,7 +146,7 @@ function ProfilePicker() {
 
 export default function RejoindrePage() {
   const [searchParams] = useSearchParams();
-  const personaParam = (searchParams.get("type") || "") as PersonaKey;
+  const personaParam = (searchParams.get("type") || "") as RejoindreProfileKey;
   const applicantType = TYPE_FROM_PERSONA[personaParam];
 
   if (!applicantType) {
@@ -110,7 +160,7 @@ function ApplicationForm({
   persona,
   applicantType,
 }: {
-  persona: PersonaKey;
+  persona: RejoindreProfileKey;
   applicantType: ApplicantType;
 }) {
   const [searchParams] = useSearchParams();
@@ -123,6 +173,9 @@ function ApplicationForm({
   const [message, setMessage] = useState("");
   const [dfeFile, setDfeFile] = useState<File | null>(null);
   const [rcFile, setRcFile] = useState<File | null>(null);
+  const [idDocumentType, setIdDocumentType] = useState<IdDocumentType>("CNI");
+  const [idDocumentFile, setIdDocumentFile] = useState<File | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +201,10 @@ function ApplicationForm({
       setError("Le nom et le téléphone sont obligatoires.");
       return;
     }
+    if (copy.showIdentityDocs && (!idDocumentFile || !photoFile)) {
+      setError("Votre pièce d'identité et votre photo sont obligatoires.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -161,8 +218,13 @@ function ApplicationForm({
           country_code: countryCode,
           city: city.trim() || null,
           message: message.trim() || null,
+          id_document_type: copy.showIdentityDocs ? idDocumentType : null,
         },
-        copy.showDocs ? { dfe: dfeFile, rc: rcFile } : {}
+        copy.showDocs
+          ? { dfe: dfeFile, rc: rcFile }
+          : copy.showIdentityDocs
+          ? { idDocument: idDocumentFile, photo: photoFile }
+          : {}
       );
       setDone(true);
     } catch (e: any) {
@@ -304,6 +366,52 @@ function ApplicationForm({
                   onChange={(e) => setRcFile(e.target.files?.[0] || null)}
                 />
                 {rcFile && <div className="form-text">{rcFile.name}</div>}
+              </div>
+            </>
+          )}
+
+          {copy.showIdentityDocs && (
+            <>
+              <div className="col-12">
+                <label className="form-label">Type de pièce d'identité</label>
+                <select
+                  className="form-select"
+                  value={idDocumentType}
+                  onChange={(e) => setIdDocumentType(e.target.value as IdDocumentType)}
+                >
+                  {ID_DOCUMENT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-12 col-sm-6">
+                <label className="form-label">Photo de la pièce d'identité</label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="form-control"
+                  onChange={(e) => setIdDocumentFile(e.target.files?.[0] || null)}
+                  required
+                />
+                {idDocumentFile && <div className="form-text">{idDocumentFile.name}</div>}
+              </div>
+
+              <div className="col-12 col-sm-6">
+                <label className="form-label">Votre photo</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="form-control"
+                  onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                  required
+                />
+                <div className="form-text">
+                  Sert à vous identifier auprès de DUUMINI et des clients.
+                </div>
+                {photoFile && <div className="form-text">{photoFile.name}</div>}
               </div>
             </>
           )}

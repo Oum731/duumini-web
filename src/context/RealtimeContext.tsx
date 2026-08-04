@@ -13,7 +13,12 @@ import { getAccessToken } from "../services/auth";
 import { useAuth } from "./AuthContext";
 import { API_BASE } from "../services/http";
 
-type NotificationKind = "GENERIC" | "ORDER_CREATED" | "ORDER_STATUS";
+type NotificationKind =
+  | "GENERIC"
+  | "ORDER_CREATED"
+  | "ORDER_STATUS"
+  | "COURIER_TRIP_REQUESTED"
+  | "COURIER_TRIP_STATUS";
 
 type RealtimeContextType = {
   socket: Socket | null;
@@ -39,14 +44,16 @@ let audioOrderStatus: HTMLAudioElement | null = null;
 function getAudioForKind(kind: NotificationKind): HTMLAudioElement | null {
   if (typeof Audio === "undefined") return null;
 
-  if (kind === "ORDER_CREATED") {
+  // Les courses livreur réutilisent les sons commande — pas de nouveaux
+  // fichiers audio à ajouter pour ce type d'événement.
+  if (kind === "ORDER_CREATED" || kind === "COURIER_TRIP_REQUESTED") {
     if (!audioOrderCreated) {
       audioOrderCreated = new Audio("/sounds/notify-order-created.mp3");
     }
     return audioOrderCreated;
   }
 
-  if (kind === "ORDER_STATUS") {
+  if (kind === "ORDER_STATUS" || kind === "COURIER_TRIP_STATUS") {
     if (!audioOrderStatus) {
       audioOrderStatus = new Audio("/sounds/notify-order-status.mp3");
     }
@@ -79,10 +86,10 @@ function vibrate(kind: NotificationKind) {
   if (!anyNav.vibrate) return;
 
   let pattern: number[] | number = 60;
-  if (kind === "ORDER_CREATED") {
-    // vibration plus forte pour nouvelle commande
+  if (kind === "ORDER_CREATED" || kind === "COURIER_TRIP_REQUESTED") {
+    // vibration plus forte pour nouvelle commande / nouvelle course
     pattern = [140, 80, 140];
-  } else if (kind === "ORDER_STATUS") {
+  } else if (kind === "ORDER_STATUS" || kind === "COURIER_TRIP_STATUS") {
     // vibration double pour changement de statut
     pattern = [90, 50, 90];
   } else {
@@ -194,12 +201,15 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
       socket.on("notify", (data: any) => {
         console.log("[WS] notify", data);
         const rawType = (data?.type || "").toString().toUpperCase();
-        const kind: NotificationKind =
-          rawType === "ORDER_CREATED"
-            ? "ORDER_CREATED"
-            : rawType === "ORDER_STATUS"
-            ? "ORDER_STATUS"
-            : "GENERIC";
+        const KNOWN_KINDS: NotificationKind[] = [
+          "ORDER_CREATED",
+          "ORDER_STATUS",
+          "COURIER_TRIP_REQUESTED",
+          "COURIER_TRIP_STATUS",
+        ];
+        const kind: NotificationKind = KNOWN_KINDS.includes(rawType as NotificationKind)
+          ? (rawType as NotificationKind)
+          : "GENERIC";
 
         showToast({
           title: data.title,

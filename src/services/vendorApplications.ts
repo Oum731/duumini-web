@@ -2,8 +2,9 @@
 import { api } from "./http";
 import type { Paginated } from "./types";
 
-export type ApplicantType = "VENDEUR" | "FOURNISSEUR" | "RESTAURANT" | "PARTENAIRE";
+export type ApplicantType = "VENDEUR" | "FOURNISSEUR" | "RESTAURANT" | "PARTENAIRE" | "LIVREUR";
 export type ApplicationStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type IdDocumentType = "PASSPORT" | "CARTE_SEJOUR" | "CNI";
 
 export type VendorApplication = {
   id: number;
@@ -16,6 +17,9 @@ export type VendorApplication = {
   message: string | null;
   dfe_url: string | null;
   rc_url: string | null;
+  id_document_url: string | null;
+  id_document_type: IdDocumentType | null;
+  photo_url: string | null;
   status: ApplicationStatus;
   admin_notes: string | null;
   reviewed_by: number | null;
@@ -40,12 +44,13 @@ export type SubmitVendorApplicationPayload = {
   country_code: string;
   city?: string | null;
   message?: string | null;
+  id_document_type?: IdDocumentType | null;
 };
 
 /** Soumission publique — aucune authentification requise. */
 export async function submitVendorApplication(
   payload: SubmitVendorApplicationPayload,
-  files: { dfe?: File | null; rc?: File | null }
+  files: { dfe?: File | null; rc?: File | null; idDocument?: File | null; photo?: File | null }
 ) {
   const fd = new FormData();
   fd.append("applicant_type", payload.applicant_type);
@@ -55,8 +60,11 @@ export async function submitVendorApplication(
   fd.append("country_code", payload.country_code);
   if (payload.city) fd.append("city", payload.city);
   if (payload.message) fd.append("message", payload.message);
+  if (payload.id_document_type) fd.append("id_document_type", payload.id_document_type);
   if (files.dfe) fd.append("dfe_file", files.dfe);
   if (files.rc) fd.append("rc_file", files.rc);
+  if (files.idDocument) fd.append("id_document_file", files.idDocument);
+  if (files.photo) fd.append("photo_file", files.photo);
 
   return api.post<{ id: number; status: ApplicationStatus }>(
     "/api/vendor-applications",
