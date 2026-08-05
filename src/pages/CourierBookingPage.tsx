@@ -7,6 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import type { PaymentMethod } from "./checkout/types";
 import {
   createCourierTrip,
+  createCourierTripGuest,
   courierTripErrorMessage,
   type TripType,
 } from "../services/courierTrips";
@@ -46,7 +47,7 @@ export default function CourierBookingPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await createCourierTrip({
+      const payload = {
         pickup_address: pickupAddress.trim(),
         pickup_lat: mapValue.pickupLat,
         pickup_lng: mapValue.pickupLng,
@@ -60,7 +61,12 @@ export default function CourierBookingPage() {
         country_code: countryCode,
         requester_phone: phone.trim(),
         requester_name: user?.first_name || null,
-      });
+      };
+      if (user) {
+        await createCourierTrip(payload);
+      } else {
+        await createCourierTripGuest(payload);
+      }
       setDone(true);
     } catch (e: any) {
       setError(courierTripErrorMessage(e, "Impossible de réserver la course."));
@@ -76,18 +82,39 @@ export default function CourierBookingPage() {
           <h1 className="h4 mb-3" style={{ color: "var(--duu-green)" }}>
             Course réservée
           </h1>
-          <p className="text-muted mb-4">
-            Un livreur disponible peut maintenant l'accepter. Suivez son
-            avancement depuis "Mes courses".
-          </p>
-          <div className="d-flex gap-2 justify-content-center">
-            <Link to="/mes-courses" className="btn btn-duu-green">
-              Mes courses
-            </Link>
-            <Link to="/" className="btn btn-outline-dark">
-              Accueil
-            </Link>
-          </div>
+          {user ? (
+            <>
+              <p className="text-muted mb-4">
+                Un livreur disponible peut maintenant l'accepter. Suivez son
+                avancement depuis "Mes courses".
+              </p>
+              <div className="d-flex gap-2 justify-content-center">
+                <Link to="/mes-courses" className="btn btn-duu-green">
+                  Mes courses
+                </Link>
+                <Link to="/" className="btn btn-outline-dark">
+                  Accueil
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-muted mb-4">
+                Un livreur disponible peut maintenant l'accepter. Vous serez
+                contacté(e) au {phone.trim()} dès qu'il est en route.
+                Créez un compte pour suivre vos courses en direct la prochaine
+                fois.
+              </p>
+              <div className="d-flex gap-2 justify-content-center">
+                <Link to="/profile" className="btn btn-duu-green">
+                  Créer un compte / Se connecter
+                </Link>
+                <Link to="/" className="btn btn-outline-dark">
+                  Accueil
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       </section>
     );

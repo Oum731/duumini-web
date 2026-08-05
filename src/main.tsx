@@ -13,6 +13,8 @@ import { AuthProvider } from "./context/AuthContext";
 import { RealtimeProvider } from "./context/RealtimeContext";
 import { LocationProvider } from "./context/LocationContext";
 import { CompanyProvider } from "./context/CompanyContext";
+import { ConsentProvider } from "./context/ConsentContext";
+import { VisitorPreferencesProvider } from "./context/VisitorPreferencesContext";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -62,15 +64,19 @@ createRoot(document.getElementById("root")!).render(
       >
         <AffiliateTrackerBootstrap />
 
-        <AuthProvider>
-          <RealtimeProvider>
-            <LocationProvider>
-              <CompanyProvider>
-                <App />
-              </CompanyProvider>
-            </LocationProvider>
-          </RealtimeProvider>
-        </AuthProvider>
+        <ConsentProvider>
+          <AuthProvider>
+            <RealtimeProvider>
+              <LocationProvider>
+                <CompanyProvider>
+                  <VisitorPreferencesProvider>
+                    <App />
+                  </VisitorPreferencesProvider>
+                </CompanyProvider>
+              </LocationProvider>
+            </RealtimeProvider>
+          </AuthProvider>
+        </ConsentProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>,

@@ -14,7 +14,7 @@ export default function PrivacyPolicy() {
           Politique de confidentialité (Confidentialité du traitement des données)
         </h1>
         <p className="text-muted mb-0">
-          Dernière révision : 2 juillet 2026 (première publication : 30 octobre 2025)
+          Dernière révision : 5 août 2026 (première publication : 30 octobre 2025)
         </p>
       </header>
 
@@ -103,11 +103,13 @@ export default function PrivacyPolicy() {
         <Card title="9. Cookies et traceurs">
           <ul className="text-muted mb-0">
             <li><strong>Essentiels</strong> : nécessaires au fonctionnement du Site (panier, session)</li>
-            <li><strong>Mesure d’audience</strong> : statistiques anonymisées (opt-in/opt-out selon paramétrage)</li>
-            <li><strong>Marketing</strong> : soumis à votre consentement préalable</li>
+            <li><strong>Mesure d’audience</strong> : statistiques anonymisées via Google Tag Manager et Metricool (opt-in/opt-out selon paramétrage)</li>
+            <li><strong>Marketing</strong> : publicités et retargeting via Meta Pixel (Facebook/Instagram), soumis à votre consentement préalable</li>
           </ul>
           <p className="text-muted mb-0 mt-2">
-            Vous pouvez gérer vos choix via le bandeau cookies et les paramètres du navigateur. Le refus de certains cookies peut dégrader l’expérience.
+            Vous pouvez gérer vos choix à tout moment via le bandeau cookies affiché à votre première visite, le lien « Gérer les cookies » en bas de page,
+            et les paramètres de votre navigateur. Le refus de certains cookies peut dégrader l’expérience. Votre choix est conservé 12 mois, à l’issue
+            desquels le bandeau vous sera présenté à nouveau.
           </p>
         </Card>
 

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Seo } from "../components/Seo";
+import { metaLead } from "../lib/metaPixel";
 import { PERSONAS, type PersonaKey } from "./home/data";
 import { listActiveCountries, type CountryConfig } from "../services/countries";
 import {
@@ -177,9 +178,40 @@ function ApplicationForm({
   const [idDocumentFile, setIdDocumentFile] = useState<File | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
 
+  // ✅ Position GPS (livreur uniquement) — permet un suivi/dispatch des
+  // courses proches dès l'approbation, sans attendre la première connexion
+  // au tableau de bord. Jamais obligatoire (dégradation gracieuse).
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  function handleLocate() {
+    if (!navigator.geolocation) {
+      setLocateError("Géolocalisation non disponible sur cet appareil.");
+      return;
+    }
+    setLocating(true);
+    setLocateError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setLocateError(
+          err.code === err.PERMISSION_DENIED
+            ? "Localisation refusée — vous pourrez la renseigner plus tard depuis votre tableau de bord."
+            : "Impossible d'obtenir votre position pour le moment."
+        );
+      },
+      { timeout: 8000 }
+    );
+  }
 
   const copy = FORM_COPY[persona]!;
 
@@ -217,6 +249,8 @@ function ApplicationForm({
           contact_email: email.trim() || null,
           country_code: countryCode,
           city: city.trim() || null,
+          lat: coords?.lat ?? null,
+          lng: coords?.lng ?? null,
           message: message.trim() || null,
           id_document_type: copy.showIdentityDocs ? idDocumentType : null,
         },
@@ -226,6 +260,7 @@ function ApplicationForm({
           ? { idDocument: idDocumentFile, photo: photoFile }
           : {}
       );
+      metaLead({ content_name: applicantType });
       setDone(true);
     } catch (e: any) {
       setError(applicationErrorMessage(e, "Impossible d'envoyer votre candidature."));
@@ -412,6 +447,29 @@ function ApplicationForm({
                   Sert à vous identifier auprès de DUUMINI et des clients.
                 </div>
                 {photoFile && <div className="form-text">{photoFile.name}</div>}
+              </div>
+
+              <div className="col-12">
+                <label className="form-label d-block">Votre position (optionnel)</label>
+                <div className="d-flex flex-wrap align-items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-dark"
+                    onClick={handleLocate}
+                    disabled={locating}
+                  >
+                    {locating
+                      ? "Localisation…"
+                      : coords
+                      ? "Position enregistrée ✓ — réessayer"
+                      : "📍 Utiliser ma position"}
+                  </button>
+                  {locateError && <span className="small text-danger">{locateError}</span>}
+                </div>
+                <div className="form-text">
+                  Nous permet de vous proposer des courses proches de chez
+                  vous dès l'activation de votre compte.
+                </div>
               </div>
             </>
           )}

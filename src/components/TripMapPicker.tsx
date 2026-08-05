@@ -3,7 +3,7 @@
 // point de départ et un point d'arrivée. Distance calculée à vol d'oiseau
 // (formule de Haversine) — le serveur refait ce calcul et fait foi, ceci
 // n'est qu'une estimation affichée en direct.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -87,18 +87,40 @@ export default function TripMapPicker({
     DEFAULT_CENTER[0] + 0.01,
     DEFAULT_CENTER[1] + 0.01,
   ]);
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!navigator.geolocation) return;
+  const locate = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocateError("Géolocalisation non disponible sur cet appareil.");
+      return;
+    }
+    setLocating(true);
+    setLocateError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const here: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         setCenter(here);
         setPickup(here);
+        setLocating(false);
       },
-      () => {},
-      { timeout: 5000 }
+      (err) => {
+        setLocating(false);
+        setLocateError(
+          err.code === err.PERMISSION_DENIED
+            ? "Localisation refusée — placez le repère manuellement sur la carte."
+            : "Impossible d'obtenir votre position — placez le repère manuellement."
+        );
+      },
+      { timeout: 8000 }
     );
+  }, []);
+
+  // Tentative silencieuse une seule fois au montage (comportement existant
+  // conservé) — le bouton ci-dessous permet de réessayer explicitement.
+  useEffect(() => {
+    locate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { distanceKm, price } = useMemo(() => {
@@ -153,6 +175,18 @@ export default function TripMapPicker({
           />
           <Polyline positions={[pickup, dropoff]} pathOptions={{ color: "var(--duu-orange)", dashArray: "6 8" }} />
         </MapContainer>
+      </div>
+
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-dark"
+          onClick={locate}
+          disabled={locating}
+        >
+          {locating ? "Localisation…" : "📍 Utiliser ma position actuelle"}
+        </button>
+        {locateError && <span className="small text-danger">{locateError}</span>}
       </div>
 
       <div className="d-flex flex-wrap gap-2 small text-muted mb-1">

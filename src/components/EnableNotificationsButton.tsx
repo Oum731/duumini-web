@@ -32,7 +32,8 @@ export default function EnableNotificationsButton() {
 
   return (
     <button
-      className="btn btn-outline"
+      type="button"
+      className="btn btn-sm btn-outline-dark"
       onClick={handleEnable}
       disabled={loading || status === "granted"}
       aria-busy={loading}

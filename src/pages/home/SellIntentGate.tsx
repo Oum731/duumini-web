@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Modal } from "../profile/components/Modal";
 import NetworkIllustration from "./NetworkIllustration";
+import { useConsent } from "../../context/ConsentContext";
 
 const STORAGE_KEY = "duumini:sellIntentGate:v1";
 const TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
@@ -48,8 +49,13 @@ export default function SellIntentGate() {
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const { hasDecided } = useConsent();
 
   useEffect(() => {
+    // ✅ Ne démarre pas tant que le bandeau cookies n'a pas été décidé —
+    // évite que les deux se disputent l'attention sur une vraie première
+    // visite (voir src/context/ConsentContext.tsx).
+    if (!hasDecided) return;
     if (shownThisTabSession) return;
     if (shouldSkip(location.pathname)) return;
 
@@ -62,7 +68,7 @@ export default function SellIntentGate() {
     }, SHOW_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [location.pathname]);
+  }, [location.pathname, hasDecided]);
 
   function handleYes() {
     writeStored("yes");

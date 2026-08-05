@@ -16,7 +16,7 @@ import {
   type CityCode,
 } from "../context/LocationContext";
 import { api } from "../services/http";
-import { metaInitiateCheckout, metaPurchase } from "../lib/metaPixel";
+import { metaInitiateCheckout, metaPurchase, setMetaAdvancedMatchingPhone } from "../lib/metaPixel";
 import type { FulfillmentMode, PaymentMethod, LocationSuggestion } from "./checkout/types";
 import {
   normalizePaymentMethod,
@@ -464,6 +464,7 @@ export default function CheckoutPage() {
       setSubmitting(true);
 
       const normalizedPhone = normalizePhoneInput(phone.trim());
+      setMetaAdvancedMatchingPhone(normalizedPhone);
       const finalCity = String(cityText || "").trim();
       const paymentLabel = paymentMethodLabel(paymentMethod);
       const backendPaymentMethod = normalizePaymentMethod(paymentMethod);

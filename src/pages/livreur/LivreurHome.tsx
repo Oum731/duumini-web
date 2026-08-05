@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Seo } from "../../components/Seo";
 import { LoadingState } from "../../components/ui/Spinner";
+import EnableNotificationsButton from "../../components/EnableNotificationsButton";
 import { moneyMAD } from "../../utils/money";
 import {
   listAvailableCourierTrips,
@@ -188,6 +189,14 @@ export default function LivreurHome() {
       </div>
 
       {geoError && <div className="alert alert-warning py-2 small mb-3">{geoError}</div>}
+
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <EnableNotificationsButton />
+        <span className="small text-muted">
+          Activez les notifications pour être alerté dès qu'une course est
+          disponible près de vous.
+        </span>
+      </div>
 
       <div className="row g-3 mb-4">
         <div className="col-6 col-md-3">

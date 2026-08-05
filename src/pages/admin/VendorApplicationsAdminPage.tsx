@@ -48,6 +48,9 @@ function ApproveForm({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [whatsappResult, setWhatsappResult] = useState<boolean | null>(null);
+
+  const isLivreur = application.applicant_type === "LIVREUR";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,13 +61,36 @@ function ApproveForm({
     setBusy(true);
     setError(null);
     try {
-      await approveVendorApplication(application.id, password);
-      onDone();
+      const res = await approveVendorApplication(application.id, password);
+      if (isLivreur) {
+        // ✅ Confirmation explicite pour l'admin — le WhatsApp part
+        // automatiquement, pas besoin d'action manuelle, mais on veut que
+        // l'admin sache que c'est fait avant de fermer ce panneau.
+        setWhatsappResult(res.whatsapp_sent ?? false);
+      } else {
+        onDone();
+      }
     } catch (e: any) {
       setError(applicationErrorMessage(e, "Impossible d'approuver cette candidature."));
     } finally {
       setBusy(false);
     }
+  }
+
+  if (whatsappResult !== null) {
+    return (
+      <div className="border rounded p-3 mb-3">
+        <div className={`alert py-2 mb-2 ${whatsappResult ? "alert-success" : "alert-warning"}`}>
+          Compte créé.{" "}
+          {whatsappResult
+            ? `Message WhatsApp envoyé à ${formatPhoneDisplay(application.contact_phone)} (passage à l'agence).`
+            : "L'envoi du message WhatsApp a échoué — contactez le candidat manuellement."}
+        </div>
+        <button type="button" className="btn btn-outline-dark btn-sm" onClick={onDone}>
+          Fermer
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -78,11 +104,15 @@ function ApproveForm({
           className="form-control"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="À communiquer au candidat par téléphone/WhatsApp"
+          placeholder={
+            isLivreur
+              ? "Communiqué automatiquement par WhatsApp à l'approbation"
+              : "À communiquer au candidat par téléphone/WhatsApp"
+          }
         />
       </div>
       <button className="btn btn-success btn-sm" type="submit" disabled={busy}>
-        {busy ? "Création…" : "Créer le compte + la boutique"}
+        {busy ? "Création…" : isLivreur ? "Créer le compte" : "Créer le compte + la boutique"}
       </button>
     </form>
   );

@@ -65,9 +65,11 @@ import GuestOrderWidget from "./components/GuestOrderWidget";
 import LocationGate from "./components/LocationGate";
 import NotificationBubble from "./components/NotificationBubble";
 import SellIntentGate from "./pages/home/SellIntentGate";
+import CookieBanner from "./components/CookieBanner";
 
 import { trackPageView } from "./lib/analytics";
 import { trackMetricoolPageView } from "./lib/metricool";
+import { setMetaAdvancedMatchingPhone } from "./lib/metaPixel";
 
 import PromotionsPage from "./pages/PromotionsPage";
 const PromotionsAdminPage = React.lazy(() => import("./pages/admin/PromotionsAdminPage"));
@@ -106,6 +108,7 @@ function ScrollToTop() {
 
 function PageViewTracker() {
   const { pathname, search } = useLocation();
+  const { user } = useAuth();
 
   useEffect(() => {
     const path = `${pathname}${search || ""}`;
@@ -113,6 +116,15 @@ function PageViewTracker() {
     trackPageView(path);
     trackMetricoolPageView();
   }, [pathname, search]);
+
+  // ✅ Retargeting Meta — améliore l'appariement des audiences dès qu'un
+  // utilisateur connecté a un téléphone connu (le site n'a pas d'email
+  // fiable). Sans effet si le consentement marketing n'est pas accordé
+  // (vérifié dans setMetaAdvancedMatchingPhone lui-même).
+  useEffect(() => {
+    const phone = (user as any)?.phone;
+    if (phone) setMetaAdvancedMatchingPhone(String(phone));
+  }, [user]);
 
   return null;
 }
@@ -389,8 +401,13 @@ export default function App() {
                 <Route path="/boutique/:slug" element={<ShopStorefrontPage />} />
                 <Route path="/cart" element={<CartPage />} />
 
+                {/* ✅ Publique : réservable sans compte (voir CourierBookingPage,
+                    formulaire déjà basé sur un numéro de téléphone, pas sur une
+                    session). "Mes courses"/le suivi restent protégées, elles
+                    listent les courses d'un compte. */}
+                <Route path="/courses/nouvelle" element={<CourierBookingPage />} />
+
                 <Route element={<RequireAuth />}>
-                  <Route path="/courses/nouvelle" element={<CourierBookingPage />} />
                   <Route path="/mes-courses" element={<MyCourierTripsPage />} />
                   <Route path="/courses/:id/suivi" element={<CourierTripTrackingPage />} />
                 </Route>
@@ -575,6 +592,7 @@ export default function App() {
           <FloatingCartGuard />
           <Footer />
           <NotificationBubble />
+          <CookieBanner />
           <SellIntentGate />
 
           {pendingRating && (

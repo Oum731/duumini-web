@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { Link, type LinkProps } from "react-router-dom";
 import { DUUMINI_SLOGAN } from "../lib/brand";
 import { getSiteStatus, type SiteStatus } from "../services/products";
+import { useConsent } from "../context/ConsentContext";
 
 /** Link qui remonte en haut de page au clic (Footer) */
 function TopLink(
@@ -29,6 +30,7 @@ function TopLink(
 }
 
 export default function Footer() {
+  const { openPanel } = useConsent();
   const [siteStatus, setSiteStatus] = useState<SiteStatus | null>(null);
   const [siteStatusLoading, setSiteStatusLoading] = useState(true);
 
@@ -214,6 +216,15 @@ export default function Footer() {
                   Politique de retour
                 </TopLink>
               </li>
+              <li>
+                <button
+                  type="button"
+                  className="btn btn-link link-dark text-decoration-none p-0 d-block py-1"
+                  onClick={openPanel}
+                >
+                  Gérer les cookies
+                </button>
+              </li>
             </ul>
           </div>
 
@@ -268,6 +279,14 @@ export default function Footer() {
             <TopLink to="/legal/returns" className="link-dark text-decoration-none">
               Retours
             </TopLink>
+            <span className="text-muted mx-2">•</span>
+            <button
+              type="button"
+              className="btn btn-link link-dark text-decoration-none p-0 align-baseline"
+              onClick={openPanel}
+            >
+              Gérer les cookies
+            </button>
           </div>
         </div>
       </div>

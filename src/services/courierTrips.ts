@@ -83,6 +83,17 @@ export async function createCourierTrip(payload: CreateCourierTripPayload) {
   }>("/api/courier-trips", payload);
 }
 
+/** Réservation sans compte — visiteur non connecté (mêmes champs, aucun token requis). */
+export async function createCourierTripGuest(payload: CreateCourierTripPayload) {
+  return api.post<{
+    id: number;
+    distance_km: number;
+    price: number;
+    commission_amount: number;
+    status: TripStatus;
+  }>("/api/courier-trips/guest", payload);
+}
+
 export async function getCourierTrip(id: number) {
   return api.get<CourierTrip>(`/api/courier-trips/${id}`);
 }

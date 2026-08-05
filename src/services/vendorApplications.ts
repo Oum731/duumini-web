@@ -43,6 +43,9 @@ export type SubmitVendorApplicationPayload = {
   contact_email?: string | null;
   country_code: string;
   city?: string | null;
+  /** Position GPS optionnelle — surtout utile pour LIVREUR (voir RejoindrePage.tsx). */
+  lat?: number | null;
+  lng?: number | null;
   message?: string | null;
   id_document_type?: IdDocumentType | null;
 };
@@ -59,6 +62,8 @@ export async function submitVendorApplication(
   if (payload.contact_email) fd.append("contact_email", payload.contact_email);
   fd.append("country_code", payload.country_code);
   if (payload.city) fd.append("city", payload.city);
+  if (payload.lat != null) fd.append("lat", String(payload.lat));
+  if (payload.lng != null) fd.append("lng", String(payload.lng));
   if (payload.message) fd.append("message", payload.message);
   if (payload.id_document_type) fd.append("id_document_type", payload.id_document_type);
   if (files.dfe) fd.append("dfe_file", files.dfe);
@@ -101,7 +106,7 @@ export async function getVendorApplication(id: number) {
 }
 
 export async function approveVendorApplication(id: number, password: string) {
-  return api.patch<{ ok: true; user_id: number }>(
+  return api.patch<{ ok: true; user_id: number; whatsapp_sent?: boolean }>(
     `/api/vendor-applications/${id}/approve`,
     { password }
   );
