@@ -36,7 +36,7 @@ export default function SolutionsPage() {
           return (
             <div className="col-12 col-md-6" key={p.key}>
               <Link
-                to={`/solutions/${p.key}`}
+                to={p.href ?? `/solutions/${p.key}`}
                 className="d-block h-100 text-decoration-none p-4"
                 style={{
                   borderRadius: "var(--duu-radius-lg)",

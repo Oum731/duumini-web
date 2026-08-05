@@ -138,4 +138,30 @@ export const SOLUTIONS_CONTENT: Record<PersonaKey, SolutionContent> = {
       },
     ],
   },
+  livreur: {
+    benefits: [
+      "Acceptez des courses près de chez vous, selon votre disponibilité (moto, voiture ou vélo).",
+      "Suivez vos courses et votre solde depuis votre espace livreur dédié.",
+      "Rejoignez un réseau vérifié : chaque candidature est validée par DUUMINI avant activation.",
+    ],
+    services: [
+      "Candidature en ligne avec pièce d'identité et photo.",
+      "Validation en agence avec vos documents originaux.",
+      "Espace livreur : courses disponibles, suivi en temps réel, règlement du solde.",
+    ],
+    faq: [
+      {
+        q: "Quels documents dois-je fournir ?",
+        a: "Une pièce d'identité (photo ou scan) et une photo de vous, directement dans le formulaire de candidature.",
+      },
+      {
+        q: "Puis-je accepter des courses tout de suite après ma candidature ?",
+        a: "Non, vous devez d'abord vous présenter à l'agence DUUMINI avec vos documents originaux pour validation.",
+      },
+      {
+        q: "Comment suis-je payé ?",
+        a: "Votre solde est suivi dans votre espace livreur ; le règlement est effectué selon les modalités communiquées lors de votre validation.",
+      },
+    ],
+  },
 };

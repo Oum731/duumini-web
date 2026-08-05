@@ -1,5 +1,5 @@
 // src/components/Navbar.tsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   ShoppingCart,
@@ -78,6 +78,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const [discoverOpen, setDiscoverOpen] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
+  const navRef = useRef<HTMLElement>(null);
 
   const { isLoggedIn, isAdmin, isVendor, isSupplier, isRestaurantRole, isLivreurRole, isPro } =
     useMemo(() => {
@@ -110,6 +111,31 @@ export default function Navbar({ cartCount = 0 }: Props) {
     setDiscoverOpen(false);
   };
 
+  const anyMenuOpen = open || proOpen || shopOpen || discoverOpen;
+
+  // ✅ Clic n'importe où en dehors de la navbar (ou touche Échap) ferme le
+  // menu mobile et les dropdowns ouverts — jusqu'ici seul un clic sur un
+  // lien à l'intérieur les fermait.
+  useEffect(() => {
+    if (!anyMenuOpen) return;
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        closeMenus();
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenus();
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [anyMenuOpen]);
+
   const navItem = (
     to: string,
     label: string,
@@ -137,6 +163,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
 
   return (
     <nav
+      ref={navRef}
       className="navbar navbar-expand-xl navbar-light sticky-top"
       style={{ backgroundColor: "#fff" }}
       role="navigation"

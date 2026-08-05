@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export type PersonaKey = "fournisseur" | "revendeur" | "client" | "partenaire";
+export type PersonaKey = "fournisseur" | "revendeur" | "client" | "partenaire" | "livreur";
 
 export type Persona = {
   key: PersonaKey;
@@ -22,6 +22,10 @@ export type Persona = {
   tint: "orange" | "green";
   photo: string;
   detail: string[];
+  /** Lien de la carte sur l'accueil. Par défaut /solutions/{key} ; certains
+   * profils (livreur) mènent directement à la candidature plutôt qu'à une
+   * page de présentation Solutions. */
+  href?: string;
 };
 
 export const PERSONAS: Persona[] = [
@@ -80,6 +84,21 @@ export const PERSONAS: Persona[] = [
       "DUUMINI n'est pas une simple marketplace mais une infrastructure commerciale : nous cherchons des partenaires logistiques, institutionnels et financiers pour accompagner sa croissance.",
       "Que vous soyez investisseur, distributeur ou organisation d'accompagnement, prenez contact pour identifier ensemble les opportunités de collaboration autour du corridor Maroc–Côte d'Ivoire et de son extension à d'autres pays africains.",
     ],
+  },
+  {
+    key: "livreur",
+    icon: Truck,
+    emoji: "🛵",
+    title: "Livreur",
+    description: "Moto, voiture ou vélo : rejoignez le réseau de livreurs DUUMINI et acceptez des courses près de chez vous.",
+    tint: "orange",
+    photo:
+      "https://images.unsplash.com/photo-1591741535018-d042766c62eb?w=200&h=200&fit=crop&q=80&auto=format",
+    detail: [
+      "Rejoignez le réseau de livreurs DUUMINI et acceptez des courses de transport de personnes ou de colis près de chez vous, selon votre disponibilité.",
+      "Après une candidature en ligne (pièce d'identité et photo), présentez-vous à l'agence DUUMINI avec vos documents originaux pour validation avant de pouvoir accepter des courses.",
+    ],
+    href: "/rejoindre?type=livreur",
   },
 ];
 

@@ -21,7 +21,7 @@ export default function PersonasSection() {
           return (
             <div className="col-6 col-lg-3" key={p.key}>
               <Link
-                to={`/solutions/${p.key}`}
+                to={p.href ?? `/solutions/${p.key}`}
                 className="d-block h-100 text-decoration-none"
                 style={{
                   borderRadius: "var(--duu-radius-lg)",
