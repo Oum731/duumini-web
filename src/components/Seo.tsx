@@ -34,6 +34,10 @@ function setCanonical(href: string) {
   el.setAttribute("href", href);
 }
 
+function removeMetaByName(name: string) {
+  document.querySelector(`meta[name="${name}"]`)?.remove();
+}
+
 /**
  * Titre/description/OG par page — le SPA n'a qu'un seul index.html,
  * donc chaque route doit pousser ses propres balises au montage pour
@@ -44,11 +48,17 @@ export function Seo({
   description,
   image,
   path,
+  noindex = false,
 }: {
   title: string;
   description: string;
   image?: string;
   path?: string;
+  /** ✅ Pages "soft 404" (route non trouvée) et autres pages qui ne doivent
+   * pas apparaître dans les résultats de recherche : Google exécute le JS
+   * du SPA et indexe le contenu rendu même si le serveur répond en 200,
+   * donc c'est la seule façon fiable d'empêcher l'indexation ici. */
+  noindex?: boolean;
 }) {
   useEffect(() => {
     const fullTitle = `${title} | Duumini`;
@@ -67,7 +77,17 @@ export function Seo({
     const url = `${SITE_URL}${path ?? window.location.pathname}`;
     setCanonical(url);
     setMetaByProperty("og:url", url);
-  }, [title, description, image, path]);
+
+    if (noindex) {
+      setMetaByName("robots", "noindex, nofollow");
+    } else {
+      removeMetaByName("robots");
+    }
+
+    return () => {
+      if (noindex) removeMetaByName("robots");
+    };
+  }, [title, description, image, path, noindex]);
 
   return null;
 }

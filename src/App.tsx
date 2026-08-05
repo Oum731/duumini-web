@@ -84,19 +84,11 @@ const CompaniesPage = React.lazy(() => import("./pages/companies/CompaniesPage")
 import RequireAuth from "./components/RequireCaps";
 import { useViewer } from "./hooks/useViewer";
 import PublicReceiptPage from "./pages/PublicReceiptPage";
+import NotFoundPage from "./pages/NotFoundPage";
 const ReportSalesViewPage = React.lazy(() => import("./pages/admin/ReportSalesViewPage"));
 const ReportsSalesPage = React.lazy(() => import("./pages/admin/ReportsSalesPage"));
 const AffiliatesPage = React.lazy(() => import("./pages/admin/AffiliatesPage"));
 const AffiliateDashboardPage = React.lazy(() => import("./pages/admin/AffiliateDashboardPage"));
-
-function Page({ title }: { title: string }) {
-  return (
-    <div className="container-xxl py-4">
-      <h1 className="h4 mb-3">{title}</h1>
-      <p className="text-muted">Contenu en cours…</p>
-    </div>
-  );
-}
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -573,7 +565,7 @@ export default function App() {
                   <Route path="/entreprise" element={<CompaniesPage />} />
                 </Route>
 
-                <Route path="*" element={<Page title="Page introuvable" />} />
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
             </React.Suspense>
           </main>
