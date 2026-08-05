@@ -15,6 +15,7 @@ export type MetaBuildPayload = {
   objective?: string;
   offer?: string;
   url?: string;
+  image_url?: string;
   audience?: string;
   daily_budget_mad?: number;
   days?: number;
@@ -105,4 +106,35 @@ export function buildGoogleCampaign(
  */
 export function exportGoogleCsvUrl(draft_id: string) {
   return `/api/ads/google/export?draft_id=${encodeURIComponent(draft_id)}`;
+}
+
+/* =========================
+ * Diagnostic config (admin) — savoir ce qui manque côté serveur avant de
+ * proposer de générer/publier une campagne.
+ * =======================*/
+
+export type AdminEnvCheck = {
+  ok: true;
+  ai: {
+    DUUMINI_AI_MODE: string;
+    OPENAI_API_KEY: boolean;
+    OPENAI_MODEL: string | null;
+  };
+  meta: {
+    META_AD_ACCOUNT_ID: boolean;
+    META_AD_ACCESS_TOKEN: boolean;
+    META_PAGE_ID: boolean;
+    META_DEFAULT_ADSET_ID: boolean;
+    META_PIXEL_ID: boolean;
+    META_BUSINESS_ID: boolean;
+    META_APP_ID: boolean;
+  };
+};
+
+export function getAdminEnvCheck() {
+  // ✅ Le backend (Render, tier gratuit) peut mettre >20s à se réveiller à
+  // froid — le timeout par défaut de 20s fait afficher un faux
+  // "diagnostic indisponible" sur la première visite. On aligne sur le
+  // même délai que les appels IA/Meta ci-dessus.
+  return api.get<AdminEnvCheck>("/api/admin/env-check", { timeout: AI_TIMEOUT });
 }

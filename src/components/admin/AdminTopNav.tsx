@@ -7,6 +7,7 @@ import {
   Percent,
   FileBarChart2,
   Sparkles,
+  Megaphone,
   Users,
   Store,
   Wallet,
@@ -163,7 +164,10 @@ export default function AdminTopNav({
       });
       g.push({
         label: "Outils",
-        items: [{ to: "/admin/content-ai", label: "Contenu IA", icon: Sparkles }],
+        items: [
+          { to: "/admin/content-ai", label: "Contenu IA", icon: Sparkles },
+          { to: "/admin/ads/meta", label: "Publicités Meta", icon: Megaphone },
+        ],
       });
     }
 

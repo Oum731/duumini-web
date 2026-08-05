@@ -24,6 +24,9 @@ import { moneyMAD } from "../utils/money";
 import { imgUrl } from "../utils/media";
 import { Seo } from "../components/Seo";
 import { listActiveCountries, type CountryConfig } from "../services/countries";
+import { Facebook, Copy, Check } from "lucide-react";
+
+const SITE_URL = "https://duumini.com";
 
 function shortText(s?: string | null, max = 180) {
   const t = String(s || "").trim();
@@ -388,6 +391,7 @@ export default function ProductView() {
   const [relatedTitle, setRelatedTitle] = useState<string>("Vous aimerez aussi");
 
   const [infoOpen, setInfoOpen] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const [viewerRole, setViewerRole] = useState<ViewerRole>("GUEST");
   const [viewerUser, setViewerUser] = useState<any>(null);
@@ -481,6 +485,26 @@ export default function ProductView() {
     () => images[galleryIndex] || "",
     [images, galleryIndex]
   );
+
+  // ✅ Même URL canonique que celle poussée par <Seo> (og:url/og:image) —
+  // c'est ce que le scraper de Facebook va récupérer, donc le partage doit
+  // cibler exactement la même page pour que l'aperçu (avec image) matche.
+  const shareUrl = `${SITE_URL}${location.pathname}`;
+
+  const handleShareFacebook = useCallback(() => {
+    const href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
+    window.open(href, "_blank", "noopener,noreferrer,width=600,height=600");
+  }, [shareUrl]);
+
+  const handleCopyShareLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // clipboard indisponible (permissions/navigateur) — pas bloquant
+    }
+  }, [shareUrl]);
 
   const productIsActive = useMemo(() => isActiveProduct(product), [product]);
   const productIsClosed = useMemo(() => isClosedProduct(product), [product]);
@@ -1377,6 +1401,28 @@ export default function ProductView() {
                 <Link to={backPath} className="btn btn-outline-dark">
                   Continuer mes achats
                 </Link>
+              </div>
+
+              <div className="d-flex align-items-center gap-2 pt-1">
+                <span className="small text-muted me-1">Partager :</span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                  onClick={handleShareFacebook}
+                  title="Partager ce produit sur Facebook"
+                >
+                  <Facebook size={16} />
+                  Facebook
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1"
+                  onClick={handleCopyShareLink}
+                  title="Copier le lien du produit"
+                >
+                  {linkCopied ? <Check size={16} /> : <Copy size={16} />}
+                  {linkCopied ? "Lien copié" : "Copier le lien"}
+                </button>
               </div>
 
               {qtySelected > 0 ? (

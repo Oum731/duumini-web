@@ -421,7 +421,7 @@ export default function AfricanFood() {
   const title = useMemo(() => {
     if (selectedSubCategory) return (selectedSubCategory as any).name || "Produits";
     if (selectedCategory) return (selectedCategory as any).name || "Produits";
-    return "African Food";
+    return "Cuisine africaine en ligne";
   }, [selectedCategory, selectedSubCategory]);
 
   const subtitle = useMemo(() => {
@@ -431,7 +431,7 @@ export default function AfricanFood() {
     if (selectedCategory) {
       return "Explore les meilleurs plats, produits frais et spécialités africaines de cette catégorie.";
     }
-    return "Plats, sauces, grillades, boissons et spécialités africaines à portée de main.";
+    return "Plats, sauces, grillades et spécialités culinaires africaines, livrés directement au Maroc.";
   }, [selectedCategory, selectedSubCategory]);
 
   const activeCategoryId = (selectedCategory as any)?.id ?? null;

@@ -469,7 +469,7 @@ export default function AfricanMarket() {
   const title = useMemo(() => {
     if (selectedSubCategory) return (selectedSubCategory as any).name || "Produits";
     if (selectedCategory) return (selectedCategory as any).name || "Produits";
-    return "African Market";
+    return "Épicerie africaine en ligne";
   }, [selectedCategory, selectedSubCategory]);
 
   const subtitle = useMemo(() => {
@@ -479,7 +479,7 @@ export default function AfricanMarket() {
     if (selectedCategory) {
       return "Explore les meilleurs produits de cette catégorie avec livraison simple et rapide.";
     }
-    return "Épicerie, boissons, cosmétiques, accessoires et bien plus encore.";
+    return "Attiéké, placali, épices, boissons et cosmétiques africains authentiques, livrés partout au Maroc.";
   }, [selectedCategory, selectedSubCategory]);
 
   const activeCategoryId = (selectedCategory as any)?.id ?? null;

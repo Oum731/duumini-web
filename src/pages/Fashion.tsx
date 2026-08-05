@@ -353,7 +353,7 @@ export default function Fashion() {
   const title = useMemo(() => {
     if (selectedSubCategory) return (selectedSubCategory as any).name || "Fashion";
     if (selectedCategory) return (selectedCategory as any).name || "Fashion";
-    return "Fashion";
+    return "Mode africaine en ligne";
   }, [selectedCategory, selectedSubCategory]);
 
   const subtitle = useMemo(() => {
@@ -363,7 +363,7 @@ export default function Fashion() {
     if (selectedCategory) {
       return "Découvre les meilleurs articles de mode, matières et coupes de cette catégorie.";
     }
-    return "Tailles • Couleurs • Nouveautés — Paiement à la livraison.";
+    return "Vêtements et accessoires de mode africaine, nouveautés chaque semaine — paiement à la livraison au Maroc.";
   }, [selectedCategory, selectedSubCategory]);
 
   const activeCategoryId = (selectedCategory as any)?.id ?? null;

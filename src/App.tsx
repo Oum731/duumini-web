@@ -18,8 +18,8 @@ const LivreurProfilesAdminPage = React.lazy(() => import("./pages/admin/LivreurP
 const UsersAdminPage = React.lazy(() => import("./pages/admin/UsersAdminPage"));
 const ExpensesPage = React.lazy(() => import("./pages/admin/ExpensesPage"));
 
-const AiToolsAdminPage = React.lazy(() => import("./pages/admin/AiToolsAdminPage"));
 const ContentAiPage = React.lazy(() => import("./pages/admin/ContentAiPage"));
+const AdsMetaPage = React.lazy(() => import("./pages/admin/AdsMetaPage"));
 
 import AfricanFood from "./pages/AfricanFood";
 import AfricanMarket from "./pages/AfricanMarket";
@@ -481,10 +481,10 @@ export default function App() {
                       path="promotions"
                       element={<PromotionsAdminPage />}
                     />
-                    <Route path="ai" element={<AiToolsAdminPage />} />
                     <Route path="ai/copy" element={<AiCopyPage />} />
                     <Route path="copy" element={<AiCopyPage />} />
                     <Route path="content-ai" element={<ContentAiPage />} />
+                    <Route path="ads/meta" element={<AdsMetaPage />} />
                     <Route
                       path="reports/sales"
                       element={<ReportsSalesPage />}

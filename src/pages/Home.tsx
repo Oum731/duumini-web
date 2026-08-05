@@ -13,8 +13,8 @@ export default function Home() {
   return (
     <>
       <Seo
-        title="Le commerce africain sans frontières"
-        description="DUUMINI connecte producteurs, commerçants et consommateurs à travers l'Afrique. Achetez et vendez des produits authentiques entre le Maroc et la Côte d'Ivoire, en toute confiance."
+        title="Produits africains authentiques en ligne au Maroc"
+        description="Attiéké, placali, épicerie et produits africains authentiques livrés au Maroc. DUUMINI connecte producteurs, commerçants et consommateurs entre le Maroc et la Côte d'Ivoire."
         path="/"
       />
       <HeroSection />

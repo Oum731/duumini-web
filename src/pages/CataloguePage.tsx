@@ -110,8 +110,8 @@ export default function CataloguePage() {
   return (
     <div className="container-xxl py-4 py-md-5">
       <Seo
-        title="Catalogue"
-        description="Explorez le catalogue DUUMINI : alimentation, boissons, épices, cosmétique, artisanat et mode, à travers le corridor Maroc–Côte d'Ivoire."
+        title="Catalogue produits africains"
+        description="Épicerie africaine, attiéké, placali, boissons, cosmétique, artisanat et mode : parcourez le catalogue DUUMINI et commandez en ligne, livraison au Maroc."
         path="/catalogue"
       />
 
