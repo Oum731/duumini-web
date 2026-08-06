@@ -2,7 +2,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { me } from "../../services/auth";
-import { listMyShops, getShop, updateShop, type Shop } from "../../services/shops";
+import {
+  listMyShops,
+  getShop,
+  updateShop,
+  createShopSafe,
+  isShopLimitError,
+  type Shop,
+} from "../../services/shops";
 import { listActiveCountries, type CountryConfig } from "../../services/countries";
 import { imgUrl } from "../../utils/media";
 import { Spinner } from "../../components/ui/Spinner";
@@ -279,6 +286,55 @@ export default function MyShopPage() {
     }
   }
 
+  // ✅ Crée la première boutique du vendeur — jusqu'ici l'API POST /api/shops
+  // existait déjà et fonctionnait, mais rien côté front ne l'appelait : un
+  // vendeur sans boutique tombait dans une impasse (« Aucune boutique liée à
+  // ce compte » sans aucun moyen d'en créer une), ce qui bloquait aussi
+  // l'ajout de produits (qui exige un shop_id).
+  async function onCreate() {
+    if (saving) return;
+
+    const cleanName = name.trim();
+    if (!cleanName) {
+      setErr("Le nom de la boutique est obligatoire.");
+      return;
+    }
+
+    setSaving(true);
+    setErr(null);
+    setOk(null);
+
+    try {
+      const payload: Partial<Shop> & { description?: string | null } = {
+        name: cleanName,
+        description: description.trim() || null,
+        city: city.trim() || null,
+        address: address.trim() || null,
+        country: countries.find((c) => c.code === countryCode)?.label || countryCode,
+        country_code: countryCode,
+      };
+
+      const created = await createShopSafe(payload, { logo: logoFile, cover: coverFile });
+
+      applyShop(created);
+      setNoShop(false);
+      setOk("Boutique créée avec succès.");
+
+      setLogoFile(null);
+      setCoverFile(null);
+      if (logoInputRef.current) logoInputRef.current.value = "";
+      if (coverInputRef.current) coverInputRef.current.value = "";
+    } catch (e: any) {
+      setErr(
+        isShopLimitError(e)
+          ? e?.message || "Limite de boutiques atteinte."
+          : e?.message || "Impossible de créer la boutique."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const cover = coverPreview || imgUrl((shop as any)?.cover) || "";
   const logo = logoPreview || imgUrl((shop as any)?.logo) || "";
 
@@ -287,7 +343,9 @@ export default function MyShopPage() {
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
         <div>
           <h1 className="h5 m-0">Ma boutique</h1>
-          <div className="text-muted small">Modifie les infos de ta boutique.</div>
+          <div className="text-muted small">
+            {noShop ? "Crée ta boutique pour pouvoir ajouter des produits." : "Modifie les infos de ta boutique."}
+          </div>
         </div>
 
         {/* ✅ Liens vendeur -> bonnes routes */}
@@ -317,21 +375,107 @@ export default function MyShopPage() {
           </div>
         </div>
       ) : noShop ? (
-        <EmptyState
-          title="Aucune boutique liée à ce compte vendeur"
-          desc="Ton compte vendeur n’a pas encore de boutique récupérable."
-          actions={
-            <div className="d-grid gap-2">
-              <button className="btn btn-outline-dark" onClick={() => window.location.reload()}>
-                Recharger
-              </button>
-              <Link to="/" className="btn btn-duu">
-                Retour à l’accueil
-              </Link>
+        <div className="card shadow-sm">
+          <div className="card-body">
+            <h2 className="h6 mb-1">Créer ma boutique</h2>
+            <p className="text-muted small mb-3">
+              Ton compte vendeur n’a pas encore de boutique. Crée-la ci-dessous
+              pour pouvoir ajouter des produits.
+            </p>
+
+            <div className="row g-2">
+              <div className="col-12">
+                <label className="form-label">Nom de la boutique</label>
+                <input
+                  className="form-control"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={saving}
+                  placeholder="Ex : Épicerie Bamba"
+                />
+              </div>
+
+              <div className="col-12">
+                <label className="form-label">Description (optionnel)</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label">Pays</label>
+                <select
+                  className="form-select"
+                  value={countryCode}
+                  onChange={(e) => setCountryCode(e.target.value)}
+                  disabled={saving}
+                >
+                  {countries.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label">Ville</label>
+                <input
+                  className="form-control"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="col-12">
+                <label className="form-label">Adresse (optionnel)</label>
+                <input
+                  className="form-control"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label">Logo (optionnel)</label>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="form-control"
+                  onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="col-12 col-md-6">
+                <label className="form-label">Couverture (optionnel)</label>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="form-control"
+                  onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+                  disabled={saving}
+                />
+              </div>
             </div>
-          }
-          debug={
-            import.meta.env.DEV ? (
+
+            <div className="d-flex justify-content-end mt-3">
+              <button className="btn btn-duu-green" disabled={saving} onClick={onCreate}>
+                {saving ? "Création…" : "Créer ma boutique"}
+              </button>
+            </div>
+          </div>
+
+          {import.meta.env.DEV ? (
+            <div className="card-body border-top pt-3">
               <div className="text-muted small">
                 <div className="fw-semibold">Debug (dev)</div>
                 <div>role: {String(debugInfo?.role ?? "—")}</div>
@@ -340,9 +484,9 @@ export default function MyShopPage() {
                 <div>vendor_id (me): {String(debugInfo?.vendor_id_me ?? "—")}</div>
                 <div className="mt-2">{String(debugInfo?.hint ?? "")}</div>
               </div>
-            ) : null
-          }
-        />
+            </div>
+          ) : null}
+        </div>
       ) : !shop ? (
         <EmptyState
           title="Boutique introuvable"
