@@ -581,7 +581,13 @@ export default function ProductForm({
                     const v = ev.target.value;
                     setDraft((d) => ({ ...d, shop_id: v ? Number(v) : null }));
                   }}
-                  disabled={safeShops.length <= 1}
+                  // ✅ L'auto-sélection/verrouillage n'a de sens que côté vendeur
+                  // (une seule boutique possible -> rien à choisir). Un admin doit
+                  // toujours pouvoir choisir explicitement, même s'il n'existe
+                  // aujourd'hui qu'une seule boutique dans toute la base — sinon le
+                  // sélecteur reste bloqué dès que safeShops.length <= 1, ce qui
+                  // empêchait tout admin de créer un produit.
+                  disabled={isVendor && safeShops.length <= 1}
                 >
                   <option value="">{isVendor ? "(Auto / choisir)" : "(Sélectionner une boutique)"}</option>
                   {safeShops.map((s) => (
