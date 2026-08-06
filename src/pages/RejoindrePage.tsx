@@ -18,10 +18,10 @@ const ID_DOCUMENT_TYPES: { value: IdDocumentType; label: string }[] = [
   { value: "PASSPORT", label: "Passeport" },
 ];
 
-// Livreur n'est pas un persona marketing de l'accueil (PERSONAS), c'est un
-// profil propre au flux de candidature — type étendu localement plutôt que
-// dans home/data.ts pour ne pas toucher la page d'accueil.
-type RejoindreProfileKey = PersonaKey | "livreur";
+// Livreur fait maintenant partie de PERSONAS (home/data.ts) au même titre
+// que les autres profils — le picker se contente de mapper PERSONAS, pas
+// besoin d'un type étendu séparé.
+type RejoindreProfileKey = PersonaKey;
 
 // Fournisseur/Revendeur/Partenaire/Livreur passent par la candidature vétée
 // (examinée par l'équipe admin) ; Client n'y figure pas — voir plus bas.
@@ -122,24 +122,6 @@ function ProfilePicker() {
             </button>
           </div>
         ))}
-
-        <div className="col-12 col-sm-6">
-          <button
-            type="button"
-            className="card border-0 shadow-sm w-100 h-100 text-start p-4"
-            style={{ borderRadius: "var(--duu-radius-xl)", background: "#fff" }}
-            onClick={() => navigate("/rejoindre?type=livreur")}
-          >
-            <div className="fs-2 mb-2" aria-hidden="true">
-              🛵
-            </div>
-            <div className="fw-bold mb-1">Je suis livreur</div>
-            <div className="text-muted small">
-              Moto, voiture ou vélo : rejoignez le réseau de livreurs DUUMINI
-              et touchez une part sur chaque course.
-            </div>
-          </button>
-        </div>
       </div>
     </section>
   );

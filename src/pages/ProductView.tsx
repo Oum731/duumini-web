@@ -24,9 +24,13 @@ import { moneyMAD } from "../utils/money";
 import { imgUrl } from "../utils/media";
 import { Seo } from "../components/Seo";
 import { listActiveCountries, type CountryConfig } from "../services/countries";
-import { Facebook, Copy, Check } from "lucide-react";
+import { Facebook, MessageCircle, Share2, Copy, Check } from "lucide-react";
 
 const SITE_URL = "https://duumini.com";
+// ✅ Domaine réellement servi en prod (duumini.com redirige en 301 vers
+// www.duumini.com) — utilisé pour le pont de partage afin d'éviter un saut
+// de redirection supplémentaire pour les crawlers Facebook/WhatsApp.
+const WEB_SITE_URL = "https://www.duumini.com";
 
 function shortText(s?: string | null, max = 180) {
   const t = String(s || "").trim();
@@ -486,10 +490,21 @@ export default function ProductView() {
     [images, galleryIndex]
   );
 
-  // ✅ Même URL canonique que celle poussée par <Seo> (og:url/og:image) —
-  // c'est ce que le scraper de Facebook va récupérer, donc le partage doit
-  // cibler exactement la même page pour que l'aperçu (avec image) matche.
-  const shareUrl = `${SITE_URL}${location.pathname}`;
+  const resolvedIdOrSlug = useMemo(() => {
+    const p = normalizeIdOrSlug(safeDecodeURIComponent(String(rawParam || "")));
+    const fromShareQuery = extractSharedProductId(location.search, location.hash);
+    return p || fromShareQuery || "";
+  }, [rawParam, location.search, location.hash]);
+
+  // ✅ Le lien partagé cible le pont serveur /share/product/:idOrSlug
+  // (duumini-api, monté via server.js -> shareRouter) plutôt que l'URL SPA
+  // directe : Facebook/WhatsApp n'exécutent pas le JS de la page produit et
+  // ne verraient donc jamais l'image/le prix réels sans ce pont rendu côté
+  // serveur. Repli sur l'URL SPA classique si l'id/slug n'a pas pu être
+  // résolu (ne devrait pas arriver une fois la page chargée).
+  const shareUrl = resolvedIdOrSlug
+    ? `${WEB_SITE_URL}/share/product/${encodeURIComponent(resolvedIdOrSlug)}`
+    : `${SITE_URL}${location.pathname}`;
 
   const handleShareFacebook = useCallback(() => {
     const href = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
@@ -514,12 +529,6 @@ export default function ProductView() {
   );
 
   const sectionPath = useMemo(() => sectionPathFor(product), [product]);
-
-  const resolvedIdOrSlug = useMemo(() => {
-    const p = normalizeIdOrSlug(safeDecodeURIComponent(String(rawParam || "")));
-    const fromShareQuery = extractSharedProductId(location.search, location.hash);
-    return p || fromShareQuery || "";
-  }, [rawParam, location.search, location.hash]);
 
   const origin = useMemo(() => {
     const st: any = (location.state as any) || {};
@@ -758,6 +767,31 @@ export default function ProductView() {
   }, [promoActive, promoType, promoValue, regularPrice]);
 
   const displayPrice = promoActive ? promoPrice : regularPrice;
+
+  const shareText = useMemo(
+    () => `${title} — ${moneyMAD(displayPrice)}`,
+    [title, displayPrice]
+  );
+
+  const handleShareWhatsApp = useCallback(() => {
+    const href = `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`;
+    window.open(href, "_blank", "noopener,noreferrer");
+  }, [shareText, shareUrl]);
+
+  // ✅ Seul mécanisme fiable pour proposer Instagram : il n'existe pas
+  // d'intent web de partage de lien pour Instagram seul. Le Web Share API
+  // natif ouvre la feuille de partage du système (mobile essentiellement),
+  // qui liste Instagram/Direct/Story parmi les destinations possibles.
+  const canNativeShare =
+    typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  const handleNativeShare = useCallback(async () => {
+    try {
+      await navigator.share({ title, text: shareText, url: shareUrl });
+    } catch {
+      // annulé par l'utilisateur ou non supporté à l'exécution — pas bloquant
+    }
+  }, [title, shareText, shareUrl]);
 
   const promoSavedLabel = useMemo(() => {
     if (!promoActive) return "";
@@ -1414,6 +1448,26 @@ export default function ProductView() {
                   <Facebook size={16} />
                   Facebook
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1"
+                  onClick={handleShareWhatsApp}
+                  title="Partager ce produit sur WhatsApp"
+                >
+                  <MessageCircle size={16} />
+                  WhatsApp
+                </button>
+                {canNativeShare ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1"
+                    onClick={handleNativeShare}
+                    title="Partager (Instagram, Messenger…)"
+                  >
+                    <Share2 size={16} />
+                    Partager
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn btn-sm btn-outline-dark d-inline-flex align-items-center gap-1"
