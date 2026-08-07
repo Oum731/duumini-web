@@ -498,6 +498,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       put("name", draft.name);
       put("brand", draft.brand);
       put("price", draft.price);
+      put("supplier_price_ht", draft.supplier_price_ht);
       put("currency", draft.currency || "MAD");
       put("description", draft.description);
       put("conditionnement", draft.conditionnement);
@@ -622,6 +623,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                 <th>Produit</th>
                 {!isVendor && <th>Boutique</th>}
                 <th>Prix</th>
+                <th>Prix Fournisseur HT</th>
                 <th>Statut</th>
                 <th className="text-end" style={{ width: 320 }}>
                   Actions
@@ -632,13 +634,13 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={isVendor ? 7 : 8} className="text-muted p-3">
+                  <td colSpan={isVendor ? 8 : 9} className="text-muted p-3">
                     <LoadingState size="sm" />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={isVendor ? 7 : 8} className="text-muted p-3">
+                  <td colSpan={isVendor ? 8 : 9} className="text-muted p-3">
                     Aucun produit.
                   </td>
                 </tr>
@@ -682,6 +684,25 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
                       {!isVendor && <td>{p.shop_name || "-"}</td>}
 
                       <td>{moneyMAD(base)}</td>
+
+                      <td>
+                        {p.supplier_price_ht != null ? (
+                          <>
+                            <div>{moneyMAD(Number(p.supplier_price_ht))}</div>
+                            <div
+                              className={`small ${
+                                base - Number(p.supplier_price_ht) >= 0
+                                  ? "text-success"
+                                  : "text-danger"
+                              }`}
+                            >
+                              Marge : {moneyMAD(base - Number(p.supplier_price_ht))}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
 
                       <td>
                         {isActive(p) ? (

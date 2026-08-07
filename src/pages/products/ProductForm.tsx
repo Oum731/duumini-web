@@ -101,6 +101,7 @@ export default function ProductForm({
       name: anyInit?.name || "",
       brand: anyInit?.brand || "",
       price: anyInit?.price ?? null,
+      supplier_price_ht: anyInit?.supplier_price_ht ?? null,
       description: anyInit?.description || "",
       conditionnement: anyInit?.conditionnement || "",
       stock: anyInit?.stock ?? null,
@@ -782,6 +783,44 @@ export default function ProductForm({
                 }
               />
             </div>
+          </div>
+
+          {/* ✅ Prix fournisseur HT — coût d'achat interne, sert uniquement
+              à calculer la marge bénéficiaire (jamais affiché au client). */}
+          <div className="row g-2 mt-2">
+            <div className="col-4">
+              <label className="form-label">Prix fournisseur HT</label>
+              <input
+                type="number"
+                step="0.01"
+                className="form-control duu-focus"
+                placeholder="Coût d'achat"
+                value={draft.supplier_price_ht ?? ""}
+                onChange={(ev) =>
+                  setDraft((d) => ({
+                    ...d,
+                    supplier_price_ht: ev.target.value === "" ? null : Number(ev.target.value),
+                  }))
+                }
+              />
+              <small className="text-muted">Usage interne — jamais visible côté client.</small>
+            </div>
+            {draft.supplier_price_ht != null && draft.price != null ? (
+              <div className="col-4 d-flex align-items-end">
+                <div className="small">
+                  Marge :{" "}
+                  <strong
+                    className={
+                      Number(draft.price) - Number(draft.supplier_price_ht) >= 0
+                        ? "text-success"
+                        : "text-danger"
+                    }
+                  >
+                    {moneyMAD(Number(draft.price) - Number(draft.supplier_price_ht))}
+                  </strong>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* ✅ Variants block (Fashion only) */}

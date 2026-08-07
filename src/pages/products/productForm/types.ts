@@ -38,6 +38,7 @@ export type Draft = {
   name: string;
   brand?: string | null;
   price?: number | null;
+  supplier_price_ht?: number | null;
   currency?: string | null;
   description?: string | null;
   conditionnement?: string | null;

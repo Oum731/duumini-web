@@ -95,6 +95,11 @@ export type Product = SupplierAgg & {
 
   price: number;
   vendor_price?: number | null;
+  /** ✅ Prix fournisseur HT — coût d'achat saisi manuellement, sert au calcul
+   * de la marge bénéficiaire (price - supplier_price_ht) dans la gestion
+   * des produits. Distinct de supplier_cost (SupplierAgg), qui vient de la
+   * table supplier_products liée au catalogue fournisseurs. */
+  supplier_price_ht?: number | null;
 
   has_variants?: boolean;
   min_price?: number | null;
