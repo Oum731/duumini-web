@@ -14,6 +14,7 @@ import { LoadingState } from "../../components/ui/Spinner";
 import { moneyMAD } from "../../utils/money";
 import { listProducts, type Product } from "../../services/products";
 import { createAdminOrder } from "../../services/orders";
+import { waHref } from "../../components/ordersAdmin/orderUtils";
 import {
   getMyCommercialProfile,
   commercialProfileErrorMessage,
@@ -41,6 +42,11 @@ export default function CommercialHome() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formOk, setFormOk] = useState<string | null>(null);
+  // ✅ Reçu WhatsApp de la dernière déclaration enregistrée — reconstruit à
+  // partir des données déjà en main (formulaire + réponse de création),
+  // pas besoin de recharger la commande. Même message que celui envoyé
+  // par un admin depuis OrdersAdminPage/OrderViewModal (buildAdminWhatsappMessage).
+  const [lastReceiptHref, setLastReceiptHref] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -136,7 +142,7 @@ export default function CommercialHome() {
 
     setSubmitting(true);
     try {
-      await createAdminOrder({
+      const created = await createAdminOrder({
         customer: {
           first_name: firstName.trim() || undefined,
           last_name: lastName.trim() || undefined,
@@ -152,6 +158,27 @@ export default function CommercialHome() {
           price: Number(l.product.price),
         })),
       });
+
+      setLastReceiptHref(
+        waHref({
+          id: created.id,
+          display_code: created.display_code,
+          status: created.status || "OPEN",
+          created_at: new Date().toISOString(),
+          contact: {
+            first_name: firstName.trim() || undefined,
+            last_name: lastName.trim() || undefined,
+            phone: phone.trim(),
+          },
+          address: { city: city.trim() },
+          items: cart.map((l) => ({
+            product_id: l.product.id,
+            product_name: l.product.name,
+            qty: l.qty,
+            unit_price: Number(l.product.price),
+          })),
+        })
+      );
 
       setFormOk("Déclaration enregistrée — rattachée à votre compte.");
       resetForm();
@@ -194,7 +221,21 @@ export default function CommercialHome() {
       </div>
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
-      {formOk && <div className="alert alert-success py-2">{formOk}</div>}
+      {formOk && (
+        <div className="alert alert-success py-2 d-flex align-items-center justify-content-between gap-2 flex-wrap">
+          <span>{formOk}</span>
+          {lastReceiptHref ? (
+            <a
+              href={lastReceiptHref}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-sm btn-success"
+            >
+              Envoyer le reçu WhatsApp
+            </a>
+          ) : null}
+        </div>
+      )}
 
       <div className="row g-3 mb-4">
         <div className="col-6 col-md-3">
