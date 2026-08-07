@@ -45,6 +45,7 @@ import CommercialHome from "./pages/commercial/CommercialHome";
 import PaysPage from "./pages/PaysPage";
 import BlogPage from "./pages/BlogPage";
 import RejoindrePage from "./pages/RejoindrePage";
+import CatalogueB2BPage from "./pages/CatalogueB2BPage";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy";
 import ReturnsPolicy from "./pages/legal/ReturnsPolicy";
 import Terms from "./pages/legal/Terms";
@@ -400,6 +401,7 @@ export default function App() {
                 <Route path="/pays" element={<PaysPage />} />
                 <Route path="/blog" element={<BlogPage />} />
                 <Route path="/rejoindre" element={<RejoindrePage />} />
+                <Route path="/partenaires/catalogue" element={<CatalogueB2BPage />} />
                 <Route path="/boutique/:slug" element={<ShopStorefrontPage />} />
                 <Route path="/cart" element={<CartPage />} />
 

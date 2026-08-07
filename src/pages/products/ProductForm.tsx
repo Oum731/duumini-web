@@ -102,6 +102,7 @@ export default function ProductForm({
       brand: anyInit?.brand || "",
       price: anyInit?.price ?? null,
       supplier_price_ht: anyInit?.supplier_price_ht ?? null,
+      partner_price_ht: anyInit?.partner_price_ht ?? null,
       description: anyInit?.description || "",
       conditionnement: anyInit?.conditionnement || "",
       stock: anyInit?.stock ?? null,
@@ -821,6 +822,32 @@ export default function ProductForm({
                 </div>
               </div>
             ) : null}
+          </div>
+
+          {/* ✅ Prix partenaire HT — prix dédié affiché dans le Catalogue B2B
+              (fournisseurs/partenaires, /partenaires/catalogue), distinct du
+              prix client ci-dessus. Celui-ci EST fait pour être vu par les
+              partenaires, contrairement au prix fournisseur au-dessus. */}
+          <div className="row g-2 mt-2">
+            <div className="col-4">
+              <label className="form-label">Prix partenaire HT (catalogue B2B)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="form-control duu-focus"
+                placeholder="Prix affiché aux partenaires"
+                value={draft.partner_price_ht ?? ""}
+                onChange={(ev) =>
+                  setDraft((d) => ({
+                    ...d,
+                    partner_price_ht: ev.target.value === "" ? null : Number(ev.target.value),
+                  }))
+                }
+              />
+              <small className="text-muted">
+                Visible uniquement sur le catalogue B2B (protégé par code).
+              </small>
+            </div>
           </div>
 
           {/* ✅ Variants block (Fashion only) */}

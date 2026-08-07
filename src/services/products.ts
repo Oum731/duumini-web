@@ -100,6 +100,11 @@ export type Product = SupplierAgg & {
    * des produits. Distinct de supplier_cost (SupplierAgg), qui vient de la
    * table supplier_products liée au catalogue fournisseurs. */
   supplier_price_ht?: number | null;
+  /** ✅ Prix partenaire HT — prix dédié affiché dans le Catalogue B2B
+   * (fournisseurs/partenaires, protégé par code), distinct du prix client
+   * public ci-dessus. Jamais renvoyé par les routes publiques (voir
+   * omitInternalPriceFields côté API). */
+  partner_price_ht?: number | null;
 
   has_variants?: boolean;
   min_price?: number | null;

@@ -499,6 +499,7 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       put("brand", draft.brand);
       put("price", draft.price);
       put("supplier_price_ht", draft.supplier_price_ht);
+      put("partner_price_ht", draft.partner_price_ht);
       put("currency", draft.currency || "MAD");
       put("description", draft.description);
       put("conditionnement", draft.conditionnement);
