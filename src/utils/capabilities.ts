@@ -62,6 +62,18 @@ export function getCaps(roleInput?: any): Capabilities {
     };
   }
 
+  // commercial : déclare ses propres ventes, pas de gestion produit
+  if (r === "COMMERCIAL") {
+    return {
+      canBrowse: true,
+      canOrder: false,
+      canAccessAdmin: false,
+      canAccessPro: true,
+      canManageProducts: false,
+      canManageOrders: true,
+    };
+  }
+
   return {
     canBrowse: true,
     canOrder: true,

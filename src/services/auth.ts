@@ -6,6 +6,7 @@ export type Role =
   | "FOURNISSEUR"
   | "RESTAURANT"
   | "LIVREUR"
+  | "COMMERCIAL"
   | "ADMIN";
 
 export type Sexe = "M" | "F" | "AUTRE";
@@ -92,6 +93,10 @@ function normalizeRole(r: any): Role {
     v === "COURIER"
   ) {
     return "LIVREUR";
+  }
+
+  if (v === "COMMERCIAL" || v === "SALES" || v === "SALES_REP") {
+    return "COMMERCIAL";
   }
 
   return "MEMBER";

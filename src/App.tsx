@@ -15,6 +15,7 @@ const ShopsAdminPage = React.lazy(() => import("./pages/admin/ShopsAdminPage"));
 const VendorApplicationsAdminPage = React.lazy(() => import("./pages/admin/VendorApplicationsAdminPage"));
 const CourierTripsAdminPage = React.lazy(() => import("./pages/admin/CourierTripsAdminPage"));
 const LivreurProfilesAdminPage = React.lazy(() => import("./pages/admin/LivreurProfilesAdminPage"));
+const CommercialsAdminPage = React.lazy(() => import("./pages/admin/CommercialsAdminPage"));
 const UsersAdminPage = React.lazy(() => import("./pages/admin/UsersAdminPage"));
 const ExpensesPage = React.lazy(() => import("./pages/admin/ExpensesPage"));
 
@@ -40,6 +41,7 @@ import CourierBookingPage from "./pages/CourierBookingPage";
 import MyCourierTripsPage from "./pages/MyCourierTripsPage";
 import CourierTripTrackingPage from "./pages/CourierTripTrackingPage";
 import LivreurHome from "./pages/livreur/LivreurHome";
+import CommercialHome from "./pages/commercial/CommercialHome";
 import PaysPage from "./pages/PaysPage";
 import BlogPage from "./pages/BlogPage";
 import RejoindrePage from "./pages/RejoindrePage";
@@ -423,6 +425,17 @@ export default function App() {
                   <Route path="/livreur" element={<LivreurHome />} />
                 </Route>
 
+                <Route
+                  element={
+                    <RequireAuth
+                      allow={(v: any) => v.role === "COMMERCIAL"}
+                      redirectTo="/"
+                    />
+                  }
+                >
+                  <Route path="/commercial" element={<CommercialHome />} />
+                </Route>
+
                 <Route path="/affiliate" element={<AffiliateDashboardPage />} />
                 <Route path="/affilie" element={<AffiliateDashboardPage />} />
                 <Route
@@ -492,6 +505,7 @@ export default function App() {
                     />
                     <Route path="courses" element={<CourierTripsAdminPage />} />
                     <Route path="livreurs" element={<LivreurProfilesAdminPage />} />
+                    <Route path="commerciaux" element={<CommercialsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
                     <Route path="expenses" element={<ExpensesPage />} />
                     <Route

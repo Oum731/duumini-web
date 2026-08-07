@@ -16,7 +16,7 @@ import { formatPhoneDisplay } from "../../utils/phone";
 import { LoadingState } from "../../components/ui/Spinner";
 import { PageHeader } from "../../components/admin/adminUI";
 
-const ROLES: Role[] = ["MEMBER", "VENDEUR", "LIVREUR", "ADMIN"];
+const ROLES: Role[] = ["MEMBER", "VENDEUR", "LIVREUR", "COMMERCIAL", "ADMIN"];
 type Draft = Partial<User> & { password?: string };
 
 export default function UsersAdminPage() {

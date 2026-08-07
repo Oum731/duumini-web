@@ -33,6 +33,7 @@ type Role =
   | "FOURNISSEUR"
   | "RESTAURANT"
   | "LIVREUR"
+  | "COMMERCIAL"
   | "ADMIN";
 
 type Props = {
@@ -80,8 +81,16 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const navigate = useNavigate();
   const navRef = useRef<HTMLElement>(null);
 
-  const { isLoggedIn, isAdmin, isVendor, isSupplier, isRestaurantRole, isLivreurRole, isPro } =
-    useMemo(() => {
+  const {
+    isLoggedIn,
+    isAdmin,
+    isVendor,
+    isSupplier,
+    isRestaurantRole,
+    isLivreurRole,
+    isCommercialRole,
+    isPro,
+  } = useMemo(() => {
       const role = (user?.role ? String(user.role) : "")
         .trim()
         .toUpperCase() as Role | "";
@@ -90,6 +99,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
       const isSupplier = role === "FOURNISSEUR";
       const isRestaurantRole = role === "RESTAURANT";
       const isLivreurRole = role === "LIVREUR";
+      const isCommercialRole = role === "COMMERCIAL";
       return {
         isLoggedIn: !!user,
         isAdmin,
@@ -97,12 +107,26 @@ export default function Navbar({ cartCount = 0 }: Props) {
         isSupplier,
         isRestaurantRole,
         isLivreurRole,
-        isPro: isAdmin || isVendor || isSupplier || isRestaurantRole || isLivreurRole,
+        isCommercialRole,
+        isPro:
+          isAdmin ||
+          isVendor ||
+          isSupplier ||
+          isRestaurantRole ||
+          isLivreurRole ||
+          isCommercialRole,
       };
     }, [user]);
 
-  // ✅ vendeur -> /ma-boutique (VendorHome), livreur -> /livreur, admin -> /admin
-  const proDashboardPath = isAdmin ? "/admin" : isLivreurRole ? "/livreur" : "/ma-boutique";
+  // ✅ vendeur -> /ma-boutique (VendorHome), livreur -> /livreur,
+  // commercial -> /commercial, admin -> /admin
+  const proDashboardPath = isAdmin
+    ? "/admin"
+    : isLivreurRole
+    ? "/livreur"
+    : isCommercialRole
+    ? "/commercial"
+    : "/ma-boutique";
 
   const closeMenus = () => {
     setOpen(false);
@@ -378,6 +402,8 @@ export default function Navbar({ cartCount = 0 }: Props) {
                     <Shield size={18} />
                   ) : isLivreurRole ? (
                     <Bike size={18} />
+                  ) : isCommercialRole ? (
+                    <Briefcase size={18} />
                   ) : (
                     <Store size={18} />
                   )}
@@ -406,18 +432,32 @@ export default function Navbar({ cartCount = 0 }: Props) {
                       to={proDashboardPath}
                       onClick={closeMenus}
                       aria-label={
-                        isAdmin ? "Dashboard admin" : isLivreurRole ? "Espace livreur" : "Ma boutique"
+                        isAdmin
+                          ? "Dashboard admin"
+                          : isLivreurRole
+                          ? "Espace livreur"
+                          : isCommercialRole
+                          ? "Espace commercial"
+                          : "Ma boutique"
                       }
                     >
                       {isAdmin ? (
                         <Shield size={18} />
                       ) : isLivreurRole ? (
                         <Bike size={18} />
+                      ) : isCommercialRole ? (
+                        <Briefcase size={18} />
                       ) : (
                         <Store size={18} />
                       )}
                       <span>
-                        {isAdmin ? "Dashboard admin" : isLivreurRole ? "Espace livreur" : "Ma boutique"}
+                        {isAdmin
+                          ? "Dashboard admin"
+                          : isLivreurRole
+                          ? "Espace livreur"
+                          : isCommercialRole
+                          ? "Espace commercial"
+                          : "Ma boutique"}
                       </span>
                     </Link>
 

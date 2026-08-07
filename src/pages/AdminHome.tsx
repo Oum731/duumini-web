@@ -3,6 +3,10 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { listOrders, getOrdersSummary, type Order } from "../services/orders";
 import { listProducts, listTopOrderedProducts, type Product } from "../services/products";
+import {
+  listCommercialProfiles,
+  type AdminCommercialProfile,
+} from "../services/commercialProfiles";
 import { listShops, type Shop } from "../services/shops";
 import { listUsers, type User } from "../services/users";
 import { api } from "../services/http";
@@ -561,6 +565,7 @@ export default function AdminHome() {
 
   const [kpi, setKpi] = useState<Summary | null>(null);
   const [topProducts, setTopProducts] = useState<Product[]>([]);
+  const [topCommercials, setTopCommercials] = useState<AdminCommercialProfile[]>([]);
   const [, setLastUpdate] = useState<Date | null>(null);
 
   const [commissionFilter, setCommissionFilter] = useState<"today" | "week" | "month" | "year">("today");
@@ -691,6 +696,16 @@ export default function AdminHome() {
     }
   }, [isVendor]);
 
+  const loadTopCommercials = useCallback(async () => {
+    if (isVendor) return;
+    try {
+      const res = await listCommercialProfiles();
+      setTopCommercials(res.items.slice(0, 6));
+    } catch {
+      setTopCommercials([]);
+    }
+  }, [isVendor]);
+
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
@@ -800,6 +815,7 @@ export default function AdminHome() {
     loadPendingApplications();
     loadAffiliateSummary();
     loadTopProducts();
+    loadTopCommercials();
   }, [
     isVendor,
     loadSiteStatus,
@@ -807,6 +823,7 @@ export default function AdminHome() {
     loadPendingApplications,
     loadAffiliateSummary,
     loadTopProducts,
+    loadTopCommercials,
   ]);
 
   useEffect(() => {
@@ -1044,6 +1061,18 @@ export default function AdminHome() {
     [topProducts]
   );
 
+  const topCommercialItems = useMemo<RankedListItem[]>(
+    () =>
+      topCommercials.map((c) => ({
+        id: c.user_id,
+        title: [c.first_name, c.last_name].filter(Boolean).join(" ") || c.phone,
+        subtitle: `${c.orders_month} cmd · ${c.clients_month} client(s)`,
+        valueLabel: mad(c.revenue_month),
+        to: "/admin/commerciaux",
+      })),
+    [topCommercials]
+  );
+
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">
       <PageHeader
@@ -1184,6 +1213,15 @@ export default function AdminHome() {
                 className="h-100"
               >
                 <CountryBreakdownList items={countryItems} />
+              </SectionCard>
+            </div>
+            <div className="col-12 col-lg-6">
+              <SectionCard
+                title="Top commerciaux"
+                subtitle="CA généré ce mois-ci"
+                className="h-100"
+              >
+                <RankedList items={topCommercialItems} />
               </SectionCard>
             </div>
           </div>
