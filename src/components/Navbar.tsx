@@ -87,8 +87,8 @@ export default function Navbar({ cartCount = 0 }: Props) {
     isVendor,
     isSupplier,
     isRestaurantRole,
-    isLivreurRole,
-    isCommercialRole,
+    hasLivreurAccess,
+    hasCommercialAccess,
     isPro,
   } = useMemo(() => {
       const role = (user?.role ? String(user.role) : "")
@@ -100,33 +100,45 @@ export default function Navbar({ cartCount = 0 }: Props) {
       const isRestaurantRole = role === "RESTAURANT";
       const isLivreurRole = role === "LIVREUR";
       const isCommercialRole = role === "COMMERCIAL";
+      // ✅ Accès double rôle (ex. livreur devenu aussi commercial) : basé sur
+      // la présence d'un profil dédié, pas seulement sur le rôle principal
+      // (voir has_livreur_profile/has_commercial_profile côté API).
+      const hasLivreurAccess = isLivreurRole || !!user?.has_livreur_profile;
+      const hasCommercialAccess = isCommercialRole || !!user?.has_commercial_profile;
       return {
         isLoggedIn: !!user,
         isAdmin,
         isVendor,
         isSupplier,
         isRestaurantRole,
-        isLivreurRole,
-        isCommercialRole,
+        hasLivreurAccess,
+        hasCommercialAccess,
         isPro:
           isAdmin ||
           isVendor ||
           isSupplier ||
           isRestaurantRole ||
-          isLivreurRole ||
-          isCommercialRole,
+          hasLivreurAccess ||
+          hasCommercialAccess,
       };
     }, [user]);
 
-  // ✅ vendeur -> /ma-boutique (VendorHome), livreur -> /livreur,
-  // commercial -> /commercial, admin -> /admin
-  const proDashboardPath = isAdmin
-    ? "/admin"
-    : isLivreurRole
-    ? "/livreur"
-    : isCommercialRole
-    ? "/commercial"
-    : "/ma-boutique";
+  // ✅ Espace pro : un utilisateur peut cumuler plusieurs accès (ex. livreur
+  // + commercial) — on liste toutes les entrées applicables plutôt que d'en
+  // choisir une seule par priorité. Admin reste seul (pas de cumul prévu).
+  const proDashboardLinks: { to: string; label: string; Icon: LucideIcon }[] = isAdmin
+    ? [{ to: "/admin", label: "Dashboard admin", Icon: Shield }]
+    : [
+        ...(hasLivreurAccess
+          ? [{ to: "/livreur", label: "Espace livreur", Icon: Bike }]
+          : []),
+        ...(hasCommercialAccess
+          ? [{ to: "/commercial", label: "Espace commercial", Icon: Briefcase }]
+          : []),
+        ...(isVendor || isSupplier || isRestaurantRole
+          ? [{ to: "/ma-boutique", label: "Ma boutique", Icon: Store }]
+          : []),
+      ];
 
   const closeMenus = () => {
     setOpen(false);
@@ -400,9 +412,9 @@ export default function Navbar({ cartCount = 0 }: Props) {
                 >
                   {isAdmin ? (
                     <Shield size={18} />
-                  ) : isLivreurRole ? (
+                  ) : hasLivreurAccess ? (
                     <Bike size={18} />
-                  ) : isCommercialRole ? (
+                  ) : hasCommercialAccess ? (
                     <Briefcase size={18} />
                   ) : (
                     <Store size={18} />
@@ -428,38 +440,12 @@ export default function Navbar({ cartCount = 0 }: Props) {
 
                     <div className="pro-sep" />
 
-                    <Link
-                      to={proDashboardPath}
-                      onClick={closeMenus}
-                      aria-label={
-                        isAdmin
-                          ? "Dashboard admin"
-                          : isLivreurRole
-                          ? "Espace livreur"
-                          : isCommercialRole
-                          ? "Espace commercial"
-                          : "Ma boutique"
-                      }
-                    >
-                      {isAdmin ? (
-                        <Shield size={18} />
-                      ) : isLivreurRole ? (
-                        <Bike size={18} />
-                      ) : isCommercialRole ? (
-                        <Briefcase size={18} />
-                      ) : (
-                        <Store size={18} />
-                      )}
-                      <span>
-                        {isAdmin
-                          ? "Dashboard admin"
-                          : isLivreurRole
-                          ? "Espace livreur"
-                          : isCommercialRole
-                          ? "Espace commercial"
-                          : "Ma boutique"}
-                      </span>
-                    </Link>
+                    {proDashboardLinks.map(({ to, label, Icon }) => (
+                      <Link key={to} to={to} onClick={closeMenus} aria-label={label}>
+                        <Icon size={18} />
+                        <span>{label}</span>
+                      </Link>
+                    ))}
 
                     {isAdmin && (
                       <>

@@ -419,7 +419,10 @@ export default function App() {
                 <Route
                   element={
                     <RequireAuth
-                      allow={(v: any) => v.role === "LIVREUR"}
+                      // ✅ Accès double rôle : basé sur la présence d'un profil
+                      // livreur (has_livreur_profile), pas sur le rôle principal
+                      // strict — un commercial qui devient aussi livreur y a accès.
+                      allow={(v: any) => !!v.user?.has_livreur_profile}
                       redirectTo="/"
                     />
                   }
@@ -430,7 +433,7 @@ export default function App() {
                 <Route
                   element={
                     <RequireAuth
-                      allow={(v: any) => v.role === "COMMERCIAL"}
+                      allow={(v: any) => !!v.user?.has_commercial_profile}
                       redirectTo="/"
                     />
                   }

@@ -42,6 +42,12 @@ export type User = {
   sexe?: Sexe | null;
   shops?: ShopLite[];
   impersonation?: ImpersonationInfo | null;
+  /** ✅ Accès double rôle (ex. livreur + commercial) — un utilisateur garde
+   * un seul `role` "principal", mais peut avoir un profil dans les deux
+   * tables dédiées ; ces flags pilotent l'accès à /livreur et /commercial
+   * indépendamment du rôle principal. */
+  has_livreur_profile?: boolean;
+  has_commercial_profile?: boolean;
 };
 
 type LoginRes = {
