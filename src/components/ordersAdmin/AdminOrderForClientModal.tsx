@@ -8,6 +8,10 @@ import {
   type PaymentStatus,
 } from "../../services/orders";
 import { listAllAdminUsers, type AdminUser } from "../../services/adminUsers";
+import {
+  listCommercialProfiles,
+  type AdminCommercialProfile,
+} from "../../services/commercialProfiles";
 import { imgUrl } from "../../utils/media";
 import { normalizePhoneInput } from "../../utils/phone";
 import { LoadingState } from "../ui/Spinner";
@@ -320,6 +324,13 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   const [commercialName, setCommercialName] = useState<string>("");
   const [ice, setIce] = useState<string>("");
 
+  // ✅ Commercial responsable de la vente (optionnel) — distinct de
+  // "Nom commercial"/commercialName ci-dessus, qui est le nom de
+  // l'entreprise d'un client VENDEUR, sans rapport avec l'attribution
+  // des ventes à un commercial (rôle COMMERCIAL, commissions).
+  const [commercials, setCommercials] = useState<AdminCommercialProfile[]>([]);
+  const [commercialId, setCommercialId] = useState<number | null>(null);
+
   const [search, setSearch] = useState("");
   const [promoFilter, setPromoFilter] = useState<"ALL" | "PROMO" | "NO_PROMO">("ALL");
   const [sortBy, setSortBy] = useState<"NAME" | "PRICE_ASC" | "PRICE_DESC">("NAME");
@@ -407,6 +418,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     setCustomerRole("CLIENT");
     setCommercialName("");
     setIce("");
+    setCommercialId(null);
 
     setSearch("");
     setPromoFilter("ALL");
@@ -541,16 +553,28 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     }
   }, [open]);
 
+  const loadCommercials = useCallback(async () => {
+    if (!open) return;
+    try {
+      const res = await listCommercialProfiles();
+      setCommercials(res.items || []);
+    } catch {
+      // pas bloquant — le sélecteur reste juste vide/optionnel
+      setCommercials([]);
+    }
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
 
     loadAllProducts();
     loadClients();
+    loadCommercials();
 
     return () => {
       prodAbort.current?.abort();
     };
-  }, [open, loadAllProducts, loadClients]);
+  }, [open, loadAllProducts, loadClients, loadCommercials]);
 
   const filteredProducts = useMemo(() => {
     const ql = search.trim().toLowerCase();
@@ -701,6 +725,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
     const payload: any = {
       customer_role: role,
+      commercial_id: commercialId,
 
       ...(isGuest
         ? {
@@ -1084,6 +1109,34 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
                   <div className="small text-muted mt-1">
                     La ville est obligatoire. Si le client est vendeur, le nom commercial et l’ICE sont obligatoires.
+                  </div>
+
+                  <div className="row g-2 mt-2">
+                    <div className="col-12 col-md-4">
+                      <label className="form-label fw-semibold">
+                        Commercial responsable de la vente
+                      </label>
+                      <select
+                        className="form-select duu-input"
+                        value={commercialId ?? ""}
+                        onChange={(e) => {
+                          const v = (e.target as HTMLSelectElement).value;
+                          setCommercialId(v ? Number(v) : null);
+                        }}
+                        disabled={saving}
+                      >
+                        <option value="">Aucun / vente directe</option>
+                        {commercials.map((c) => (
+                          <option key={c.user_id} value={c.user_id}>
+                            {`${c.first_name || ""} ${c.last_name || ""}`.trim() || c.phone}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="small text-muted mt-1">
+                        À choisir uniquement si cette vente doit être créditée à un commercial
+                        (à ne pas confondre avec "Nom commercial" ci-dessus).
+                      </div>
+                    </div>
                   </div>
 
                   <div className="duu-summary-card mt-3">

@@ -132,6 +132,11 @@ export type CreateAdminOrderPayload = CreateOrderPayload & {
   customer_id?: number;
   customer_role?: CustomerRole | string;
 
+  /** ✅ Commercial responsable de la vente (optionnel) — distinct de
+   * affiliate_code : le backend refuse d'attribuer les deux à la fois sur
+   * une même commande (voir POST /api/orders/admin). */
+  commercial_id?: number | null;
+
   customer?: {
     first_name?: string;
     last_name?: string;
@@ -631,9 +636,16 @@ export async function createGuestOrder(payload: CreateOrderPayload) {
 }
 
 export async function createAdminOrder(payload: CreateAdminOrderPayload) {
+  // ✅ Volontairement PAS withAffiliateCode() ici, contrairement à
+  // createOrder/createGuestOrder ci-dessus : ces commandes sont créées
+  // depuis le navigateur d'un admin/commercial, pas du client. Attacher un
+  // code affilié stocké dans son localStorage (posé s'il a un jour visité
+  // un lien ?ref=, valable 30 jours) créditerait un affilié pour une vente
+  // qu'il n'a pas générée. L'affiliation ne doit se calculer que via un
+  // vrai clic sur un lien d'affilié, côté client — jamais depuis l'admin.
   return api.post<CreateOrderResult>(
     "/api/orders/admin",
-    withAffiliateCode(normalizeAdminCreatePayload(payload)),
+    normalizeAdminCreatePayload(payload),
   );
 }
 

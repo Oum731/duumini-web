@@ -10,6 +10,10 @@ import {
 } from "../../services/orders";
 import { normalizePhone, isValidPhoneIntl } from "../../utils/phone";
 import { LoadingState } from "../ui/Spinner";
+import {
+  listCommercialProfiles,
+  type AdminCommercialProfile,
+} from "../../services/commercialProfiles";
 
 type AnyObj = Record<string, any>;
 type CustomerRole = "CLIENT" | "VENDEUR";
@@ -158,6 +162,13 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [commercialName, setCommercialName] = useState("");
   const [customerIce, setCustomerIce] = useState("");
 
+  // ✅ Commercial responsable de la vente (optionnel) — distinct de
+  // "Nom commercial"/commercialName ci-dessus (nom d'entreprise d'un
+  // client VENDEUR), sans rapport avec l'attribution des ventes à un
+  // commercial (rôle COMMERCIAL, commissions).
+  const [commercials, setCommercials] = useState<AdminCommercialProfile[]>([]);
+  const [commercialId, setCommercialId] = useState<number | null>(null);
+
   const [basket, setBasket] = useState<{ product: Product; qty: number }[]>([]);
   const [amountPaid, setAmountPaid] = useState<number>(0);
   const [markDone, setMarkDone] = useState(true);
@@ -244,6 +255,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setCustomerRole("CLIENT");
     setCommercialName("");
     setCustomerIce("");
+    setCommercialId(null);
 
     setMarkDone(true);
     setSaving(false);
@@ -341,13 +353,24 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     }
   }, [open, includeHidden]);
 
+  const loadCommercials = useCallback(async () => {
+    if (!open) return;
+    try {
+      const res = await listCommercialProfiles();
+      setCommercials(res.items || []);
+    } catch {
+      setCommercials([]);
+    }
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     loadAllProducts();
+    loadCommercials();
     return () => {
       searchAbort.current?.abort();
     };
-  }, [open, loadAllProducts]);
+  }, [open, loadAllProducts, loadCommercials]);
 
   const filteredResults = useMemo(() => {
     const ql = search.trim().toLowerCase();
@@ -431,6 +454,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
     const payload = {
       customer_role: role,
+      commercial_id: commercialId,
 
       contact: {
         first_name: cFirst || "Client",
@@ -979,6 +1003,25 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           </div>
                         </>
                       ) : null}
+
+                      <div className="col-12 col-sm-4">
+                        <select
+                          className="form-select"
+                          value={commercialId ?? ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setCommercialId(v ? Number(v) : null);
+                          }}
+                          disabled={saving}
+                        >
+                          <option value="">Commercial : aucun / vente directe</option>
+                          {commercials.map((c) => (
+                            <option key={c.user_id} value={c.user_id}>
+                              {`${c.first_name || ""} ${c.last_name || ""}`.trim() || c.phone}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
                     <div className="small text-muted mt-2">
