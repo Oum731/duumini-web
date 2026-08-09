@@ -8,10 +8,11 @@
 // complet, 1700+ lignes, qui dépend de GET /api/admin/users réservé aux
 // ADMIN) : un commercial saisit directement les infos client + produits,
 // sans recherche de compte existant.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Seo } from "../../components/Seo";
 import { LoadingState } from "../../components/ui/Spinner";
 import { moneyMAD } from "../../utils/money";
+import { imgUrl } from "../../utils/media";
 import { listProducts, type Product } from "../../services/products";
 import { createAdminOrder, getOrder } from "../../services/orders";
 import { waHref } from "../../components/ordersAdmin/orderUtils";
@@ -36,9 +37,16 @@ export default function CommercialHome() {
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
 
+  // ✅ Catalogue complet chargé une fois à l'ouverture du formulaire, puis
+  // filtré côté client au fil de la frappe — même principe que
+  // AdminOrderForClientModal (loadAllProducts + filtre local), pour que le
+  // commercial puisse parcourir tous les produits (pas seulement ceux qui
+  // matchent une recherche tapée), avec vignette + bouton "Ajouter" comme
+  // côté admin.
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsErr, setProductsErr] = useState<string | null>(null);
   const [productQuery, setProductQuery] = useState("");
-  const [productResults, setProductResults] = useState<Product[]>([]);
-  const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
@@ -85,29 +93,41 @@ export default function CommercialHome() {
     };
   }, [socket]);
 
-  useEffect(() => {
-    const q = productQuery.trim();
-    if (!q) {
-      setProductResults([]);
-      return;
-    }
-    let cancelled = false;
-    setSearching(true);
-    const t = setTimeout(async () => {
-      try {
-        const res = await listProducts({ q, onlyActive: true, pageSize: 8 });
-        if (!cancelled) setProductResults(res.items || []);
-      } catch {
-        if (!cancelled) setProductResults([]);
-      } finally {
-        if (!cancelled) setSearching(false);
+  const loadProducts = useCallback(async () => {
+    if (!formOpen) return;
+    setProductsLoading(true);
+    setProductsErr(null);
+    try {
+      const pageSize = 100;
+      let page = 1;
+      let all: Product[] = [];
+      let totalExpected = Infinity;
+      while (page <= 50) {
+        const res = await listProducts({ page, pageSize, onlyActive: true });
+        const batch = res.items || [];
+        all = all.concat(batch);
+        const t = Number(res.pageInfo?.total ?? all.length);
+        if (Number.isFinite(t)) totalExpected = t;
+        if (all.length >= totalExpected || batch.length === 0) break;
+        page += 1;
       }
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [productQuery]);
+      setProducts(all);
+    } catch (e: unknown) {
+      setProductsErr(e instanceof Error ? e.message : "Impossible de charger les produits.");
+    } finally {
+      setProductsLoading(false);
+    }
+  }, [formOpen]);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
+
+  const filteredProducts = useMemo(() => {
+    const ql = productQuery.trim().toLowerCase();
+    if (!ql) return products;
+    return products.filter((p) => String(p.name || "").toLowerCase().includes(ql));
+  }, [products, productQuery]);
 
   function addToCart(p: Product) {
     setCart((prev) => {
@@ -119,8 +139,6 @@ export default function CommercialHome() {
       }
       return [...prev, { product: p, qty: 1 }];
     });
-    setProductQuery("");
-    setProductResults([]);
   }
 
   function updateQty(productId: number, qty: number) {
@@ -292,17 +310,22 @@ export default function CommercialHome() {
         </div>
         <div className="col-6 col-md-3">
           <div className="card border-0 shadow-sm p-3">
-            <div className="text-muted small">Solde commission dû</div>
+            <div className="text-muted small">Commission à recevoir</div>
             <div className="fw-bold fs-4">{moneyMAD(profile?.pending_commission ?? 0, 2)}</div>
           </div>
         </div>
       </div>
 
+      {/* ✅ C'est DUUMINI qui doit cette commission au commercial (un
+          pourcentage de ses ventes, comme pour un affilié) — logique
+          inverse de celle du livreur, qui lui doit une commission à
+          DUUMINI sur les courses encaissées en cash. Ne jamais reprendre
+          le wording "vous devez" ici. */}
       {profile && profile.pending_commission > 0 && (
         <div className="alert alert-secondary">
-          Vous devez <strong>{moneyMAD(profile.pending_commission, 2)}</strong> à
-          DUUMINI (taux : {(profile.commission_rate * 100).toFixed(1)}%). Réglé
-          par l'administration selon vos accords.
+          DUUMINI vous doit <strong>{moneyMAD(profile.pending_commission, 2)}</strong> de
+          commission sur vos ventes (taux : {(profile.commission_rate * 100).toFixed(1)}%).
+          Versement effectué par l'administration selon vos accords.
         </div>
       )}
 
@@ -349,27 +372,66 @@ export default function CommercialHome() {
             </div>
           </div>
 
-          <label className="form-label small">Rechercher un produit</label>
+          <label className="form-label small">Produits</label>
           <input
             className="form-control form-control-sm mb-2"
-            placeholder="Nom du produit…"
+            placeholder="Filtrer par nom…"
             value={productQuery}
             onChange={(e) => setProductQuery(e.target.value)}
           />
-          {searching && <div className="small text-muted mb-2">Recherche…</div>}
-          {productResults.length > 0 && (
-            <div className="list-group mb-3">
-              {productResults.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-                  onClick={() => addToCart(p)}
-                >
-                  <span>{p.name}</span>
-                  <span className="text-muted small">{moneyMAD(Number(p.price))}</span>
-                </button>
-              ))}
+          {productsErr && <div className="small text-danger mb-2">{productsErr}</div>}
+          {productsLoading ? (
+            <div className="small text-muted mb-3">Chargement du catalogue…</div>
+          ) : (
+            <div
+              className="mb-3 border rounded"
+              style={{ maxHeight: 280, overflowY: "auto" }}
+            >
+              {filteredProducts.length === 0 ? (
+                <div className="small text-muted p-2">Aucun produit trouvé.</div>
+              ) : (
+                filteredProducts.map((p) => (
+                  <div
+                    key={p.id}
+                    className="d-flex align-items-center gap-2 p-2 border-bottom"
+                  >
+                    {p.cover ? (
+                      <img
+                        src={imgUrl(p.cover)}
+                        alt={p.name}
+                        style={{
+                          width: 40,
+                          height: 40,
+                          objectFit: "cover",
+                          borderRadius: 6,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 6,
+                          background: "var(--bs-secondary-bg, #eee)",
+                          flexShrink: 0,
+                        }}
+                      />
+                    )}
+                    <div className="flex-grow-1 small">
+                      <div className="fw-semibold">{p.name}</div>
+                      <div className="text-muted">{moneyMAD(Number(p.price))}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-success"
+                      onClick={() => addToCart(p)}
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           )}
 

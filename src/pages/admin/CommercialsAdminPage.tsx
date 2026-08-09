@@ -74,7 +74,7 @@ export default function CommercialsAdminPage() {
       await settleCommercialBalance(userId);
       await refresh();
     } catch (e: any) {
-      setError(commercialProfileErrorMessage(e, "Impossible de régler le solde de ce commercial."));
+      setError(commercialProfileErrorMessage(e, "Impossible de confirmer le versement de la commission."));
     } finally {
       setBusyId(null);
     }
@@ -149,7 +149,7 @@ export default function CommercialsAdminPage() {
         <div className="col-6 col-md-4">
           <KpiCard
             icon={Wallet}
-            label="Commissions dues"
+            label="Commissions à verser"
             value={moneyMAD(totalDue)}
             accent="orange"
           />
@@ -172,7 +172,7 @@ export default function CommercialsAdminPage() {
                 <th>Commandes</th>
                 <th>Clients</th>
                 <th>Taux commission</th>
-                <th>Solde dû</th>
+                <th>Commission à verser</th>
                 <th></th>
               </tr>
             </thead>
@@ -226,8 +226,9 @@ export default function CommercialsAdminPage() {
                           className="btn btn-duu-orange btn-sm"
                           disabled={busyId === p.user_id}
                           onClick={() => handleSettle(p.user_id)}
+                          title="C'est DUUMINI qui verse cette commission au commercial (pourcentage de ses ventes) — cliquer une fois le virement/paiement effectué."
                         >
-                          {busyId === p.user_id ? "…" : "Régler le solde"}
+                          {busyId === p.user_id ? "…" : "Confirmer le versement"}
                         </button>
                       )}
                     </td>
