@@ -5,6 +5,7 @@ import { LoadingState } from "../../components/ui/Spinner";
 import { PageHeader, KpiCard } from "../../components/admin/adminUI";
 import { moneyMAD } from "../../utils/money";
 import { formatPhoneDisplay } from "../../utils/phone";
+import { useRealtime } from "../../context/RealtimeContext";
 import {
   listCommercialProfiles,
   getCommercialPortfolio,
@@ -16,6 +17,7 @@ import {
 } from "../../services/commercialProfiles";
 
 export default function CommercialsAdminPage() {
+  const { socket } = useRealtime();
   const [items, setItems] = useState<AdminCommercialProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,28 @@ export default function CommercialsAdminPage() {
   useEffect(() => {
     refresh();
   }, []);
+
+  // ✅ Rafraîchit automatiquement le classement (et le portefeuille ouvert,
+  // le cas échéant) dès qu'une vente est rattachée à un commercial — sans
+  // ça il fallait recharger la page à la main pour voir apparaître une
+  // commande fraîchement déclarée. Le backend émet ce même event WS
+  // "notify"/ORDER_CREATED côté admin depuis longtemps (voir
+  // emitOrderCreatedRealtimeWSOnly, orders.js) ; on se contente de
+  // l'écouter ici, aucun nouvel event à créer côté serveur.
+  useEffect(() => {
+    if (!socket) return;
+    function onNotify(data: { type?: string; commercial_id?: number | null }) {
+      if (data?.type !== "ORDER_CREATED") return;
+      refresh();
+      if (data.commercial_id && expandedId === data.commercial_id) {
+        loadPortfolio(data.commercial_id);
+      }
+    }
+    socket.on("notify", onNotify);
+    return () => {
+      socket.off("notify", onNotify);
+    };
+  }, [socket, expandedId]);
 
   async function handleSettle(userId: number) {
     setBusyId(userId);
@@ -79,12 +103,7 @@ export default function CommercialsAdminPage() {
     }
   }
 
-  async function toggleExpand(userId: number) {
-    if (expandedId === userId) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(userId);
+  async function loadPortfolio(userId: number) {
     setPortfolioLoading(true);
     try {
       const res = await getCommercialPortfolio(userId);
@@ -94,6 +113,15 @@ export default function CommercialsAdminPage() {
     } finally {
       setPortfolioLoading(false);
     }
+  }
+
+  async function toggleExpand(userId: number) {
+    if (expandedId === userId) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(userId);
+    await loadPortfolio(userId);
   }
 
   const totalRevenue = items.reduce((s, p) => s + p.revenue_month, 0);

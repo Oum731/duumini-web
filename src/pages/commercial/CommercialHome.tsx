@@ -13,8 +13,9 @@ import { Seo } from "../../components/Seo";
 import { LoadingState } from "../../components/ui/Spinner";
 import { moneyMAD } from "../../utils/money";
 import { listProducts, type Product } from "../../services/products";
-import { createAdminOrder } from "../../services/orders";
+import { createAdminOrder, getOrder } from "../../services/orders";
 import { waHref } from "../../components/ordersAdmin/orderUtils";
+import { useRealtime } from "../../context/RealtimeContext";
 import {
   getMyCommercialProfile,
   commercialProfileErrorMessage,
@@ -24,6 +25,7 @@ import {
 type CartLine = { product: Product; qty: number };
 
 export default function CommercialHome() {
+  const { socket } = useRealtime();
   const [profile, setProfile] = useState<MyCommercialProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +66,24 @@ export default function CommercialHome() {
   useEffect(() => {
     refresh();
   }, []);
+
+  // ✅ Rafraîchit automatiquement le CA/commandes/commission dès qu'une
+  // vente lui est rattachée — notamment quand c'est un admin qui déclare
+  // la commande pour son compte (le commercial ne l'a jamais soumise
+  // lui-même, donc rien ne le mettait à jour sans recharger la page).
+  // Même event WS "notify"/ORDER_CREATED déjà émis côté serveur pour les
+  // admins, désormais aussi envoyé au commercial concerné (orders.js).
+  useEffect(() => {
+    if (!socket) return;
+    function onNotify(data: { type?: string }) {
+      if (data?.type !== "ORDER_CREATED") return;
+      refresh();
+    }
+    socket.on("notify", onNotify);
+    return () => {
+      socket.off("notify", onNotify);
+    };
+  }, [socket]);
 
   useEffect(() => {
     const q = productQuery.trim();
@@ -159,26 +179,40 @@ export default function CommercialHome() {
         })),
       });
 
-      setLastReceiptHref(
-        waHref({
-          id: created.id,
-          display_code: created.display_code,
-          status: created.status || "OPEN",
-          created_at: new Date().toISOString(),
-          contact: {
-            first_name: firstName.trim() || undefined,
-            last_name: lastName.trim() || undefined,
-            phone: phone.trim(),
-          },
-          address: { city: city.trim() },
-          items: cart.map((l) => ({
-            product_id: l.product.id,
-            product_name: l.product.name,
-            qty: l.qty,
-            unit_price: Number(l.product.price),
-          })),
-        })
-      );
+      // ✅ On va rechercher la commande fraîchement créée via GET
+      // /api/orders/:id — exactement la même route/forme de données que
+      // celle utilisée par OrderViewModal côté admin (items, totaux,
+      // livraison, contact complets, recalculés serveur) — plutôt que de
+      // reconstruire le reçu à la main depuis le formulaire/panier local,
+      // qui peut diverger (remise, frais de livraison, etc.). Filet de
+      // secours : si ce GET échoue pour une raison quelconque, on retombe
+      // sur l'ancienne reconstruction locale pour ne pas priver le
+      // commercial du bouton d'envoi.
+      try {
+        const full = await getOrder(created.id);
+        setLastReceiptHref(waHref(full));
+      } catch {
+        setLastReceiptHref(
+          waHref({
+            id: created.id,
+            display_code: created.display_code,
+            status: created.status || "OPEN",
+            created_at: new Date().toISOString(),
+            contact: {
+              first_name: firstName.trim() || undefined,
+              last_name: lastName.trim() || undefined,
+              phone: phone.trim(),
+            },
+            address: { city: city.trim() },
+            items: cart.map((l) => ({
+              product_id: l.product.id,
+              product_name: l.product.name,
+              qty: l.qty,
+              unit_price: Number(l.product.price),
+            })),
+          })
+        );
+      }
 
       setFormOk("Déclaration enregistrée — rattachée à votre compte.");
       resetForm();
