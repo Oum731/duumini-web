@@ -16,6 +16,7 @@ import { imgUrl } from "../../utils/media";
 import { listProducts, type Product } from "../../services/products";
 import { createAdminOrder, getOrder } from "../../services/orders";
 import { waHref } from "../../components/ordersAdmin/orderUtils";
+import OrderReceipt from "../../components/ordersAdmin/OrderReceipt";
 import { useRealtime } from "../../context/RealtimeContext";
 import {
   getMyCommercialProfile,
@@ -57,6 +58,11 @@ export default function CommercialHome() {
   // pas besoin de recharger la commande. Même message que celui envoyé
   // par un admin depuis OrdersAdminPage/OrderViewModal (buildAdminWhatsappMessage).
   const [lastReceiptHref, setLastReceiptHref] = useState<string | null>(null);
+  // ✅ Commande complète de la dernière déclaration, pour afficher le même
+  // ticket <OrderReceipt> que l'admin (OrderViewModal) — avec son bouton
+  // natif "Partager WhatsApp (image)" en plus du lien texte ci-dessus.
+  const [lastOrder, setLastOrder] = useState<Record<string, unknown> | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
 
   async function refresh() {
     setLoading(true);
@@ -209,30 +215,33 @@ export default function CommercialHome() {
       try {
         const full = await getOrder(created.id);
         setLastReceiptHref(waHref(full));
+        setLastOrder(full as unknown as Record<string, unknown>);
       } catch {
-        setLastReceiptHref(
-          waHref({
-            id: created.id,
-            display_code: created.display_code,
-            status: created.status || "OPEN",
-            created_at: new Date().toISOString(),
-            contact: {
-              first_name: firstName.trim() || undefined,
-              last_name: lastName.trim() || undefined,
-              phone: phone.trim(),
-            },
-            address: { city: city.trim() },
-            items: cart.map((l) => ({
-              product_id: l.product.id,
-              product_name: l.product.name,
-              qty: l.qty,
-              unit_price: Number(l.product.price),
-            })),
-          })
-        );
+        const fallback = {
+          id: created.id,
+          display_code: created.display_code,
+          status: created.status || "OPEN",
+          created_at: new Date().toISOString(),
+          contact: {
+            first_name: firstName.trim() || undefined,
+            last_name: lastName.trim() || undefined,
+            phone: phone.trim(),
+            city: city.trim(),
+          },
+          address: { city: city.trim() },
+          items: cart.map((l) => ({
+            product_id: l.product.id,
+            product_name: l.product.name,
+            qty: l.qty,
+            unit_price: Number(l.product.price),
+          })),
+        };
+        setLastReceiptHref(waHref(fallback));
+        setLastOrder(fallback);
       }
 
       setFormOk("Déclaration enregistrée — rattachée à votre compte.");
+      setShowReceipt(false);
       resetForm();
       setFormOpen(false);
       await refresh();
@@ -274,18 +283,40 @@ export default function CommercialHome() {
 
       {error && <div className="alert alert-danger py-2">{error}</div>}
       {formOk && (
-        <div className="alert alert-success py-2 d-flex align-items-center justify-content-between gap-2 flex-wrap">
-          <span>{formOk}</span>
-          {lastReceiptHref ? (
-            <a
-              href={lastReceiptHref}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-sm btn-success"
-            >
-              Envoyer le reçu WhatsApp
-            </a>
-          ) : null}
+        <div className="alert alert-success py-2 mb-2">
+          <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <span>{formOk}</span>
+            <div className="d-flex gap-2">
+              {lastReceiptHref ? (
+                <a
+                  href={lastReceiptHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-sm btn-success"
+                >
+                  Envoyer le reçu WhatsApp
+                </a>
+              ) : null}
+              {lastOrder ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success"
+                  onClick={() => setShowReceipt((v) => !v)}
+                >
+                  {showReceipt ? "Masquer le reçu" : "Voir / partager le reçu"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Même composant que côté admin (OrderViewModal) — inclut son
+          propre bouton "Partager WhatsApp (image)" (Web Share API native,
+          image du ticket) en plus du lien texte ci-dessus. */}
+      {showReceipt && lastOrder && (
+        <div className="mb-4">
+          <OrderReceipt order={lastOrder} />
         </div>
       )}
 
