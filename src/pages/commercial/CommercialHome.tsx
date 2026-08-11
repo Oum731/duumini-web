@@ -20,8 +20,10 @@ import OrderReceipt from "../../components/ordersAdmin/OrderReceipt";
 import { useRealtime } from "../../context/RealtimeContext";
 import {
   getMyCommercialProfile,
+  listCommercialDirectory,
   commercialProfileErrorMessage,
   type MyCommercialProfile,
+  type CommercialDirectoryEntry,
 } from "../../services/commercialProfiles";
 
 type CartLine = { product: Product; qty: number };
@@ -49,6 +51,14 @@ export default function CommercialHome() {
   const [productsErr, setProductsErr] = useState<string | null>(null);
   const [productQuery, setProductQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+
+  // ✅ À qui créditer cette vente — moi-même par défaut ("SELF"), un autre
+  // commercial (id), ou personne/DUUMINI ("" — vente directe, sans
+  // commission). Même liberté que côté admin (AdminOrderForClientModal),
+  // via GET /commercial-profiles/directory (nom seulement, pas de CA/
+  // commission des autres commerciaux).
+  const [commercials, setCommercials] = useState<CommercialDirectoryEntry[]>([]);
+  const [commercialChoice, setCommercialChoice] = useState<string>("SELF");
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -129,6 +139,21 @@ export default function CommercialHome() {
     loadProducts();
   }, [loadProducts]);
 
+  const loadCommercials = useCallback(async () => {
+    if (!formOpen) return;
+    try {
+      const res = await listCommercialDirectory();
+      setCommercials(res.items || []);
+    } catch {
+      // pas bloquant — le sélecteur reste sur "Moi-même" par défaut
+      setCommercials([]);
+    }
+  }, [formOpen]);
+
+  useEffect(() => {
+    loadCommercials();
+  }, [loadCommercials]);
+
   const filteredProducts = useMemo(() => {
     const ql = productQuery.trim().toLowerCase();
     if (!ql) return products;
@@ -164,6 +189,7 @@ export default function CommercialHome() {
     setCity("");
     setCart([]);
     setProductQuery("");
+    setCommercialChoice("SELF");
     setFormError(null);
   }
 
@@ -184,6 +210,16 @@ export default function CommercialHome() {
       return;
     }
 
+    // ✅ "SELF" (défaut) -> commercial_id omis, le serveur m'attribue la
+    // vente automatiquement ; "" -> DUUMINI/vente directe (commercial_id:
+    // null, aucune commission) ; sinon -> id du collègue choisi.
+    const commercialIdToSend =
+      commercialChoice === "SELF"
+        ? undefined
+        : commercialChoice
+          ? Number(commercialChoice)
+          : null;
+
     setSubmitting(true);
     try {
       const created = await createAdminOrder({
@@ -201,6 +237,7 @@ export default function CommercialHome() {
           name: l.product.name,
           price: Number(l.product.price),
         })),
+        commercial_id: commercialIdToSend,
       });
 
       // ✅ On va rechercher la commande fraîchement créée via GET
@@ -400,6 +437,31 @@ export default function CommercialHome() {
                 onChange={(e) => setCity(e.target.value)}
                 required
               />
+            </div>
+          </div>
+
+          <div className="row g-2 mb-3">
+            <div className="col-12 col-md-6">
+              <label className="form-label small">Commercial responsable de la vente</label>
+              <select
+                className="form-select form-select-sm"
+                value={commercialChoice}
+                onChange={(e) => setCommercialChoice(e.target.value)}
+              >
+                <option value="SELF">Moi-même</option>
+                <option value="">DUUMINI / vente directe (aucune commission)</option>
+                {commercials
+                  .filter((c) => c.user_id !== profile?.user_id)
+                  .map((c) => (
+                    <option key={c.user_id} value={c.user_id}>
+                      {`${c.first_name || ""} ${c.last_name || ""}`.trim() || `#${c.user_id}`}
+                    </option>
+                  ))}
+              </select>
+              <div className="small text-muted mt-1">
+                À changer uniquement si cette vente doit être créditée à un
+                collègue, ou si c'est une vente directe de DUUMINI.
+              </div>
             </div>
           </div>
 

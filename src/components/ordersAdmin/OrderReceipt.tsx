@@ -450,6 +450,16 @@ export default function OrderReceipt(props: {
       ? customerTradeName
       : fullName;
 
+  // ✅ "Vendu par" : nom du commercial rattaché à la vente
+  // (order.commercial_seller_name, résolu côté serveur à partir de
+  // order.commercial_id — voir GET /api/orders/:id), sinon DUUMINI
+  // (vente directe, sans commercial). Jamais le nom tapé dans le champ
+  // client — à ne pas confondre avec "Nom commercial"/customerTradeName
+  // ci-dessus, qui est l'identité commerciale du client VENDEUR.
+  const soldBy = hasValue((order as AnyObj)?.commercial_seller_name)
+    ? String((order as AnyObj).commercial_seller_name)
+    : "DUUMINI";
+
   const receiptInfoRows = [
     { label: "Client", value: fullName },
     ...(isVendorInvoice
@@ -467,6 +477,7 @@ export default function OrderReceipt(props: {
       : []),
     { label: "Rôle client", value: orderCustomerRole },
     { label: "Livraison", value: fBadge.text },
+    { label: "Vendu par", value: soldBy },
   ];
 
   return (

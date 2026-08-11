@@ -41,86 +41,10 @@ import {
   waHref,
 } from "../../components/ordersAdmin/orderUtils";
 
-const DIVINE_START_DATE = new Date("2026-04-25T00:00:00");
-const DIVINE_COMMISSION_RATE = 0.1;
-const DIVINE_LOAD_LIMIT = 1000;
-
-const DIVINE_MATCH_TERMS = ["divine"];
-
-function formatMad(value: number) {
-  return new Intl.NumberFormat("fr-MA", {
-    style: "currency",
-    currency: "MAD",
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
-}
-
 function normalizeTxt(value: any) {
   return String(value || "")
     .trim()
     .toLowerCase();
-}
-
-function getOrderDate(o: AnyObj) {
-  const raw =
-    o.created_at ||
-    o.createdAt ||
-    o.order_date ||
-    o.ordered_at ||
-    o.date ||
-    null;
-
-  const d = raw ? new Date(raw) : null;
-  return d && !Number.isNaN(d.getTime()) ? d : null;
-}
-
-function orderLinkedToDivine(o: AnyObj) {
-  const contact = o.contact || {};
-  const user = o.user || {};
-  const customer = o.customer || {};
-  const affiliate = o.affiliate || {};
-  const payment = o.payment || {};
-
-  const txt = [
-    o.id,
-    o.code,
-    o.order_number,
-    o.reference,
-    o.receipt_number,
-    o.affiliate_code,
-    o.affiliate_name,
-    o.affiliate_id,
-    o.notes,
-    o.note,
-    contact.name,
-    contact.first_name,
-    contact.last_name,
-    contact.phone,
-    user.first_name,
-    user.last_name,
-    user.phone,
-    customer.name,
-    customer.first_name,
-    customer.last_name,
-    customer.phone,
-    affiliate.name,
-    affiliate.code,
-    affiliate.affiliate_code,
-    payment.note,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return DIVINE_MATCH_TERMS.some((term) =>
-    txt.includes(String(term).toLowerCase()),
-  );
-}
-
-function isDivineOrderFromDate(o: AnyObj) {
-  const d = getOrderDate(o);
-  if (!d || d < DIVINE_START_DATE) return false;
-  return orderLinkedToDivine(o);
 }
 
 export default function OrdersAdminPage() {
@@ -129,7 +53,6 @@ export default function OrdersAdminPage() {
 
   const [items, setItems] = useState<Order[]>([]);
   const [vendorAll, setVendorAll] = useState<Order[]>([]);
-  const [divineItems, setDivineItems] = useState<Order[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +65,6 @@ export default function OrdersAdminPage() {
   const [qDebounced, setQDebounced] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | OrderStatus>("ALL");
   const [payFilter, setPayFilter] = useState<"ALL" | PayStatus>("ALL");
-  const [divineOnly, setDivineOnly] = useState(false);
 
   const [editId, setEditId] = useState<number | null>(null);
   const [editStatus, setEditStatus] = useState<OrderStatus>("OPEN");
@@ -213,7 +135,6 @@ export default function OrdersAdminPage() {
         setVendorAll(mine);
         setTotal(mine.length);
         setItems([]);
-        setDivineItems([]);
         setError(null);
         return;
       }
@@ -229,20 +150,6 @@ export default function OrdersAdminPage() {
       setItems(res.items || []);
       setTotal(Number(res.pageInfo?.total || 0));
       setVendorAll([]);
-
-      const divineRes = await listOrders({
-        page: 1,
-        pageSize: DIVINE_LOAD_LIMIT,
-        ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
-        ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
-        ...(qDebounced ? { q: qDebounced } : {}),
-      } as any);
-
-      const divineAll = ((divineRes.items || []) as Order[]).filter((o) =>
-        isDivineOrderFromDate(o as AnyObj),
-      );
-
-      setDivineItems(divineAll);
       setError(null);
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -284,9 +191,8 @@ export default function OrdersAdminPage() {
 
   const dataset = useMemo(() => {
     if (isVendor) return vendorAll;
-    if (divineOnly) return divineItems;
     return items;
-  }, [isVendor, vendorAll, divineOnly, divineItems, items]);
+  }, [isVendor, vendorAll, items]);
 
   const searched = useMemo(() => {
     return dataset.filter((o) => {
@@ -309,17 +215,17 @@ export default function OrdersAdminPage() {
   }, [dataset, q]);
 
   const displayed = useMemo(() => {
-    if (!isVendor && !divineOnly) return searched;
+    if (!isVendor) return searched;
 
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
 
     return searched.slice(start, end);
-  }, [searched, isVendor, divineOnly, page, pageSize]);
+  }, [searched, isVendor, page, pageSize]);
 
   const effectiveTotal = useMemo(
-    () => (isVendor || divineOnly ? searched.length : total),
-    [isVendor, divineOnly, searched.length, total],
+    () => (isVendor ? searched.length : total),
+    [isVendor, searched.length, total],
   );
 
   const effectivePages = useMemo(
@@ -350,25 +256,6 @@ export default function OrdersAdminPage() {
 
     return { caNet, caDelivery, caDuumini };
   }, [displayed, items, isVendor]);
-
-  const divineStats = useMemo(() => {
-    let ordersCount = 0;
-    let salesAmount = 0;
-    let commission = 0;
-
-    divineItems.forEach((o) => {
-      const st = String((o as AnyObj)?.status || "").toUpperCase();
-      if (st === "CANCELLED") return;
-
-      const { itemsAmount } = computeOrderAmounts(o as AnyObj);
-
-      ordersCount += 1;
-      salesAmount += itemsAmount;
-      commission += itemsAmount * DIVINE_COMMISSION_RATE;
-    });
-
-    return { ordersCount, salesAmount, commission };
-  }, [divineItems]);
 
   async function onEdit(id: number) {
     try {
@@ -615,51 +502,6 @@ export default function OrdersAdminPage() {
         caDuumini={globalStats.caDuumini}
       />
 
-      {!isVendor && (
-        <div
-          className="card mb-3 border-0 divine-card"
-          style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
-        >
-          <div className="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
-            <div>
-              <div className="fw-bold">Suivi Divine</div>
-              <div className="small text-muted">
-                Commandes liées à Divine depuis le samedi 25/04/2026 —
-                commission 10%
-              </div>
-            </div>
-
-            <div className="d-flex flex-wrap gap-2 align-items-center">
-              <div className="divine-kpi">
-                <span>Commandes</span>
-                <strong>{divineStats.ordersCount}</strong>
-              </div>
-
-              <div className="divine-kpi">
-                <span>Ventes</span>
-                <strong>{formatMad(divineStats.salesAmount)}</strong>
-              </div>
-
-              <div className="divine-kpi divine-commission">
-                <span>Commission Divine</span>
-                <strong>{formatMad(divineStats.commission)}</strong>
-              </div>
-
-              <button
-                type="button"
-                className={`btn ${divineOnly ? "btn-dark" : "btn-outline-dark"}`}
-                onClick={() => {
-                  setPage(1);
-                  setDivineOnly((v) => !v);
-                }}
-              >
-                {divineOnly ? "Voir toutes les commandes" : "Filtrer Divine"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <OrdersFiltersBar
         q={q}
         setQ={(v) => {
@@ -683,7 +525,6 @@ export default function OrdersAdminPage() {
         total={effectiveTotal}
         onResetPage={() => {
           setPage(1);
-          setDivineOnly(false);
         }}
       />
 
@@ -791,40 +632,6 @@ export default function OrdersAdminPage() {
         />
       )}
 
-      <style>{`
-        .divine-card{
-          background: linear-gradient(135deg, #fff7d6 0%, #ffffff 70%);
-        }
-
-        .divine-kpi{
-          min-width: 125px;
-          border: 1px solid rgba(0,0,0,.08);
-          border-radius: var(--duu-radius-md);
-          padding: .55rem .75rem;
-          background: #fff;
-        }
-
-        .divine-kpi span{
-          display: block;
-          font-size: .75rem;
-          color: #6c757d;
-        }
-
-        .divine-kpi strong{
-          display: block;
-          font-size: .95rem;
-          line-height: 1.2;
-        }
-
-        .divine-commission{
-          background: #111;
-          color: var(--duu-yellow);
-        }
-
-        .divine-commission span{
-          color: rgba(255,255,255,.72);
-        }
-      `}</style>
     </div>
   );
 }

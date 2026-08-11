@@ -428,6 +428,17 @@ export function buildAdminWhatsappMessage(order: AnyObj) {
 
   blocs.push(`Téléphone : ${phone || "—"}`);
   blocs.push("");
+  // ✅ Nom du commercial rattaché (order.commercial_seller_name, résolu
+  // côté serveur — voir GET /api/orders/:id), sinon DUUMINI (vente
+  // directe) — même logique que la ligne "Vendu par" du reçu imprimé/
+  // partagé (OrderReceipt.tsx), pour que les deux formats concordent.
+  const soldBy =
+    typeof order.commercial_seller_name === "string" &&
+    order.commercial_seller_name.trim()
+      ? order.commercial_seller_name.trim()
+      : "DUUMINI";
+  blocs.push(`Vendu par : ${soldBy}`);
+  blocs.push("");
   blocs.push("Nous restons disponibles pour toute question.");
   blocs.push("Merci pour votre confiance.");
 
