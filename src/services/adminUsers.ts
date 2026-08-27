@@ -148,3 +148,29 @@ export async function listAllAdminUsers(
 
   return Array.from(map.values());
 }
+/** Client léger (id + coordonnées) — GET /api/user/search-clients,
+ * accessible aux COMMERCIAL (pas seulement ADMIN, contrairement à
+ * listAdminUsers/listAllAdminUsers ci-dessus). Sert à retrouver un
+ * client déjà existant avant de déclarer une vente, pour ne jamais
+ * créer de doublon de compte. */
+export type ClientSearchResult = {
+  id: number;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  role: string | null;
+  city: string | null;
+  commune: string | null;
+  district: string | null;
+};
+
+/** q vide (ou omis) -> liste complète des clients (jusqu'à 2000), comme
+ * listAllAdminUsers({pageSize:2000}) côté admin — à charger une fois puis
+ * filtrer localement (voir CommercialHome.tsx). q renseigné -> filtre déjà
+ * appliqué côté serveur (nom/téléphone), pour un usage ciblé éventuel. */
+export async function searchClients(q: string = "") {
+  const query = q.trim();
+  return api.get<{ items: ClientSearchResult[] }>(
+    `/api/user/search-clients${query ? `?q=${encodeURIComponent(query)}` : ""}`
+  );
+}

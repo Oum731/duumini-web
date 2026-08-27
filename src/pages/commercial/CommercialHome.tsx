@@ -6,14 +6,16 @@
 //
 // ✅ Formulaire volontairement léger (pas le AdminOrderForClientModal
 // complet, 1700+ lignes, qui dépend de GET /api/admin/users réservé aux
-// ADMIN) : un commercial saisit directement les infos client + produits,
-// sans recherche de compte existant.
+// ADMIN) : liste complète des clients (comme le catalogue produits)
+// via GET /api/user/search-clients (accessible aux commerciaux), filtrée
+// localement, sinon saisie manuelle d'un nouveau client.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Seo } from "../../components/Seo";
 import { LoadingState } from "../../components/ui/Spinner";
 import { moneyMAD } from "../../utils/money";
 import { imgUrl } from "../../utils/media";
 import { listProducts, type Product } from "../../services/products";
+import { searchClients, type ClientSearchResult } from "../../services/adminUsers";
 import { createAdminOrder, getOrder } from "../../services/orders";
 import { waHref } from "../../components/ordersAdmin/orderUtils";
 import OrderReceipt from "../../components/ordersAdmin/OrderReceipt";
@@ -39,6 +41,20 @@ export default function CommercialHome() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
+
+  // ✅ Liste complète des clients (comme le catalogue produits ci-dessous)
+  // chargée une fois à l'ouverture du formulaire, puis filtrée localement
+  // au fil de la frappe — même principe que loadClients côté admin
+  // (AdminOrderForClientModal, listAllAdminUsers({pageSize:2000})). Choisir
+  // un client existant évite de créer un compte en double pour quelqu'un
+  // qui a déjà commandé. selectedClientId, transmis en customer_id, fait
+  // reprendre le MÊME compte côté serveur (POST /api/orders/admin, branche
+  // hasUser) au lieu du rattachement par téléphone (findOrCreateCustomerAccount).
+  const [clientQuery, setClientQuery] = useState("");
+  const [allClients, setAllClients] = useState<ClientSearchResult[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsErr, setClientsErr] = useState<string | null>(null);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
 
   // ✅ Catalogue complet chargé une fois à l'ouverture du formulaire, puis
   // filtré côté client au fil de la frappe — même principe que
@@ -154,11 +170,66 @@ export default function CommercialHome() {
     loadCommercials();
   }, [loadCommercials]);
 
+  const loadClients = useCallback(async () => {
+    if (!formOpen) return;
+    setClientsLoading(true);
+    setClientsErr(null);
+    try {
+      const res = await searchClients("");
+      setAllClients(res.items || []);
+    } catch (e: unknown) {
+      setClientsErr(e instanceof Error ? e.message : "Impossible de charger les clients.");
+    } finally {
+      setClientsLoading(false);
+    }
+  }, [formOpen]);
+
+  useEffect(() => {
+    loadClients();
+  }, [loadClients]);
+
+  function selectClient(c: ClientSearchResult) {
+    setSelectedClientId(c.id);
+    setFirstName(c.first_name || "");
+    setLastName(c.last_name || "");
+    setPhone(c.phone || "");
+    setCity(c.city || "");
+    setClientQuery("");
+  }
+
+  function clearSelectedClient() {
+    setSelectedClientId(null);
+    setClientQuery("");
+    setFirstName("");
+    setLastName("");
+    setPhone("");
+    setCity("");
+  }
+
   const filteredProducts = useMemo(() => {
     const ql = productQuery.trim().toLowerCase();
     if (!ql) return products;
     return products.filter((p) => String(p.name || "").toLowerCase().includes(ql));
   }, [products, productQuery]);
+
+  // ✅ Filtre local (nom/téléphone/ville) sur la liste complète déjà
+  // chargée — même principe que filteredClients côté admin
+  // (AdminOrderForClientModal), aucun aller-retour réseau à la frappe.
+  const filteredClients = useMemo(() => {
+    const ql = clientQuery.trim().toLowerCase();
+    if (!ql) return allClients;
+    return allClients.filter((c) => {
+      const label = `${c.first_name || ""} ${c.last_name || ""}`.trim().toLowerCase();
+      const phone = String(c.phone || "").toLowerCase();
+      const city = String(c.city || "").toLowerCase();
+      return (
+        label.includes(ql) ||
+        phone.includes(ql) ||
+        city.includes(ql) ||
+        String(c.id).includes(ql)
+      );
+    });
+  }, [allClients, clientQuery]);
 
   function addToCart(p: Product) {
     setCart((prev) => {
@@ -190,6 +261,8 @@ export default function CommercialHome() {
     setCart([]);
     setProductQuery("");
     setCommercialChoice("SELF");
+    setSelectedClientId(null);
+    setClientQuery("");
     setFormError(null);
   }
 
@@ -223,6 +296,11 @@ export default function CommercialHome() {
     setSubmitting(true);
     try {
       const created = await createAdminOrder({
+        // ✅ Client déjà sélectionné dans la recherche -> même compte
+        // réutilisé côté serveur (POST /api/orders/admin, branche
+        // hasUser), sinon rattachement/création automatique par
+        // téléphone comme avant (findOrCreateCustomerAccount).
+        customer_id: selectedClientId ?? undefined,
         customer: {
           first_name: firstName.trim() || undefined,
           last_name: lastName.trim() || undefined,
@@ -403,13 +481,73 @@ export default function CommercialHome() {
 
           {formError && <div className="alert alert-danger py-2">{formError}</div>}
 
+          <label className="form-label small">Client (liste complète, ou nouveau client)</label>
+          {selectedClientId != null ? (
+            <div className="d-flex align-items-center gap-2 p-2 border rounded mb-3">
+              <div className="flex-grow-1 small">
+                <div className="fw-semibold">{`${firstName} ${lastName}`.trim() || "Client"}</div>
+                <div className="text-muted">{phone}{city ? ` — ${city}` : ""}</div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={clearSelectedClient}
+              >
+                Changer
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                className="form-control form-control-sm mb-2"
+                placeholder="Filtrer par nom, téléphone ou ville…"
+                value={clientQuery}
+                onChange={(e) => setClientQuery(e.target.value)}
+              />
+              {clientsErr && <div className="small text-danger mb-2">{clientsErr}</div>}
+              {clientsLoading ? (
+                <div className="small text-muted mb-3">Chargement des clients…</div>
+              ) : (
+                <div
+                  className="mb-2 border rounded"
+                  style={{ maxHeight: 220, overflowY: "auto" }}
+                >
+                  {filteredClients.length === 0 ? (
+                    <div className="small text-muted p-2">Aucun client trouvé.</div>
+                  ) : (
+                    filteredClients.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="list-group-item list-group-item-action d-flex justify-content-between align-items-center border-0 border-bottom w-100 text-start"
+                        onClick={() => selectClient(c)}
+                      >
+                        <span>{`${c.first_name || ""} ${c.last_name || ""}`.trim() || c.phone}</span>
+                        <span className="text-muted small">
+                          {c.phone}
+                          {c.city ? ` — ${c.city}` : ""}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              <div className="small text-muted mb-3">
+                Client absent de la liste ? Saisissez directement les infos ci-dessous pour un nouveau client.
+              </div>
+            </>
+          )}
+
           <div className="row g-2 mb-3">
             <div className="col-6 col-md-3">
               <label className="form-label small">Prénom</label>
               <input
                 className="form-control form-control-sm"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                onChange={(e) => {
+                  setSelectedClientId(null);
+                  setFirstName(e.target.value);
+                }}
               />
             </div>
             <div className="col-6 col-md-3">
@@ -417,7 +555,10 @@ export default function CommercialHome() {
               <input
                 className="form-control form-control-sm"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                onChange={(e) => {
+                  setSelectedClientId(null);
+                  setLastName(e.target.value);
+                }}
               />
             </div>
             <div className="col-6 col-md-3">
@@ -425,7 +566,10 @@ export default function CommercialHome() {
               <input
                 className="form-control form-control-sm"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setSelectedClientId(null);
+                  setPhone(e.target.value);
+                }}
                 required
               />
             </div>
@@ -434,7 +578,10 @@ export default function CommercialHome() {
               <input
                 className="form-control form-control-sm"
                 value={city}
-                onChange={(e) => setCity(e.target.value)}
+                onChange={(e) => {
+                  setSelectedClientId(null);
+                  setCity(e.target.value);
+                }}
                 required
               />
             </div>
