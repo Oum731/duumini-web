@@ -3,8 +3,9 @@ import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Mail, Phone, MessageSquare, MapPin } from "lucide-react";
 import { Seo } from "../components/Seo";
+import { WHATSAPP_NUMBER } from "../lib/brand";
 
-const RAW_WHATSAPP = "+21262367784";
+const RAW_WHATSAPP = `+${WHATSAPP_NUMBER}`;
 const EMAIL = "duuminima@gmail.com";
 const MAP_Q = "33.555706,-7.704473";
 const MAP_URL = `https://maps.google.com/?q=${MAP_Q}`;

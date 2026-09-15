@@ -19,6 +19,8 @@ import {
   Menu as MenuIcon,
   X as CloseIcon,
   ChevronDown,
+  WarehouseIcon,
+  AlertTriangle,
 } from "lucide-react";
 import { me } from "../../services/auth";
 import { getMyAffiliate } from "../../services/affiliates";
@@ -139,6 +141,7 @@ export default function AdminTopNav({
         label: "Finances",
         items: [
           { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
+          { to: "/admin/debts", label: "Créances clients", icon: AlertTriangle },
           ...(isAffiliate
             ? [{ to: "/affiliate", label: "Mon espace affilié", icon: BadgePercent }]
             : []),
@@ -162,6 +165,7 @@ export default function AdminTopNav({
           { to: "/admin/commerciaux", label: "Commerciaux", icon: Briefcase },
           { to: "/admin/shops", label: "Boutiques", icon: Store },
           { to: "/admin/users", label: "Utilisateurs", icon: Users },
+          { to: "/admin/warehouses", label: "Entrepôts & Stock", icon: WarehouseIcon },
         ],
       });
       g.push({

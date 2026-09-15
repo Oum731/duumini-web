@@ -1,6 +1,7 @@
 // src/pages/About.tsx
 import { Link } from "react-router-dom";
 import { Seo } from "../components/Seo";
+import { WHATSAPP_DISPLAY, WHATSAPP_LINK } from "../lib/brand";
 
 const MAP_Q = "33.555706,-7.704473";
 const MAP_URL = `https://maps.google.com/?q=${MAP_Q}`;
@@ -85,7 +86,7 @@ export default function AboutPage() {
               <ul className="text-muted">
                 <li><strong>Statut actuel</strong> : projet en phase test (société non encore constituée)</li>
                 <li><strong>Responsable du projet (personne physique)</strong> : [Nom Prénom]</li>
-                <li><strong>Téléphone</strong> : +212 623 677 884</li>
+                <li><strong>Téléphone</strong> : {WHATSAPP_DISPLAY}</li>
                 <li><strong>Email</strong> : <a href="mailto:admin@duumini.com">admin@duumini.com</a></li>
                 <li><strong>Adresse de contact</strong> : Casablanca — Riad Oulfa, non loin du terminus 20 (<a href={MAP_URL} target="_blank" rel="noopener noreferrer">voir la carte</a>)</li>
                 <li className="mb-0">
@@ -134,7 +135,7 @@ export default function AboutPage() {
       <div className="alert alert-secondary mt-4 mb-0">
         <small className="text-muted">
           Besoin d’aide ? Écris-nous à <a href="mailto:admin@duumini.com">admin@duumini.com</a> ou WhatsApp
-          <a className="ms-1" href="https://wa.me/212623677884" target="_blank" rel="noopener noreferrer">+212 623 677 884</a>.
+          <a className="ms-1" href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">{WHATSAPP_DISPLAY}</a>.
         </small>
       </div>
     </section>

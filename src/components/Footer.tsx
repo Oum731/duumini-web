@@ -1,7 +1,7 @@
 // src/components/Footer.tsx
 import React, { useEffect, useState } from "react";
 import { Link, type LinkProps } from "react-router-dom";
-import { DUUMINI_SLOGAN } from "../lib/brand";
+import { DUUMINI_SLOGAN, WHATSAPP_DISPLAY, WHATSAPP_LINK } from "../lib/brand";
 import { getSiteStatus, type SiteStatus } from "../services/products";
 import { useConsent } from "../context/ConsentContext";
 
@@ -91,7 +91,7 @@ export default function Footer() {
 
             <div className="d-flex gap-2">
               <a
-                href="https://wa.me/212623677884"
+                href={WHATSAPP_LINK}
                 className="btn btn-duu btn-sm"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -237,11 +237,11 @@ export default function Footer() {
                 <span className="text-muted d-block small">WhatsApp</span>
                 <a
                   className="link-dark text-decoration-none"
-                  href="https://wa.me/212623677884"
+                  href={WHATSAPP_LINK}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  +212 6 23 67 78 84
+                  {WHATSAPP_DISPLAY}
                 </a>
               </li>
               <li className="py-1">
