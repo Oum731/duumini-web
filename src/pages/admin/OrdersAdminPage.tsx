@@ -21,6 +21,7 @@ import OrdersTable from "../../components/ordersAdmin/OrdersTable";
 import TopCustomersTab from "../../components/ordersAdmin/TopCustomersTab";
 import EditStatusModal from "../../components/ordersAdmin/EditStatusModal";
 import OrderViewModal from "../../components/ordersAdmin/OrderViewModal";
+import OrderEditModal from "../../components/ordersAdmin/OrderEditModal";
 import PosSaleModal from "../../components/ordersAdmin/PosSaleModal";
 import AdminOrderForClientModal from "../../components/ordersAdmin/AdminOrderForClientModal";
 
@@ -76,6 +77,7 @@ export default function OrdersAdminPage() {
   const [detail, setDetail] = useState<AnyObj | null>(null);
   const [viewStatus, setViewStatus] = useState<OrderStatus>("OPEN");
   const [viewSaving, setViewSaving] = useState(false);
+  const [fullEditOpen, setFullEditOpen] = useState(false);
 
   const [payEditMode, setPayEditMode] = useState<"SET" | "ADD">("ADD");
   const [payInput, setPayInput] = useState<number>(0);
@@ -613,8 +615,21 @@ export default function OrdersAdminPage() {
         paySaving={paySaving}
         onSavePayment={onSavePayment}
         onCancel={onCancel}
+        onEditOrder={() => setFullEditOpen(true)}
         dateTime={dateTime}
       />
+
+      {fullEditOpen && viewId !== null && detail ? (
+        <OrderEditModal
+          orderId={viewId}
+          detail={detail}
+          onClose={() => setFullEditOpen(false)}
+          onSaved={() => {
+            refresh();
+            onView(viewId);
+          }}
+        />
+      ) : null}
 
       {!isVendor && (
         <PosSaleModal

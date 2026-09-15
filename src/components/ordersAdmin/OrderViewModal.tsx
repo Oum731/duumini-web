@@ -79,6 +79,7 @@ export default function OrderViewModal(props: {
   onSavePayment: () => void;
 
   onCancel: (id: number) => void;
+  onEditOrder?: (id: number) => void;
 
   dateTime: (iso?: string) => string;
 }) {
@@ -106,6 +107,7 @@ export default function OrderViewModal(props: {
     paySaving,
     onSavePayment,
     onCancel,
+    onEditOrder,
     dateTime,
   } = props;
 
@@ -116,6 +118,15 @@ export default function OrderViewModal(props: {
   const canModifyFromFront = FRONT_ALLOWED_PHONES
     .map(normalizePhone)
     .includes(currentUserPhone);
+
+  // ✅ Édition complète (client/produits/montant) : ouverte à ADMIN et aux
+  // comptes COMMERCIAL — cohérent avec la création de commande et la
+  // modification de remise, plus large que canModifyFromFront (liste dédiée
+  // au contrôle financier historique, pas au rôle).
+  const canEditOrder =
+    String(currentUser?.role || "").toUpperCase() === "ADMIN" ||
+    String(currentUser?.role || "").toUpperCase() === "COMMERCIAL" ||
+    !!currentUser?.has_commercial_profile;
 
   if (!open || viewId == null) return null;
 
@@ -738,7 +749,15 @@ export default function OrderViewModal(props: {
 
                     {(detail as AnyObj)?.status !== "CANCELLED" &&
                     (detail as AnyObj)?.status !== "DONE" ? (
-                      <div className="d-flex justify-content-end mt-3">
+                      <div className="d-flex justify-content-end gap-2 mt-3">
+                        {canEditOrder && onEditOrder ? (
+                          <button
+                            className="btn btn-outline-dark"
+                            onClick={() => onEditOrder(viewId)}
+                          >
+                            Modifier la commande
+                          </button>
+                        ) : null}
                         <button
                           className="btn btn-outline-danger"
                           onClick={() => {
