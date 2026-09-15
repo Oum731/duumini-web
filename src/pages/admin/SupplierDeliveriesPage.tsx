@@ -11,7 +11,7 @@ import {
   type SupplierDelivery,
 } from "../../services/supplierDeliveries";
 import { listWarehouses, type Warehouse } from "../../services/warehouses";
-import { listSuppliers } from "../../services/shops";
+import { listShopsAdmin } from "../../services/shops";
 import { listProducts, type Product } from "../../services/products";
 
 type DraftLine = {
@@ -30,10 +30,8 @@ export default function SupplierDeliveriesPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
 
-  const [supplierQuery, setSupplierQuery] = useState("");
-  const [supplierResults, setSupplierResults] = useState<{ id: number; name: string }[]>([]);
+  const [shops, setShops] = useState<{ id: number; name: string }[]>([]);
   const [supplierId, setSupplierId] = useState<number | null>(null);
-  const [supplierName, setSupplierName] = useState("");
 
   const [reference, setReference] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([{ key: 1, product: null, qty: "", unit_cost: "" }]);
@@ -62,17 +60,14 @@ export default function SupplierDeliveriesPage() {
         if (res.items.length) setWarehouseId(res.items[0].id);
       })
       .catch(() => setWarehouses([]));
+    // ✅ Toute boutique existante (vendeur, fournisseur, restaurant...) peut
+    // être la source d'une livraison — pas seulement celles typées
+    // "fournisseur", beaucoup de boutiques actuelles jouent ce rôle sans
+    // avoir ce type précis en base.
+    listShopsAdmin({ pageSize: 100 })
+      .then((res: any) => setShops((res.items || []).map((s: any) => ({ id: s.id, name: s.name }))))
+      .catch(() => setShops([]));
   }, []);
-
-  async function searchSuppliers() {
-    if (!supplierQuery.trim()) return;
-    try {
-      const res = await listSuppliers({ q: supplierQuery.trim(), pageSize: 8 });
-      setSupplierResults((res.items || []).map((s: any) => ({ id: s.id, name: s.name })));
-    } catch {
-      setSupplierResults([]);
-    }
-  }
 
   async function searchProducts(lineKey: number, q: string) {
     setProductQuery((s) => ({ ...s, [lineKey]: q }));
@@ -130,8 +125,6 @@ export default function SupplierDeliveriesPage() {
       setReference("");
       setLines([{ key: 1, product: null, qty: "", unit_cost: "" }]);
       setSupplierId(null);
-      setSupplierName("");
-      setSupplierQuery("");
       await refresh();
     } catch (e: any) {
       setError(supplierDeliveryErrorMessage(e, "Impossible d'enregistrer la livraison."));
@@ -174,47 +167,18 @@ export default function SupplierDeliveriesPage() {
               </div>
               <div className="col-md-4">
                 <label className="form-label small">Fournisseur</label>
-                {supplierId ? (
-                  <div className="form-control d-flex justify-content-between align-items-center">
-                    <span>{supplierName}</span>
-                    <button
-                      className="btn btn-sm btn-link p-0"
-                      onClick={() => {
-                        setSupplierId(null);
-                        setSupplierName("");
-                      }}
-                    >
-                      Changer
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <input
-                      className="form-control"
-                      placeholder="Rechercher une boutique fournisseur..."
-                      value={supplierQuery}
-                      onChange={(e) => setSupplierQuery(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && searchSuppliers()}
-                    />
-                    {supplierResults.length > 0 ? (
-                      <div className="list-group mt-1">
-                        {supplierResults.map((s) => (
-                          <button
-                            key={s.id}
-                            className="list-group-item list-group-item-action"
-                            onClick={() => {
-                              setSupplierId(s.id);
-                              setSupplierName(s.name);
-                              setSupplierResults([]);
-                            }}
-                          >
-                            {s.name}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </>
-                )}
+                <select
+                  className="form-select"
+                  value={supplierId ?? ""}
+                  onChange={(e) => setSupplierId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">-- Choisir une boutique --</option>
+                  {shops.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="col-md-4">
                 <label className="form-label small">Référence (optionnel)</label>
