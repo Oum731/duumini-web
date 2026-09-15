@@ -621,6 +621,24 @@ export async function cancelOrder(id: number) {
   return api.post<{ ok: true; status: "CANCELLED" }>(`/api/orders/${id}/cancel`, {});
 }
 
+export type EditOrderPayload = {
+  contact?: {
+    first_name?: string;
+    last_name?: string;
+    phone?: string;
+    city?: string;
+    address_line?: string;
+  };
+  items?: Array<{ product_id: number; variant_id?: number | null; qty: number }>;
+};
+
+export async function editOrder(id: number, payload: EditOrderPayload) {
+  return api.put<{ ok: true; items_changed: boolean; total: number }>(
+    `/api/orders/${id}/edit`,
+    payload
+  );
+}
+
 export async function createOrder(payload: CreateOrderPayload) {
   return api.post<CreateOrderResult>(
     "/api/orders",

@@ -171,6 +171,8 @@ export default function AdminTopNav({
             flex-shrink: 0;
             position: sticky;
             top: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
           }
         }
         .admin-sidebar-card{
