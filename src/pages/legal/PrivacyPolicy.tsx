@@ -1,5 +1,6 @@
 // src/pages/legal/PrivacyPolicy.tsx
 import { Seo } from "../../components/Seo";
+import { WHATSAPP_DISPLAY, WHATSAPP_LINK } from "../../lib/brand";
 
 export default function PrivacyPolicy() {
   return (
@@ -40,7 +41,7 @@ export default function PrivacyPolicy() {
         <Card title="2. Responsable de traitement">
           <ul className="text-muted mb-0">
             <li><strong>Responsable</strong> : DUUMINI</li>
-            <li><strong>Contact</strong> : <a href="mailto:admin@duumini.com">admin@duumini.com</a> / +212 623 677 884</li>
+            <li><strong>Contact</strong> : <a href="mailto:admin@duumini.com">admin@duumini.com</a> / {WHATSAPP_DISPLAY}</li>
           </ul>
         </Card>
 
@@ -160,12 +161,12 @@ function ContactFooter() {
           <h2 className="h6 mb-1" style={{ color: "var(--duu-black)" }}>Vos droits & contact</h2>
           <p className="text-muted mb-0">
             <a href="mailto:admin@duumini.com">admin@duumini.com</a> • WhatsApp :{" "}
-            <a href="https://wa.me/212623677884" target="_blank" rel="noopener noreferrer">+212 623 677 884</a>
+            <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">{WHATSAPP_DISPLAY}</a>
           </p>
         </div>
         <div className="d-flex gap-2">
           <a className="btn btn-duu btn-sm" href="mailto:admin@duumini.com">Écrire un e-mail</a>
-          <a className="btn btn-outline-dark btn-sm" href="https://wa.me/212623677884" target="_blank" rel="noopener noreferrer">Ouvrir WhatsApp</a>
+          <a className="btn btn-outline-dark btn-sm" href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">Ouvrir WhatsApp</a>
         </div>
       </div>
     </div>

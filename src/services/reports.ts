@@ -301,3 +301,47 @@ export async function openSalesReportPdfInNewTab(id: number): Promise<void> {
     window.URL.revokeObjectURL(url);
   }, 10000);
 }
+
+/* =========================
+ * Créances clients ("qui doit combien")
+ * ======================= */
+export type ClientDebtRow = {
+  client_user_id: number | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  orders_count: number;
+  total_amount: number;
+  paid_amount: number;
+  amount_due: number;
+  last_order_at: string;
+};
+
+export type ClientDebtsResponse = {
+  items: ClientDebtRow[];
+  total_amount_due: number;
+};
+
+export async function listClientDebts(): Promise<ClientDebtsResponse> {
+  const r = await api.get("/api/reports/debts");
+  return unwrap<ClientDebtsResponse>(r);
+}
+
+/* =========================
+ * Vue géographique des clients (zones)
+ * ======================= */
+export type ClientZoneRow = {
+  city: string;
+  orders_count: number;
+  clients_count: number;
+  total_amount: number;
+};
+
+export type ClientsByZoneResponse = {
+  items: ClientZoneRow[];
+};
+
+export async function listClientsByZone(): Promise<ClientsByZoneResponse> {
+  const r = await api.get("/api/reports/clients-by-zone");
+  return unwrap<ClientsByZoneResponse>(r);
+}

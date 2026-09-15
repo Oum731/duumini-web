@@ -13,6 +13,7 @@ import {
 import { LoadingState } from "../components/ui/Spinner";
 import { moneyMAD as mad } from "../utils/money";
 import { imgUrl } from "../utils/media";
+import { WHATSAPP_DISPLAY, WHATSAPP_NUMBER } from "../lib/brand";
 
 import OrderReceiptButton from "../components/orders/OrderReceiptButton";
 import OrderReceiptTicket from "../components/orders/OrderReceiptTicket";
@@ -409,7 +410,7 @@ function whatsappHref(opts: {
   status?: OrderStatus;
 }) {
   const text = encodeURIComponent(buildWhatsappText(opts));
-  return `https://wa.me/212623677884?text=${text}`;
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${text}`;
 }
 
 export default function OrdersHistoryPage() {
@@ -1042,7 +1043,7 @@ export default function OrdersHistoryPage() {
                       order={receiptOrder}
                       logoSrc="/logo.jpeg"
                       slogan="Marketplace & Livraison"
-                      hotlinePhone="+212 6 XX XX XX XX"
+                      hotlinePhone={WHATSAPP_DISPLAY}
                       publicWebBase={
                         typeof window !== "undefined"
                           ? window.location.origin

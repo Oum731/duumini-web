@@ -5,6 +5,8 @@ export type ExpenseStatus = "PAID" | "PENDING";
 export type Expense = {
   id: number;
   shop_id?: number | null;
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
   user_id?: number | null;
   category_id?: number | null;
   category_name: string;
@@ -61,6 +63,7 @@ export type ExpensesByCategoryItem = {
 
 export type SaveExpensePayload = {
   shop_id?: number | null;
+  warehouse_id?: number | null;
   category_id?: number | null;
   category_name?: string | null;
   label: string;
@@ -76,6 +79,8 @@ function normalizeExpense(item: any): Expense {
   return {
     id: Number(item?.id || 0),
     shop_id: item?.shop_id ?? null,
+    warehouse_id: item?.warehouse_id ?? null,
+    warehouse_name: item?.warehouse_name ?? null,
     user_id: item?.user_id ?? null,
     category_id: item?.category_id ?? null,
     category_name: item?.category_name || "",
@@ -171,6 +176,32 @@ export async function getExpensesByCategory(
           total: Number(item?.total || 0),
           count_items: Number(item?.count_items || 0),
           color: item?.color ?? null,
+        }))
+      : [],
+  };
+}
+
+export type ExpensesByWarehouseItem = {
+  warehouse_id: number | null;
+  warehouse_name: string | null;
+  total: number;
+  count_items: number;
+};
+
+export async function getExpensesByWarehouse(
+  params?: Record<string, any>
+): Promise<{ items: ExpensesByWarehouseItem[] }> {
+  const data = await api.get<{ items: ExpensesByWarehouseItem[] }>("/api/expenses/by-warehouse", {
+    params,
+  });
+
+  return {
+    items: Array.isArray(data?.items)
+      ? data.items.map((item) => ({
+          warehouse_id: item?.warehouse_id ?? null,
+          warehouse_name: item?.warehouse_name ?? null,
+          total: Number(item?.total || 0),
+          count_items: Number(item?.count_items || 0),
         }))
       : [],
   };

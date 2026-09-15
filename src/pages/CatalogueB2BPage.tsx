@@ -11,6 +11,7 @@ import {
   isB2BAccessError,
   type B2BCatalogueItem,
 } from "../services/catalogB2B";
+import { WHATSAPP_LINK } from "../lib/brand";
 
 const STORAGE_KEY = "duumini:b2bCatalogCode";
 
@@ -130,7 +131,7 @@ export default function CatalogueB2BPage() {
               </button>
               <p className="small text-muted mt-3 mb-0">
                 Vous n'avez pas de code ? Contactez-nous sur{" "}
-                <a href="https://wa.me/212623677884" target="_blank" rel="noreferrer">
+                <a href={WHATSAPP_LINK} target="_blank" rel="noreferrer">
                   WhatsApp
                 </a>{" "}
                 ou par{" "}
@@ -207,7 +208,7 @@ export default function CatalogueB2BPage() {
             </p>
             <div className="d-flex gap-2 justify-content-center flex-wrap">
               <a
-                href="https://wa.me/212623677884"
+                href={WHATSAPP_LINK}
                 target="_blank"
                 rel="noreferrer"
                 className="btn btn-success"

@@ -964,26 +964,32 @@ export async function removeProduct(id: number): Promise<{ ok: true }> {
  * Top / Ratings
  * ===================================================================== */
 
+export type TopOrderedPeriod = "DAY" | "WEEK" | "MONTH" | "YEAR";
+
 export async function listTopOrderedProducts(limit?: number): Promise<Product[]>;
 export async function listTopOrderedProducts(opts: {
   limit?: number;
   onlyActive?: boolean;
+  period?: TopOrderedPeriod;
 }): Promise<Product[]>;
 export async function listTopOrderedProducts(
-  limitOrOpts?: number | { limit?: number; onlyActive?: boolean }
+  limitOrOpts?: number | { limit?: number; onlyActive?: boolean; period?: TopOrderedPeriod }
 ) {
   let limit = 8;
   let onlyActive = true;
+  let period: TopOrderedPeriod | undefined;
 
   if (typeof limitOrOpts === "number") {
     limit = limitOrOpts;
   } else if (limitOrOpts && typeof limitOrOpts === "object") {
     if (typeof limitOrOpts.limit === "number") limit = limitOrOpts.limit;
     if (typeof limitOrOpts.onlyActive === "boolean") onlyActive = limitOrOpts.onlyActive;
+    if (limitOrOpts.period) period = limitOrOpts.period;
   }
 
   const query: Record<string, any> = { limit };
   if (onlyActive) query.onlyActive = 1;
+  if (period) query.period = period;
 
   const raw = await api.get<any>("/api/products/top-ordered", { query });
   const arr = asArray<Product>(raw);

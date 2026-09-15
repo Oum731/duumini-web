@@ -3,6 +3,7 @@ import type { Product } from "../../services/products";
 import type { OrderStatus, PayStatus as SvcPayStatus } from "../../services/orders";
 import { moneyMAD } from "../../utils/money";
 import { imgUrl } from "../../utils/media";
+import { WHATSAPP_NUMBER } from "../../lib/brand";
 export { imgUrl };
 
 export type AnyObj = Record<string, any>;
@@ -68,7 +69,7 @@ export function telHref(phone?: string) {
 }
 
 /** wa.me attend uniquement des chiffres */
-export function waDigits(phone?: string, fallback = "212623677884") {
+export function waDigits(phone?: string, fallback = WHATSAPP_NUMBER) {
   const normalized = normalizePhoneTel(phone) || "";
   const digits = normalized.replace(/[^\d]/g, "");
   return digits || fallback;

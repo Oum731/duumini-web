@@ -19,6 +19,11 @@ import {
   Menu as MenuIcon,
   X as CloseIcon,
   ChevronDown,
+  WarehouseIcon,
+  AlertTriangle,
+  MapPin,
+  Truck,
+  CreditCard,
 } from "lucide-react";
 import { me } from "../../services/auth";
 import { getMyAffiliate } from "../../services/affiliates";
@@ -139,6 +144,8 @@ export default function AdminTopNav({
         label: "Finances",
         items: [
           { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
+          { to: "/admin/debts", label: "Créances clients", icon: AlertTriangle },
+          { to: "/admin/client-zones", label: "Zones clients", icon: MapPin },
           ...(isAffiliate
             ? [{ to: "/affiliate", label: "Mon espace affilié", icon: BadgePercent }]
             : []),
@@ -146,6 +153,7 @@ export default function AdminTopNav({
             ? [
                 { to: "/admin/reports/sales", label: "Rapports", icon: FileBarChart2 },
                 { to: "/admin/affiliates", label: "Affiliés", icon: BadgePercent },
+                { to: "/admin/subscriptions", label: "Abonnements", icon: CreditCard },
               ]
             : []),
         ],
@@ -162,6 +170,8 @@ export default function AdminTopNav({
           { to: "/admin/commerciaux", label: "Commerciaux", icon: Briefcase },
           { to: "/admin/shops", label: "Boutiques", icon: Store },
           { to: "/admin/users", label: "Utilisateurs", icon: Users },
+          { to: "/admin/warehouses", label: "Entrepôts & Stock", icon: WarehouseIcon },
+          { to: "/admin/supplier-deliveries", label: "Livraisons fournisseurs", icon: Truck },
         ],
       });
       g.push({

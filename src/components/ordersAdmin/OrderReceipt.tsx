@@ -11,6 +11,7 @@ import {
   fulfillmentLabel,
 } from "./orderUtils";
 import { useAuth } from "../../context/AuthContext";
+import { WHATSAPP_DISPLAY } from "../../lib/brand";
 
 type CustomerRole = "CLIENT" | "VENDEUR";
 
@@ -1200,7 +1201,7 @@ export default function OrderReceipt(props: {
                   002641145000090
                 </div>
                 <div className="dm-footer-line">
-                  Contact : +212 623677884 / +212 6 56 56 88 27 – email :
+                  Contact : {WHATSAPP_DISPLAY} – email :
                   lebesoingroup@gmail.com
                 </div>
               </div>
