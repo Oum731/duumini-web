@@ -12,6 +12,8 @@ import ProtectedAdmin from "./components/ProtectedAdmin";
 const AdminHome = React.lazy(() => import("./pages/AdminHome"));
 const OrdersAdminPage = React.lazy(() => import("./pages/admin/OrdersAdminPage"));
 const ShopsAdminPage = React.lazy(() => import("./pages/admin/ShopsAdminPage"));
+const SuppliersAdminPage = React.lazy(() => import("./pages/admin/SuppliersAdminPage"));
+const VendorsAdminPage = React.lazy(() => import("./pages/admin/VendorsAdminPage"));
 const VendorApplicationsAdminPage = React.lazy(() => import("./pages/admin/VendorApplicationsAdminPage"));
 const CourierTripsAdminPage = React.lazy(() => import("./pages/admin/CourierTripsAdminPage"));
 const LivreurProfilesAdminPage = React.lazy(() => import("./pages/admin/LivreurProfilesAdminPage"));
@@ -525,6 +527,8 @@ export default function App() {
                       element={<ManageProductsPage scope="admin" />}
                     />
                     <Route path="shops" element={<ShopsAdminPage />} />
+                    <Route path="suppliers" element={<SuppliersAdminPage />} />
+                    <Route path="vendors" element={<VendorsAdminPage />} />
                     <Route
                       path="candidatures"
                       element={<VendorApplicationsAdminPage />}
