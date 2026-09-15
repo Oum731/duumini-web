@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   MapPin,
   Truck,
+  CreditCard,
 } from "lucide-react";
 import { me } from "../../services/auth";
 import { getMyAffiliate } from "../../services/affiliates";
@@ -152,6 +153,7 @@ export default function AdminTopNav({
             ? [
                 { to: "/admin/reports/sales", label: "Rapports", icon: FileBarChart2 },
                 { to: "/admin/affiliates", label: "Affiliés", icon: BadgePercent },
+                { to: "/admin/subscriptions", label: "Abonnements", icon: CreditCard },
               ]
             : []),
         ],
