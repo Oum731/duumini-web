@@ -326,3 +326,22 @@ export async function listClientDebts(): Promise<ClientDebtsResponse> {
   const r = await api.get("/api/reports/debts");
   return unwrap<ClientDebtsResponse>(r);
 }
+
+/* =========================
+ * Vue géographique des clients (zones)
+ * ======================= */
+export type ClientZoneRow = {
+  city: string;
+  orders_count: number;
+  clients_count: number;
+  total_amount: number;
+};
+
+export type ClientsByZoneResponse = {
+  items: ClientZoneRow[];
+};
+
+export async function listClientsByZone(): Promise<ClientsByZoneResponse> {
+  const r = await api.get("/api/reports/clients-by-zone");
+  return unwrap<ClientsByZoneResponse>(r);
+}

@@ -19,8 +19,10 @@ import {
   type WarehouseManager,
 } from "../../services/warehouses";
 import { listAdminUsers, type AdminUser } from "../../services/adminUsers";
+import { getExpensesByCategory, type ExpensesByCategoryItem } from "../../services/expenses";
+import { moneyMAD } from "../../utils/money";
 
-type Tab = "stock" | "movements" | "managers";
+type Tab = "stock" | "movements" | "managers" | "expenses";
 
 function movementLabel(type: StockMovement["type"]) {
   switch (type) {
@@ -205,11 +207,18 @@ export default function WarehousesAdminPage() {
                 >
                   <Users size={14} className="me-1" /> Gestionnaires
                 </button>
+                <button
+                  className={`btn btn-sm ${tab === "expenses" ? "btn-dark" : "btn-outline-secondary"}`}
+                  onClick={() => setTab("expenses")}
+                >
+                  Dépenses
+                </button>
               </div>
 
               {tab === "stock" ? <StockTab warehouseId={selectedWarehouse.id} /> : null}
               {tab === "movements" ? <MovementsTab warehouseId={selectedWarehouse.id} /> : null}
               {tab === "managers" ? <ManagersTab warehouseId={selectedWarehouse.id} /> : null}
+              {tab === "expenses" ? <ExpensesTab warehouseId={selectedWarehouse.id} /> : null}
             </>
           ) : null}
         </>
@@ -616,6 +625,72 @@ function ManagersTab({ warehouseId }: { warehouseId: number }) {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+function ExpensesTab({ warehouseId }: { warehouseId: number }) {
+  const [items, setItems] = useState<ExpensesByCategoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    getExpensesByCategory({ warehouse_id: warehouseId })
+      .then((res) => mounted && setItems(res.items))
+      .catch((e: any) => {
+        if (!mounted) return;
+        setError(
+          e?.payload?.error ||
+            e?.data?.error ||
+            e?.message ||
+            "Impossible de charger les dépenses de cet entrepôt."
+        );
+      })
+      .finally(() => mounted && setLoading(false));
+    return () => {
+      mounted = false;
+    };
+  }, [warehouseId]);
+
+  const total = items.reduce((acc, it) => acc + it.total, 0);
+
+  if (loading) return <LoadingState label="Chargement des dépenses..." />;
+  if (error) return <div className="alert alert-danger">{error}</div>;
+
+  return (
+    <div>
+      <div className="mb-3">
+        <KpiCard label="Total dépenses (cet entrepôt)" value={moneyMAD(total)} accent="orange" />
+      </div>
+      <div className="table-responsive">
+        <table className="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Catégorie</th>
+              <th className="text-end">Nombre</th>
+              <th className="text-end">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it) => (
+              <tr key={it.category_id ?? it.category_name}>
+                <td>{it.category_name}</td>
+                <td className="text-end">{it.count_items}</td>
+                <td className="text-end">{moneyMAD(it.total)}</td>
+              </tr>
+            ))}
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="text-center text-muted py-4">
+                  Aucune dépense enregistrée pour cet entrepôt.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

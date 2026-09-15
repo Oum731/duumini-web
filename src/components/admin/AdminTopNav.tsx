@@ -21,6 +21,8 @@ import {
   ChevronDown,
   WarehouseIcon,
   AlertTriangle,
+  MapPin,
+  Truck,
 } from "lucide-react";
 import { me } from "../../services/auth";
 import { getMyAffiliate } from "../../services/affiliates";
@@ -142,6 +144,7 @@ export default function AdminTopNav({
         items: [
           { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
           { to: "/admin/debts", label: "Créances clients", icon: AlertTriangle },
+          { to: "/admin/client-zones", label: "Zones clients", icon: MapPin },
           ...(isAffiliate
             ? [{ to: "/affiliate", label: "Mon espace affilié", icon: BadgePercent }]
             : []),
@@ -166,6 +169,7 @@ export default function AdminTopNav({
           { to: "/admin/shops", label: "Boutiques", icon: Store },
           { to: "/admin/users", label: "Utilisateurs", icon: Users },
           { to: "/admin/warehouses", label: "Entrepôts & Stock", icon: WarehouseIcon },
+          { to: "/admin/supplier-deliveries", label: "Livraisons fournisseurs", icon: Truck },
         ],
       });
       g.push({

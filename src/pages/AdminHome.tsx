@@ -571,6 +571,7 @@ export default function AdminHome() {
   const [commissionFilter, setCommissionFilter] = useState<"today" | "week" | "month" | "year">("today");
   const [earningsPeriod, setEarningsPeriod] = useState<"week" | "month" | "year">("month");
   const [ordersPeriod, setOrdersPeriod] = useState<"week" | "month" | "year">("month");
+  const [topProductsPeriod, setTopProductsPeriod] = useState<"DAY" | "WEEK" | "MONTH" | "YEAR">("DAY");
 
   const [siteStatus, setSiteStatus] = useState<SiteStatusState>({
     is_closed: false,
@@ -689,12 +690,16 @@ export default function AdminHome() {
   const loadTopProducts = useCallback(async () => {
     if (isVendor) return;
     try {
-      const items = await listTopOrderedProducts({ limit: 6, onlyActive: true });
+      const items = await listTopOrderedProducts({
+        limit: 6,
+        onlyActive: true,
+        period: topProductsPeriod,
+      });
       setTopProducts(Array.isArray(items) ? items : []);
     } catch {
       setTopProducts([]);
     }
-  }, [isVendor]);
+  }, [isVendor, topProductsPeriod]);
 
   const loadTopCommercials = useCallback(async () => {
     if (isVendor) return;
@@ -1198,7 +1203,32 @@ export default function AdminHome() {
             </div>
 
             <div className="col-12 col-xl-3">
-              <SectionCard title="Top ventes" subtitle="Produits les plus commandés" className="h-100">
+              <SectionCard
+                title="Top ventes"
+                subtitle="Produits les plus commandés"
+                className="h-100"
+                right={
+                  <div className="btn-group btn-group-sm" role="group">
+                    {(
+                      [
+                        { value: "DAY", label: "Jour" },
+                        { value: "WEEK", label: "Sem." },
+                        { value: "MONTH", label: "Mois" },
+                        { value: "YEAR", label: "Année" },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`btn ${topProductsPeriod === opt.value ? "btn-dark" : "btn-outline-secondary"}`}
+                        onClick={() => setTopProductsPeriod(opt.value)}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                }
+              >
                 <RankedList items={topProductItems} />
               </SectionCard>
             </div>
