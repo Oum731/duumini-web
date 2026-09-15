@@ -227,7 +227,7 @@ export default function WarehousesAdminPage() {
   );
 }
 
-function StockTab({ warehouseId }: { warehouseId: number }) {
+export function StockTab({ warehouseId }: { warehouseId: number }) {
   const [items, setItems] = useState<WarehouseStockRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -418,7 +418,7 @@ function StockTab({ warehouseId }: { warehouseId: number }) {
   );
 }
 
-function MovementsTab({ warehouseId }: { warehouseId: number }) {
+export function MovementsTab({ warehouseId }: { warehouseId: number }) {
   const [items, setItems] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

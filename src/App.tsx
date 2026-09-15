@@ -47,6 +47,7 @@ import MyCourierTripsPage from "./pages/MyCourierTripsPage";
 import CourierTripTrackingPage from "./pages/CourierTripTrackingPage";
 import LivreurHome from "./pages/livreur/LivreurHome";
 import CommercialHome from "./pages/commercial/CommercialHome";
+import GestionnaireHome from "./pages/gestionnaire/GestionnaireHome";
 import PaysPage from "./pages/PaysPage";
 import BlogPage from "./pages/BlogPage";
 import RejoindrePage from "./pages/RejoindrePage";
@@ -444,6 +445,21 @@ export default function App() {
                   }
                 >
                   <Route path="/commercial" element={<CommercialHome />} />
+                </Route>
+
+                <Route
+                  element={
+                    <RequireAuth
+                      // ✅ Même principe que livreur/commercial : basé sur la
+                      // présence d'une affectation active dans
+                      // warehouse_managers (has_warehouse_manager_profile),
+                      // pas sur le rôle principal.
+                      allow={(v: any) => !!v.user?.has_warehouse_manager_profile}
+                      redirectTo="/"
+                    />
+                  }
+                >
+                  <Route path="/gestionnaire" element={<GestionnaireHome />} />
                 </Route>
 
                 <Route path="/affiliate" element={<AffiliateDashboardPage />} />

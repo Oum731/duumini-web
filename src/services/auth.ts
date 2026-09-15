@@ -48,6 +48,7 @@ export type User = {
    * indépendamment du rôle principal. */
   has_livreur_profile?: boolean;
   has_commercial_profile?: boolean;
+  has_warehouse_manager_profile?: boolean;
 };
 
 type LoginRes = {

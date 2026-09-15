@@ -22,6 +22,7 @@ import {
   Truck,
   LayoutGrid,
   Bike,
+  Warehouse as WarehouseIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -89,6 +90,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
     isRestaurantRole,
     hasLivreurAccess,
     hasCommercialAccess,
+    hasWarehouseManagerAccess,
     isPro,
   } = useMemo(() => {
       const role = (user?.role ? String(user.role) : "")
@@ -105,6 +107,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
       // (voir has_livreur_profile/has_commercial_profile côté API).
       const hasLivreurAccess = isLivreurRole || !!user?.has_livreur_profile;
       const hasCommercialAccess = isCommercialRole || !!user?.has_commercial_profile;
+      const hasWarehouseManagerAccess = !!user?.has_warehouse_manager_profile;
       return {
         isLoggedIn: !!user,
         isAdmin,
@@ -113,13 +116,15 @@ export default function Navbar({ cartCount = 0 }: Props) {
         isRestaurantRole,
         hasLivreurAccess,
         hasCommercialAccess,
+        hasWarehouseManagerAccess,
         isPro:
           isAdmin ||
           isVendor ||
           isSupplier ||
           isRestaurantRole ||
           hasLivreurAccess ||
-          hasCommercialAccess,
+          hasCommercialAccess ||
+          hasWarehouseManagerAccess,
       };
     }, [user]);
 
@@ -134,6 +139,9 @@ export default function Navbar({ cartCount = 0 }: Props) {
           : []),
         ...(hasCommercialAccess
           ? [{ to: "/commercial", label: "Espace commercial", Icon: Briefcase }]
+          : []),
+        ...(hasWarehouseManagerAccess
+          ? [{ to: "/gestionnaire", label: "Espace gestionnaire", Icon: WarehouseIcon }]
           : []),
         ...(isVendor || isSupplier || isRestaurantRole
           ? [{ to: "/ma-boutique", label: "Ma boutique", Icon: Store }]

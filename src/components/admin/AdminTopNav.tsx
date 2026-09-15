@@ -11,9 +11,7 @@ import {
   Users,
   Store,
   Wallet,
-  BadgePercent,
   UserPlus,
-  Bike,
   ShieldCheck,
   Briefcase,
   Menu as MenuIcon,
@@ -26,7 +24,6 @@ import {
   CreditCard,
 } from "lucide-react";
 import { me } from "../../services/auth";
-import { getMyAffiliate } from "../../services/affiliates";
 
 type AnyObj = Record<string, any>;
 
@@ -80,7 +77,6 @@ export default function AdminTopNav({
   title?: string;
 }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [isAffiliate, setIsAffiliate] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
@@ -94,24 +90,6 @@ export default function AdminTopNav({
       } catch {
         if (!mounted) return;
         setUser(null);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // ✅ L'affiliation est une permission à part entière (indépendante du
-  // rôle du compte) : on ne montre "Mon espace affilié" que si l'utilisateur
-  // a effectivement un profil affilié actif.
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await getMyAffiliate();
-        if (mounted) setIsAffiliate(!!res?.is_affiliate);
-      } catch {
-        if (mounted) setIsAffiliate(false);
       }
     })();
     return () => {
@@ -146,13 +124,9 @@ export default function AdminTopNav({
           { to: "/admin/expenses", label: "Dépenses", icon: Wallet },
           { to: "/admin/debts", label: "Créances clients", icon: AlertTriangle },
           { to: "/admin/client-zones", label: "Zones clients", icon: MapPin },
-          ...(isAffiliate
-            ? [{ to: "/affiliate", label: "Mon espace affilié", icon: BadgePercent }]
-            : []),
           ...(!isVendor
             ? [
                 { to: "/admin/reports/sales", label: "Rapports", icon: FileBarChart2 },
-                { to: "/admin/affiliates", label: "Affiliés", icon: BadgePercent },
                 { to: "/admin/subscriptions", label: "Abonnements", icon: CreditCard },
               ]
             : []),
@@ -165,7 +139,6 @@ export default function AdminTopNav({
         label: "Réseau",
         items: [
           { to: "/admin/candidatures", label: "Candidatures", icon: UserPlus },
-          { to: "/admin/courses", label: "Courses livreur", icon: Bike },
           { to: "/admin/livreurs", label: "Livreurs", icon: ShieldCheck },
           { to: "/admin/commerciaux", label: "Commerciaux", icon: Briefcase },
           { to: "/admin/shops", label: "Boutiques", icon: Store },
@@ -184,7 +157,7 @@ export default function AdminTopNav({
     }
 
     return g;
-  }, [isVendor, isAffiliate]);
+  }, [isVendor]);
 
   return (
     <nav aria-label="Menu admin" className="admin-sidebar">
