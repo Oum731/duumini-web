@@ -1,5 +1,6 @@
 // src/pages/admin/WarehousesAdminPage.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Warehouse as WarehouseIcon, Boxes, History, Users, PlusCircle, AlertTriangle } from "lucide-react";
 import { LoadingState } from "../../components/ui/Spinner";
 import { PageHeader, KpiCard, SectionCard } from "../../components/admin/adminUI";
@@ -46,11 +47,29 @@ function movementLabel(type: StockMovement["type"]) {
 }
 
 export default function WarehousesAdminPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("stock");
+
+  const assignUserIdParam = searchParams.get("assignUserId");
+  const pendingAssign = assignUserIdParam
+    ? { id: Number(assignUserIdParam), name: searchParams.get("assignUserName") || `#${assignUserIdParam}` }
+    : null;
+
+  useEffect(() => {
+    if (pendingAssign) setTab("managers");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignUserIdParam]);
+
+  function clearPendingAssign() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("assignUserId");
+    next.delete("assignUserName");
+    setSearchParams(next, { replace: true });
+  }
 
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
@@ -217,7 +236,13 @@ export default function WarehousesAdminPage() {
 
               {tab === "stock" ? <StockTab warehouseId={selectedWarehouse.id} /> : null}
               {tab === "movements" ? <MovementsTab warehouseId={selectedWarehouse.id} /> : null}
-              {tab === "managers" ? <ManagersTab warehouseId={selectedWarehouse.id} /> : null}
+              {tab === "managers" ? (
+                <ManagersTab
+                  warehouseId={selectedWarehouse.id}
+                  pendingAssign={pendingAssign}
+                  onConsumePendingAssign={clearPendingAssign}
+                />
+              ) : null}
               {tab === "expenses" ? <ExpensesTab warehouseId={selectedWarehouse.id} /> : null}
             </>
           ) : null}
@@ -488,13 +513,24 @@ export function MovementsTab({ warehouseId }: { warehouseId: number }) {
   );
 }
 
-function ManagersTab({ warehouseId }: { warehouseId: number }) {
+function ManagersTab({
+  warehouseId,
+  pendingAssign,
+  onConsumePendingAssign,
+}: {
+  warehouseId: number;
+  pendingAssign?: { id: number; name: string } | null;
+  onConsumePendingAssign?: () => void;
+}) {
   const [items, setItems] = useState<WarehouseManager[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<AdminUser[]>([]);
   const [searching, setSearching] = useState(false);
+  const [assigningPending, setAssigningPending] = useState(false);
+
+  const alreadyManager = !!pendingAssign && items.some((m) => m.user_id === pendingAssign.id);
 
   async function refresh() {
     setLoading(true);
@@ -550,9 +586,49 @@ function ManagersTab({ warehouseId }: { warehouseId: number }) {
     }
   }
 
+  async function handleAssignPending() {
+    if (!pendingAssign) return;
+    setAssigningPending(true);
+    try {
+      await assignWarehouseManager(warehouseId, pendingAssign.id);
+      await refresh();
+      onConsumePendingAssign?.();
+    } catch (e: any) {
+      setError(warehouseErrorMessage(e, "Impossible d'affecter cet utilisateur."));
+    } finally {
+      setAssigningPending(false);
+    }
+  }
+
   return (
     <div>
       {error ? <div className="alert alert-danger">{error}</div> : null}
+
+      {pendingAssign && !alreadyManager ? (
+        <div className="alert alert-info d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <span>
+            Affecter <strong>{pendingAssign.name}</strong> comme gestionnaire de cet entrepôt ?
+          </span>
+          <div className="d-flex gap-2">
+            <button className="btn btn-sm btn-dark" disabled={assigningPending} onClick={handleAssignPending}>
+              {assigningPending ? "..." : "Affecter"}
+            </button>
+            <button className="btn btn-sm btn-outline-secondary" onClick={onConsumePendingAssign}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {pendingAssign && alreadyManager ? (
+        <div className="alert alert-success d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <span>
+            <strong>{pendingAssign.name}</strong> est déjà gestionnaire de cet entrepôt.
+          </span>
+          <button className="btn btn-sm btn-outline-secondary" onClick={onConsumePendingAssign}>
+            Fermer
+          </button>
+        </div>
+      ) : null}
 
       <div className="d-flex gap-2 mb-3">
         <input

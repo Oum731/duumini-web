@@ -1,5 +1,7 @@
 // src/pages/admin/UsersAdminPage.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { Warehouse as WarehouseIcon } from "lucide-react";
 import {
   listUsers,
   createUser,
@@ -312,6 +314,17 @@ export default function UsersAdminPage() {
                           >
                             Modifier
                           </button>
+                          <Link
+                            className="btn btn-sm btn-outline-secondary"
+                            title="Affecter comme gestionnaire d'entrepôt"
+                            to={`/admin/warehouses?assignUserId=${u.id}&assignUserName=${encodeURIComponent(
+                              [u.first_name, u.last_name].filter(Boolean).join(" ") ||
+                                u.phone ||
+                                `#${u.id}`
+                            )}`}
+                          >
+                            <WarehouseIcon size={14} />
+                          </Link>
                           <button
                             className="btn btn-sm btn-outline-danger"
                             onClick={() => onDelete(u.id)}
