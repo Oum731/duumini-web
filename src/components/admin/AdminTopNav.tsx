@@ -22,6 +22,7 @@ import {
   MapPin,
   Truck,
   CreditCard,
+  Building2,
 } from "lucide-react";
 import { me } from "../../services/auth";
 
@@ -142,6 +143,8 @@ export default function AdminTopNav({
           { to: "/admin/livreurs", label: "Livreurs", icon: ShieldCheck },
           { to: "/admin/commerciaux", label: "Commerciaux", icon: Briefcase },
           { to: "/admin/shops", label: "Boutiques", icon: Store },
+          { to: "/admin/suppliers", label: "Fournisseurs", icon: Building2 },
+          { to: "/admin/vendors", label: "Vendeurs", icon: Store },
           { to: "/admin/users", label: "Utilisateurs", icon: Users },
           { to: "/admin/warehouses", label: "Entrepôts & Stock", icon: WarehouseIcon },
           { to: "/admin/supplier-deliveries", label: "Livraisons fournisseurs", icon: Truck },
