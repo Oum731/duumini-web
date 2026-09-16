@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { Category } from "../../services/categories";
 import type { ProductVariant } from "../../services/products";
 import { listProductVariants, removeProductVariant } from "../../services/products";
+import { listWarehouses, type Warehouse } from "../../services/warehouses";
 import { moneyMAD } from "../../utils/money";
 import { imgUrl } from "../../utils/media";
 
@@ -106,6 +107,8 @@ export default function ProductForm({
       description: anyInit?.description || "",
       conditionnement: anyInit?.conditionnement || "",
       stock: anyInit?.stock ?? null,
+      units_per_carton: anyInit?.units_per_carton ?? null,
+      warehouse_id: anyInit?.warehouse_id ?? null,
       currency: anyInit?.currency || "MAD",
 
       is_featured: anyInit?.is_featured != null ? (Number(anyInit.is_featured) as 0 | 1) : 0,
@@ -164,6 +167,13 @@ export default function ProductForm({
     if (safeShops.length === 1) setDraft((d) => ({ ...d, shop_id: safeShops[0].id }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVendor, safeShops.length]);
+
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  useEffect(() => {
+    listWarehouses()
+      .then((res) => setWarehouses(res.items))
+      .catch(() => setWarehouses([]));
+  }, []);
 
   const [files, setFiles] = useState<File[]>([]);
   const [replaceImages, setReplaceImages] = useState<boolean>(false);
@@ -771,7 +781,7 @@ export default function ProductForm({
               />
             </div>
             <div className="col-4">
-              <label className="form-label">Stock</label>
+              <label className="form-label">Stock (pièces)</label>
               <input
                 type="number"
                 className="form-control duu-focus"
@@ -784,6 +794,61 @@ export default function ProductForm({
                 }
               />
             </div>
+          </div>
+
+          <div className="row g-2 mt-2">
+            <div className="col-4">
+              <label className="form-label">Pièces par carton</label>
+              <input
+                type="number"
+                min={2}
+                className="form-control duu-focus"
+                placeholder="ex: 12"
+                value={draft.units_per_carton ?? ""}
+                onChange={(ev) =>
+                  setDraft((d) => ({
+                    ...d,
+                    units_per_carton: ev.target.value === "" ? null : Number(ev.target.value),
+                  }))
+                }
+              />
+              <small className="text-muted">
+                Optionnel — permet de saisir les réceptions/ajustements en cartons et convertit
+                automatiquement le stock en pièces.
+              </small>
+            </div>
+            {draft.units_per_carton && draft.units_per_carton >= 2 && draft.stock != null ? (
+              <div className="col-4 d-flex align-items-start pt-4 small text-muted">
+                Soit {Math.floor(Number(draft.stock) / draft.units_per_carton)} carton(s) +{" "}
+                {Number(draft.stock) % draft.units_per_carton} pièce(s)
+              </div>
+            ) : null}
+            {warehouses.length > 0 ? (
+              <div className="col-4">
+                <label className="form-label">Entrepôt (optionnel)</label>
+                <select
+                  className="form-select duu-focus"
+                  value={draft.warehouse_id ?? ""}
+                  onChange={(ev) =>
+                    setDraft((d) => ({
+                      ...d,
+                      warehouse_id: ev.target.value === "" ? null : Number(ev.target.value),
+                    }))
+                  }
+                >
+                  <option value="">-- Entrepôt par défaut de la boutique --</option>
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+                <small className="text-muted">
+                  Ne remplir que si ce produit doit venir d'un entrepôt différent de celui de sa
+                  boutique.
+                </small>
+              </div>
+            ) : null}
           </div>
 
           {/* ✅ Prix fournisseur HT — coût d'achat interne, sert uniquement

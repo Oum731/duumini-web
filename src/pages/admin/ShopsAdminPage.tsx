@@ -23,6 +23,7 @@ import {
 import { API_BASE } from "../../services/http";
 import { me } from "../../services/auth";
 import { listActiveCountries, type CountryConfig } from "../../services/countries";
+import { listWarehouses, type Warehouse } from "../../services/warehouses";
 import { PageHeader } from "../../components/admin/adminUI";
 
 type Draft = Partial<Shop> & { description?: string | null };
@@ -77,9 +78,11 @@ const mad = (n?: number | null) =>
 function ShopForm({
   initial,
   onSubmit,
+  isAdmin,
 }: {
   initial?: Draft;
   onSubmit: (d: Draft, files: ShopFilesLocal) => Promise<void> | void;
+  isAdmin?: boolean;
 }) {
   const [draft, setDraft] = useState<Draft>({
     name: initial?.name || "",
@@ -91,7 +94,16 @@ function ShopForm({
     country_code: initial?.country_code ?? "MA",
     lat: initial?.lat ?? null,
     lng: initial?.lng ?? null,
+    default_warehouse_id: initial?.default_warehouse_id ?? null,
   });
+
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  useEffect(() => {
+    if (!isAdmin) return;
+    listWarehouses()
+      .then((res) => setWarehouses(res.items))
+      .catch(() => setWarehouses([]));
+  }, [isAdmin]);
 
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -212,6 +224,33 @@ function ShopForm({
           onChange={(e) => setDraft((d) => ({ ...d, address: e.target.value }))}
         />
       </div>
+
+      {isAdmin && warehouses.length > 0 ? (
+        <div className="mb-2">
+          <label className="form-label">Entrepôt par défaut</label>
+          <select
+            className="form-select"
+            value={draft.default_warehouse_id ?? ""}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                default_warehouse_id: e.target.value === "" ? null : Number(e.target.value),
+              }))
+            }
+          >
+            <option value="">-- Aucun (premier entrepôt actif) --</option>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+          <small className="text-muted">
+            Les commandes des produits de cette boutique décrémenteront cet entrepôt (sauf
+            surcharge sur un produit précis).
+          </small>
+        </div>
+      ) : null}
 
       {/* Logo */}
       <div className="mb-3">
@@ -389,6 +428,7 @@ export default function ShopsAdminPage() {
   const [myCount, setMyCount] = useState<number>(0);
 
   const isVendor = role === "VENDEUR";
+  const isAdmin = role === "ADMIN";
   const canCreate = !isVendor || myCount < SHOP_LIMIT;
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
@@ -566,6 +606,7 @@ export default function ShopsAdminPage() {
       country_code: draft.country_code ?? "MA",
       lat: draft.lat ?? null,
       lng: draft.lng ?? null,
+      default_warehouse_id: draft.default_warehouse_id ?? null,
     };
 
     try {
@@ -1063,7 +1104,7 @@ export default function ShopsAdminPage() {
                 <button className="btn-close" onClick={() => setShowForm(false)} />
               </div>
               <div className="modal-body">
-                <ShopForm initial={edit || undefined} onSubmit={onSave} />
+                <ShopForm initial={edit || undefined} onSubmit={onSave} isAdmin={isAdmin} />
               </div>
             </div>
           </div>

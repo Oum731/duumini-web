@@ -456,10 +456,16 @@ export default function ProductsAdminPage() {
       put("vertical", vertical);
 
       put("name", draft.name);
+      put("brand", draft.brand);
       put("price", draft.price);
+      put("supplier_price_ht", draft.supplier_price_ht);
+      put("partner_price_ht", draft.partner_price_ht);
       put("currency", draft.currency || "MAD");
       put("description", draft.description);
+      put("conditionnement", draft.conditionnement);
       put("stock", draft.stock);
+      put("units_per_carton", draft.units_per_carton);
+      put("warehouse_id", draft.warehouse_id);
 
       put("is_featured", draft.is_featured);
       put("promo_eligible", draft.promo_eligible);

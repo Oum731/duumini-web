@@ -260,6 +260,7 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
   const [lowOnly, setLowOnly] = useState(false);
   const [adjustRow, setAdjustRow] = useState<WarehouseStockRow | null>(null);
   const [deltaQty, setDeltaQty] = useState("");
+  const [deltaUnit, setDeltaUnit] = useState<"PIECE" | "CARTON">("PIECE");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -300,10 +301,12 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
         product_id: adjustRow.product_id,
         variant_id: adjustRow.variant_id,
         delta_qty: delta,
+        unit: deltaUnit,
         reason: reason.trim(),
       });
       setAdjustRow(null);
       setDeltaQty("");
+      setDeltaUnit("PIECE");
       setReason("");
       await refresh();
     } catch (e: any) {
@@ -381,6 +384,7 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
                       onClick={() => {
                         setAdjustRow(it);
                         setDeltaQty("");
+                        setDeltaUnit("PIECE");
                         setReason("");
                       }}
                     >
@@ -410,15 +414,26 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
                 <button className="btn-close" onClick={() => setAdjustRow(null)} />
               </div>
               <div className="modal-body">
-                <div className="mb-2 text-muted small">Quantité actuelle : {adjustRow.quantity}</div>
+                <div className="mb-2 text-muted small">Quantité actuelle (pièces) : {adjustRow.quantity}</div>
                 <label className="form-label small">Quantité à ajouter (négatif pour retirer)</label>
-                <input
-                  type="number"
-                  className="form-control mb-2"
-                  value={deltaQty}
-                  onChange={(e) => setDeltaQty(e.target.value)}
-                  placeholder="ex: 10 ou -5"
-                />
+                <div className="d-flex gap-2 mb-2">
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={deltaQty}
+                    onChange={(e) => setDeltaQty(e.target.value)}
+                    placeholder="ex: 10 ou -5"
+                  />
+                  <select
+                    className="form-select"
+                    style={{ maxWidth: 130 }}
+                    value={deltaUnit}
+                    onChange={(e) => setDeltaUnit(e.target.value as "PIECE" | "CARTON")}
+                  >
+                    <option value="PIECE">Pièce(s)</option>
+                    <option value="CARTON">Carton(s)</option>
+                  </select>
+                </div>
                 <label className="form-label small">Motif (obligatoire)</label>
                 <input
                   className="form-control"

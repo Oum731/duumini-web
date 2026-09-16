@@ -6,6 +6,8 @@ export type SupplierDeliveryItem = {
   product_id: number;
   variant_id: number | null;
   qty: number;
+  unit: "PIECE" | "CARTON";
+  base_qty: number;
   unit_cost: number;
   product_name?: string | null;
   variant_size?: string | null;
@@ -71,7 +73,13 @@ export async function createSupplierDelivery(payload: {
   warehouse_id: number;
   reference?: string;
   note?: string;
-  items: Array<{ product_id: number; variant_id?: number | null; qty: number; unit_cost: number }>;
+  items: Array<{
+    product_id: number;
+    variant_id?: number | null;
+    qty: number;
+    unit_cost: number;
+    unit?: "PIECE" | "CARTON";
+  }>;
 }): Promise<{ id: number; ok: true }> {
   const r = await api.post("/api/supplier-deliveries", payload);
   return unwrap(r);

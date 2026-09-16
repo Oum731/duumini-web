@@ -13,6 +13,11 @@ export type Shop = {
   // ✅ NEW: type d’acteur
   shop_type?: ShopType | null;
 
+  // ✅ Entrepôt par défaut (voir addShopDefaultWarehouse.js) — décide où
+  // les commandes des produits de cette boutique décrémentent le stock,
+  // sauf surcharge au niveau du produit. Admin uniquement.
+  default_warehouse_id?: number | null;
+
   description?: string | null;
   category_id?: number | null;
   address?: string | null;
@@ -177,6 +182,15 @@ function buildShopFormData(
 
   // ✅ NEW: shop_type
   if (payload.shop_type != null) fd.append("shop_type", String(payload.shop_type));
+
+  // ✅ default_warehouse_id — "" est un effacement volontaire (voir
+  // shops.js), donc on l'envoie aussi quand la valeur est une chaîne vide.
+  if (payload.default_warehouse_id !== undefined) {
+    fd.append(
+      "default_warehouse_id",
+      payload.default_warehouse_id == null ? "" : String(payload.default_warehouse_id)
+    );
+  }
 
   if (payload.description !== undefined && payload.description !== null) {
     fd.append("description", String(payload.description));
