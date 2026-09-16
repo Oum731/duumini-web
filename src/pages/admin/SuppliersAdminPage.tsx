@@ -13,18 +13,25 @@ import { PageHeader, KpiCard } from "../../components/admin/adminUI";
 import { listShopsAdmin, type Shop } from "../../services/shops";
 import { imgUrl } from "../../utils/media";
 
+const PAGE_SIZE = 24;
+
 export default function SuppliersAdminPage() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  async function refresh(query?: string) {
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+
+  async function refresh(query?: string, targetPage = page) {
     setLoading(true);
     setError(null);
     try {
-      const res = await listShopsAdmin({ pageSize: 100, q: query || undefined });
+      const res = await listShopsAdmin({ pageSize: PAGE_SIZE, page: targetPage, q: query || undefined });
       setShops(res.items);
+      setTotal(res.pageInfo.total);
     } catch (e: any) {
       setError(e?.payload?.error || e?.data?.error || e?.message || "Impossible de charger les fournisseurs.");
     } finally {
@@ -33,8 +40,9 @@ export default function SuppliersAdminPage() {
   }
 
   useEffect(() => {
-    refresh();
-  }, []);
+    refresh(q, page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   const citiesCount = useMemo(() => new Set(shops.map((s) => s.city).filter(Boolean)).size, [shops]);
 
@@ -63,9 +71,12 @@ export default function SuppliersAdminPage() {
           placeholder="Rechercher un fournisseur..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && refresh(q)}
+          onKeyDown={(e) => e.key === "Enter" && (page === 1 ? refresh(q, 1) : setPage(1))}
         />
-        <button className="btn btn-outline-secondary btn-sm" onClick={() => refresh(q)}>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={() => (page === 1 ? refresh(q, 1) : setPage(1))}
+        >
           Rechercher
         </button>
       </div>
@@ -112,6 +123,31 @@ export default function SuppliersAdminPage() {
           ) : null}
         </div>
       )}
+
+      {!loading && shops.length > 0 ? (
+        <div className="d-flex justify-content-between align-items-center mt-3">
+          <div className="text-muted small">{total} fournisseur(s)</div>
+          <div className="btn-group">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Préc.
+            </button>
+            <span className="btn btn-sm btn-outline-dark disabled">
+              {page} / {pages}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suiv.
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // src/pages/admin/SupplierDeliveriesPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PackagePlus, Truck } from "lucide-react";
 import { LoadingState } from "../../components/ui/Spinner";
 import { PageHeader } from "../../components/admin/adminUI";
@@ -22,11 +22,16 @@ type DraftLine = {
   unit: "PIECE" | "CARTON";
 };
 
+const PAGE_SIZE = 20;
+
 export default function SupplierDeliveriesPage() {
   const [items, setItems] = useState<SupplierDelivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
@@ -42,12 +47,13 @@ export default function SupplierDeliveriesPage() {
   const [productResults, setProductResults] = useState<Record<number, Product[]>>({});
   const [saving, setSaving] = useState(false);
 
-  async function refresh() {
+  async function refresh(targetPage = page) {
     setLoading(true);
     setError(null);
     try {
-      const res = await listSupplierDeliveries({ pageSize: 50 });
+      const res = await listSupplierDeliveries({ pageSize: PAGE_SIZE, page: targetPage });
       setItems(res.items);
+      setTotal(res.pageInfo.total);
     } catch (e: any) {
       setError(supplierDeliveryErrorMessage(e, "Impossible de charger les livraisons."));
     } finally {
@@ -56,7 +62,11 @@ export default function SupplierDeliveriesPage() {
   }
 
   useEffect(() => {
-    refresh();
+    refresh(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  useEffect(() => {
     listWarehouses()
       .then((res) => {
         setWarehouses(res.items);
@@ -128,7 +138,8 @@ export default function SupplierDeliveriesPage() {
       setReference("");
       setLines([{ key: 1, product: null, qty: "", unit_cost: "", unit: "PIECE" }]);
       setSupplierId(null);
-      await refresh();
+      if (page === 1) await refresh(1);
+      else setPage(1);
     } catch (e: any) {
       setError(supplierDeliveryErrorMessage(e, "Impossible d'enregistrer la livraison."));
     } finally {
@@ -344,6 +355,31 @@ export default function SupplierDeliveriesPage() {
           </table>
         </div>
       )}
+
+      {!loading && items.length > 0 ? (
+        <div className="d-flex justify-content-between align-items-center mt-2">
+          <div className="text-muted small">{total} livraison(s)</div>
+          <div className="btn-group">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Préc.
+            </button>
+            <span className="btn btn-sm btn-outline-dark disabled">
+              {page} / {pages}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suiv.
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

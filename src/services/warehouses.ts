@@ -104,7 +104,7 @@ export async function updateWarehouse(
 export async function getWarehouseStock(
   warehouseId: number,
   params: { page?: number; pageSize?: number; q?: string; lowOnly?: boolean } = {}
-): Promise<{ items: WarehouseStockRow[]; pageInfo: PageInfo }> {
+): Promise<{ items: WarehouseStockRow[]; pageInfo: PageInfo; low_count: number }> {
   const query: Record<string, any> = {};
   if (params.page) query.page = params.page;
   if (params.pageSize) query.pageSize = params.pageSize;

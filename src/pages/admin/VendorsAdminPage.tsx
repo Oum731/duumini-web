@@ -5,7 +5,7 @@
 // l'instant. Deux façons d'ajouter un vendeur : créer une nouvelle boutique
 // vendeur, ou promouvoir une boutique existante (déjà listée côté
 // Fournisseurs) en la taguant VENDOR.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Store, PlusCircle, ArrowUpCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LoadingState } from "../../components/ui/Spinner";
@@ -13,10 +13,15 @@ import { PageHeader, KpiCard } from "../../components/admin/adminUI";
 import { listVendors, listShopsAdmin, createShop, updateShop, type Shop } from "../../services/shops";
 import { imgUrl } from "../../utils/media";
 
+const PAGE_SIZE = 24;
+
 export default function VendorsAdminPage() {
   const [vendors, setVendors] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
@@ -29,12 +34,13 @@ export default function VendorsAdminPage() {
   const [promoteResults, setPromoteResults] = useState<Shop[]>([]);
   const [promoting, setPromoting] = useState(false);
 
-  async function refresh() {
+  async function refresh(targetPage = page) {
     setLoading(true);
     setError(null);
     try {
-      const res = await listVendors({ pageSize: 100 });
+      const res = await listVendors({ pageSize: PAGE_SIZE, page: targetPage });
       setVendors(res.items);
+      setTotal(res.pageInfo.total);
     } catch (e: any) {
       setError(e?.payload?.error || e?.data?.error || e?.message || "Impossible de charger les vendeurs.");
     } finally {
@@ -43,8 +49,9 @@ export default function VendorsAdminPage() {
   }
 
   useEffect(() => {
-    refresh();
-  }, []);
+    refresh(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   async function handleCreate() {
     if (!name.trim()) return setError("Le nom est obligatoire.");
@@ -211,6 +218,31 @@ export default function VendorsAdminPage() {
           ) : null}
         </div>
       )}
+
+      {!loading && vendors.length > 0 ? (
+        <div className="d-flex justify-content-between align-items-center mt-3">
+          <div className="text-muted small">{total} vendeur(s)</div>
+          <div className="btn-group">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Préc.
+            </button>
+            <span className="btn btn-sm btn-outline-dark disabled">
+              {page} / {pages}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suiv.
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

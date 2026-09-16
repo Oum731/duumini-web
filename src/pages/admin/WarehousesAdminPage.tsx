@@ -252,6 +252,8 @@ export default function WarehousesAdminPage() {
   );
 }
 
+const STOCK_PAGE_SIZE = 30;
+
 export function StockTab({ warehouseId }: { warehouseId: number }) {
   const [items, setItems] = useState<WarehouseStockRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -263,13 +265,24 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
   const [deltaUnit, setDeltaUnit] = useState<"PIECE" | "CARTON">("PIECE");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [lowCount, setLowCount] = useState(0);
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / STOCK_PAGE_SIZE)), [total]);
 
-  async function refresh() {
+  async function refresh(targetPage = page) {
     setLoading(true);
     setError(null);
     try {
-      const res = await getWarehouseStock(warehouseId, { q: q || undefined, lowOnly, pageSize: 100 });
+      const res = await getWarehouseStock(warehouseId, {
+        q: q || undefined,
+        lowOnly,
+        page: targetPage,
+        pageSize: STOCK_PAGE_SIZE,
+      });
       setItems(res.items);
+      setTotal(res.pageInfo.total);
+      setLowCount(res.low_count);
     } catch (e: any) {
       setError(warehouseErrorMessage(e, "Impossible de charger le stock."));
     } finally {
@@ -278,11 +291,13 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
   }
 
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPage(1);
   }, [warehouseId, lowOnly]);
 
-  const lowCount = useMemo(() => items.filter((it) => it.quantity <= it.min_threshold).length, [items]);
+  useEffect(() => {
+    refresh(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [warehouseId, lowOnly, page]);
 
   async function submitAdjust() {
     if (!adjustRow) return;
@@ -320,7 +335,7 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
     <div>
       <div className="row g-3 mb-3">
         <div className="col-sm-4">
-          <KpiCard icon={Boxes} label="Références en stock" value={items.length} accent="blue" />
+          <KpiCard icon={Boxes} label="Références en stock" value={total} accent="blue" />
         </div>
         <div className="col-sm-4">
           <KpiCard icon={AlertTriangle} label="Sous le seuil d'alerte" value={lowCount} accent="orange" />
@@ -334,9 +349,12 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
           placeholder="Rechercher un produit..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && refresh()}
+          onKeyDown={(e) => e.key === "Enter" && (page === 1 ? refresh(1) : setPage(1))}
         />
-        <button className="btn btn-outline-secondary btn-sm" onClick={refresh}>
+        <button
+          className="btn btn-outline-secondary btn-sm"
+          onClick={() => (page === 1 ? refresh(1) : setPage(1))}
+        >
           Rechercher
         </button>
         <label className="form-check d-flex align-items-center gap-2 ms-2">
@@ -405,6 +423,31 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
         </div>
       )}
 
+      {!loading && items.length > 0 ? (
+        <div className="d-flex justify-content-between align-items-center mt-2">
+          <div className="text-muted small">{total} référence(s)</div>
+          <div className="btn-group">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Préc.
+            </button>
+            <span className="btn btn-sm btn-outline-dark disabled">
+              {page} / {pages}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suiv.
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {adjustRow ? (
         <div className="modal d-block" style={{ background: "rgba(0,0,0,.4)" }} onClick={() => setAdjustRow(null)}>
           <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
@@ -458,27 +501,41 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
   );
 }
 
+const MOVEMENTS_PAGE_SIZE = 30;
+
 export function MovementsTab({ warehouseId }: { warehouseId: number }) {
   const [items, setItems] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / MOVEMENTS_PAGE_SIZE)), [total]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [warehouseId]);
 
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    getWarehouseMovements(warehouseId, { pageSize: 100 })
-      .then((res) => mounted && setItems(res.items))
+    getWarehouseMovements(warehouseId, { page, pageSize: MOVEMENTS_PAGE_SIZE })
+      .then((res) => {
+        if (!mounted) return;
+        setItems(res.items);
+        setTotal(res.pageInfo.total);
+      })
       .catch((e) => mounted && setError(warehouseErrorMessage(e, "Impossible de charger les mouvements.")))
       .finally(() => mounted && setLoading(false));
     return () => {
       mounted = false;
     };
-  }, [warehouseId]);
+  }, [warehouseId, page]);
 
   if (loading) return <LoadingState label="Chargement des mouvements..." />;
   if (error) return <div className="alert alert-danger">{error}</div>;
 
   return (
+    <div>
     <div className="table-responsive">
       <table className="table table-sm align-middle">
         <thead>
@@ -524,6 +581,32 @@ export function MovementsTab({ warehouseId }: { warehouseId: number }) {
           ) : null}
         </tbody>
       </table>
+    </div>
+
+      {items.length > 0 ? (
+        <div className="d-flex justify-content-between align-items-center mt-2">
+          <div className="text-muted small">{total} mouvement(s)</div>
+          <div className="btn-group">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Préc.
+            </button>
+            <span className="btn btn-sm btn-outline-dark disabled">
+              {page} / {pages}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suiv.
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

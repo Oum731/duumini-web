@@ -144,6 +144,28 @@ export async function listAllCourierTrips(opts: {
   });
 }
 
+export type CourierTripsSummary = {
+  total_count: number;
+  delivered_count: number;
+  commission_pending: number;
+  commission_paid: number;
+};
+
+/** Totaux indépendants de la pagination (voir GET /summary) — à utiliser
+ * pour les KPI plutôt que de les recalculer depuis la page de résultats
+ * affichée, qui ne représente qu'un sous-ensemble des courses. */
+export async function getCourierTripsSummary(opts: {
+  status?: TripStatus;
+  country_code?: string;
+} = {}) {
+  return api.get<CourierTripsSummary>("/api/courier-trips/summary", {
+    query: {
+      ...(opts.status ? { status: opts.status } : {}),
+      ...(opts.country_code ? { country_code: opts.country_code } : {}),
+    },
+  });
+}
+
 export async function setCourierTripCommissionStatus(id: number, commission_status: CommissionStatus) {
   return api.patch<{ ok: true }>(`/api/courier-trips/${id}/commission-status`, {
     commission_status,
