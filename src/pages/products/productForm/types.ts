@@ -44,6 +44,8 @@ export type Draft = {
   description?: string | null;
   conditionnement?: string | null;
   stock?: number | null;
+  units_per_carton?: number | null;
+  warehouse_id?: number | null;
 
   is_featured?: 0 | 1 | null;
   promo_eligible?: 0 | 1 | null;

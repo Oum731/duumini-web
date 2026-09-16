@@ -115,6 +115,14 @@ export type Product = SupplierAgg & {
   conditionnement?: string | null;
 
   stock?: number | null;
+  /** ✅ Entrepôt/conditionnement (voir addProductWarehouseAndUnits.js) —
+   * warehouse_id surcharge l'entrepôt par défaut de la boutique ; les trois
+   * champs suivants sont calculés côté API à partir de `stock` (pièces) et
+   * de units_per_carton, jamais saisis directement. */
+  warehouse_id?: number | null;
+  units_per_carton?: number | null;
+  stock_cartons?: number | null;
+  stock_pieces_remainder?: number | null;
 
   is_featured?: 0 | 1 | null;
 

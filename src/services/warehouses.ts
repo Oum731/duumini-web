@@ -117,7 +117,13 @@ export async function getWarehouseStock(
 
 export async function adjustWarehouseStock(
   warehouseId: number,
-  payload: { product_id: number; variant_id?: number | null; delta_qty: number; reason: string }
+  payload: {
+    product_id: number;
+    variant_id?: number | null;
+    delta_qty: number;
+    unit?: "PIECE" | "CARTON";
+    reason: string;
+  }
 ): Promise<{ ok: true }> {
   const r = await api.post(`/api/warehouses/${warehouseId}/stock/adjust`, payload);
   return unwrap(r);

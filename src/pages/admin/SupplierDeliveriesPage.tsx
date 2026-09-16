@@ -19,6 +19,7 @@ type DraftLine = {
   product: Product | null;
   qty: string;
   unit_cost: string;
+  unit: "PIECE" | "CARTON";
 };
 
 export default function SupplierDeliveriesPage() {
@@ -34,7 +35,9 @@ export default function SupplierDeliveriesPage() {
   const [supplierId, setSupplierId] = useState<number | null>(null);
 
   const [reference, setReference] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([{ key: 1, product: null, qty: "", unit_cost: "" }]);
+  const [lines, setLines] = useState<DraftLine[]>([
+    { key: 1, product: null, qty: "", unit_cost: "", unit: "PIECE" },
+  ]);
   const [productQuery, setProductQuery] = useState<Record<number, string>>({});
   const [productResults, setProductResults] = useState<Record<number, Product[]>>({});
   const [saving, setSaving] = useState(false);
@@ -84,7 +87,7 @@ export default function SupplierDeliveriesPage() {
   }
 
   function addLine() {
-    setLines((ls) => [...ls, { key: Date.now(), product: null, qty: "", unit_cost: "" }]);
+    setLines((ls) => [...ls, { key: Date.now(), product: null, qty: "", unit_cost: "", unit: "PIECE" }]);
   }
 
   function removeLine(key: number) {
@@ -101,14 +104,14 @@ export default function SupplierDeliveriesPage() {
     if (!warehouseId) return setError("Choisis un entrepôt.");
     if (!supplierId) return setError("Choisis un fournisseur.");
 
-    const cleanItems: Array<{ product_id: number; qty: number; unit_cost: number }> = [];
+    const cleanItems: Array<{ product_id: number; qty: number; unit_cost: number; unit: "PIECE" | "CARTON" }> = [];
     for (const l of lines) {
       if (!l.product) continue;
       const qty = Number(l.qty);
       const unitCost = Number(l.unit_cost);
       if (!Number.isFinite(qty) || qty <= 0) return setError(`Quantité invalide pour ${l.product.name}.`);
       if (!Number.isFinite(unitCost) || unitCost < 0) return setError(`Coût invalide pour ${l.product.name}.`);
-      cleanItems.push({ product_id: l.product.id, qty, unit_cost: unitCost });
+      cleanItems.push({ product_id: l.product.id, qty, unit_cost: unitCost, unit: l.unit });
     }
 
     if (!cleanItems.length) return setError("Ajoute au moins un produit.");
@@ -123,7 +126,7 @@ export default function SupplierDeliveriesPage() {
       });
       setShowForm(false);
       setReference("");
-      setLines([{ key: 1, product: null, qty: "", unit_cost: "" }]);
+      setLines([{ key: 1, product: null, qty: "", unit_cost: "", unit: "PIECE" }]);
       setSupplierId(null);
       await refresh();
     } catch (e: any) {
@@ -232,7 +235,7 @@ export default function SupplierDeliveriesPage() {
                     </>
                   )}
                 </div>
-                <div className="col-md-3">
+                <div className="col-md-2">
                   <input
                     type="number"
                     className="form-control"
@@ -241,11 +244,21 @@ export default function SupplierDeliveriesPage() {
                     onChange={(e) => updateLine(l.key, { qty: e.target.value })}
                   />
                 </div>
-                <div className="col-md-3">
+                <div className="col-md-2">
+                  <select
+                    className="form-select"
+                    value={l.unit}
+                    onChange={(e) => updateLine(l.key, { unit: e.target.value as "PIECE" | "CARTON" })}
+                  >
+                    <option value="PIECE">Pièce(s)</option>
+                    <option value="CARTON">Carton(s)</option>
+                  </select>
+                </div>
+                <div className="col-md-2">
                   <input
                     type="number"
                     className="form-control"
-                    placeholder="Coût unitaire (MAD)"
+                    placeholder={l.unit === "CARTON" ? "Coût / carton (MAD)" : "Coût / pièce (MAD)"}
                     value={l.unit_cost}
                     onChange={(e) => updateLine(l.key, { unit_cost: e.target.value })}
                   />
@@ -255,6 +268,22 @@ export default function SupplierDeliveriesPage() {
                     ×
                   </button>
                 </div>
+                {l.unit === "CARTON" && l.product?.units_per_carton ? (
+                  <div className="col-12">
+                    <span className="text-muted small">
+                      {l.product.units_per_carton} pièce(s)/carton — soit{" "}
+                      {(Number(l.qty) || 0) * l.product.units_per_carton} pièce(s) au total pour cette ligne.
+                    </span>
+                  </div>
+                ) : null}
+                {l.unit === "CARTON" && l.product && !l.product.units_per_carton ? (
+                  <div className="col-12">
+                    <span className="text-warning small">
+                      Ce produit n'a pas de nombre de pièces/carton défini — renseigne-le sur sa fiche produit
+                      pour une conversion automatique en pièces.
+                    </span>
+                  </div>
+                ) : null}
               </div>
             ))}
 

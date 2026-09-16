@@ -504,6 +504,8 @@ export default function ManageProductsPage({ scope }: { scope: Scope }) {
       put("description", draft.description);
       put("conditionnement", draft.conditionnement);
       put("stock", draft.stock);
+      put("units_per_carton", draft.units_per_carton);
+      put("warehouse_id", draft.warehouse_id);
 
       put("is_featured", draft.is_featured);
       put("promo_eligible", draft.promo_eligible);
