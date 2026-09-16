@@ -1,16 +1,18 @@
 // src/pages/admin/CourierTripsAdminPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bike, Wallet, Clock3, CheckCircle2 } from "lucide-react";
 import { LoadingState } from "../../components/ui/Spinner";
 import { PageHeader, KpiCard } from "../../components/admin/adminUI";
 import { moneyMAD } from "../../utils/money";
 import {
   listAllCourierTrips,
+  getCourierTripsSummary,
   setCourierTripCommissionStatus,
   courierTripErrorMessage,
   type CourierTrip,
   type TripStatus,
   type CommissionStatus,
+  type CourierTripsSummary,
 } from "../../services/courierTrips";
 
 const STATUS_LABEL: Record<TripStatus, string> = {
@@ -29,6 +31,8 @@ const STATUS_BADGE: Record<TripStatus, string> = {
   CANCELLED: "bg-secondary",
 };
 
+const TRIPS_PAGE_SIZE = 30;
+
 export default function CourierTripsAdminPage() {
   const [items, setItems] = useState<CourierTrip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +40,10 @@ export default function CourierTripsAdminPage() {
   const [statusFilter, setStatusFilter] = useState<TripStatus | "">("");
   const [countryFilter, setCountryFilter] = useState<"" | "MA" | "CI">("");
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<CourierTripsSummary | null>(null);
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / TRIPS_PAGE_SIZE)), [total]);
 
   async function refresh() {
     setLoading(true);
@@ -44,9 +52,11 @@ export default function CourierTripsAdminPage() {
       const res = await listAllCourierTrips({
         status: statusFilter || undefined,
         country_code: countryFilter || undefined,
-        pageSize: 100,
+        page,
+        pageSize: TRIPS_PAGE_SIZE,
       });
       setItems(res.items);
+      setTotal(res.pageInfo.total);
     } catch (e: any) {
       setError(courierTripErrorMessage(e, "Impossible de charger les courses."));
     } finally {
@@ -54,8 +64,33 @@ export default function CourierTripsAdminPage() {
     }
   }
 
+  // ✅ KPI calculés côté serveur sur TOUTES les courses correspondant aux
+  // filtres (pas seulement la page affichée) — sinon "Commission à régler"
+  // etc. ne refléterait qu'une fraction du total dès qu'il y a plus d'une
+  // page de résultats.
+  async function refreshSummary() {
+    try {
+      const res = await getCourierTripsSummary({
+        status: statusFilter || undefined,
+        country_code: countryFilter || undefined,
+      });
+      setSummary(res);
+    } catch {
+      setSummary(null);
+    }
+  }
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, countryFilter]);
+
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, countryFilter, page]);
+
+  useEffect(() => {
+    refreshSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, countryFilter]);
 
@@ -64,6 +99,7 @@ export default function CourierTripsAdminPage() {
     try {
       await setCourierTripCommissionStatus(id, current === "PAID" ? "PENDING" : "PAID");
       await refresh();
+      await refreshSummary();
     } catch (e: any) {
       setError(courierTripErrorMessage(e, "Impossible de mettre à jour la commission."));
     } finally {
@@ -71,27 +107,19 @@ export default function CourierTripsAdminPage() {
     }
   }
 
-  const delivered = items.filter((t) => t.status === "DELIVERED");
-  const commissionPending = delivered
-    .filter((t) => t.commission_status === "PENDING")
-    .reduce((sum, t) => sum + Number(t.commission_amount), 0);
-  const commissionPaid = delivered
-    .filter((t) => t.commission_status === "PAID")
-    .reduce((sum, t) => sum + Number(t.commission_amount), 0);
-
   return (
     <div className="container-xxl py-4">
-      <PageHeader title="Courses livreur" subtitle={`${items.length} course(s)`} />
+      <PageHeader title="Courses livreur" subtitle={`${total} course(s)`} />
 
       <div className="row g-3 mb-4">
         <div className="col-6 col-md-3">
-          <KpiCard icon={Bike} label="Courses livrées" value={delivered.length} accent="green" />
+          <KpiCard icon={Bike} label="Courses livrées" value={summary?.delivered_count ?? 0} accent="green" />
         </div>
         <div className="col-6 col-md-3">
           <KpiCard
             icon={Clock3}
             label="Commission à régler"
-            value={moneyMAD(commissionPending, 2)}
+            value={moneyMAD(summary?.commission_pending ?? 0, 2)}
             accent="orange"
           />
         </div>
@@ -99,7 +127,7 @@ export default function CourierTripsAdminPage() {
           <KpiCard
             icon={CheckCircle2}
             label="Commission réglée"
-            value={moneyMAD(commissionPaid, 2)}
+            value={moneyMAD(summary?.commission_paid ?? 0, 2)}
             accent="neutral"
           />
         </div>
@@ -107,7 +135,7 @@ export default function CourierTripsAdminPage() {
           <KpiCard
             icon={Wallet}
             label="Total commissions"
-            value={moneyMAD(commissionPending + commissionPaid, 2)}
+            value={moneyMAD((summary?.commission_pending ?? 0) + (summary?.commission_paid ?? 0), 2)}
             accent="blue"
           />
         </div>
@@ -203,6 +231,31 @@ export default function CourierTripsAdminPage() {
           </table>
         </div>
       )}
+
+      {!loading && items.length > 0 ? (
+        <div className="d-flex justify-content-between align-items-center mt-2">
+          <div className="text-muted small">{total} course(s)</div>
+          <div className="btn-group">
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              Préc.
+            </button>
+            <span className="btn btn-sm btn-outline-dark disabled">
+              {page} / {pages}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-dark"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Suiv.
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

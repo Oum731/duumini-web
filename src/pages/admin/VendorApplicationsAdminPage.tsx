@@ -1,5 +1,5 @@
 // src/pages/admin/VendorApplicationsAdminPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatPhoneDisplay } from "../../utils/phone";
 import { LoadingState } from "../../components/ui/Spinner";
 import { PageHeader } from "../../components/admin/adminUI";
@@ -163,6 +163,8 @@ function RejectForm({
   );
 }
 
+const APPLICATIONS_PAGE_SIZE = 30;
+
 export default function VendorApplicationsAdminPage() {
   const [tab, setTab] = useState<Tab>("shops");
   const [items, setItems] = useState<VendorApplication[]>([]);
@@ -172,6 +174,9 @@ export default function VendorApplicationsAdminPage() {
   const [selected, setSelected] = useState<VendorApplication | null>(null);
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pages = useMemo(() => Math.max(1, Math.ceil(total / APPLICATIONS_PAGE_SIZE)), [total]);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 300);
@@ -186,9 +191,11 @@ export default function VendorApplicationsAdminPage() {
         status: statusFilter || undefined,
         q: qDebounced || undefined,
         applicant_type: TAB_APPLICANT_TYPES[tab],
-        pageSize: 100,
+        page,
+        pageSize: APPLICATIONS_PAGE_SIZE,
       });
       setItems(res.items);
+      setTotal(res.pageInfo.total);
       if (selected && !res.items.some((a) => a.id === selected.id)) {
         setSelected(null);
       }
@@ -199,10 +206,16 @@ export default function VendorApplicationsAdminPage() {
     }
   }
 
+  // ✅ Tout changement de filtre repart de la page 1 (sinon on pourrait
+  // atterrir sur une page qui n'existe plus pour le nouveau filtre).
+  useEffect(() => {
+    setPage(1);
+  }, [tab, statusFilter, qDebounced]);
+
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, statusFilter, qDebounced]);
+  }, [tab, statusFilter, qDebounced, page]);
 
   return (
     <div className="container-xxl py-4">
@@ -270,6 +283,31 @@ export default function VendorApplicationsAdminPage() {
               {!loading && !items.length && (
                 <div className="text-muted small">Aucune candidature.</div>
               )}
+
+              {!loading && items.length > 0 ? (
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <span className="text-muted small">{total} candidature(s)</span>
+                  <div className="btn-group">
+                    <button
+                      className="btn btn-sm btn-outline-dark"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => p - 1)}
+                    >
+                      Préc.
+                    </button>
+                    <span className="btn btn-sm btn-outline-dark disabled">
+                      {page} / {pages}
+                    </span>
+                    <button
+                      className="btn btn-sm btn-outline-dark"
+                      disabled={page >= pages}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Suiv.
+                    </button>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="list-group" style={{ maxHeight: "65vh", overflowY: "auto" }}>
                 {items.map((a) => (
