@@ -26,6 +26,16 @@ export type WarehouseStockRow = {
   variant_size?: string | null;
   variant_color?: string | null;
   variant_sku?: string | null;
+  // ✅ Mêmes colonnes que le classeur de gestion (onglet Stock) : entrées/
+  // sorties cumulées, CMP, conditionnement, valeur, statut.
+  entries_total: number;
+  exits_total: number;
+  cmp: number | null;
+  units_per_carton: number | null;
+  stock_cartons: number | null;
+  stock_pieces_remainder: number | null;
+  value: number | null;
+  status: "ALERTE" | "OK";
 };
 
 export type StockMovement = {
@@ -104,7 +114,12 @@ export async function updateWarehouse(
 export async function getWarehouseStock(
   warehouseId: number,
   params: { page?: number; pageSize?: number; q?: string; lowOnly?: boolean } = {}
-): Promise<{ items: WarehouseStockRow[]; pageInfo: PageInfo; low_count: number }> {
+): Promise<{
+  items: WarehouseStockRow[];
+  pageInfo: PageInfo;
+  low_count: number;
+  total_value: number;
+}> {
   const query: Record<string, any> = {};
   if (params.page) query.page = params.page;
   if (params.pageSize) query.pageSize = params.pageSize;

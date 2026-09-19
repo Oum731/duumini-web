@@ -268,6 +268,7 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [lowCount, setLowCount] = useState(0);
+  const [totalValue, setTotalValue] = useState(0);
   const pages = useMemo(() => Math.max(1, Math.ceil(total / STOCK_PAGE_SIZE)), [total]);
 
   async function refresh(targetPage = page) {
@@ -283,6 +284,7 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
       setItems(res.items);
       setTotal(res.pageInfo.total);
       setLowCount(res.low_count);
+      setTotalValue(res.total_value);
     } catch (e: any) {
       setError(warehouseErrorMessage(e, "Impossible de charger le stock."));
     } finally {
@@ -340,6 +342,9 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
         <div className="col-sm-4">
           <KpiCard icon={AlertTriangle} label="Sous le seuil d'alerte" value={lowCount} accent="orange" />
         </div>
+        <div className="col-sm-4">
+          <KpiCard icon={Boxes} label="Valeur totale du stock" value={moneyMAD(totalValue)} accent="green" />
+        </div>
       </div>
 
       <div className="d-flex gap-2 mb-3 flex-wrap">
@@ -379,14 +384,20 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
               <tr>
                 <th>Produit</th>
                 <th>Variante</th>
-                <th className="text-end">Quantité</th>
+                <th className="text-end">Entrées</th>
+                <th className="text-end">Sorties</th>
+                <th className="text-end">Stock dispo (pièces)</th>
+                <th className="text-end">Stock dispo (cartons)</th>
                 <th className="text-end">Seuil alerte</th>
+                <th className="text-end">Valeur stock</th>
+                <th className="text-end">CMP</th>
+                <th>Statut</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {items.map((it) => (
-                <tr key={it.id} className={it.quantity <= it.min_threshold ? "table-warning" : ""}>
+                <tr key={it.id} className={it.status === "ALERTE" ? "table-warning" : ""}>
                   <td>
                     {it.product_name}
                     {it.product_brand ? <span className="text-muted small ms-1">({it.product_brand})</span> : null}
@@ -394,8 +405,22 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
                   <td className="small text-muted">
                     {[it.variant_size, it.variant_color, it.variant_sku].filter(Boolean).join(" / ") || "—"}
                   </td>
+                  <td className="text-end text-success">{it.entries_total}</td>
+                  <td className="text-end text-danger">{it.exits_total}</td>
                   <td className="text-end fw-semibold">{it.quantity}</td>
+                  <td className="text-end">
+                    {it.units_per_carton
+                      ? `${it.stock_cartons} + ${it.stock_pieces_remainder}p`
+                      : "—"}
+                  </td>
                   <td className="text-end text-muted">{it.min_threshold}</td>
+                  <td className="text-end">{it.value != null ? moneyMAD(it.value) : "—"}</td>
+                  <td className="text-end text-muted">{it.cmp != null ? moneyMAD(it.cmp) : "—"}</td>
+                  <td>
+                    <span className={`badge ${it.status === "ALERTE" ? "bg-danger" : "bg-success"}`}>
+                      {it.status}
+                    </span>
+                  </td>
                   <td className="text-end">
                     <button
                       className="btn btn-outline-dark btn-sm"
@@ -413,7 +438,7 @@ export function StockTab({ warehouseId }: { warehouseId: number }) {
               ))}
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center text-muted py-4">
+                  <td colSpan={11} className="text-center text-muted py-4">
                     Aucun produit.
                   </td>
                 </tr>
