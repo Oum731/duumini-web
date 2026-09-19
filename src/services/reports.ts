@@ -1,4 +1,5 @@
 import { api } from "./http";
+import type { PageInfo } from "./types";
 
 export type ReportType = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
@@ -347,10 +348,29 @@ export async function listClientsByZone(): Promise<ClientsByZoneResponse> {
 }
 
 /* =========================
- * Phase D : Compte-rendu hebdomadaire
+ * Phase D : Compte-rendu (jour/semaine/mois/année)
  * ======================= */
+export type ReportProductRow = {
+  product_id: number;
+  name: string;
+  entries: number;
+  exits: number;
+  stock_qty: number;
+  stock_cartons: number | null;
+  cmp: number | null;
+  value: number | null;
+  status: "ALERTE" | "OK";
+};
+
+export type TopProduct = {
+  product_id: number;
+  name: string;
+  total_qty: number;
+  total_amount: number;
+};
+
 export type WeeklyReport = {
-  period: { start: string; end: string };
+  period: { type: ReportType; start: string; end: string };
   sales: {
     orders_count: number;
     items_amount: number;
@@ -361,11 +381,22 @@ export type WeeklyReport = {
   debts: { total_due: number };
   stock: { low_count: number; total_value: number };
   operations: { open_count: number; late_count: number };
+  top_product: TopProduct | null;
+  products: { items: ReportProductRow[]; pageInfo: PageInfo };
 };
 
-export async function getWeeklyReport(anchorDate?: string): Promise<WeeklyReport> {
-  const r = await api.get("/api/reports/weekly", {
-    query: anchorDate ? { anchorDate } : undefined,
-  });
+export async function getWeeklyReport(params: {
+  periodType?: ReportType;
+  anchorDate?: string;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<WeeklyReport> {
+  const query: Record<string, any> = {};
+  if (params.periodType) query.period_type = params.periodType;
+  if (params.anchorDate) query.anchorDate = params.anchorDate;
+  if (params.page) query.page = params.page;
+  if (params.pageSize) query.pageSize = params.pageSize;
+
+  const r = await api.get("/api/reports/weekly", { query });
   return unwrap<WeeklyReport>(r);
 }
