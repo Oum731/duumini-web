@@ -345,3 +345,27 @@ export async function listClientsByZone(): Promise<ClientsByZoneResponse> {
   const r = await api.get("/api/reports/clients-by-zone");
   return unwrap<ClientsByZoneResponse>(r);
 }
+
+/* =========================
+ * Phase D : Compte-rendu hebdomadaire
+ * ======================= */
+export type WeeklyReport = {
+  period: { start: string; end: string };
+  sales: {
+    orders_count: number;
+    items_amount: number;
+    total_amount: number;
+    duumini_commission: number;
+  };
+  expenses: { total: number };
+  debts: { total_due: number };
+  stock: { low_count: number; total_value: number };
+  operations: { open_count: number; late_count: number };
+};
+
+export async function getWeeklyReport(anchorDate?: string): Promise<WeeklyReport> {
+  const r = await api.get("/api/reports/weekly", {
+    query: anchorDate ? { anchorDate } : undefined,
+  });
+  return unwrap<WeeklyReport>(r);
+}
