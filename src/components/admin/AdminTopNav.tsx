@@ -23,6 +23,7 @@ import {
   Truck,
   CreditCard,
   Building2,
+  ClipboardList,
 } from "lucide-react";
 import { me } from "../../services/auth";
 
@@ -129,6 +130,7 @@ export default function AdminTopNav({
             ? [
                 { to: "/admin/reports/sales", label: "Rapports", icon: FileBarChart2 },
                 { to: "/admin/subscriptions", label: "Abonnements", icon: CreditCard },
+                { to: "/admin/operations", label: "Operations", icon: ClipboardList },
               ]
             : []),
         ],
