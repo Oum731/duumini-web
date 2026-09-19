@@ -851,11 +851,12 @@ export default function ProductForm({
             ) : null}
           </div>
 
-          {/* ✅ Prix fournisseur HT — coût d'achat interne, sert uniquement
-              à calculer la marge bénéficiaire (jamais affiché au client). */}
+          {/* ✅ Prix fournisseur HT — CMP (coût moyen pondéré) recalculé
+              automatiquement à chaque livraison fournisseur reçue, sert au
+              calcul de la marge bénéficiaire (jamais affiché au client). */}
           <div className="row g-2 mt-2">
             <div className="col-4">
-              <label className="form-label">Prix fournisseur HT</label>
+              <label className="form-label">Prix fournisseur HT (CMP)</label>
               <input
                 type="number"
                 step="0.01"
@@ -869,7 +870,11 @@ export default function ProductForm({
                   }))
                 }
               />
-              <small className="text-muted">Usage interne — jamais visible côté client.</small>
+              <small className="text-muted">
+                Usage interne, jamais visible côté client — recalculé automatiquement (moyenne
+                pondérée) à chaque nouvelle livraison fournisseur ; modifie-le ici seulement pour
+                un produit sans historique de livraison.
+              </small>
             </div>
             {draft.supplier_price_ht != null && draft.price != null ? (
               <div className="col-4 d-flex align-items-end">
