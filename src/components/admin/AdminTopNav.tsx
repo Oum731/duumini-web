@@ -110,7 +110,12 @@ export default function AdminTopNav({
     const g: NavGroup[] = [
       {
         label: "Vue d'ensemble",
-        items: [{ to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true }],
+        items: [
+          { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
+          ...(!isVendor
+            ? [{ to: "/admin/weekly-report", label: "Compte-rendu hebdo", icon: ClipboardList }]
+            : []),
+        ],
       },
       {
         label: "Ventes",

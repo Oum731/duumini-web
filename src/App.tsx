@@ -26,6 +26,7 @@ const ClientZonesPage = React.lazy(() => import("./pages/admin/ClientZonesPage")
 const SupplierDeliveriesPage = React.lazy(() => import("./pages/admin/SupplierDeliveriesPage"));
 const SubscriptionsAdminPage = React.lazy(() => import("./pages/admin/SubscriptionsAdminPage"));
 const OperationsAdminPage = React.lazy(() => import("./pages/admin/OperationsAdminPage"));
+const WeeklyReportPage = React.lazy(() => import("./pages/admin/WeeklyReportPage"));
 
 const ContentAiPage = React.lazy(() => import("./pages/admin/ContentAiPage"));
 const AdsMetaPage = React.lazy(() => import("./pages/admin/AdsMetaPage"));
@@ -545,6 +546,7 @@ export default function App() {
                     <Route path="supplier-deliveries" element={<SupplierDeliveriesPage />} />
                     <Route path="subscriptions" element={<SubscriptionsAdminPage />} />
                     <Route path="operations" element={<OperationsAdminPage />} />
+                    <Route path="weekly-report" element={<WeeklyReportPage />} />
                     <Route
                       path="promotions"
                       element={<PromotionsAdminPage />}
