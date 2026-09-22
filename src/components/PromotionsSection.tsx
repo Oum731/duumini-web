@@ -300,7 +300,7 @@ export default function PromotionsSection({
 
                   <div className="d-flex justify-content-between align-items-center mt-3">
                     <small className="text-muted">Stock: {Number((p as any).stock ?? 0)}</small>
-                    <Link className="btn btn-sm btn-duu" to={`/products/${p.id}`}>
+                    <Link className="btn btn-sm btn-duu" to={`/products/${(p as any).slug || p.id}`}>
                       Voir
                     </Link>
                   </div>

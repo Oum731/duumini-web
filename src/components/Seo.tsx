@@ -38,6 +38,23 @@ function removeMetaByName(name: string) {
   document.querySelector(`meta[name="${name}"]`)?.remove();
 }
 
+const JSONLD_ATTR = "data-seo-jsonld";
+
+function setJsonLd(data: unknown) {
+  let el = document.querySelector(`script[${JSONLD_ATTR}]`);
+  if (!el) {
+    el = document.createElement("script");
+    el.setAttribute("type", "application/ld+json");
+    el.setAttribute(JSONLD_ATTR, "true");
+    document.head.appendChild(el);
+  }
+  el.textContent = JSON.stringify(data);
+}
+
+function removeJsonLd() {
+  document.querySelector(`script[${JSONLD_ATTR}]`)?.remove();
+}
+
 /**
  * Titre/description/OG par page — le SPA n'a qu'un seul index.html,
  * donc chaque route doit pousser ses propres balises au montage pour
@@ -49,6 +66,7 @@ export function Seo({
   image,
   path,
   noindex = false,
+  jsonLd,
 }: {
   title: string;
   description: string;
@@ -59,6 +77,10 @@ export function Seo({
    * du SPA et indexe le contenu rendu même si le serveur répond en 200,
    * donc c'est la seule façon fiable d'empêcher l'indexation ici. */
   noindex?: boolean;
+  /** ✅ Données structurées schema.org (Product, BreadcrumbList...) pour
+   * cette page — objet unique ou tableau (plusieurs @type sur une même
+   * page, ex: Product + BreadcrumbList), sérialisées en JSON-LD. */
+  jsonLd?: object | object[];
 }) {
   useEffect(() => {
     const fullTitle = `${title} | Duumini`;
@@ -84,10 +106,17 @@ export function Seo({
       removeMetaByName("robots");
     }
 
+    if (jsonLd) {
+      setJsonLd(jsonLd);
+    } else {
+      removeJsonLd();
+    }
+
     return () => {
       if (noindex) removeMetaByName("robots");
+      if (jsonLd) removeJsonLd();
     };
-  }, [title, description, image, path, noindex]);
+  }, [title, description, image, path, noindex, jsonLd]);
 
   return null;
 }

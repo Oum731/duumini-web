@@ -14,8 +14,8 @@ export default function Home() {
   return (
     <>
       <Seo
-        title="Produits africains authentiques en ligne au Maroc"
-        description="Attiéké, placali, épicerie et produits africains authentiques livrés au Maroc. DUUMINI connecte producteurs, commerçants et consommateurs entre le Maroc et la Côte d'Ivoire."
+        title="Produits subsahariens et africains authentiques au Maroc"
+        description="Attiéké, placali, épicerie et produits subsahariens et africains authentiques livrés au Maroc. DUUMINI connecte producteurs, commerçants et consommateurs entre le Maroc et la Côte d'Ivoire."
         path="/"
       />
       <HeroSection />
