@@ -149,6 +149,21 @@ export default function ContentAiPage() {
   const [genKeywords, setGenKeywords] = useState("");
   const [genBusy, setGenBusy] = useState(false);
 
+  // create manually (no AI, no credits needed)
+  const MANUAL_TEMPLATE = `{
+  "h1": "",
+  "meta": { "title": "", "description": "", "keywords": [] },
+  "excerpt": "",
+  "body": "",
+  "sections": [],
+  "faq": [],
+  "internal_links": []
+}`;
+  const [manType, setManType] = useState<"city_page" | "blog_post" | "page">("blog_post");
+  const [manSlug, setManSlug] = useState("");
+  const [manJson, setManJson] = useState(MANUAL_TEMPLATE);
+  const [manBusy, setManBusy] = useState(false);
+
   const canPublish = useMemo(() => {
     return !!selected && selected.status !== "published";
   }, [selected]);
@@ -288,6 +303,33 @@ export default function ContentAiPage() {
       setGenBusy(false);
     }
   }, [genType, genCity, genTopic, genSlug, genKeywords, fetchList]);
+
+  const runManualSave = useCallback(async () => {
+    setManBusy(true);
+    setErr(null);
+    try {
+      let data: any;
+      try {
+        data = JSON.parse(manJson);
+      } catch {
+        throw new Error("JSON invalide — vérifie la syntaxe (guillemets, virgules...)");
+      }
+
+      const out = await apiPost<{ ok: boolean; draft: { id: number } }>(
+        "/api/admin/content-ai/manual",
+        { type: manType, slug: manSlug.trim(), lang: "fr", data }
+      );
+
+      await fetchList();
+      if (out?.draft?.id) {
+        setSelectedId(out.draft.id);
+      }
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      setManBusy(false);
+    }
+  }, [manType, manSlug, manJson, fetchList]);
 
   const publish = useCallback(async () => {
     if (!selected) return;
@@ -522,6 +564,57 @@ export default function ContentAiPage() {
           <div className="text-muted small mt-2">
             Crée un nouveau brouillon (draft) — à relire puis publier depuis la liste ci-dessous.
           </div>
+        </div>
+      </div>
+
+      {/* Create manually (no AI) */}
+      <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 16 }}>
+        <div className="card-body">
+          <div className="fw-semibold mb-2">Créer manuellement (sans IA)</div>
+          <div className="text-muted small mb-2">
+            Colle un contenu rédigé à la main (aucun crédit IA nécessaire). Respecte le format
+            attendu (h1, meta, sections, faq...).
+          </div>
+          <div className="row g-2 align-items-end mb-2">
+            <div className="col-6 col-md-2">
+              <label className="form-label small text-muted">Type</label>
+              <select
+                className="form-select form-select-sm"
+                value={manType}
+                onChange={(e) => setManType(e.target.value as any)}
+              >
+                <option value="blog_post">Article de blog</option>
+                <option value="city_page">Page ville</option>
+                <option value="page">Page</option>
+              </select>
+            </div>
+            <div className="col-12 col-md-6">
+              <label className="form-label small text-muted">Slug</label>
+              <input
+                className="form-control form-control-sm"
+                value={manSlug}
+                onChange={(e) => setManSlug(e.target.value)}
+                placeholder="blog/produits-africains-casablanca"
+              />
+            </div>
+            <div className="col-12 col-md-4">
+              <button
+                className="btn btn-dark btn-sm w-100"
+                onClick={runManualSave}
+                disabled={manBusy || !manSlug.trim() || !manJson.trim()}
+              >
+                {manBusy ? "..." : "Enregistrer comme brouillon"}
+              </button>
+            </div>
+          </div>
+          <textarea
+            className="form-control font-monospace"
+            style={{ fontSize: 12 }}
+            rows={10}
+            value={manJson}
+            onChange={(e) => setManJson(e.target.value)}
+            spellCheck={false}
+          />
         </div>
       </div>
 
