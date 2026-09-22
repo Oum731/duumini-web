@@ -891,6 +891,67 @@ export default function ProductView() {
     setGalleryIndex((i) => (i - 1 + images.length) % images.length);
   }, [images.length]);
 
+  const desc = String(anyP?.description || "").trim();
+
+  // ✅ SEO : données structurées Product (prix, disponibilité, marque) +
+  // BreadcrumbList (catégorie > produit) pour ce produit — permet à Google
+  // d'afficher un résultat enrichi (prix, stock) et de mieux comprendre la
+  // place du produit dans le catalogue. Déclaré avant les `return`
+  // anticipés ci-dessous (chargement/produit introuvable) pour respecter
+  // les Rules of Hooks (un hook ne peut pas être appelé après un retour
+  // conditionnel).
+  const canonicalProductUrl = `${SITE_URL}/products/${anyP?.slug || anyP?.id || ""}`;
+
+  const productJsonLd = useMemo(() => {
+    if (!anyP?.id) return undefined;
+
+    const productSchema: Record<string, unknown> = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: anyP?.name || "Produit",
+      description: shortText(desc, 300) || `${anyP?.name || "Ce produit"} sur DUUMINI.`,
+      image: coverUrl ? [coverUrl] : undefined,
+      sku: String(anyP?.id),
+      brand: anyP?.brand ? { "@type": "Brand", name: anyP.brand } : undefined,
+      offers: {
+        "@type": "Offer",
+        url: canonicalProductUrl,
+        priceCurrency: anyP?.currency || "MAD",
+        price: Number(displayPrice || 0).toFixed(2),
+        availability: isClosedProduct(product)
+          ? "https://schema.org/OutOfStock"
+          : "https://schema.org/InStock",
+      },
+    };
+
+    const breadcrumbSchema = {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Accueil", item: SITE_URL },
+        ...(anyP?.category_name
+          ? [
+              {
+                "@type": "ListItem",
+                position: 2,
+                name: anyP.category_name,
+                item: `${SITE_URL}${sectionPathFor(product)}`,
+              },
+            ]
+          : []),
+        {
+          "@type": "ListItem",
+          position: anyP?.category_name ? 3 : 2,
+          name: anyP?.name || "Produit",
+          item: canonicalProductUrl,
+        },
+      ],
+    };
+
+    return [productSchema, breadcrumbSchema];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyP?.id, anyP?.name, anyP?.brand, anyP?.currency, anyP?.category_name, coverUrl, displayPrice, canonicalProductUrl]);
+
   if (loading) {
     return (
       <div className="container-xxl py-4">
@@ -950,8 +1011,6 @@ export default function ProductView() {
     );
   }
 
-  const desc = String(anyP?.description || "").trim();
-
   return (
     <div className="container-xxl py-4">
       <Seo
@@ -961,6 +1020,7 @@ export default function ProductView() {
           `Découvrez ${anyP?.name || "ce produit"} sur DUUMINI, livré à travers l'Afrique.`
         }
         image={coverUrl || undefined}
+        jsonLd={productJsonLd}
       />
       <style>{`
         .btn-duu{

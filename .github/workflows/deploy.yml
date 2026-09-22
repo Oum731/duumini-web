@@ -51,6 +51,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      # ✅ SEO : régénère dist/sitemap.xml avec tous les produits/boutiques
+      # actifs (le fichier public/sitemap.xml était entièrement statique et
+      # ne listait donc jamais le catalogue). Non bloquant : si l'API est
+      # injoignable, le script retombe sur les pages statiques seules.
+      - name: Generate sitemap
+        run: node scripts/generate-sitemap.mjs
+
       # 🔎 Archive dist en artifact (debug)
       - name: Upload dist artifact (debug)
       # on garde ça pour pouvoir inspecter le build si besoin

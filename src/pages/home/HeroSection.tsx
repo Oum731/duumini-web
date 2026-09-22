@@ -11,13 +11,13 @@ export default function HeroSection() {
             className="fw-bold mb-3"
             style={{ fontSize: "clamp(2rem, 4.5vw, 2.9rem)", lineHeight: 1.15 }}
           >
-            Le pont commercial entre l'Afrique et ses diasporas.
+            Produits subsahariens et africains authentiques, livrés au Maroc.
           </h1>
 
           <p className="text-muted mb-4" style={{ fontSize: "1.05rem", maxWidth: 520 }}>
-            DUUMINI connecte producteurs, revendeurs et consommateurs à travers
-            l'Afrique. Corridor actuel : Maroc ↔ Côte d'Ivoire, avec l'ambition
-            de s'étendre à tout le continent.
+            DUUMINI, le pont commercial entre l'Afrique et ses diasporas : producteurs,
+            revendeurs et consommateurs connectés à travers le continent. Corridor actuel :
+            Maroc ↔ Côte d'Ivoire, avec l'ambition de s'étendre à toute l'Afrique.
           </p>
 
           <div className="d-flex flex-wrap gap-3">

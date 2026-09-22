@@ -495,8 +495,13 @@ function ProductCardInner({
 
   const productPath = useMemo(() => {
     const id = Number(anyP.id || 0);
-    return id > 0 ? `/products/${id}` : "#";
-  }, [anyP.id]);
+    if (id <= 0) return "#";
+    // ✅ SEO : URL lisible (/products/nom-du-produit) plutôt que l'id brut
+    // quand un slug existe — meilleure compréhension du contenu par les
+    // moteurs de recherche et par les utilisateurs qui partagent le lien.
+    const slug = typeof anyP.slug === "string" ? anyP.slug.trim() : "";
+    return `/products/${slug || id}`;
+  }, [anyP.id, anyP.slug]);
 
   const sellerName = String(
     anyP.shop_name ||
