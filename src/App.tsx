@@ -99,7 +99,7 @@ const CompaniesPage = React.lazy(() => import("./pages/companies/CompaniesPage")
 import RequireAuth from "./components/RequireCaps";
 import { useViewer } from "./hooks/useViewer";
 import PublicReceiptPage from "./pages/PublicReceiptPage";
-import NotFoundPage from "./pages/NotFoundPage";
+const SeoContentPage = React.lazy(() => import("./pages/SeoContentPage"));
 const ReportSalesViewPage = React.lazy(() => import("./pages/admin/ReportSalesViewPage"));
 const ReportsSalesPage = React.lazy(() => import("./pages/admin/ReportsSalesPage"));
 const AffiliatesPage = React.lazy(() => import("./pages/admin/AffiliatesPage"));
@@ -635,7 +635,7 @@ export default function App() {
                   <Route path="/entreprise" element={<CompaniesPage />} />
                 </Route>
 
-                <Route path="*" element={<NotFoundPage />} />
+                <Route path="*" element={<SeoContentPage />} />
               </Routes>
             </React.Suspense>
           </main>
