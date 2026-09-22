@@ -141,6 +141,14 @@ export default function ContentAiPage() {
   const [tab, setTab] = useState<"preview" | "json" | "versions">("preview");
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
+  // generate new content (IA)
+  const [genType, setGenType] = useState<"city_page" | "blog_post">("city_page");
+  const [genCity, setGenCity] = useState("");
+  const [genTopic, setGenTopic] = useState("");
+  const [genSlug, setGenSlug] = useState("");
+  const [genKeywords, setGenKeywords] = useState("");
+  const [genBusy, setGenBusy] = useState(false);
+
   const canPublish = useMemo(() => {
     return !!selected && selected.status !== "published";
   }, [selected]);
@@ -246,6 +254,40 @@ export default function ContentAiPage() {
       setBusyAction(null);
     }
   }, [selected, fetchItem, fetchList]);
+
+  const runGenerate = useCallback(async () => {
+    setGenBusy(true);
+    setErr(null);
+    try {
+      const keywords = genKeywords
+        .split(",")
+        .map((k) => k.trim())
+        .filter(Boolean);
+
+      const path =
+        genType === "city_page" ? "/api/ai/seo/generate-city-page" : "/api/ai/seo/generate-blog-post";
+
+      const body: any = { lang: "fr", keywords };
+      if (genSlug.trim()) body.slug = genSlug.trim();
+      if (genType === "city_page") body.city = genCity.trim();
+      else body.topic = genTopic.trim();
+
+      const out = await apiPost<{ ok: boolean; draft: { id: number } }>(path, body);
+
+      await fetchList();
+      if (out?.draft?.id) {
+        setSelectedId(out.draft.id);
+      }
+      setGenCity("");
+      setGenTopic("");
+      setGenSlug("");
+      setGenKeywords("");
+    } catch (e: any) {
+      setErr(e?.message || String(e));
+    } finally {
+      setGenBusy(false);
+    }
+  }, [genType, genCity, genTopic, genSlug, genKeywords, fetchList]);
 
   const publish = useCallback(async () => {
     if (!selected) return;
@@ -372,6 +414,7 @@ export default function ContentAiPage() {
                 <option value="">Tous</option>
                 <option value="page">Page</option>
                 <option value="city_page">Page Ville</option>
+                <option value="blog_post">Article de blog</option>
               </select>
             </div>
 
@@ -401,6 +444,83 @@ export default function ContentAiPage() {
                 Filtrer
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Generate new content */}
+      <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 16 }}>
+        <div className="card-body">
+          <div className="fw-semibold mb-2">Générer un nouveau contenu (IA)</div>
+          <div className="row g-2 align-items-end">
+            <div className="col-6 col-md-2">
+              <label className="form-label small text-muted">Type</label>
+              <select
+                className="form-select form-select-sm"
+                value={genType}
+                onChange={(e) => setGenType(e.target.value as any)}
+              >
+                <option value="city_page">Page ville</option>
+                <option value="blog_post">Article de blog</option>
+              </select>
+            </div>
+
+            {genType === "city_page" ? (
+              <div className="col-12 col-md-3">
+                <label className="form-label small text-muted">Ville</label>
+                <input
+                  className="form-control form-control-sm"
+                  value={genCity}
+                  onChange={(e) => setGenCity(e.target.value)}
+                  placeholder="Casablanca"
+                />
+              </div>
+            ) : (
+              <div className="col-12 col-md-3">
+                <label className="form-label small text-muted">Sujet de l'article</label>
+                <input
+                  className="form-control form-control-sm"
+                  value={genTopic}
+                  onChange={(e) => setGenTopic(e.target.value)}
+                  placeholder="Où trouver de l'attiéké au Maroc ?"
+                />
+              </div>
+            )}
+
+            <div className="col-12 col-md-3">
+              <label className="form-label small text-muted">Slug (optionnel)</label>
+              <input
+                className="form-control form-control-sm"
+                value={genSlug}
+                onChange={(e) => setGenSlug(e.target.value)}
+                placeholder="auto si vide"
+              />
+            </div>
+
+            <div className="col-12 col-md-3">
+              <label className="form-label small text-muted">Mots-clés (séparés par virgule)</label>
+              <input
+                className="form-control form-control-sm"
+                value={genKeywords}
+                onChange={(e) => setGenKeywords(e.target.value)}
+                placeholder="attiéké, épicerie africaine..."
+              />
+            </div>
+
+            <div className="col-12 col-md-1">
+              <button
+                className="btn btn-dark btn-sm w-100"
+                onClick={runGenerate}
+                disabled={
+                  genBusy || (genType === "city_page" ? !genCity.trim() : !genTopic.trim())
+                }
+              >
+                {genBusy ? "..." : "Générer"}
+              </button>
+            </div>
+          </div>
+          <div className="text-muted small mt-2">
+            Crée un nouveau brouillon (draft) — à relire puis publier depuis la liste ci-dessous.
           </div>
         </div>
       </div>
