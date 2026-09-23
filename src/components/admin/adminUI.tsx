@@ -43,8 +43,8 @@ export function PageHeader({
     <div className="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3 mb-sm-4">
       <div>
         <h1
-          className="h4 mb-1 fw-bold"
-          style={{ color: "#111111", letterSpacing: "-0.01em" }}
+          className="dz-display h4 mb-1 fw-semibold"
+          style={{ color: "var(--dz-ink)", letterSpacing: "-0.01em" }}
         >
           {title}
         </h1>
@@ -79,11 +79,8 @@ export function SectionCard({
   const { bg, fg } = accentVars(accent);
   return (
     <div
-      className={`card h-100 border-0 ${className}`}
-      style={{
-        borderRadius: "var(--duu-radius-lg)",
-        boxShadow: "var(--duu-shadow-sm)",
-      }}
+      className={`dz-card h-100 ${className}`}
+      style={{ borderRadius: "var(--dz-radius-lg)" }}
     >
       <div className="card-body p-3 p-sm-4">
         {(title || right) && (
@@ -95,7 +92,7 @@ export function SectionCard({
                   style={{
                     width: 36,
                     height: 36,
-                    borderRadius: "var(--duu-radius-md)",
+                    borderRadius: "var(--dz-radius-md)",
                     background: bg,
                     color: fg,
                   }}
@@ -105,7 +102,7 @@ export function SectionCard({
               ) : null}
               <div>
                 {title ? (
-                  <div className="fw-semibold" style={{ color: "#111111", fontSize: "1rem" }}>
+                  <div className="fw-semibold" style={{ color: "var(--dz-ink)", fontSize: "1rem" }}>
                     {title}
                   </div>
                 ) : null}
@@ -141,10 +138,9 @@ export function KpiCard({
   const { bg, fg } = accentVars(accent);
   const content = (
     <div
-      className="card h-100 border-0"
+      className="dz-card h-100"
       style={{
-        borderRadius: "var(--duu-radius-lg)",
-        boxShadow: "var(--duu-shadow-sm)",
+        borderRadius: "var(--dz-radius-lg)",
         transition: "transform .15s ease, box-shadow .15s ease",
       }}
     >
@@ -157,7 +153,7 @@ export function KpiCard({
               style={{
                 width: 32,
                 height: 32,
-                borderRadius: "var(--duu-radius-md)",
+                borderRadius: "var(--dz-radius-md)",
                 background: bg,
                 color: fg,
               }}
@@ -167,8 +163,8 @@ export function KpiCard({
           ) : null}
         </div>
         <div
-          className="fw-bold text-truncate"
-          style={{ color: "#111111", fontSize: "1.4rem", letterSpacing: "-0.01em" }}
+          className="dz-display fw-semibold text-truncate"
+          style={{ color: "var(--dz-ink)", fontSize: "1.4rem", letterSpacing: "-0.01em" }}
         >
           {value}
         </div>
@@ -206,15 +202,15 @@ export function EmptyState({
           style={{
             width: 52,
             height: 52,
-            borderRadius: "var(--duu-radius-md)",
-            background: "rgba(var(--duu-orange-rgb), .12)",
-            color: "var(--duu-orange)",
+            borderRadius: "var(--dz-radius-md)",
+            background: "var(--dz-surface-2)",
+            color: "var(--dz-ink-muted)",
           }}
         >
           <Icon size={24} strokeWidth={2} />
         </div>
       ) : null}
-      <div className="fw-semibold" style={{ color: "#111111" }}>
+      <div className="fw-semibold" style={{ color: "var(--dz-ink)" }}>
         {title}
       </div>
       {description ? (
@@ -301,8 +297,8 @@ export function KpiSparkCard({
 
   const card = (
     <div
-      className="card h-100 border-0"
-      style={{ borderRadius: "var(--duu-radius-lg)", boxShadow: "var(--duu-shadow-sm)" }}
+      className="dz-card h-100"
+      style={{ borderRadius: "var(--dz-radius-lg)" }}
     >
       <div className="card-body p-3 p-sm-4">
         <div className="d-flex align-items-center justify-content-between mb-2 gap-2">
@@ -311,7 +307,7 @@ export function KpiSparkCard({
             style={{
               width: 38,
               height: 38,
-              borderRadius: "var(--duu-radius-md)",
+              borderRadius: "var(--dz-radius-md)",
               background: bg,
               color: fg,
             }}
@@ -326,8 +322,8 @@ export function KpiSparkCard({
                 borderRadius: 999,
                 fontSize: ".72rem",
                 fontWeight: 700,
-                background: trendUp ? "rgba(var(--duu-green-rgb), .12)" : "rgba(229,57,53,.12)",
-                color: trendUp ? "var(--duu-green)" : "var(--duu-red)",
+                background: trendUp ? "var(--dz-green-tint)" : "var(--dz-red-tint)",
+                color: trendUp ? "var(--dz-green)" : "var(--dz-red)",
               }}
             >
               {trendUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
@@ -353,8 +349,8 @@ export function KpiSparkCard({
 
         <div className="text-muted small text-truncate mb-1">{label}</div>
         <div
-          className="fw-bold text-truncate mb-2"
-          style={{ color: valueColor || "#111111", fontSize: "1.4rem", letterSpacing: "-0.01em" }}
+          className="dz-display fw-semibold text-truncate mb-2"
+          style={{ color: valueColor || "var(--dz-ink)", fontSize: "1.4rem", letterSpacing: "-0.01em" }}
         >
           {value}
         </div>
@@ -434,7 +430,7 @@ export function DonutStat({
             className="fw-bold"
             style={{
               fontSize: ".92rem",
-              color: "#111111",
+              color: "var(--dz-ink)",
               lineHeight: 1.2,
               maxWidth: "48%",
               overflowWrap: "break-word",
@@ -460,7 +456,7 @@ export function DonutStat({
                 }}
               />
               <span className="text-muted">{s.label}</span>
-              <span className="fw-semibold" style={{ color: "#111111" }}>
+              <span className="fw-semibold" style={{ color: "var(--dz-ink)" }}>
                 {pct}%
               </span>
             </div>
@@ -516,7 +512,7 @@ export function RankedList({ items }: { items: RankedListItem[] }) {
               </div>
             )}
             <div className="flex-grow-1 text-truncate">
-              <div className="text-truncate fw-semibold" style={{ color: "#111111", fontSize: ".88rem" }}>
+              <div className="text-truncate fw-semibold" style={{ color: "var(--dz-ink)", fontSize: ".88rem" }}>
                 {it.title}
               </div>
               {it.subtitle ? (
@@ -525,7 +521,7 @@ export function RankedList({ items }: { items: RankedListItem[] }) {
                 </div>
               ) : null}
             </div>
-            <div className="text-end flex-shrink-0" style={{ fontSize: ".82rem", fontWeight: 700, color: "#111111" }}>
+            <div className="text-end flex-shrink-0" style={{ fontSize: ".82rem", fontWeight: 700, color: "var(--dz-ink)" }}>
               {it.valueLabel}
             </div>
           </div>
@@ -556,14 +552,14 @@ export function CountryBreakdownList({ items }: { items: CountryBreakdownItem[] 
       {items.map((it) => (
         <div key={it.label}>
           <div className="d-flex align-items-center justify-content-between mb-1">
-            <span className="fw-semibold" style={{ color: "#111111", fontSize: ".88rem" }}>
+            <span className="fw-semibold" style={{ color: "var(--dz-ink)", fontSize: ".88rem" }}>
               {it.label}
             </span>
             <span className="text-muted small">{it.value}</span>
           </div>
           <div
             className="w-100"
-            style={{ height: 8, borderRadius: 999, background: "rgba(17,17,17,.06)", overflow: "hidden" }}
+            style={{ height: 8, borderRadius: 999, background: "var(--dz-surface-2)", overflow: "hidden" }}
           >
             <div
               style={{

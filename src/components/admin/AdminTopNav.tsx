@@ -186,11 +186,12 @@ export default function AdminTopNav({
           }
         }
         .admin-sidebar-card{
-          background: #ffffff;
-          border: 1px solid rgba(0,0,0,0.08);
-          border-radius: var(--duu-radius-lg);
-          box-shadow: var(--duu-shadow-sm);
+          background: var(--dz-surface);
+          border: 1px solid var(--dz-line);
+          border-radius: var(--dz-radius-lg);
+          box-shadow: var(--dz-shadow-sm);
           padding: 1rem;
+          font-family: var(--dz-font-body);
         }
         .admin-sidebar-mobile-toggle{
           display: flex;
@@ -240,8 +241,8 @@ export default function AdminTopNav({
           align-items: center;
           gap: .6rem;
           padding: .55rem .6rem;
-          border-radius: var(--duu-radius-md);
-          color: #222222;
+          border-radius: var(--dz-radius-md);
+          color: var(--dz-ink);
           font-weight: 600;
           font-size: .92rem;
           text-decoration: none;
@@ -249,11 +250,11 @@ export default function AdminTopNav({
           transition: background .15s ease, color .15s ease;
         }
         .admin-sidebar-link:hover{
-          background: rgba(var(--duu-orange-rgb), .08);
-          color: #111111;
+          background: var(--dz-green-tint);
+          color: var(--dz-ink);
         }
         .admin-sidebar-link.active{
-          background: var(--duu-orange);
+          background: var(--dz-green);
           color: #ffffff;
         }
       `}</style>
@@ -262,10 +263,10 @@ export default function AdminTopNav({
         {showTitle && (
           <div className="d-flex align-items-start justify-content-between gap-2 mb-3">
             <div>
-              <div className="fw-bold" style={{ fontSize: "1.1rem", color: "#111111" }}>
+              <div className="dz-display fw-semibold" style={{ fontSize: "1.1rem", color: "var(--dz-ink)" }}>
                 {computedTitle}
               </div>
-              <div style={{ fontSize: ".85rem", color: "rgba(17,17,17,0.65)" }}>
+              <div style={{ fontSize: ".85rem", color: "var(--dz-ink-muted)" }}>
                 {isVendor
                   ? "Ventes, produits, promotions et dépenses."
                   : "Ventes, boutiques, utilisateurs, affiliés."}
@@ -274,8 +275,8 @@ export default function AdminTopNav({
                 <span
                   className="rounded-pill px-3 py-1"
                   style={{
-                    background: "rgba(var(--duu-orange-rgb), .14)",
-                    color: "var(--duu-orange)",
+                    background: "var(--dz-green-tint)",
+                    color: "var(--dz-green)",
                     fontSize: "0.78rem",
                     fontWeight: 600,
                   }}
@@ -286,8 +287,8 @@ export default function AdminTopNav({
                   <span
                     className="rounded-pill px-3 py-1 text-truncate"
                     style={{
-                      background: "#F5F5F5",
-                      color: "#222",
+                      background: "var(--dz-surface-2)",
+                      color: "var(--dz-ink)",
                       fontSize: "0.78rem",
                       fontWeight: 500,
                       maxWidth: 160,
