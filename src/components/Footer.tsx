@@ -4,6 +4,7 @@ import { Link, type LinkProps } from "react-router-dom";
 import { DUUMINI_SLOGAN, WHATSAPP_DISPLAY, WHATSAPP_LINK } from "../lib/brand";
 import { getSiteStatus, type SiteStatus } from "../services/products";
 import { useConsent } from "../context/ConsentContext";
+import { btnClass } from "./ui/dzClass";
 
 /** Link qui remonte en haut de page au clic (Footer) */
 function TopLink(
@@ -60,12 +61,33 @@ export default function Footer() {
   const showShopLinks = !siteStatusLoading && !siteClosed;
 
   return (
-    <footer className="border-top mt-4" style={{ background: "#fff" }}>
+    // ✅ Refonte 2026 : footer repris en vert foncé (--dz-green-dark), en
+    // écho aux bannières CTA de l'accueil, au lieu du fond blanc précédent —
+    // même structure/liens/logique (statut boutique, cookies) qu'avant.
+    <footer className="duu-footer-dark mt-4" style={{ background: "var(--dz-green-dark)" }}>
       <style>{`
+        .duu-footer-dark{ font-family: var(--dz-font-body); }
         .duu-footer-slogan{
           font-weight: 900;
-          color: rgba(0,0,0,.75);
+          color: rgba(255,255,255,.9);
           margin-bottom: .35rem;
+        }
+        .duu-footer-dark h6{
+          color: #fff !important;
+        }
+        .duu-footer-dark .text-muted{
+          color: rgba(255,255,255,.55) !important;
+        }
+        .duu-footer-link{
+          color: rgba(255,255,255,.75);
+          text-decoration: none;
+        }
+        .duu-footer-link:hover{
+          color: var(--dz-yellow);
+        }
+        .duu-footer-dark hr{
+          border-color: rgba(255,255,255,.15);
+          opacity: 1;
         }
       `}</style>
 
@@ -100,7 +122,8 @@ export default function Footer() {
               </a>
               <a
                 href="mailto:duuminima@gmail.com"
-                className="btn btn-outline-dark btn-sm"
+                className={btnClass("outline", "btn-sm")}
+                style={{ borderColor: "rgba(255,255,255,.5)", color: "#fff", padding: "6px 16px", fontSize: 14 }}
               >
                 Email
               </a>
@@ -108,12 +131,10 @@ export default function Footer() {
           </div>
 
           <div className="col-6 col-md-2">
-            <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
-              Menu
-            </h6>
+            <h6 className="fw-bold">Menu</h6>
             <ul className="list-unstyled m-0">
               <li>
-                <TopLink className="link-dark d-block py-1" to="/">
+                <TopLink className="duu-footer-link d-block py-1" to="/">
                   Accueil
                 </TopLink>
               </li>
@@ -121,7 +142,7 @@ export default function Footer() {
               {showShopLinks && (
                 <li>
                   <TopLink
-                    className="link-dark d-block py-1"
+                    className="duu-footer-link d-block py-1"
                     to="/african-market"
                   >
                     Duumini Market
@@ -132,7 +153,7 @@ export default function Footer() {
               {showShopLinks && (
                 <li>
                   <TopLink
-                    className="link-dark d-block py-1"
+                    className="duu-footer-link d-block py-1"
                     to="/african-food"
                   >
                     Duumini Food
@@ -142,54 +163,54 @@ export default function Footer() {
 
               {showShopLinks && (
                 <li>
-                  <TopLink className="link-dark d-block py-1" to="/fashion">
+                  <TopLink className="duu-footer-link d-block py-1" to="/fashion">
                     Duumini Fashion
                   </TopLink>
                 </li>
               )}
 
               <li>
-                <TopLink className="link-dark d-block py-1" to="/cart">
+                <TopLink className="duu-footer-link d-block py-1" to="/cart">
                   Panier
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/orders">
+                <TopLink className="duu-footer-link d-block py-1" to="/orders">
                   Mes commandes
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/contact">
+                <TopLink className="duu-footer-link d-block py-1" to="/contact">
                   Contact
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/about">
+                <TopLink className="duu-footer-link d-block py-1" to="/about">
                   Notre vision
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/comment-ca-marche">
+                <TopLink className="duu-footer-link d-block py-1" to="/comment-ca-marche">
                   Comment ça marche
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/solutions">
+                <TopLink className="duu-footer-link d-block py-1" to="/solutions">
                   Solutions
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/pays">
+                <TopLink className="duu-footer-link d-block py-1" to="/pays">
                   Pays
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/blog">
+                <TopLink className="duu-footer-link d-block py-1" to="/blog">
                   Ressources
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/rejoindre">
+                <TopLink className="duu-footer-link d-block py-1" to="/rejoindre">
                   Devenir vendeur/fournisseur
                 </TopLink>
               </li>
@@ -197,29 +218,27 @@ export default function Footer() {
           </div>
 
           <div className="col-6 col-md-3">
-            <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
-              Informations légales
-            </h6>
+            <h6 className="fw-bold">Informations légales</h6>
             <ul className="list-unstyled m-0">
               <li>
-                <TopLink className="link-dark d-block py-1" to="/legal/privacy">
+                <TopLink className="duu-footer-link d-block py-1" to="/legal/privacy">
                   Confidentialité &amp; données
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/legal/terms">
+                <TopLink className="duu-footer-link d-block py-1" to="/legal/terms">
                   Conditions d’utilisation
                 </TopLink>
               </li>
               <li>
-                <TopLink className="link-dark d-block py-1" to="/legal/returns">
+                <TopLink className="duu-footer-link d-block py-1" to="/legal/returns">
                   Politique de retour
                 </TopLink>
               </li>
               <li>
                 <button
                   type="button"
-                  className="btn btn-link link-dark text-decoration-none p-0 d-block py-1"
+                  className="btn btn-link duu-footer-link text-decoration-none p-0 d-block py-1"
                   onClick={openPanel}
                 >
                   Gérer les cookies
@@ -229,33 +248,23 @@ export default function Footer() {
           </div>
 
           <div className="col-12 col-md-3">
-            <h6 className="fw-bold" style={{ color: "var(--duu-black)" }}>
-              Support
-            </h6>
+            <h6 className="fw-bold">Support</h6>
             <ul className="list-unstyled m-0">
               <li className="py-1">
                 <span className="text-muted d-block small">WhatsApp</span>
-                <a
-                  className="link-dark text-decoration-none"
-                  href={WHATSAPP_LINK}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <a className="duu-footer-link" href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer">
                   {WHATSAPP_DISPLAY}
                 </a>
               </li>
               <li className="py-1">
                 <span className="text-muted d-block small">Email</span>
-                <a
-                  className="link-dark text-decoration-none"
-                  href="mailto:duuminima@gmail.com"
-                >
+                <a className="duu-footer-link" href="mailto:duuminima@gmail.com">
                   duuminima@gmail.com
                 </a>
               </li>
               <li className="py-1">
                 <span className="text-muted d-block small">Horaires</span>
-                <span>09:00 — 20:00 (tous les jours)</span>
+                <span style={{ color: "rgba(255,255,255,.85)" }}>09:00 — 20:00 (tous les jours)</span>
               </li>
             </ul>
           </div>
@@ -268,21 +277,21 @@ export default function Footer() {
             © {new Date().getFullYear()} Duumini — Tous droits réservés.
           </div>
           <div className="small">
-            <TopLink to="/legal/privacy" className="link-dark text-decoration-none">
+            <TopLink to="/legal/privacy" className="duu-footer-link">
               Confidentialité
             </TopLink>
             <span className="text-muted mx-2">•</span>
-            <TopLink to="/legal/terms" className="link-dark text-decoration-none">
+            <TopLink to="/legal/terms" className="duu-footer-link">
               Conditions
             </TopLink>
             <span className="text-muted mx-2">•</span>
-            <TopLink to="/legal/returns" className="link-dark text-decoration-none">
+            <TopLink to="/legal/returns" className="duu-footer-link">
               Retours
             </TopLink>
             <span className="text-muted mx-2">•</span>
             <button
               type="button"
-              className="btn btn-link link-dark text-decoration-none p-0 align-baseline"
+              className="btn btn-link duu-footer-link text-decoration-none p-0 align-baseline"
               onClick={openPanel}
             >
               Gérer les cookies
