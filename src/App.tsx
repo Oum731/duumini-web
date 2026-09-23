@@ -15,8 +15,6 @@ const ShopsAdminPage = React.lazy(() => import("./pages/admin/ShopsAdminPage"));
 const SuppliersAdminPage = React.lazy(() => import("./pages/admin/SuppliersAdminPage"));
 const VendorsAdminPage = React.lazy(() => import("./pages/admin/VendorsAdminPage"));
 const VendorApplicationsAdminPage = React.lazy(() => import("./pages/admin/VendorApplicationsAdminPage"));
-const CourierTripsAdminPage = React.lazy(() => import("./pages/admin/CourierTripsAdminPage"));
-const LivreurProfilesAdminPage = React.lazy(() => import("./pages/admin/LivreurProfilesAdminPage"));
 const CommercialsAdminPage = React.lazy(() => import("./pages/admin/CommercialsAdminPage"));
 const UsersAdminPage = React.lazy(() => import("./pages/admin/UsersAdminPage"));
 const ExpensesPage = React.lazy(() => import("./pages/admin/ExpensesPage"));
@@ -46,10 +44,6 @@ import CommentCaMarchePage from "./pages/CommentCaMarchePage";
 import SolutionsPage from "./pages/SolutionsPage";
 import SolutionDetailPage from "./pages/solutions/SolutionDetailPage";
 import CataloguePage from "./pages/CataloguePage";
-import CourierBookingPage from "./pages/CourierBookingPage";
-import MyCourierTripsPage from "./pages/MyCourierTripsPage";
-import CourierTripTrackingPage from "./pages/CourierTripTrackingPage";
-import LivreurHome from "./pages/livreur/LivreurHome";
 import CommercialHome from "./pages/commercial/CommercialHome";
 import GestionnaireHome from "./pages/gestionnaire/GestionnaireHome";
 import PaysPage from "./pages/PaysPage";
@@ -415,31 +409,6 @@ export default function App() {
                 <Route path="/boutique/:slug" element={<ShopStorefrontPage />} />
                 <Route path="/cart" element={<CartPage />} />
 
-                {/* ✅ Publique : réservable sans compte (voir CourierBookingPage,
-                    formulaire déjà basé sur un numéro de téléphone, pas sur une
-                    session). "Mes courses"/le suivi restent protégées, elles
-                    listent les courses d'un compte. */}
-                <Route path="/courses/nouvelle" element={<CourierBookingPage />} />
-
-                <Route element={<RequireAuth />}>
-                  <Route path="/mes-courses" element={<MyCourierTripsPage />} />
-                  <Route path="/courses/:id/suivi" element={<CourierTripTrackingPage />} />
-                </Route>
-
-                <Route
-                  element={
-                    <RequireAuth
-                      // ✅ Accès double rôle : basé sur la présence d'un profil
-                      // livreur (has_livreur_profile), pas sur le rôle principal
-                      // strict — un commercial qui devient aussi livreur y a accès.
-                      allow={(v: any) => !!v.user?.has_livreur_profile}
-                      redirectTo="/"
-                    />
-                  }
-                >
-                  <Route path="/livreur" element={<LivreurHome />} />
-                </Route>
-
                 <Route
                   element={
                     <RequireAuth
@@ -454,7 +423,7 @@ export default function App() {
                 <Route
                   element={
                     <RequireAuth
-                      // ✅ Même principe que livreur/commercial : basé sur la
+                      // ✅ Même principe que commercial : basé sur la
                       // présence d'une affectation active dans
                       // warehouse_managers (has_warehouse_manager_profile),
                       // pas sur le rôle principal.
@@ -535,8 +504,6 @@ export default function App() {
                       path="candidatures"
                       element={<VendorApplicationsAdminPage />}
                     />
-                    <Route path="courses" element={<CourierTripsAdminPage />} />
-                    <Route path="livreurs" element={<LivreurProfilesAdminPage />} />
                     <Route path="commerciaux" element={<CommercialsAdminPage />} />
                     <Route path="users" element={<UsersAdminPage />} />
                     <Route path="expenses" element={<ExpensesPage />} />

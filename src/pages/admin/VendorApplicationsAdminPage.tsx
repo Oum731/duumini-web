@@ -25,12 +25,7 @@ const ID_DOC_LABEL: Record<string, string> = {
   CNI: "Carte d'identité nationale",
 };
 
-type Tab = "shops" | "livreurs";
-
-const TAB_APPLICANT_TYPES: Record<Tab, ApplicantType[]> = {
-  shops: ["VENDEUR", "FOURNISSEUR", "RESTAURANT", "PARTENAIRE"],
-  livreurs: ["LIVREUR"],
-};
+const SHOP_APPLICANT_TYPES: ApplicantType[] = ["VENDEUR", "FOURNISSEUR", "RESTAURANT", "PARTENAIRE"];
 
 const STATUS_BADGE: Record<ApplicationStatus, string> = {
   PENDING: "bg-warning text-dark",
@@ -48,9 +43,6 @@ function ApproveForm({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [whatsappResult, setWhatsappResult] = useState<boolean | null>(null);
-
-  const isLivreur = application.applicant_type === "LIVREUR";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,36 +53,13 @@ function ApproveForm({
     setBusy(true);
     setError(null);
     try {
-      const res = await approveVendorApplication(application.id, password);
-      if (isLivreur) {
-        // ✅ Confirmation explicite pour l'admin — le WhatsApp part
-        // automatiquement, pas besoin d'action manuelle, mais on veut que
-        // l'admin sache que c'est fait avant de fermer ce panneau.
-        setWhatsappResult(res.whatsapp_sent ?? false);
-      } else {
-        onDone();
-      }
+      await approveVendorApplication(application.id, password);
+      onDone();
     } catch (e: any) {
       setError(applicationErrorMessage(e, "Impossible d'approuver cette candidature."));
     } finally {
       setBusy(false);
     }
-  }
-
-  if (whatsappResult !== null) {
-    return (
-      <div className="border rounded p-3 mb-3">
-        <div className={`alert py-2 mb-2 ${whatsappResult ? "alert-success" : "alert-warning"}`}>
-          Compte créé.{" "}
-          {whatsappResult
-            ? `Message WhatsApp envoyé à ${formatPhoneDisplay(application.contact_phone)} (passage à l'agence).`
-            : "L'envoi du message WhatsApp a échoué — contactez le candidat manuellement."}
-        </div>
-        <button type="button" className="btn btn-outline-dark btn-sm" onClick={onDone}>
-          Fermer
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -104,15 +73,11 @@ function ApproveForm({
           className="form-control"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder={
-            isLivreur
-              ? "Communiqué automatiquement par WhatsApp à l'approbation"
-              : "À communiquer au candidat par téléphone/WhatsApp"
-          }
+          placeholder="À communiquer au candidat par téléphone/WhatsApp"
         />
       </div>
       <button className="btn btn-success btn-sm" type="submit" disabled={busy}>
-        {busy ? "Création…" : isLivreur ? "Créer le compte" : "Créer le compte + la boutique"}
+        {busy ? "Création…" : "Créer le compte + la boutique"}
       </button>
     </form>
   );
@@ -166,7 +131,6 @@ function RejectForm({
 const APPLICATIONS_PAGE_SIZE = 30;
 
 export default function VendorApplicationsAdminPage() {
-  const [tab, setTab] = useState<Tab>("shops");
   const [items, setItems] = useState<VendorApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,7 +154,7 @@ export default function VendorApplicationsAdminPage() {
       const res = await listVendorApplications({
         status: statusFilter || undefined,
         q: qDebounced || undefined,
-        applicant_type: TAB_APPLICANT_TYPES[tab],
+        applicant_type: SHOP_APPLICANT_TYPES,
         page,
         pageSize: APPLICATIONS_PAGE_SIZE,
       });
@@ -210,12 +174,12 @@ export default function VendorApplicationsAdminPage() {
   // atterrir sur une page qui n'existe plus pour le nouveau filtre).
   useEffect(() => {
     setPage(1);
-  }, [tab, statusFilter, qDebounced]);
+  }, [statusFilter, qDebounced]);
 
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, statusFilter, qDebounced, page]);
+  }, [statusFilter, qDebounced, page]);
 
   return (
     <div className="container-xxl py-4">
@@ -223,33 +187,6 @@ export default function VendorApplicationsAdminPage() {
         title="Candidatures"
         subtitle={`${items.length} candidature(s)`}
       />
-
-      <ul className="nav nav-tabs mb-3">
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link ${tab === "shops" ? "active" : ""}`}
-            onClick={() => {
-              setSelected(null);
-              setTab("shops");
-            }}
-          >
-            Boutiques & partenaires
-          </button>
-        </li>
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link ${tab === "livreurs" ? "active" : ""}`}
-            onClick={() => {
-              setSelected(null);
-              setTab("livreurs");
-            }}
-          >
-            Livreurs
-          </button>
-        </li>
-      </ul>
 
       <div className="row g-3">
         <div className="col-12 col-md-5 col-lg-4">

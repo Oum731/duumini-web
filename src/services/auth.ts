@@ -5,7 +5,6 @@ export type Role =
   | "VENDEUR"
   | "FOURNISSEUR"
   | "RESTAURANT"
-  | "LIVREUR"
   | "COMMERCIAL"
   | "ADMIN";
 
@@ -42,11 +41,9 @@ export type User = {
   sexe?: Sexe | null;
   shops?: ShopLite[];
   impersonation?: ImpersonationInfo | null;
-  /** ✅ Accès double rôle (ex. livreur + commercial) — un utilisateur garde
-   * un seul `role` "principal", mais peut avoir un profil dans les deux
-   * tables dédiées ; ces flags pilotent l'accès à /livreur et /commercial
-   * indépendamment du rôle principal. */
-  has_livreur_profile?: boolean;
+  /** ✅ Accès double rôle — un utilisateur garde un seul `role` "principal",
+   * mais peut avoir un profil dans une table dédiée (ex. commercial) ; ces
+   * flags pilotent l'accès à /commercial indépendamment du rôle principal. */
   has_commercial_profile?: boolean;
   has_warehouse_manager_profile?: boolean;
 };
@@ -92,15 +89,6 @@ function normalizeRole(r: any): Role {
   }
 
   if (v === "RESTAURANT") return "RESTAURANT";
-
-  if (
-    v === "LIVREUR" ||
-    v === "DELIVERY" ||
-    v === "RIDER" ||
-    v === "COURIER"
-  ) {
-    return "LIVREUR";
-  }
 
   if (v === "COMMERCIAL" || v === "SALES" || v === "SALES_REP") {
     return "COMMERCIAL";

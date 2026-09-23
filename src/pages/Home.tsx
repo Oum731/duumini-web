@@ -6,7 +6,6 @@ import MissionSection from "./home/MissionSection";
 import CategoriesSection from "./home/CategoriesSection";
 import PopularProductsSection from "./home/PopularProductsSection";
 import HowItWorksSection from "./home/HowItWorksSection";
-import CourierCtaSection from "./home/CourierCtaSection";
 import WhyDuuminiSection from "./home/WhyDuuminiSection";
 import PartnersSection from "./home/PartnersSection";
 import FinalCtaSection from "./home/FinalCtaSection";
@@ -28,7 +27,6 @@ export default function Home() {
       <PersonasSection />
       <MissionSection />
       <HowItWorksSection />
-      <CourierCtaSection />
       <WhyDuuminiSection />
       <PartnersSection />
       <FinalCtaSection />

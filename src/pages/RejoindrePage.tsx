@@ -18,18 +18,14 @@ const ID_DOCUMENT_TYPES: { value: IdDocumentType; label: string }[] = [
   { value: "PASSPORT", label: "Passeport" },
 ];
 
-// Livreur fait maintenant partie de PERSONAS (home/data.ts) au même titre
-// que les autres profils — le picker se contente de mapper PERSONAS, pas
-// besoin d'un type étendu séparé.
 type RejoindreProfileKey = PersonaKey;
 
-// Fournisseur/Revendeur/Partenaire/Livreur passent par la candidature vétée
+// Fournisseur/Revendeur/Partenaire passent par la candidature vétée
 // (examinée par l'équipe admin) ; Client n'y figure pas — voir plus bas.
 const TYPE_FROM_PERSONA: Partial<Record<RejoindreProfileKey, ApplicantType>> = {
   fournisseur: "FOURNISSEUR",
   revendeur: "VENDEUR",
   partenaire: "PARTENAIRE",
-  livreur: "LIVREUR",
 };
 
 const FORM_COPY: Partial<
@@ -68,15 +64,6 @@ const FORM_COPY: Partial<
     nameLabel: "Nom de l'organisation",
     namePlaceholder: "Ex. Nom de votre structure",
     showDocs: false,
-  },
-  livreur: {
-    title: "Devenir livreur DUUMINI",
-    intro:
-      "Vous avez un moyen de transport (moto, voiture, vélo) ? Rejoignez le réseau de livreurs DUUMINI et acceptez des courses près de chez vous. Après cette candidature en ligne, vous devrez vous présenter à l'agence DUUMINI avec vos documents originaux pour validation avant de pouvoir accepter des courses.",
-    nameLabel: "Nom complet",
-    namePlaceholder: "Ex. Youssef El Amrani",
-    showDocs: false,
-    showIdentityDocs: true,
   },
 };
 
@@ -160,9 +147,9 @@ function ApplicationForm({
   const [idDocumentFile, setIdDocumentFile] = useState<File | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
 
-  // ✅ Position GPS (livreur uniquement) — permet un suivi/dispatch des
-  // courses proches dès l'approbation, sans attendre la première connexion
-  // au tableau de bord. Jamais obligatoire (dégradation gracieuse).
+  // Position GPS optionnelle (jamais obligatoire, dégradation gracieuse).
+  // Actuellement inutilisée : aucun profil de candidature ne l'active plus
+  // (showIdentityDocs n'est fixé à true par aucune entrée de FORM_COPY).
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);

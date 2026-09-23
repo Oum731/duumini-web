@@ -143,7 +143,7 @@ export function metaPurchase(payload: {
 }
 
 /**
- * ✅ Candidature (fournisseur/revendeur/partenaire/livreur via /rejoindre)
+ * ✅ Candidature (fournisseur/revendeur/partenaire via /rejoindre)
  * — seul événement standard qui manquait sur le funnel d'acquisition.
  */
 export function metaLead(payload?: { content_name?: string }) {

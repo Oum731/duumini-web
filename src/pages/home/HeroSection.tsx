@@ -1,7 +1,6 @@
 // src/pages/home/HeroSection.tsx
 import { Link } from "react-router-dom";
 import { Sparkles, CheckCircle2 } from "lucide-react";
-import NetworkIllustration from "./NetworkIllustration";
 import { btnClass } from "../../components/ui/dzClass";
 
 const TRUST_ITEMS = [
@@ -20,7 +19,7 @@ export default function HeroSection() {
             style={{ width: "fit-content" }}
           >
             <Sparkles size={13} />
-            Nouveau : suivi de livraison en temps réel
+            Produits subsahariens authentiques, livrés au Maroc
           </div>
 
           <h1
@@ -63,7 +62,18 @@ export default function HeroSection() {
 
         <div className="col-12 col-lg-6">
           <div style={{ maxWidth: 460, margin: "0 auto" }}>
-            <NetworkIllustration />
+            <img
+              src="/market.png"
+              alt="Assortiment de produits africains authentiques : riz, banane plantain, poisson fumé, arachides, mil, cubes d'assaisonnement"
+              style={{
+                width: "100%",
+                aspectRatio: "1 / 1",
+                objectFit: "cover",
+                borderRadius: "var(--dz-radius-xl)",
+                boxShadow: "var(--dz-shadow-lg)",
+              }}
+              loading="eager"
+            />
           </div>
         </div>
       </div>

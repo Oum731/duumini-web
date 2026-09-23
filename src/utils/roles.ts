@@ -4,7 +4,6 @@ export type Role =
   | "VENDEUR"
   | "FOURNISSEUR"
   | "RESTAURANT"
-  | "LIVREUR"
   | "COMMERCIAL"
   | "ADMIN";
 
@@ -21,7 +20,6 @@ export function normRole(input?: any): Role | null {
     r === "VENDEUR" ||
     r === "FOURNISSEUR" ||
     r === "RESTAURANT" ||
-    r === "LIVREUR" ||
     r === "COMMERCIAL" ||
     r === "ADMIN"
   ) return r as Role;

@@ -1,7 +1,7 @@
 // src/pages/gestionnaire/GestionnaireHome.tsx
 //
-// Espace dédié d'un gestionnaire de stock — même principe que /livreur ou
-// /commercial : un utilisateur affecté par l'admin (warehouse_managers,
+// Espace dédié d'un gestionnaire de stock — même principe que /commercial :
+// un utilisateur affecté par l'admin (warehouse_managers,
 // voir la page admin Entrepôts & Stock) obtient ici un tableau de bord
 // limité à son/ses entrepôt(s), sans accès au reste de l'admin.
 import { useEffect, useMemo, useState } from "react";
