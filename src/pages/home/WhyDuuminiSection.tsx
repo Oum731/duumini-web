@@ -53,21 +53,16 @@ const STATS = [
 export default function WhyDuuminiSection() {
   return (
     <section className="container-xxl py-4 py-md-5">
-      <h2 className="fw-bold mb-4">Pourquoi DUUMINI</h2>
+      <h2 className="dz-display fw-semibold mb-4" style={{ color: "var(--dz-ink)" }}>
+        Pourquoi DUUMINI
+      </h2>
 
       <div className="row g-3 mb-5">
         {REASONS.map((r) => {
           const Icon = r.icon;
           return (
             <div className="col-12 col-md-6 col-lg-4" key={r.label}>
-              <div
-                className="h-100 p-3 p-md-4"
-                style={{
-                  borderRadius: "var(--duu-radius-lg)",
-                  background: "#fff",
-                  boxShadow: "var(--duu-shadow-sm)",
-                }}
-              >
+              <div className="dz-card h-100 p-3 p-md-4">
                 <div
                   className="d-flex align-items-center justify-content-center mb-3"
                   style={{
@@ -90,15 +85,15 @@ export default function WhyDuuminiSection() {
       <div
         className="row g-3 g-md-4 text-center p-4 p-md-5"
         style={{
-          borderRadius: "var(--duu-radius-xl)",
-          background: "var(--duu-black)",
+          borderRadius: "var(--dz-radius-xl)",
+          background: "var(--dz-green-dark)",
         }}
       >
         {STATS.map((s) => (
           <div className="col-12 col-md-4" key={s.label}>
             <div
-              className="fw-bold"
-              style={{ fontSize: "2rem", color: "var(--duu-yellow)" }}
+              className="dz-display fw-semibold"
+              style={{ fontSize: "2rem", color: "var(--dz-yellow)" }}
             >
               {s.value}
             </div>

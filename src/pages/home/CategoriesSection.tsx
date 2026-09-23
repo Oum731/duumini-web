@@ -59,7 +59,9 @@ export default function CategoriesSection() {
 
   return (
     <section className="container-xxl py-4 py-md-5">
-      <h2 className="fw-bold mb-4">Nos catégories</h2>
+      <h2 className="dz-display fw-semibold mb-4" style={{ color: "var(--dz-ink)" }}>
+        Parcourir par catégorie
+      </h2>
 
       <div className="row g-3">
         {(loading ? Array.from({ length: 3 }) : categories).map((c, i) => {
@@ -68,12 +70,9 @@ export default function CategoriesSection() {
             <div className="col-4 col-md-2" key={cat?.id ?? i}>
               <Link
                 to={cat ? categoryHref(cat) : "#"}
-                className="d-flex flex-column align-items-center text-center text-decoration-none p-3"
+                className="dz-card d-flex flex-column align-items-center text-center text-decoration-none p-3"
                 style={{
-                  borderRadius: "var(--duu-radius-lg)",
-                  background: "#fff",
-                  boxShadow: "var(--duu-shadow-sm)",
-                  color: "var(--duu-black)",
+                  color: "var(--dz-ink)",
                   visibility: loading ? "hidden" : "visible",
                 }}
               >
