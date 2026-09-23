@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { DUUMINI_SLOGAN } from "../lib/brand";
+import { btnClass } from "./ui/dzClass";
 
 type Role =
   | "MEMBER"
@@ -214,19 +215,22 @@ export default function Navbar({ cartCount = 0 }: Props) {
       aria-label="Navigation principale"
     >
       <style>{`
-        /* ✅ Navbar B2B : hover/actif/focus recolorés en orange, scopé à cette
-           navbar uniquement (le .nav-link/.active::after global de theme.css
-           reste rouge pour AdminTopNav et les autres usages). */
-        .navbar .nav-link:hover{ color: var(--duu-orange) !important; }
+        /* ✅ Refonte 2026 : navbar B2B recolorée en vert (--dz-green), pour
+           s'aligner sur l'accent principal du nouveau design system plutôt
+           que l'orange historique — scopé à cette navbar uniquement (le
+           .nav-link/.active::after global de theme.css reste rouge pour
+           AdminTopNav et les autres usages). */
+        .navbar{ font-family: var(--dz-font-body); }
+        .navbar .nav-link:hover{ color: var(--dz-green) !important; }
         .navbar .nav-link.active::after,
         .navbar .nav-link:focus-visible::after{
-          background: var(--duu-orange) !important;
+          background: var(--dz-green) !important;
         }
         .navbar .nav-link:focus-visible{
-          box-shadow: 0 0 0 .2rem rgba(var(--duu-orange-rgb), .35) !important;
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-green-rgb), .35) !important;
         }
         .navbar .navbar-toggler:focus{
-          box-shadow: 0 0 0 .2rem rgba(var(--duu-orange-rgb), .35) !important;
+          box-shadow: 0 0 0 .2rem rgba(var(--duu-green-rgb), .35) !important;
         }
         /* ✅ Barre horizontale compacte au-delà de 1200px (= navbar-expand-xl,
            le seuil réel où la nav passe en ligne) : icônes des liens de
@@ -290,13 +294,13 @@ export default function Navbar({ cartCount = 0 }: Props) {
           color: rgba(0,0,0,.55);
           padding: .25rem .6rem .15rem;
         }
-        /* ✅ CTA "Acheter" : chemin client final, mis en avant en orange pour
+        /* ✅ CTA "Acheter" : chemin client final, mis en avant en vert pour
            se distinguer des liens B2B informatifs de PUBLIC_NAV_LINKS. */
         .shop-cta{
-          color: var(--duu-orange) !important;
+          color: var(--dz-green) !important;
           font-weight: 700;
         }
-        .shop-cta:hover{ color: var(--duu-orange) !important; }
+        .shop-cta:hover{ color: var(--dz-green) !important; }
       `}</style>
 
       <div className="container-xxl">
@@ -526,7 +530,8 @@ export default function Navbar({ cartCount = 0 }: Props) {
               <li className="nav-item">
                 <Link
                   to="/rejoindre"
-                  className="btn btn-duu-green"
+                  className={btnClass("primary")}
+                  style={{ padding: "8px 18px", fontSize: 14 }}
                   onClick={closeMenus}
                 >
                   Rejoindre DUUMINI
@@ -539,10 +544,9 @@ export default function Navbar({ cartCount = 0 }: Props) {
                 to="/cart"
                 aria-label="Ouvrir le panier"
                 className={({ isActive }) =>
-                  `btn d-flex align-items-center gap-2 position-relative ${
-                    isActive ? "btn-dark border-0" : "btn-outline-dark"
-                  }`
+                  `position-relative ${isActive ? btnClass("primary") : btnClass("outline")}`
                 }
+                style={{ padding: "8px 18px", fontSize: 14 }}
                 onClick={closeMenus}
               >
                 <ShoppingCart size={18} />
@@ -551,7 +555,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
                 {cartCount > 0 && (
                   <span
                     className="position-absolute top-0 start-100 translate-middle badge rounded-pill"
-                    style={{ background: "var(--duu-red)", fontSize: 11 }}
+                    style={{ background: "var(--dz-red)", fontSize: 11 }}
                   >
                     {cartCount > 99 ? "99+" : cartCount}
                     <span className="visually-hidden">articles</span>
