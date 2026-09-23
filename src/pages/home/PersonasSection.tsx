@@ -5,8 +5,10 @@ import { PERSONAS } from "./data";
 export default function PersonasSection() {
   return (
     <section className="container-xxl py-4 py-md-5">
-      <h2 className="fw-bold mb-1">Choisissez votre profil</h2>
-      <p className="text-muted mb-4" style={{ maxWidth: 560 }}>
+      <h2 className="dz-display fw-semibold mb-1" style={{ color: "var(--dz-ink)" }}>
+        Choisissez votre profil
+      </h2>
+      <p className="mb-4" style={{ maxWidth: 560, color: "var(--dz-ink-muted)" }}>
         DUUMINI s'adapte à qui vous êtes : chaque profil a son propre parcours.
       </p>
 
@@ -22,20 +24,15 @@ export default function PersonasSection() {
             <div className="col-6 col-lg-3" key={p.key}>
               <Link
                 to={p.href ?? `/solutions/${p.key}`}
-                className="d-block h-100 text-decoration-none"
-                style={{
-                  borderRadius: "var(--duu-radius-lg)",
-                  background: "#fff",
-                  boxShadow: "var(--duu-shadow-sm)",
-                  transition: "transform .15s ease, box-shadow .15s ease",
-                }}
+                className="dz-card d-block h-100 text-decoration-none"
+                style={{ transition: "transform .15s ease, box-shadow .15s ease" }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = "translateY(-3px)";
-                  e.currentTarget.style.boxShadow = "var(--duu-shadow-md)";
+                  e.currentTarget.style.boxShadow = "var(--dz-shadow-md)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "var(--duu-shadow-sm)";
+                  e.currentTarget.style.boxShadow = "var(--dz-shadow-sm)";
                 }}
               >
                 <div className="p-3 p-md-4 h-100 d-flex flex-column">

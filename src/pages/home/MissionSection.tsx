@@ -13,8 +13,10 @@ export default function MissionSection() {
     <section className="container-xxl py-4 py-md-5">
       <div className="row">
         <div className="col-12 col-lg-8">
-          <h2 className="fw-bold mb-3">Notre mission</h2>
-          <p className="text-muted mb-4" style={{ maxWidth: 680 }}>
+          <h2 className="dz-display fw-semibold mb-3" style={{ color: "var(--dz-ink)" }}>
+            Notre mission
+          </h2>
+          <p className="mb-4" style={{ maxWidth: 680, color: "var(--dz-ink-muted)" }}>
             DUUMINI construit l'infrastructure commerciale qui manque entre
             les marchés africains et leurs diasporas : un réseau où
             producteurs, revendeurs, partenaires et consommateurs

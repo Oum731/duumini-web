@@ -13,7 +13,9 @@ const EMPHASIS_BG: Record<string, string> = {
 export default function HowItWorksSection() {
   return (
     <section className="container-xxl py-3 py-md-5">
-      <h2 className="fw-bold mb-4">Comment ça fonctionne ?</h2>
+      <h2 className="dz-display fw-semibold mb-4" style={{ color: "var(--dz-ink)" }}>
+        Comment ça fonctionne ?
+      </h2>
 
       <div className="row g-4 g-lg-0 align-items-start">
         {HOW_IT_WORKS_STEPS.map((step, i) => {

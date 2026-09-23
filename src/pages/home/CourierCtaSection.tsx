@@ -19,7 +19,7 @@ export default function CourierCtaSection() {
         <div className="text-center text-md-start">
           <div className="d-flex align-items-center justify-content-center justify-content-md-start gap-2 mb-2">
             <Bike size={28} color="#fff" />
-            <h2 className="fw-bold m-0" style={{ color: "#fff" }}>
+            <h2 className="dz-display fw-semibold m-0" style={{ color: "#fff" }}>
               Besoin d'un livreur ?
             </h2>
           </div>

@@ -4,6 +4,7 @@ import HeroSection from "./home/HeroSection";
 import PersonasSection from "./home/PersonasSection";
 import MissionSection from "./home/MissionSection";
 import CategoriesSection from "./home/CategoriesSection";
+import PopularProductsSection from "./home/PopularProductsSection";
 import HowItWorksSection from "./home/HowItWorksSection";
 import CourierCtaSection from "./home/CourierCtaSection";
 import WhyDuuminiSection from "./home/WhyDuuminiSection";
@@ -12,21 +13,25 @@ import FinalCtaSection from "./home/FinalCtaSection";
 
 export default function Home() {
   return (
-    <>
+    // ✅ Refonte 2026 (phase 2) : nouveau design system (theme.css) scopé à
+    // l'accueil via .dz-body — fond crème + typographie Work Sans/Fraunces —
+    // sans toucher au Navbar/Footer globaux ni aux autres pages.
+    <div className="dz-body" style={{ background: "var(--dz-paper)" }}>
       <Seo
         title="Produits subsahariens et africains authentiques au Maroc"
         description="Attiéké, placali, épicerie et produits subsahariens et africains authentiques livrés au Maroc. DUUMINI connecte producteurs, commerçants et consommateurs entre le Maroc et la Côte d'Ivoire."
         path="/"
       />
       <HeroSection />
+      <CategoriesSection />
+      <PopularProductsSection />
       <PersonasSection />
       <MissionSection />
-      <CategoriesSection />
       <HowItWorksSection />
       <CourierCtaSection />
       <WhyDuuminiSection />
       <PartnersSection />
       <FinalCtaSection />
-    </>
+    </div>
   );
 }

@@ -1,5 +1,6 @@
 // src/pages/home/FinalCtaSection.tsx
 import { Link } from "react-router-dom";
+import { btnClass } from "../../components/ui/dzClass";
 
 export default function FinalCtaSection() {
   return (
@@ -7,18 +8,22 @@ export default function FinalCtaSection() {
       <div
         className="text-center p-4 p-md-5"
         style={{
-          borderRadius: "var(--duu-radius-xl)",
-          background: "var(--duu-yellow)",
+          borderRadius: "var(--dz-radius-xl)",
+          background: "var(--dz-green-dark)",
         }}
       >
-        <h2 className="fw-bold mb-2" style={{ color: "#1f1f1f" }}>
+        <h2 className="dz-display fw-semibold mb-2" style={{ color: "#fff" }}>
           Rejoignez DUUMINI
         </h2>
-        <p className="mb-4" style={{ color: "#1f1f1f", opacity: 0.85 }}>
+        <p className="mb-4" style={{ color: "rgba(255,255,255,.75)" }}>
           Fournisseur, revendeur, client ou partenaire : votre profil, votre
           parcours.
         </p>
-        <Link to="/rejoindre" className="btn btn-dark btn-lg">
+        <Link
+          to="/rejoindre"
+          className={btnClass("outline")}
+          style={{ borderColor: "#fff", color: "#fff" }}
+        >
           Rejoindre DUUMINI
         </Link>
       </div>
