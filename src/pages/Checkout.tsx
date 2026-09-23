@@ -40,6 +40,7 @@ import {
 } from "./checkout/api";
 import { useDebouncedValue } from "./profile/hooks/useDebouncedValue";
 import { FocusAndLoadingStyle } from "./checkout/components/FocusAndLoadingStyle";
+import { btnClass } from "../components/ui/dzClass";
 
 export default function CheckoutPage() {
   const nav = useNavigate();
@@ -768,7 +769,7 @@ export default function CheckoutPage() {
 
   if (!isReady || loading) {
     return (
-      <div className="container-xxl py-4">
+      <div className="dz-body container-xxl py-4" style={{ background: "var(--dz-paper)" }}>
         <PageLoader />
       </div>
     );
@@ -776,10 +777,10 @@ export default function CheckoutPage() {
 
   if (!lines.length && !showGuestSuccess) {
     return (
-      <div className="container-xxl py-4">
-        <div className="text-center text-muted py-5">
+      <div className="dz-body container-xxl py-4" style={{ background: "var(--dz-paper)" }}>
+        <div className="dz-card text-center py-5" style={{ color: "var(--dz-ink-muted)" }}>
           <p className="mb-3">Votre panier est vide.</p>
-          <Link to="/" className="btn btn-dark">
+          <Link to="/" className={btnClass("primary")}>
             Retour à l’accueil
           </Link>
         </div>
@@ -797,6 +798,7 @@ export default function CheckoutPage() {
           : "Hors Casablanca — frais d’expédition à payer à la récupération";
 
   return (
+    <div className="dz-body" style={{ background: "var(--dz-paper)", minHeight: "70vh" }}>
     <section className="container-xxl py-4 checkout">
       <FocusAndLoadingStyle />
 
@@ -859,7 +861,7 @@ export default function CheckoutPage() {
 
                   <Link
                     to="/profile?tab=login&next=/orders"
-                    className="btn btn-outline-dark"
+                    className={btnClass("outline")}
                     onClick={() => setShowGuestSuccess(false)}
                   >
                     J’ai déjà un compte
@@ -874,7 +876,7 @@ export default function CheckoutPage() {
 
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div>
-          <h1 className="h4 m-0" style={{ color: "var(--duu-black)" }}>
+          <h1 className="dz-display fw-semibold h4 m-0" style={{ color: "var(--dz-ink)" }}>
             Confirmer la commande
           </h1>
 
@@ -906,10 +908,10 @@ export default function CheckoutPage() {
 
       <div className="row g-4">
         <div className="col-12 col-lg-7">
-          <div className="card border-0 shadow-sm">
+          <div className="dz-card">
             <div className="card-body">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <h2 className="h6 m-0">Vos coordonnées</h2>
+                <h2 className="h6 m-0" style={{ color: "var(--dz-ink)" }}>Vos coordonnées</h2>
 
                 {hasToken && (
                   <button
@@ -1386,28 +1388,28 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          <div className="card border-0 shadow-sm mt-3">
+          <div className="dz-card mt-3">
             <div className="card-body">
-              <h2 className="h6 mb-2">Réception</h2>
+              <h2 className="h6 mb-2" style={{ color: "var(--dz-ink)" }}>Réception</h2>
 
               <div className="seg mb-3">
                 <button
                   type="button"
-                  className={`btn ${fulfillment === "DELIVERY" ? "btn-dark" : "btn-outline-dark"}`}
+                  className={`btn ${fulfillment === "DELIVERY" ? "btn-duu" : "btn-outline-dark"}`}
                   onClick={() => setFulfillment("DELIVERY")}
                 >
                   🚚 Livraison
                 </button>
                 <button
                   type="button"
-                  className={`btn ${fulfillment === "PICKUP" ? "btn-dark" : "btn-outline-dark"}`}
+                  className={`btn ${fulfillment === "PICKUP" ? "btn-duu" : "btn-outline-dark"}`}
                   onClick={() => setFulfillment("PICKUP")}
                 >
                   🏬 Récupération sur place
                 </button>
                 <button
                   type="button"
-                  className={`btn ${fulfillment === "EXPEDITION" ? "btn-dark" : "btn-outline-dark"}`}
+                  className={`btn ${fulfillment === "EXPEDITION" ? "btn-duu" : "btn-outline-dark"}`}
                   onClick={() => setFulfillment("EXPEDITION")}
                 >
                   📦 Expédition
@@ -1470,9 +1472,9 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          <div className="card border-0 shadow-sm mt-3">
+          <div className="dz-card mt-3">
             <div className="card-body">
-              <h2 className="h6 mb-2">Paiement</h2>
+              <h2 className="h6 mb-2" style={{ color: "var(--dz-ink)" }}>Paiement</h2>
 
               <div className="row g-3">
                 <div className="col-12 col-md-6">
@@ -1552,7 +1554,7 @@ export default function CheckoutPage() {
           </div>
 
           <div className="d-grid d-sm-flex gap-2 mt-3">
-            <Link to="/cart" className="btn btn-outline-dark">
+            <Link to="/cart" className={btnClass("outline")}>
               Retour au panier
             </Link>
 
@@ -1573,9 +1575,9 @@ export default function CheckoutPage() {
         </div>
 
         <div className="col-12 col-lg-5">
-          <div className="card border-0 shadow-sm">
+          <div className="dz-card">
             <div className="card-body">
-              <h2 className="h6 mb-3">Récapitulatif</h2>
+              <h2 className="h6 mb-3" style={{ color: "var(--dz-ink)" }}>Récapitulatif</h2>
 
               {hasPromoInCart && (
                 <div className="badge text-bg-warning mb-3">Promo active</div>
@@ -1657,5 +1659,6 @@ export default function CheckoutPage() {
         </div>
       </div>
     </section>
+    </div>
   );
 }

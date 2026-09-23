@@ -3,12 +3,12 @@ export const FocusAndLoadingStyle = () => (
     .checkout .btn:focus,
     .checkout .btn:focus-visible {
       outline: none !important;
-      box-shadow: 0 0 0 .25rem rgba(229, 57, 53, .35) !important;
-      border-color: #E53935 !important;
+      box-shadow: 0 0 0 .25rem rgba(var(--duu-green-rgb), .30) !important;
+      border-color: var(--dz-green) !important;
     }
     .checkout .btn-duu:focus,
     .checkout .btn-duu:focus-visible {
-      box-shadow: 0 0 0 .3rem rgba(229, 57, 53, .35) !important;
+      box-shadow: 0 0 0 .3rem rgba(var(--duu-green-rgb), .30) !important;
     }
     .btn[aria-busy="true"] { pointer-events: none; opacity: .9; }
     .btn .visually-hidden {
@@ -29,39 +29,40 @@ export const FocusAndLoadingStyle = () => (
       gap:.5rem;
       padding:.35rem .6rem;
       border-radius:999px;
-      border:1px solid rgba(0,0,0,.08);
-      background:rgba(255,255,255,.7);
+      border:1px solid var(--dz-line);
+      background:var(--dz-surface);
       font-weight:700;
-      color:#111;
+      color:var(--dz-ink);
       max-width:100%;
     }
     .addr-pill small{
       font-weight:600;
-      color:rgba(0,0,0,.62);
+      color:var(--dz-ink-muted);
     }
 
     .btn-duu{
-      background: var(--duu-yellow);
-      color: #1f1f1f;
+      background: var(--dz-green);
+      color: #fff;
       border: none;
+      border-radius: 999px;
     }
-    .btn-duu:hover{ filter: brightness(0.95); }
+    .btn-duu:hover{ filter: brightness(1.08); color: #fff; }
 
     .seg { display:flex; gap:.5rem; flex-wrap:wrap; }
     .seg .btn{ border-radius:999px !important; }
-    .mini-note{ font-size:.92rem; color:rgba(0,0,0,.65); }
+    .mini-note{ font-size:.92rem; color: var(--dz-ink-muted); }
     .rib-box{
-      border:1px dashed rgba(0,0,0,.2);
-      border-radius: var(--duu-radius-sm);
+      border:1px dashed var(--dz-line);
+      border-radius: var(--dz-radius-sm);
       padding:.75rem;
-      background:rgba(255,255,255,.6);
+      background:var(--dz-surface);
     }
 
     .gps-box{
-      border:1px dashed rgba(0,0,0,.16);
-      border-radius: var(--duu-radius-sm);
+      border:1px dashed var(--dz-line);
+      border-radius: var(--dz-radius-sm);
       padding:.75rem;
-      background:#fffdf4;
+      background:var(--dz-surface-2);
     }
   `}</style>
 );
