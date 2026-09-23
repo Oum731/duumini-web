@@ -25,6 +25,7 @@ import { imgUrl } from "../utils/media";
 import { Seo } from "../components/Seo";
 import { listActiveCountries, type CountryConfig } from "../services/countries";
 import { Facebook, MessageCircle, Share2, Copy, Check } from "lucide-react";
+import { btnClass } from "../components/ui/dzClass";
 
 const SITE_URL = "https://duumini.com";
 // ✅ Domaine réellement servi en prod (duumini.com redirige en 301 vers
@@ -986,16 +987,16 @@ export default function ProductView() {
 
   if (!productIsActive) {
     return (
-      <div className="container-xxl py-4">
+      <div className="dz-body container-xxl py-4" style={{ background: "var(--dz-paper)" }}>
         <div className="d-flex flex-wrap gap-2 mb-3">
           <button
-            className="btn btn-outline-dark"
+            className={btnClass("outline")}
             onClick={handleBack}
             type="button"
           >
             ← Retour
           </button>
-          <Link to={backPath} className="btn btn-dark">
+          <Link to={backPath} className={btnClass("primary")}>
             Explorer
           </Link>
         </div>
@@ -1012,7 +1013,7 @@ export default function ProductView() {
   }
 
   return (
-    <div className="container-xxl py-4">
+    <div className="dz-body container-xxl py-4" style={{ background: "var(--dz-paper)" }}>
       <Seo
         title={String(anyP?.name || "Produit")}
         description={
@@ -1023,35 +1024,22 @@ export default function ProductView() {
         jsonLd={productJsonLd}
       />
       <style>{`
-        .btn-duu{
-          background: var(--duu-yellow);
-          color: #1f1f1f;
-          border: none;
-          font-weight: 900;
-        }
-        .btn-duu:hover{ filter: brightness(0.96); }
-        .btn-duu:focus,
-        .btn-duu:focus-visible{
-          outline: none !important;
-          box-shadow: 0 0 0 .22rem rgba(var(--duu-yellow-rgb), .35) !important;
-        }
-
         .pv-hero{
-          border-radius: var(--duu-radius-xl);
-          border: 1px solid rgba(0,0,0,.08);
+          border-radius: var(--dz-radius-xl);
+          border: 1px solid var(--dz-line);
           background:
-            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-yellow-rgb),.16), transparent 60%),
-            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-red-rgb),.08), transparent 55%),
-            #fff;
-          box-shadow: var(--duu-shadow-md);
+            radial-gradient(900px 420px at 15% 0%, rgba(var(--duu-green-rgb),.10), transparent 60%),
+            radial-gradient(900px 320px at 90% 10%, rgba(var(--duu-orange-rgb),.08), transparent 55%),
+            var(--dz-surface);
+          box-shadow: var(--dz-shadow-md);
           overflow: hidden;
         }
 
         .pv-gallery{
-          border-radius: var(--duu-radius-md);
+          border-radius: var(--dz-radius-md);
           overflow: hidden;
-          background: #f6f6f6;
-          border: 1px solid rgba(0,0,0,.06);
+          background: var(--dz-surface-2);
+          border: 1px solid var(--dz-line);
           position: relative;
         }
         .pv-gallery-main{
@@ -1059,12 +1047,12 @@ export default function ProductView() {
           aspect-ratio: 1 / 1;
           object-fit: cover;
           display: block;
-          background: #f6f6f6;
+          background: var(--dz-surface-2);
         }
         .pv-gallery-empty{
           width: 100%;
           aspect-ratio: 1 / 1;
-          background: linear-gradient(135deg, rgba(0,0,0,.06), rgba(0,0,0,.02));
+          background: repeating-linear-gradient(135deg, var(--dz-surface-2), var(--dz-surface-2) 10px, #E9E2D3 10px, #E9E2D3 20px);
         }
 
         .pv-badge{
@@ -1115,13 +1103,13 @@ export default function ProductView() {
           width: 40px;
           height: 40px;
           border-radius: 999px;
-          border: 1px solid rgba(0,0,0,.08);
+          border: 1px solid var(--dz-line);
           background: rgba(255,255,255,.92);
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: 900;
-          box-shadow: var(--duu-shadow-sm);
+          box-shadow: var(--dz-shadow-sm);
         }
         .pv-arrow:hover{ background: #fff; }
         .pv-arrow--left{ left: 12px; }
@@ -1134,10 +1122,10 @@ export default function ProductView() {
           padding-top: 12px;
         }
         .pv-thumb{
-          border: 1px solid rgba(0,0,0,.08);
-          border-radius: var(--duu-radius-sm);
+          border: 1px solid var(--dz-line);
+          border-radius: var(--dz-radius-sm);
           overflow: hidden;
-          background: #fff;
+          background: var(--dz-surface);
           width: 78px;
           height: 78px;
           flex: 0 0 auto;
@@ -1150,16 +1138,16 @@ export default function ProductView() {
           display: block;
         }
         .pv-thumb--active{
-          box-shadow: 0 0 0 2px rgba(var(--duu-yellow-rgb), .50);
-          border-color: rgba(var(--duu-yellow-rgb), .45);
+          box-shadow: 0 0 0 2px rgba(var(--duu-green-rgb), .45);
+          border-color: rgba(var(--duu-green-rgb), .45);
         }
 
         .pv-info-card,
         .pv-related-card{
-          background: #fff;
-          border: 1px solid rgba(0,0,0,.08);
-          border-radius: var(--duu-radius-md);
-          box-shadow: var(--duu-shadow-sm);
+          background: var(--dz-surface);
+          border: 1px solid var(--dz-line);
+          border-radius: var(--dz-radius-lg);
+          box-shadow: var(--dz-shadow-sm);
         }
 
         .pv-info-card{
@@ -1173,16 +1161,17 @@ export default function ProductView() {
           gap: 8px;
           padding: 6px 10px;
           border-radius: 999px;
-          background: rgba(0,0,0,.04);
-          border: 1px solid rgba(0,0,0,.08);
+          background: var(--dz-surface-2);
+          border: 1px solid var(--dz-line);
           font-weight: 800;
           font-size: .8rem;
+          color: var(--dz-ink-muted);
         }
 
         .pv-title{
-          font-weight: 950;
-          color: var(--duu-black);
-          line-height: 1.1;
+          font-weight: 700;
+          color: var(--dz-ink);
+          line-height: 1.15;
           margin: 0;
         }
 
@@ -1194,14 +1183,14 @@ export default function ProductView() {
         }
         .pv-price-main{
           font-size: 2rem;
-          font-weight: 950;
+          font-weight: 700;
           line-height: 1;
-          color: var(--duu-black);
+          color: var(--dz-ink);
         }
         .pv-price-old{
           text-decoration: line-through;
-          color: rgba(0,0,0,.42);
-          font-weight: 800;
+          color: var(--dz-ink-muted);
+          font-weight: 600;
           font-size: 1rem;
         }
 
@@ -1212,54 +1201,48 @@ export default function ProductView() {
           padding: 6px 10px;
           border-radius: 999px;
           font-size: .8rem;
-          font-weight: 800;
-          border: 1px solid rgba(0,0,0,.08);
-          background: rgba(0,0,0,.04);
-          color: rgba(0,0,0,.8);
+          font-weight: 700;
+          border: 1px solid var(--dz-line);
+          background: var(--dz-surface-2);
+          color: var(--dz-ink);
         }
         .pv-pill--promo{
-          background: rgba(229,57,53,.08);
-          color: var(--duu-red,#E53935);
-          border-color: rgba(229,57,53,.18);
+          background: var(--dz-red-tint);
+          color: var(--dz-red);
+          border-color: rgba(var(--duu-red-rgb),.18);
         }
 
         .pv-label{
-          color: rgba(0,0,0,.58);
+          color: var(--dz-ink-muted);
           font-size: .82rem;
-          font-weight: 900;
+          font-weight: 700;
           margin-bottom: 6px;
         }
 
         .pv-select{
-          border-radius: var(--duu-radius-sm);
+          border-radius: var(--dz-radius-sm);
           min-height: 44px;
         }
         .pv-select:focus{
           outline: none !important;
-          box-shadow: 0 0 0 .22rem rgba(var(--duu-yellow-rgb), .35) !important;
-          border-color: rgba(229,57,53,.22) !important;
+          box-shadow: 0 0 0 .22rem rgba(var(--duu-green-rgb), .30) !important;
+          border-color: var(--dz-green) !important;
         }
 
         .pv-desc{
-          color: rgba(0,0,0,.66);
+          color: var(--dz-ink-muted);
           line-height: 1.6;
           margin: 0;
         }
 
         .pv-related-card{
-          padding: 14px;
+          padding: 18px;
         }
 
         .pv-main-actions{
           display: flex;
           flex-wrap: wrap;
           gap: 12px;
-        }
-
-        .pv-main-actions .btn{
-          border-radius: var(--duu-radius-sm);
-          min-height: 48px;
-          font-weight: 900;
         }
 
         @media (max-width: 991.98px){
@@ -1272,13 +1255,14 @@ export default function ProductView() {
       <div className="d-flex flex-wrap gap-2 mb-3 align-items-center justify-content-between">
         <div className="d-flex flex-wrap gap-2">
           <button
-            className="btn btn-outline-dark"
+            className={btnClass("outline")}
+            style={{ padding: "8px 18px", fontSize: 14 }}
             onClick={handleBack}
             type="button"
           >
             ← Retour
           </button>
-          <Link to={backPath} className="btn btn-dark">
+          <Link to={backPath} className={btnClass("outline")} style={{ padding: "8px 18px", fontSize: 14 }}>
             Explorer
           </Link>
         </div>
@@ -1482,7 +1466,7 @@ export default function ProductView() {
 
               <div className="pv-main-actions pt-2">
                 <button
-                  className="btn btn-duu flex-grow-1"
+                  className={`${btnClass("primary")} flex-grow-1`}
                   onClick={handleAdd}
                   disabled={!canAddNow}
                   type="button"
@@ -1492,7 +1476,7 @@ export default function ProductView() {
                     : "+ Ajouter au panier"}
                 </button>
 
-                <Link to={backPath} className="btn btn-outline-dark">
+                <Link to={backPath} className={btnClass("outline")}>
                   Continuer mes achats
                 </Link>
               </div>
@@ -1551,8 +1535,8 @@ export default function ProductView() {
 
       <div className="pv-related-card mt-4">
         <div className="d-flex align-items-center justify-content-between mb-3">
-          <h2 className="h6 m-0">{relatedTitle}</h2>
-          <Link to={backPath} className="btn btn-sm btn-outline-dark">
+          <h2 className="h6 m-0" style={{ color: "var(--dz-ink)" }}>{relatedTitle}</h2>
+          <Link to={backPath} className={btnClass("outline")} style={{ padding: "6px 16px", fontSize: 13 }}>
             Voir tout
           </Link>
         </div>
