@@ -5,6 +5,7 @@ import { listProducts, type Product } from "../services/products";
 import { moneyMAD as mad } from "../utils/money";
 import { imgUrl } from "../utils/media";
 import { Spinner } from "../components/ui/Spinner";
+import { btnClass } from "../components/ui/dzClass";
 
 const DRINK_WORDS = [
   "boisson",
@@ -160,8 +161,8 @@ function FocusAndLoadingStyle() {
       .cart-page .form-control:focus,
       .cart-page .form-select:focus {
         outline: none !important;
-        box-shadow: 0 0 0 .25rem rgba(229, 57, 53, .35) !important;
-        border-color: #E53935 !important;
+        box-shadow: 0 0 0 .25rem rgba(var(--duu-green-rgb), .30) !important;
+        border-color: var(--dz-green) !important;
       }
 
       .cart-page .btn[aria-busy="true"],
@@ -197,13 +198,13 @@ function FocusAndLoadingStyle() {
         width: min(980px, 100%);
         max-height: 90vh;
         overflow: hidden;
-        border-radius: var(--duu-radius-xl);
+        border-radius: var(--dz-radius-xl);
         background:
-          radial-gradient(700px 260px at 0% 0%, rgba(255, 193, 7, .18), transparent 60%),
-          radial-gradient(650px 220px at 100% 0%, rgba(229, 57, 53, .10), transparent 55%),
-          #fff;
-        border: 1px solid rgba(0,0,0,.08);
-        box-shadow: 0 22px 70px rgba(0,0,0,.22);
+          radial-gradient(700px 260px at 0% 0%, rgba(var(--duu-green-rgb), .10), transparent 60%),
+          radial-gradient(650px 220px at 100% 0%, rgba(var(--duu-orange-rgb), .08), transparent 55%),
+          var(--dz-surface);
+        border: 1px solid var(--dz-line);
+        box-shadow: 0 22px 70px rgba(22,20,15,.18);
       }
 
       .drink-upsell-head{
@@ -230,11 +231,11 @@ function FocusAndLoadingStyle() {
       }
 
       .drink-upsell-close{
-        border: 1px solid rgba(0,0,0,.10);
-        background: #fff;
+        border: 1px solid var(--dz-line);
+        background: var(--dz-surface);
         width: 42px;
         height: 42px;
-        border-radius: var(--duu-radius-sm);
+        border-radius: var(--dz-radius-sm);
         font-size: 20px;
         line-height: 1;
         font-weight: 900;
@@ -273,18 +274,18 @@ function FocusAndLoadingStyle() {
 
       .drink-card{
         height: 100%;
-        border: 1px solid rgba(0,0,0,.08);
-        border-radius: var(--duu-radius-lg);
+        border: 1px solid var(--dz-line);
+        border-radius: var(--dz-radius-lg);
         overflow: hidden;
-        background: #fff;
-        box-shadow: var(--duu-shadow-sm);
+        background: var(--dz-surface);
+        box-shadow: var(--dz-shadow-sm);
       }
 
       .drink-card-img{
         width: 100%;
         aspect-ratio: 1 / 1;
         object-fit: cover;
-        background: #f5f5f5;
+        background: var(--dz-surface-2);
       }
 
       .drink-card-body{
@@ -310,15 +311,6 @@ function FocusAndLoadingStyle() {
         font-weight: 900;
         color: #111827;
       }
-
-      .btn-duu{
-        background: var(--duu-yellow);
-        color: #1f1f1f;
-        border: none;
-        font-weight: 800;
-      }
-
-      .btn-duu:hover{ filter: brightness(.96); }
     `}</style>
   );
 }
@@ -423,7 +415,7 @@ function DrinkUpsellModal(props: {
 
                         <button
                           type="button"
-                          className={"btn w-100 mt-2 " + (alreadyAdded ? "btn-outline-success" : "btn-duu")}
+                          className={"w-100 mt-2 " + (alreadyAdded ? "btn btn-outline-success" : btnClass("primary"))}
                           onClick={() => onAdd(p)}
                           disabled={busy}
                           aria-busy={busy}
@@ -448,7 +440,7 @@ function DrinkUpsellModal(props: {
           )}
 
           <div className="d-flex justify-content-end mt-3">
-            <button type="button" className="btn btn-outline-dark" onClick={onSkip}>
+            <button type="button" className={btnClass("outline")} onClick={onSkip}>
               Terminer et continuer
             </button>
           </div>
@@ -667,6 +659,7 @@ export default function CartPage() {
   }, [hasItems, totalItems, totalAmount]);
 
   return (
+    <div className="dz-body" style={{ background: "var(--dz-paper)", minHeight: "70vh" }}>
     <section className="container-xxl py-4 cart-page">
       <FocusAndLoadingStyle />
 
@@ -682,7 +675,9 @@ export default function CartPage() {
       />
 
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h1 className="h4 m-0">Votre panier</h1>
+        <h1 className="dz-display fw-semibold h4 m-0" style={{ color: "var(--dz-ink)" }}>
+          Votre panier
+        </h1>
 
         <div className="d-flex align-items-center gap-2">
           {headerRight}
@@ -709,16 +704,16 @@ export default function CartPage() {
       </div>
 
       {!hasItems ? (
-        <div className="text-center text-muted py-5">
+        <div className="dz-card text-center py-5" style={{ color: "var(--dz-ink-muted)" }}>
           <p className="mb-3">Votre panier est vide.</p>
-          <Link to="/" className="btn btn-dark">
+          <Link to="/" className={btnClass("primary")}>
             Découvrir les produits
           </Link>
         </div>
       ) : (
         <>
-          <div className="table-responsive">
-            <table className="table align-middle">
+          <div className="dz-card table-responsive p-2 p-md-3">
+            <table className="table align-middle mb-0">
               <thead>
                 <tr>
                   <th style={{ width: 56 }}>Image</th>
@@ -870,12 +865,12 @@ export default function CartPage() {
           </div>
 
           <div className="d-flex flex-column flex-md-row justify-content-end gap-2 mt-3">
-            <Link to="/" className="btn btn-outline-dark">
+            <Link to="/" className={btnClass("outline")}>
               Continuer mes achats
             </Link>
 
             <button
-              className="btn btn-duu"
+              className={btnClass("primary")}
               onClick={goCheckout}
               disabled={goingCheckout}
               aria-busy={goingCheckout}
@@ -890,17 +885,9 @@ export default function CartPage() {
               )}
             </button>
           </div>
-
-          <style>{`
-            .btn-duu{
-              background: var(--duu-yellow);
-              color: #1f1f1f;
-              border: none;
-            }
-            .btn-duu:hover{ filter: brightness(0.95); }
-          `}</style>
         </>
       )}
     </section>
+    </div>
   );
 }
