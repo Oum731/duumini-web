@@ -292,3 +292,129 @@ footer a.link-dark:hover{
 .duu-cat-backdrop{
   background: rgba(0,0,0,.45);
 }
+
+/* =========================================================
+   Refonte 2026 — design system (phase 1 : fondation)
+   ---------------------------------------------------------
+   Nouveaux tokens (palette neutre chaude, ombres, typographie)
+   et composants réutilisables `.dz-*`, namespacés pour ne
+   jamais entrer en collision avec Bootstrap (.btn, .card,
+   .badge...) ni avec les classes historiques `.btn-duu*` /
+   `.duu-cat-*` ci-dessus, qui restent inchangées et actives
+   tant que leurs pages ne sont pas migrées.
+   Purement additif : rien dans le code actuel ne référence
+   ces variables ou classes, donc cette section ne change
+   visuellement aucune page existante. Les phases suivantes
+   (storefront, dashboard, nouvelles pages) les consomment
+   page par page.
+========================================================= */
+:root{
+  --dz-ink: #16140F;
+  --dz-ink-muted: #6B6558;
+  --dz-paper: #FAF7F0;
+  --dz-surface: #FFFFFF;
+  --dz-surface-2: #F1ECE0;
+  --dz-line: #E7E0D2;
+
+  --dz-green: var(--duu-green);
+  --dz-green-dark: #073F28;
+  --dz-green-tint: #E6EFE9;
+  --dz-terracotta: var(--duu-orange);
+  --dz-terracotta-tint: #F5E6E1;
+  --dz-yellow: var(--duu-yellow);
+  --dz-red: var(--duu-red);
+  --dz-red-tint: #FBE9E8;
+
+  --dz-radius-sm: 12px;
+  --dz-radius-md: 16px;
+  --dz-radius-lg: 22px;
+  --dz-radius-xl: 28px;
+
+  --dz-shadow-sm: 0 2px 8px rgba(22,20,15,.06);
+  --dz-shadow-md: 0 10px 24px rgba(22,20,15,.08);
+  --dz-shadow-lg: 0 20px 44px rgba(22,20,15,.10);
+
+  --dz-font-display: 'Fraunces', Georgia, serif;
+  --dz-font-body: 'Work Sans', system-ui, sans-serif;
+}
+
+.dz-display{ font-family: var(--dz-font-display); }
+.dz-body{ font-family: var(--dz-font-body); }
+
+/* Buttons */
+.dz-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:14px 26px;
+  border-radius:999px;
+  font-weight:600;
+  font-size:15px;
+  font-family: var(--dz-font-body);
+  border:1.5px solid transparent;
+  cursor:pointer;
+  text-decoration:none;
+  white-space:nowrap;
+  transition: filter .15s ease, background-color .15s ease;
+}
+.dz-btn-primary{
+  background: var(--dz-green);
+  color:#fff;
+}
+.dz-btn-primary:hover,
+.dz-btn-primary:focus-visible{
+  filter: brightness(1.08);
+  color:#fff;
+}
+.dz-btn-outline{
+  background: transparent;
+  border-color: var(--dz-ink);
+  color: var(--dz-ink);
+}
+.dz-btn-outline:hover,
+.dz-btn-outline:focus-visible{
+  background: rgba(22,20,15,.04);
+  color: var(--dz-ink);
+}
+.dz-btn:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+  filter:none;
+}
+
+/* Card */
+.dz-card{
+  background: var(--dz-surface);
+  border: 1px solid var(--dz-line);
+  border-radius: var(--dz-radius-lg);
+  box-shadow: var(--dz-shadow-sm);
+}
+
+/* Badge */
+.dz-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 12px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+  font-family: var(--dz-font-body);
+}
+.dz-badge-green{ background: var(--dz-green-tint); color: var(--dz-green); }
+.dz-badge-terracotta{ background: var(--dz-terracotta-tint); color: var(--dz-terracotta); }
+.dz-badge-neutral{ background: var(--dz-surface-2); color: var(--dz-ink-muted); }
+.dz-badge-red{ background: var(--dz-red-tint); color: var(--dz-red); }
+
+/* Placeholder image (produit sans photo, ou maquette) */
+.dz-placeholder{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: repeating-linear-gradient(135deg, var(--dz-surface-2), var(--dz-surface-2) 10px, #E9E2D3 10px, #E9E2D3 20px);
+  color: var(--dz-ink-muted);
+  font-size:13px;
+  font-weight:500;
+  text-align:center;
+}
