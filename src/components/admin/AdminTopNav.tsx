@@ -12,7 +12,6 @@ import {
   Store,
   Wallet,
   UserPlus,
-  ShieldCheck,
   Briefcase,
   Menu as MenuIcon,
   X as CloseIcon,
@@ -147,7 +146,6 @@ export default function AdminTopNav({
         label: "Réseau",
         items: [
           { to: "/admin/candidatures", label: "Candidatures", icon: UserPlus },
-          { to: "/admin/livreurs", label: "Livreurs", icon: ShieldCheck },
           { to: "/admin/commerciaux", label: "Commerciaux", icon: Briefcase },
           { to: "/admin/shops", label: "Boutiques", icon: Store },
           { to: "/admin/suppliers", label: "Fournisseurs", icon: Building2 },

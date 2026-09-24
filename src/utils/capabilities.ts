@@ -50,18 +50,6 @@ export function getCaps(roleInput?: any): Capabilities {
     };
   }
 
-  // livreur (si tu l’utilises)
-  if (r === "LIVREUR") {
-    return {
-      canBrowse: true,
-      canOrder: false,
-      canAccessAdmin: false,
-      canAccessPro: false,
-      canManageProducts: false,
-      canManageOrders: true,
-    };
-  }
-
   // commercial : déclare ses propres ventes, pas de gestion produit
   if (r === "COMMERCIAL") {
     return {

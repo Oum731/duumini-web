@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Modal } from "../profile/components/Modal";
-import NetworkIllustration from "./NetworkIllustration";
 import { useConsent } from "../../context/ConsentContext";
 
 const STORAGE_KEY = "duumini:sellIntentGate:v1";
@@ -89,7 +88,11 @@ export default function SellIntentGate() {
   return (
     <Modal open={open} title="Vous souhaitez vendre sur DUUMINI ?" onClose={handleNo}>
       <div className="mb-3" style={{ aspectRatio: "4 / 3", maxHeight: 180, margin: "0 auto" }}>
-        <NetworkIllustration />
+        <img
+          src="/market.png"
+          alt="Produits africains authentiques"
+          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "var(--dz-radius-lg)" }}
+        />
       </div>
 
       <p className="text-muted">

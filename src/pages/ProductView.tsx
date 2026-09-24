@@ -363,7 +363,6 @@ type ViewerRole =
   | "VENDEUR"
   | "FOURNISSEUR"
   | "RESTAURANT"
-  | "LIVREUR"
   | "ADMIN";
 
 function normalizeViewerRole(role?: AuthRole | null): ViewerRole {
@@ -372,13 +371,12 @@ function normalizeViewerRole(role?: AuthRole | null): ViewerRole {
   if (r === "VENDEUR") return "VENDEUR";
   if (r === "FOURNISSEUR") return "FOURNISSEUR";
   if (r === "RESTAURANT") return "RESTAURANT";
-  if (r === "LIVREUR") return "LIVREUR";
   if (r === "MEMBER") return "MEMBER";
   return "GUEST";
 }
 
 function canOrder(vr: ViewerRole) {
-  return vr !== "FOURNISSEUR" && vr !== "LIVREUR";
+  return vr !== "FOURNISSEUR";
 }
 
 export default function ProductView() {

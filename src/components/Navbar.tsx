@@ -21,7 +21,6 @@ import {
   UserPlus,
   Truck,
   LayoutGrid,
-  Bike,
   Warehouse as WarehouseIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -34,7 +33,6 @@ type Role =
   | "VENDEUR"
   | "FOURNISSEUR"
   | "RESTAURANT"
-  | "LIVREUR"
   | "COMMERCIAL"
   | "ADMIN";
 
@@ -71,7 +69,6 @@ const SHOP_LINKS: NavLinkDef[] = [
   { to: "/african-market", label: "Duumini Market", Icon: Store },
   { to: "/african-food", label: "Duumini Food", Icon: Store },
   { to: "/fashion", label: "Duumini Fashion", Icon: Store },
-  { to: "/courses/nouvelle", label: "Commander un livreur", Icon: Bike },
 ];
 
 export default function Navbar({ cartCount = 0 }: Props) {
@@ -89,7 +86,6 @@ export default function Navbar({ cartCount = 0 }: Props) {
     isVendor,
     isSupplier,
     isRestaurantRole,
-    hasLivreurAccess,
     hasCommercialAccess,
     hasWarehouseManagerAccess,
     isPro,
@@ -101,12 +97,10 @@ export default function Navbar({ cartCount = 0 }: Props) {
       const isVendor = role === "VENDEUR";
       const isSupplier = role === "FOURNISSEUR";
       const isRestaurantRole = role === "RESTAURANT";
-      const isLivreurRole = role === "LIVREUR";
       const isCommercialRole = role === "COMMERCIAL";
-      // ✅ Accès double rôle (ex. livreur devenu aussi commercial) : basé sur
-      // la présence d'un profil dédié, pas seulement sur le rôle principal
-      // (voir has_livreur_profile/has_commercial_profile côté API).
-      const hasLivreurAccess = isLivreurRole || !!user?.has_livreur_profile;
+      // ✅ Accès double rôle (ex. commercial devenu aussi gestionnaire) : basé
+      // sur la présence d'un profil dédié, pas seulement sur le rôle principal
+      // (voir has_commercial_profile côté API).
       const hasCommercialAccess = isCommercialRole || !!user?.has_commercial_profile;
       const hasWarehouseManagerAccess = !!user?.has_warehouse_manager_profile;
       return {
@@ -115,7 +109,6 @@ export default function Navbar({ cartCount = 0 }: Props) {
         isVendor,
         isSupplier,
         isRestaurantRole,
-        hasLivreurAccess,
         hasCommercialAccess,
         hasWarehouseManagerAccess,
         isPro:
@@ -123,21 +116,17 @@ export default function Navbar({ cartCount = 0 }: Props) {
           isVendor ||
           isSupplier ||
           isRestaurantRole ||
-          hasLivreurAccess ||
           hasCommercialAccess ||
           hasWarehouseManagerAccess,
       };
     }, [user]);
 
-  // ✅ Espace pro : un utilisateur peut cumuler plusieurs accès (ex. livreur
-  // + commercial) — on liste toutes les entrées applicables plutôt que d'en
+  // ✅ Espace pro : un utilisateur peut cumuler plusieurs accès (ex. commercial
+  // + gestionnaire) — on liste toutes les entrées applicables plutôt que d'en
   // choisir une seule par priorité. Admin reste seul (pas de cumul prévu).
   const proDashboardLinks: { to: string; label: string; Icon: LucideIcon }[] = isAdmin
     ? [{ to: "/admin", label: "Dashboard admin", Icon: Shield }]
     : [
-        ...(hasLivreurAccess
-          ? [{ to: "/livreur", label: "Espace livreur", Icon: Bike }]
-          : []),
         ...(hasCommercialAccess
           ? [{ to: "/commercial", label: "Espace commercial", Icon: Briefcase }]
           : []),
@@ -424,8 +413,6 @@ export default function Navbar({ cartCount = 0 }: Props) {
                 >
                   {isAdmin ? (
                     <Shield size={18} />
-                  ) : hasLivreurAccess ? (
-                    <Bike size={18} />
                   ) : hasCommercialAccess ? (
                     <Briefcase size={18} />
                   ) : (

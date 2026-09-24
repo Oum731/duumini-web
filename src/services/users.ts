@@ -6,7 +6,6 @@ export type Role =
   | "VENDEUR"
   | "FOURNISSEUR"
   | "RESTAURANT"
-  | "LIVREUR"
   | "COMMERCIAL"
   | "ADMIN";
 
@@ -62,7 +61,6 @@ function normalizeRole(r: any): Role {
   if (v === "VENDEUR") return "VENDEUR";
   if (v === "FOURNISSEUR") return "FOURNISSEUR";
   if (v === "RESTAURANT") return "RESTAURANT";
-  if (v === "LIVREUR") return "LIVREUR";
   if (v === "COMMERCIAL") return "COMMERCIAL";
   return "MEMBER";
 }

@@ -463,10 +463,8 @@ export default function CommercialHome() {
       </div>
 
       {/* ✅ C'est DUUMINI qui doit cette commission au commercial (un
-          pourcentage de ses ventes, comme pour un affilié) — logique
-          inverse de celle du livreur, qui lui doit une commission à
-          DUUMINI sur les courses encaissées en cash. Ne jamais reprendre
-          le wording "vous devez" ici. */}
+          pourcentage de ses ventes, comme pour un affilié). Ne jamais
+          reprendre le wording "vous devez" ici. */}
       {profile && profile.pending_commission > 0 && (
         <div className="alert alert-secondary">
           DUUMINI vous doit <strong>{moneyMAD(profile.pending_commission, 2)}</strong> de

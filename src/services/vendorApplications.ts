@@ -2,7 +2,7 @@
 import { api } from "./http";
 import type { Paginated } from "./types";
 
-export type ApplicantType = "VENDEUR" | "FOURNISSEUR" | "RESTAURANT" | "PARTENAIRE" | "LIVREUR";
+export type ApplicantType = "VENDEUR" | "FOURNISSEUR" | "RESTAURANT" | "PARTENAIRE";
 export type ApplicationStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type IdDocumentType = "PASSPORT" | "CARTE_SEJOUR" | "CNI";
 
@@ -43,7 +43,7 @@ export type SubmitVendorApplicationPayload = {
   contact_email?: string | null;
   country_code: string;
   city?: string | null;
-  /** Position GPS optionnelle — surtout utile pour LIVREUR (voir RejoindrePage.tsx). */
+  /** Position GPS optionnelle. */
   lat?: number | null;
   lng?: number | null;
   message?: string | null;
@@ -106,7 +106,7 @@ export async function getVendorApplication(id: number) {
 }
 
 export async function approveVendorApplication(id: number, password: string) {
-  return api.patch<{ ok: true; user_id: number; whatsapp_sent?: boolean }>(
+  return api.patch<{ ok: true; user_id: number }>(
     `/api/vendor-applications/${id}/approve`,
     { password }
   );
