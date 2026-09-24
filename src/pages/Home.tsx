@@ -2,6 +2,7 @@
 import { Seo } from "../components/Seo";
 import HeroSection from "./home/HeroSection";
 import PersonasSection from "./home/PersonasSection";
+import BuyingPathsSection from "./home/BuyingPathsSection";
 import MissionSection from "./home/MissionSection";
 import CategoriesSection from "./home/CategoriesSection";
 import PopularProductsSection from "./home/PopularProductsSection";
@@ -25,6 +26,7 @@ export default function Home() {
       <CategoriesSection />
       <PopularProductsSection />
       <PersonasSection />
+      <BuyingPathsSection />
       <MissionSection />
       <HowItWorksSection />
       <WhyDuuminiSection />
