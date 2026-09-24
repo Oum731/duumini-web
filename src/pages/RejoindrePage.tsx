@@ -9,14 +9,7 @@ import {
   submitVendorApplication,
   applicationErrorMessage,
   type ApplicantType,
-  type IdDocumentType,
 } from "../services/vendorApplications";
-
-const ID_DOCUMENT_TYPES: { value: IdDocumentType; label: string }[] = [
-  { value: "CNI", label: "Carte d'identité nationale" },
-  { value: "CARTE_SEJOUR", label: "Carte de séjour" },
-  { value: "PASSPORT", label: "Passeport" },
-];
 
 type RejoindreProfileKey = PersonaKey;
 
@@ -37,7 +30,6 @@ const FORM_COPY: Partial<
       nameLabel: string;
       namePlaceholder: string;
       showDocs: boolean;
-      showIdentityDocs?: boolean;
     }
   >
 > = {
@@ -143,44 +135,10 @@ function ApplicationForm({
   const [message, setMessage] = useState("");
   const [dfeFile, setDfeFile] = useState<File | null>(null);
   const [rcFile, setRcFile] = useState<File | null>(null);
-  const [idDocumentType, setIdDocumentType] = useState<IdDocumentType>("CNI");
-  const [idDocumentFile, setIdDocumentFile] = useState<File | null>(null);
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-
-  // Position GPS optionnelle (jamais obligatoire, dégradation gracieuse).
-  // Actuellement inutilisée : aucun profil de candidature ne l'active plus
-  // (showIdentityDocs n'est fixé à true par aucune entrée de FORM_COPY).
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locating, setLocating] = useState(false);
-  const [locateError, setLocateError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-
-  function handleLocate() {
-    if (!navigator.geolocation) {
-      setLocateError("Géolocalisation non disponible sur cet appareil.");
-      return;
-    }
-    setLocating(true);
-    setLocateError(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocating(false);
-      },
-      (err) => {
-        setLocating(false);
-        setLocateError(
-          err.code === err.PERMISSION_DENIED
-            ? "Localisation refusée — vous pourrez la renseigner plus tard depuis votre tableau de bord."
-            : "Impossible d'obtenir votre position pour le moment."
-        );
-      },
-      { timeout: 8000 }
-    );
-  }
 
   const copy = FORM_COPY[persona]!;
 
@@ -202,10 +160,6 @@ function ApplicationForm({
       setError("Le nom et le téléphone sont obligatoires.");
       return;
     }
-    if (copy.showIdentityDocs && (!idDocumentFile || !photoFile)) {
-      setError("Votre pièce d'identité et votre photo sont obligatoires.");
-      return;
-    }
 
     setSubmitting(true);
     setError(null);
@@ -218,16 +172,9 @@ function ApplicationForm({
           contact_email: email.trim() || null,
           country_code: countryCode,
           city: city.trim() || null,
-          lat: coords?.lat ?? null,
-          lng: coords?.lng ?? null,
           message: message.trim() || null,
-          id_document_type: copy.showIdentityDocs ? idDocumentType : null,
         },
-        copy.showDocs
-          ? { dfe: dfeFile, rc: rcFile }
-          : copy.showIdentityDocs
-          ? { idDocument: idDocumentFile, photo: photoFile }
-          : {}
+        copy.showDocs ? { dfe: dfeFile, rc: rcFile } : {}
       );
       metaLead({ content_name: applicantType });
       setDone(true);
@@ -370,75 +317,6 @@ function ApplicationForm({
                   onChange={(e) => setRcFile(e.target.files?.[0] || null)}
                 />
                 {rcFile && <div className="form-text">{rcFile.name}</div>}
-              </div>
-            </>
-          )}
-
-          {copy.showIdentityDocs && (
-            <>
-              <div className="col-12">
-                <label className="form-label">Type de pièce d'identité</label>
-                <select
-                  className="form-select"
-                  value={idDocumentType}
-                  onChange={(e) => setIdDocumentType(e.target.value as IdDocumentType)}
-                >
-                  {ID_DOCUMENT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="col-12 col-sm-6">
-                <label className="form-label">Photo de la pièce d'identité</label>
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  className="form-control"
-                  onChange={(e) => setIdDocumentFile(e.target.files?.[0] || null)}
-                  required
-                />
-                {idDocumentFile && <div className="form-text">{idDocumentFile.name}</div>}
-              </div>
-
-              <div className="col-12 col-sm-6">
-                <label className="form-label">Votre photo</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="form-control"
-                  onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
-                  required
-                />
-                <div className="form-text">
-                  Sert à vous identifier auprès de DUUMINI et des clients.
-                </div>
-                {photoFile && <div className="form-text">{photoFile.name}</div>}
-              </div>
-
-              <div className="col-12">
-                <label className="form-label d-block">Votre position (optionnel)</label>
-                <div className="d-flex flex-wrap align-items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-dark"
-                    onClick={handleLocate}
-                    disabled={locating}
-                  >
-                    {locating
-                      ? "Localisation…"
-                      : coords
-                      ? "Position enregistrée ✓ — réessayer"
-                      : "📍 Utiliser ma position"}
-                  </button>
-                  {locateError && <span className="small text-danger">{locateError}</span>}
-                </div>
-                <div className="form-text">
-                  Nous permet de vous proposer des courses proches de chez
-                  vous dès l'activation de votre compte.
-                </div>
               </div>
             </>
           )}
