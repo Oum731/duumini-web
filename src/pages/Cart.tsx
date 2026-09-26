@@ -285,7 +285,9 @@ function FocusAndLoadingStyle() {
         width: 100%;
         aspect-ratio: 1 / 1;
         object-fit: cover;
-        background: var(--duu-green);
+        background-image: url(/bg-produit-vert.jpg);
+        background-size: cover;
+        background-position: center;
       }
 
       .drink-card-body{

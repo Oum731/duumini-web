@@ -12,20 +12,19 @@ type Tile = {
 const TILES: Tile[] = [
   {
     key: "epicerie",
-    title: "Épicerie africaine",
+    title: "Duumini Market",
     href: "/african-market",
-    image: "/market.png",
+    image: "/products/attieke-market.jpg",
   },
   {
     key: "mode",
-    title: "Mode & beauté",
+    title: "Duumini Fashion",
     href: "/fashion",
-    image:
-      "https://images.unsplash.com/photo-1752070182361-9fa562ed7f97?w=480&h=480&fit=crop&q=80&auto=format",
+    image: "/fashion.jpg",
   },
   {
     key: "cuisine",
-    title: "Cuisine & ingrédients",
+    title: "Duumini Food",
     href: "/african-food",
     image: "/food.png",
   },
@@ -33,8 +32,7 @@ const TILES: Tile[] = [
     key: "fournisseurs",
     title: "Nouveaux fournisseurs",
     href: "/vendeur/fournisseurs",
-    image:
-      "https://images.unsplash.com/photo-1741874299706-2b8e16839aaa?w=480&h=480&fit=crop&q=80&auto=format",
+    image: "/fournisseur.jpg",
   },
 ];
 

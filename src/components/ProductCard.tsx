@@ -540,7 +540,9 @@ function ProductCardInner({
         .duu-media{
           position: relative;
           overflow: hidden;
-          background: var(--duu-green);
+          background-image: url(/bg-produit-vert.jpg);
+          background-size: cover;
+          background-position: center;
         }
         .duu-media--default{ aspect-ratio: 1 / 1; }
         .duu-media--fashion{ aspect-ratio: 4 / 5; }

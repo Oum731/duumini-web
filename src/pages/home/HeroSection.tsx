@@ -8,7 +8,7 @@ const TRUST_ITEMS = [
   "Vendeurs vérifiés",
 ];
 
-const HERO_IMAGE = "/food.png";
+const HERO_IMAGE = "/hero-transport.jpg";
 
 export default function HeroSection() {
   return (
@@ -78,7 +78,7 @@ export default function HeroSection() {
             >
               <img
                 src={HERO_IMAGE}
-                alt="Plats africains authentiques : poisson braisé, attiéké, mafé et placali au poulet"
+                alt="Navire porte-conteneurs assurant le commerce entre le Maroc et la Côte d'Ivoire"
                 style={{
                   width: "100%",
                   aspectRatio: "1 / 1",
