@@ -79,8 +79,8 @@ export default function CategoriesSection() {
                 <div
                   className="d-flex align-items-center justify-content-center mb-2 overflow-hidden"
                   style={{
-                    width: 48,
-                    height: 48,
+                    width: 76,
+                    height: 76,
                     borderRadius: "50%",
                     background: "rgba(var(--duu-green-rgb), .12)",
                   }}
@@ -96,7 +96,7 @@ export default function CategoriesSection() {
                     <FallbackIcon />
                   )}
                 </div>
-                <div className="small fw-semibold">{cat?.name || ""}</div>
+                <div className="fw-semibold" style={{ fontSize: 14 }}>{cat?.name || ""}</div>
               </Link>
             </div>
           );
