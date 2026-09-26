@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { ShoppingBag, ShoppingCart, Warehouse, type LucideIcon } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { getCaps } from "../../utils/capabilities";
-import { btnClass } from "../../components/ui/dzClass";
 
 type BuyingPath = {
   key: string;
@@ -92,7 +91,11 @@ export default function BuyingPathsSection() {
                 </div>
                 <div className="text-muted small flex-grow-1 mb-3">{path.description}</div>
 
-                <Link to={path.ctaHref} className={btnClass("outline", "align-self-start")}>
+                <Link
+                  to={path.ctaHref}
+                  className="dz-btn align-self-start"
+                  style={{ background: "var(--duu-orange)", color: "#fff" }}
+                >
                   {path.ctaLabel}
                 </Link>
               </div>

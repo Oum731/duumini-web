@@ -1,5 +1,6 @@
 // src/pages/CataloguePage.tsx
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import { Seo } from "../components/Seo";
 import ProductCard from "../components/ProductCard";
@@ -23,9 +24,10 @@ const VERTICAL_TABS: { value: Vertical | ""; label: string }[] = [
 const PAGE_SIZE = 24;
 
 export default function CataloguePage() {
+  const [searchParams] = useSearchParams();
   const [vertical, setVertical] = useState<Vertical | "">("");
-  const [q, setQ] = useState("");
-  const [qDebounced, setQDebounced] = useState("");
+  const [q, setQ] = useState(searchParams.get("q") || "");
+  const [qDebounced, setQDebounced] = useState(searchParams.get("q") || "");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [brand, setBrand] = useState("");
   const [page, setPage] = useState(1);
