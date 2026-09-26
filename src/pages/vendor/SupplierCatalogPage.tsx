@@ -6,12 +6,20 @@ import { me } from "../../services/auth";
 import { listSupplierProducts, type SupplierProduct } from "../../services/supplierProducts";
 import { moneyMAD } from "../../utils/money";
 import { LoadingState } from "../../components/ui/Spinner";
+import { getCaps } from "../../utils/capabilities";
 
 type AnyObj = Record<string, any>;
 
-function isProRole(role?: string) {
-  const r = String(role || "").toUpperCase();
-  return r === "ADMIN" || r === "VENDEUR" || r === "FOURNISSEUR" || r === "RESTAURANT";
+// ✅ Route chaque rôle vers son propre espace au lieu de renvoyer tout le
+// monde sur /ma-boutique (qui n'a de sens que pour vendeur/fournisseur/
+// restaurant) — cohérent avec proDashboardLinks dans Navbar.tsx.
+function getDashboardPath(user: AnyObj | null): string {
+  const role = String(user?.role || "").toUpperCase();
+  if (role === "ADMIN") return "/admin";
+  if (role === "COMMERCIAL" || user?.has_commercial_profile) return "/commercial";
+  if (user?.has_warehouse_manager_profile) return "/gestionnaire";
+  if (role === "VENDEUR" || role === "FOURNISSEUR" || role === "RESTAURANT") return "/ma-boutique";
+  return "/";
 }
 
 export default function SupplierCatalogPage() {
@@ -77,8 +85,10 @@ export default function SupplierCatalogPage() {
   }, [load]);
 
   const pages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
+  const caps = useMemo(() => getCaps(user?.role), [user?.role]);
+  const dashboardPath = useMemo(() => getDashboardPath(user), [user]);
 
-  if (userLoaded && !isProRole(user?.role)) {
+  if (userLoaded && !(caps.canAccessPro || caps.canAccessAdmin)) {
     return <Navigate to="/" replace />;
   }
 
@@ -91,8 +101,8 @@ export default function SupplierCatalogPage() {
             Produits en gros proposés par les fournisseurs de la plateforme.
           </div>
         </div>
-        <Link to="/ma-boutique" className="btn btn-outline-dark">
-          Retour à ma boutique
+        <Link to={dashboardPath} className="btn btn-outline-dark">
+          Retour à mon espace
         </Link>
       </div>
 

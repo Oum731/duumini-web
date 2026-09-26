@@ -1,5 +1,7 @@
 // src/pages/home/CategoryHighlightsSection.tsx
 import { Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
+import { getCaps } from "../../utils/capabilities";
 
 type Tile = {
   key: string;
@@ -7,6 +9,7 @@ type Tile = {
   href: string;
   image: string;
   objectPosition?: string;
+  proOnly?: boolean;
 };
 
 const TILES: Tile[] = [
@@ -33,14 +36,20 @@ const TILES: Tile[] = [
     title: "Nouveaux fournisseurs",
     href: "/vendeur/fournisseurs",
     image: "/fournisseur.jpg",
+    proOnly: true,
   },
 ];
 
 export default function CategoryHighlightsSection() {
+  const { user } = useAuth();
+  const isProReady = !!user && getCaps(user.role).canAccessPro;
+  const isAdmin = !!user && getCaps(user.role).canAccessAdmin;
+  const tiles = TILES.filter((t) => !t.proOnly || isProReady || isAdmin);
+
   return (
     <section className="container-xxl py-4 py-md-5">
       <div className="row g-3">
-        {TILES.map((tile) => (
+        {tiles.map((tile) => (
           <div className="col-6 col-md-3" key={tile.key}>
             <Link
               to={tile.href}
