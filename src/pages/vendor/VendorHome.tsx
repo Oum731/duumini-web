@@ -31,7 +31,14 @@ type CurrentUser = {
 
 function isVendorRole(role?: string) {
   const r = String(role || "").toUpperCase();
-  return r === "VENDOR" || r === "VENDEUR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
+  return (
+    r === "VENDOR" ||
+    r === "VENDEUR" ||
+    r === "SELLER" ||
+    r === "SHOP" ||
+    r === "BOUTIQUE" ||
+    r === "ADMIN"
+  );
 }
 
 function mad(n?: number | null) {
@@ -445,10 +452,14 @@ export default function VendorHome() {
     };
   }, [refresh]);
 
-  // ✅ Protection : si pas vendeur → accueil (pas /admin)
-  if (user && !isVendor) return <Navigate to="/" replace />;
-
   const series = useMemo(() => kpi?.sales_series || [], [kpi]);
+
+  // ✅ Protection : si pas vendeur/admin → accueil
+  // (le useMemo ci-dessus doit rester avant ce retour anticipé : sinon le
+  // nombre de hooks appelés change entre le premier rendu, où `user` est
+  // encore null, et le suivant une fois `me()` résolu — React plante avec
+  // "Rendered fewer hooks than expected" au lieu de simplement rediriger).
+  if (user && !isVendor) return <Navigate to="/" replace />;
 
   return (
     <div className="container-xxl py-0 px-2 px-sm-3">

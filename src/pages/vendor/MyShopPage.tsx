@@ -32,7 +32,14 @@ const VENDOR_ROUTES = {
 
 function isVendorRole(role?: string) {
   const r = String(role || "").toUpperCase();
-  return r === "VENDEUR" || r === "VENDOR" || r === "SELLER" || r === "SHOP" || r === "BOUTIQUE";
+  return (
+    r === "VENDEUR" ||
+    r === "VENDOR" ||
+    r === "SELLER" ||
+    r === "SHOP" ||
+    r === "BOUTIQUE" ||
+    r === "ADMIN"
+  );
 }
 
 function toInput(v: any) {
@@ -187,9 +194,6 @@ export default function MyShopPage() {
     };
   }, []);
 
-  // Si connecté mais pas vendeur => home
-  if (user && !isVendor) return <Navigate to="/" replace />;
-
   function applyShop(s: Shop) {
     setShop(s);
     setName(toInput((s as any).name));
@@ -251,6 +255,12 @@ export default function MyShopPage() {
       }
     })();
   }, [user, isVendor, shopIdFromMe]);
+
+  // ✅ Ce retour anticipé doit rester après tous les hooks ci-dessus : sinon
+  // le nombre de hooks appelés change entre le premier rendu (user encore
+  // null) et le suivant une fois me() résolu, et React plante au lieu de
+  // simplement rediriger (voir le même correctif dans VendorHome.tsx).
+  if (user && !isVendor) return <Navigate to="/" replace />;
 
   async function onSave() {
     if (!shop?.id) return;
