@@ -20,6 +20,7 @@ import {
   BookOpen,
   UserPlus,
   Truck,
+  Search,
   LayoutGrid,
   Warehouse as WarehouseIcon,
   type LucideIcon,
@@ -76,9 +77,17 @@ export default function Navbar({ cartCount = 0 }: Props) {
   const [proOpen, setProOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const { user } = useAuth();
   const navigate = useNavigate();
-  const navRef = useRef<HTMLElement>(null);
+  const navRef = useRef<HTMLDivElement>(null);
+
+  function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const query = searchQuery.trim();
+    closeMenus();
+    navigate(query ? `/catalogue?q=${encodeURIComponent(query)}` : "/catalogue");
+  }
 
   const {
     isLoggedIn,
@@ -196,13 +205,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
   );
 
   return (
-    <nav
-      ref={navRef}
-      className="navbar navbar-expand-xl navbar-light sticky-top"
-      style={{ backgroundColor: "#fff" }}
-      role="navigation"
-      aria-label="Navigation principale"
-    >
+    <div ref={navRef} className="sticky-top" style={{ zIndex: 1030 }}>
       <style>{`
         /* ✅ Refonte 2026 : navbar B2B recolorée en vert (--dz-green), pour
            s'aligner sur l'accent principal du nouveau design system plutôt
@@ -238,7 +241,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
         .duu-brand-wrap{ min-width: 0; }
         .duu-brand-slogan{
           font-weight: 800;
-          color: rgba(0,0,0,.70);
+          color: rgba(255,255,255,.85);
           font-size: .78rem;
           line-height: 1.05;
           margin-top: -2px;
@@ -290,23 +293,108 @@ export default function Navbar({ cartCount = 0 }: Props) {
           font-weight: 700;
         }
         .shop-cta:hover{ color: var(--dz-green) !important; }
+        .duu-topbar-search input::placeholder{ color: rgba(0,0,0,.45); }
       `}</style>
 
-      <div className="container-xxl">
-        <Link
-          to="/"
-          className="navbar-brand d-flex align-items-center gap-2"
-          onClick={closeMenus}
-        >
-          <img src="/logo.jpeg" alt="Duumini" height={32} className="rounded" />
-
-          <div className="duu-brand-wrap">
-
-            <div className="duu-brand-slogan" title={DUUMINI_SLOGAN}>
-              {DUUMINI_SLOGAN}
+      <div className="w-100" style={{ background: "var(--duu-green)" }}>
+        <div className="container-xxl d-flex align-items-center gap-3 py-2 flex-wrap">
+          <Link
+            to="/"
+            className="d-flex align-items-center gap-2 text-decoration-none flex-shrink-0"
+            onClick={closeMenus}
+          >
+            <img src="/logo.jpeg" alt="Duumini" height={32} className="rounded" />
+            <div className="duu-brand-wrap">
+              <div className="duu-brand-slogan" title={DUUMINI_SLOGAN}>
+                {DUUMINI_SLOGAN}
+              </div>
             </div>
+          </Link>
+
+          <form
+            role="search"
+            onSubmit={handleSearchSubmit}
+            className="duu-topbar-search d-none d-md-flex flex-grow-1"
+            style={{ maxWidth: 640, height: 40, borderRadius: 8, overflow: "hidden" }}
+          >
+            <label htmlFor="navbar-search" className="visually-hidden">
+              Rechercher un produit
+            </label>
+            <input
+              id="navbar-search"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Rechercher un produit, une catégorie…"
+              style={{ flexGrow: 1, border: "none", padding: "0 14px", fontSize: 14, outline: "none" }}
+            />
+            <button
+              type="submit"
+              aria-label="Rechercher"
+              style={{
+                width: 48,
+                background: "var(--duu-orange)",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+              }}
+            >
+              <Search size={18} color="#fff" />
+            </button>
+          </form>
+
+          <div
+            className="d-none d-lg-flex align-items-center gap-2 text-white flex-shrink-0"
+            style={{ fontSize: 13, fontWeight: 600 }}
+          >
+            <Truck size={18} />
+            <span>Livraison partout au Maroc</span>
           </div>
-        </Link>
+        </div>
+      </div>
+
+      <nav
+        className="navbar navbar-expand-xl navbar-light"
+        style={{ backgroundColor: "#fff" }}
+        role="navigation"
+        aria-label="Navigation principale"
+      >
+      <div className="container-xxl">
+        <form
+          role="search"
+          onSubmit={handleSearchSubmit}
+          className="duu-topbar-search d-flex d-md-none w-100 my-2"
+          style={{ height: 40, borderRadius: 8, overflow: "hidden", border: "1px solid rgba(0,0,0,.15)" }}
+        >
+          <label htmlFor="navbar-search-mobile" className="visually-hidden">
+            Rechercher un produit
+          </label>
+          <input
+            id="navbar-search-mobile"
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Rechercher un produit…"
+            style={{ flexGrow: 1, border: "none", padding: "0 14px", fontSize: 14, outline: "none" }}
+          />
+          <button
+            type="submit"
+            aria-label="Rechercher"
+            style={{
+              width: 48,
+              background: "var(--duu-orange)",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+          >
+            <Search size={18} color="#fff" />
+          </button>
+        </form>
 
         <button
           className="navbar-toggler"
@@ -553,6 +641,7 @@ export default function Navbar({ cartCount = 0 }: Props) {
           </ul>
         </div>
       </div>
-    </nav>
+      </nav>
+    </div>
   );
 }

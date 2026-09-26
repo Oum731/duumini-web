@@ -89,8 +89,8 @@ export default function SellIntentGate() {
     <Modal open={open} title="Vous souhaitez vendre sur DUUMINI ?" onClose={handleNo}>
       <div className="mb-3" style={{ aspectRatio: "4 / 3", maxHeight: 180, margin: "0 auto" }}>
         <img
-          src="/market.png"
-          alt="Produits africains authentiques"
+          src="https://images.unsplash.com/photo-1521791136064-7986c2920216?w=480&h=360&fit=crop&q=80&auto=format"
+          alt="Commerçant préparant ses produits africains authentiques pour la vente"
           style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "var(--dz-radius-lg)" }}
         />
       </div>

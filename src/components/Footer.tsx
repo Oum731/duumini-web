@@ -1,6 +1,7 @@
 // src/components/Footer.tsx
 import React, { useEffect, useState } from "react";
 import { Link, type LinkProps } from "react-router-dom";
+import { ChevronUp } from "lucide-react";
 import { DUUMINI_SLOGAN, WHATSAPP_DISPLAY, WHATSAPP_LINK } from "../lib/brand";
 import { getSiteStatus, type SiteStatus } from "../services/products";
 import { useConsent } from "../context/ConsentContext";
@@ -64,7 +65,30 @@ export default function Footer() {
     // ✅ Refonte 2026 : footer repris en vert foncé (--dz-green-dark), en
     // écho aux bannières CTA de l'accueil, au lieu du fond blanc précédent —
     // même structure/liens/logique (statut boutique, cookies) qu'avant.
-    <footer className="duu-footer-dark mt-4" style={{ background: "var(--dz-green-dark)" }}>
+    <footer className="duu-footer-dark mt-4">
+      <button
+        type="button"
+        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        style={{
+          width: "100%",
+          background: "var(--duu-black)",
+          color: "#fff",
+          border: "none",
+          padding: "14px",
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}
+      >
+        <ChevronUp size={16} />
+        Retour en haut
+      </button>
+
+      <div style={{ background: "var(--dz-green-dark)" }}>
       <style>{`
         .duu-footer-dark{ font-family: var(--dz-font-body); }
         .duu-footer-slogan{
@@ -274,7 +298,7 @@ export default function Footer() {
 
         <div className="d-flex flex-column flex-sm-row justify-content-between gap-2">
           <div className="small text-muted">
-            © {new Date().getFullYear()} Duumini — Tous droits réservés.
+            © 2025 DUUMINI — Tous droits réservés
           </div>
           <div className="small">
             <TopLink to="/legal/privacy" className="duu-footer-link">
@@ -298,6 +322,7 @@ export default function Footer() {
             </button>
           </div>
         </div>
+      </div>
       </div>
     </footer>
   );
