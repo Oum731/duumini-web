@@ -8,8 +8,7 @@ const TRUST_ITEMS = [
   "Vendeurs vérifiés",
 ];
 
-const HERO_IMAGE =
-  "https://images.unsplash.com/photo-1741874299706-2b8e16839aaa?w=900&h=900&fit=crop&q=80&auto=format";
+const HERO_IMAGE = "/food.png";
 
 export default function HeroSection() {
   return (
@@ -80,7 +79,7 @@ export default function HeroSection() {
             >
               <img
                 src={HERO_IMAGE}
-                alt="Assortiment de produits africains authentiques prêts à être expédiés vers le Maroc"
+                alt="Plats africains authentiques : poisson braisé, attiéké, mafé et placali au poulet"
                 style={{
                   width: "100%",
                   aspectRatio: "1 / 1",

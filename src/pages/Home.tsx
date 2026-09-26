@@ -1,6 +1,7 @@
 // src/pages/Home.tsx
 import { Seo } from "../components/Seo";
 import HeroSection from "./home/HeroSection";
+import CategoryHighlightsSection from "./home/CategoryHighlightsSection";
 import PersonasSection from "./home/PersonasSection";
 import BuyingPathsSection from "./home/BuyingPathsSection";
 import MissionSection from "./home/MissionSection";
@@ -23,6 +24,7 @@ export default function Home() {
         path="/"
       />
       <HeroSection />
+      <CategoryHighlightsSection />
       <CategoriesSection />
       <PopularProductsSection />
       <PersonasSection />

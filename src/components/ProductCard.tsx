@@ -540,7 +540,7 @@ function ProductCardInner({
         .duu-media{
           position: relative;
           overflow: hidden;
-          background: linear-gradient(135deg, rgba(0,0,0,.03), rgba(0,0,0,.06));
+          background: var(--duu-green);
         }
         .duu-media--default{ aspect-ratio: 1 / 1; }
         .duu-media--fashion{ aspect-ratio: 4 / 5; }
