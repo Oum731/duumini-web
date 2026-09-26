@@ -33,10 +33,9 @@ export default function HeroSection() {
               livré <span style={{ color: "var(--duu-orange)" }}>partout au Maroc</span>
             </h1>
 
-            <p className="mb-4" style={{ fontSize: "1.05rem", maxWidth: 520, color: "rgba(255,255,255,.8)" }}>
-              Épicerie, mode et cosmétique subsahariens et africains authentiques.
-              DUUMINI connecte producteurs, revendeurs et consommateurs entre le
-              Maroc et la Côte d'Ivoire — commandez en ligne, payez à la livraison.
+            <p className="mb-4" style={{ fontSize: "1.05rem", maxWidth: 480, color: "rgba(255,255,255,.8)" }}>
+              Épicerie, mode et cosmétique africains authentiques. Commandez en
+              ligne, payez à la livraison.
             </p>
 
             <div className="d-flex flex-wrap gap-3 mb-4">

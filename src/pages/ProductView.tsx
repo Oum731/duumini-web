@@ -1036,7 +1036,7 @@ export default function ProductView() {
         .pv-gallery{
           border-radius: var(--dz-radius-md);
           overflow: hidden;
-          background: var(--dz-surface-2);
+          background: var(--duu-green);
           border: 1px solid var(--dz-line);
           position: relative;
         }
@@ -1045,12 +1045,12 @@ export default function ProductView() {
           aspect-ratio: 1 / 1;
           object-fit: cover;
           display: block;
-          background: var(--dz-surface-2);
+          background: var(--duu-green);
         }
         .pv-gallery-empty{
           width: 100%;
           aspect-ratio: 1 / 1;
-          background: repeating-linear-gradient(135deg, var(--dz-surface-2), var(--dz-surface-2) 10px, #E9E2D3 10px, #E9E2D3 20px);
+          background: var(--duu-green);
         }
 
         .pv-badge{
@@ -1123,7 +1123,7 @@ export default function ProductView() {
           border: 1px solid var(--dz-line);
           border-radius: var(--dz-radius-sm);
           overflow: hidden;
-          background: var(--dz-surface);
+          background: var(--duu-green);
           width: 78px;
           height: 78px;
           flex: 0 0 auto;

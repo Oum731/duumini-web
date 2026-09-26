@@ -285,7 +285,7 @@ function FocusAndLoadingStyle() {
         width: 100%;
         aspect-ratio: 1 / 1;
         object-fit: cover;
-        background: var(--dz-surface-2);
+        background: var(--duu-green);
       }
 
       .drink-card-body{
