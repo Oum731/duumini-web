@@ -1,6 +1,7 @@
 // src/pages/admin/OrdersAdminPage.tsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
+import { Download } from "lucide-react";
 
 import {
   listOrders,
@@ -11,6 +12,8 @@ import {
   type Order,
   type OrderStatus,
 } from "../../services/orders";
+
+import { exportOrdersToExcel } from "../../utils/exportOrdersExcel";
 
 import { subscribeSSE, type ServerEvent } from "../../services/events";
 import { me } from "../../services/auth";
@@ -87,6 +90,7 @@ export default function OrdersAdminPage() {
 
   const [openPos, setOpenPos] = useState(false);
   const [openAdminOrder, setOpenAdminOrder] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"orders" | "top-customers">("orders");
 
@@ -215,6 +219,53 @@ export default function OrdersAdminPage() {
       );
     });
   }, [dataset, q]);
+
+  const handleExportExcel = useCallback(async () => {
+    setExporting(true);
+    try {
+      let toExport: Order[];
+
+      if (isVendor) {
+        toExport = searched;
+      } else {
+        // ✅ L'admin ne voit qu'une page à la fois dans le tableau ; l'export
+        // doit couvrir toutes les commandes correspondant aux filtres actifs,
+        // pas seulement la page affichée.
+        const all: Order[] = [];
+        const exportPageSize = 200;
+        for (let p = 1; p <= 50; p++) {
+          const res = await listOrders({
+            page: p,
+            pageSize: exportPageSize,
+            ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
+            ...(payFilter !== "ALL" ? { payment_status: payFilter } : {}),
+            ...(qDebounced ? { q: qDebounced } : {}),
+          } as any);
+          const batch = (res.items || []) as Order[];
+          all.push(...batch);
+          if (batch.length < exportPageSize) break;
+        }
+        toExport = all;
+      }
+
+      if (!toExport.length) {
+        (window as any)?.duuminiToast?.({
+          title: "Rien à exporter",
+          message: "Aucune commande ne correspond aux filtres actuels.",
+        });
+        return;
+      }
+
+      exportOrdersToExcel(toExport);
+    } catch (e: any) {
+      (window as any)?.duuminiToast?.({
+        title: "Échec de l'export",
+        message: e?.message || "Impossible de générer le fichier Excel.",
+      });
+    } finally {
+      setExporting(false);
+    }
+  }, [isVendor, searched, statusFilter, payFilter, qDebounced]);
 
   const displayed = useMemo(() => {
     if (!isVendor) return searched;
@@ -449,6 +500,15 @@ export default function OrdersAdminPage() {
         }
         right={
           <>
+            <button
+              className="btn btn-outline-dark d-flex align-items-center gap-2"
+              onClick={handleExportExcel}
+              disabled={exporting}
+            >
+              <Download size={16} />
+              {exporting ? "Export en cours…" : "Exporter en Excel"}
+            </button>
+
             {!isVendor && (
               <>
                 <button className="btn btn-duu-orange" onClick={() => setOpenPos(true)}>
