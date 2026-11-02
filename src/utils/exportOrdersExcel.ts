@@ -66,5 +66,11 @@ export function exportOrdersToExcel(orders: Order[], filenamePrefix = "duumini-c
   XLSX.utils.book_append_sheet(workbook, worksheet, "Commandes");
 
   const today = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(workbook, `${filenamePrefix}-${today}.xlsx`);
+  // ✅ bookSST force les cellules texte en références vers une vraie table
+  // de chaînes partagées (xl/sharedStrings.xml, type "s") au lieu du type
+  // "str" par défaut de json_to_sheet — techniquement réservé aux résultats
+  // de formule par la norme OOXML. Sans ça, certains lecteurs mobiles
+  // (Excel/Sheets mobile, WPS...) plus stricts que Excel desktop peuvent
+  // refuser d'afficher ces cellules, voire la feuille entière.
+  XLSX.writeFile(workbook, `${filenamePrefix}-${today}.xlsx`, { bookSST: true });
 }
