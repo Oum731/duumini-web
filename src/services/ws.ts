@@ -7,9 +7,12 @@ let socket: Socket | null = null;
 export function connectWS(): Socket | null {
   if (socket && socket.connected) return socket;
 
-  const baseUrl = import.meta.env.VITE_API_BASE as string | undefined;
+  const baseUrl =
+    (import.meta.env.VITE_API_BASE as string | undefined) ||
+    (typeof window !== "undefined" ? window.location.origin : undefined);
+
   if (!baseUrl) {
-    console.warn("[WS] VITE_API_BASE manquant");
+    console.warn("[WS] impossible de déterminer l'URL de l'API");
     return null;
   }
 

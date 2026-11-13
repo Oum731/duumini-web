@@ -38,14 +38,10 @@ const ENV_API =
   (import.meta as any).env?.VITE_API_BASE?.toString().trim().replace(/\/+$/, "") ||
   "";
 
-const DEFAULT_PROD_API = "https://duumini-api.onrender.com";
-
+// API et site servis par la même app (même origine) -> aucun domaine
+// externe à coder en dur ici, ni en local ni en prod.
 function safeDefaultApiBase() {
-  const host = window.location.hostname;
-  const isLocal = host === "localhost" || host === "127.0.0.1";
-
-  if (isLocal) return window.location.origin.replace(/\/+$/, "");
-  return DEFAULT_PROD_API.replace(/\/+$/, "");
+  return window.location.origin.replace(/\/+$/, "");
 }
 
 export const API_BASE = ENV_API || safeDefaultApiBase();
