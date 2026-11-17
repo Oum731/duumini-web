@@ -152,9 +152,10 @@ export default function CheckoutPage() {
     if (fulfillment === "PICKUP" || fulfillment === "EXPEDITION") return true;
 
     if (hasToken) {
-      return useGps
-        ? !!coords
-        : communeVal.length > 0 && quartier.trim().length > 0;
+      // Commune obligatoire pour toute livraison, même avec le GPS : les
+      // coordonnées seules ne suffisent pas pour l'organisation logistique.
+      if (!(communeVal.length > 0)) return false;
+      return useGps ? !!coords : quartier.trim().length > 0;
     }
 
     return useGps ? !!coords : guestAddress.trim().length > 0;
@@ -1077,9 +1078,11 @@ export default function CheckoutPage() {
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label">Commune</label>
+                            <label className="form-label">Commune *</label>
                             <select
-                              className="form-select"
+                              className={`form-select ${
+                                !communeVal.length ? "is-invalid" : ""
+                              }`}
                               value={commune || "__other__"}
                               onChange={(e) => {
                                 const v = e.target.value;
@@ -1124,6 +1127,12 @@ export default function CheckoutPage() {
                                 "Choisissez une commune ou saisissez-la."
                               )}
                             </div>
+                            {!communeVal.length && (
+                              <div className="small text-danger mt-1">
+                                La commune est obligatoire pour valider la
+                                commande.
+                              </div>
+                            )}
                           </div>
 
                           <div className="col-12 col-md-6">
