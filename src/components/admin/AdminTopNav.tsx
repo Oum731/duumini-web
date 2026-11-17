@@ -184,8 +184,8 @@ export default function AdminTopNav({
           }
         }
         .admin-sidebar-card{
-          background: var(--dz-surface);
-          border: 1px solid var(--dz-line);
+          background: var(--duu-black);
+          border: 1px solid rgba(255,255,255,0.08);
           border-radius: var(--dz-radius-lg);
           box-shadow: var(--dz-shadow-sm);
           padding: 1rem;
@@ -219,13 +219,13 @@ export default function AdminTopNav({
           font-weight: 700;
           text-transform: uppercase;
           letter-spacing: .04em;
-          color: rgba(17,17,17,0.45);
+          color: rgba(207,227,216,0.55);
           padding: .3rem .6rem;
           margin-bottom: .2rem;
           cursor: pointer;
         }
         .admin-sidebar-group-label:hover{
-          color: rgba(17,17,17,0.75);
+          color: rgba(207,227,216,0.85);
         }
         .admin-sidebar-group-chevron{
           transition: transform .15s ease;
@@ -240,7 +240,7 @@ export default function AdminTopNav({
           gap: .6rem;
           padding: .55rem .6rem;
           border-radius: var(--dz-radius-md);
-          color: var(--dz-ink);
+          color: #CFE3D8;
           font-weight: 600;
           font-size: .92rem;
           text-decoration: none;
@@ -248,12 +248,12 @@ export default function AdminTopNav({
           transition: background .15s ease, color .15s ease;
         }
         .admin-sidebar-link:hover{
-          background: var(--dz-green-tint);
-          color: var(--dz-ink);
+          background: rgba(255,255,255,0.08);
+          color: #ffffff;
         }
         .admin-sidebar-link.active{
-          background: var(--dz-green);
-          color: #ffffff;
+          background: var(--duu-yellow);
+          color: var(--duu-black);
         }
       `}</style>
 
@@ -261,10 +261,10 @@ export default function AdminTopNav({
         {showTitle && (
           <div className="d-flex align-items-start justify-content-between gap-2 mb-3">
             <div>
-              <div className="dz-display fw-semibold" style={{ fontSize: "1.1rem", color: "var(--dz-ink)" }}>
+              <div className="dz-display fw-semibold" style={{ fontSize: "1.1rem", color: "#FFFFFF" }}>
                 {computedTitle}
               </div>
-              <div style={{ fontSize: ".85rem", color: "var(--dz-ink-muted)" }}>
+              <div style={{ fontSize: ".85rem", color: "rgba(207,227,216,0.7)" }}>
                 {isVendor
                   ? "Ventes, produits, promotions et dépenses."
                   : "Ventes, boutiques, utilisateurs, affiliés."}
@@ -273,8 +273,8 @@ export default function AdminTopNav({
                 <span
                   className="rounded-pill px-3 py-1"
                   style={{
-                    background: "var(--dz-green-tint)",
-                    color: "var(--dz-green)",
+                    background: "var(--duu-yellow)",
+                    color: "var(--duu-black)",
                     fontSize: "0.78rem",
                     fontWeight: 600,
                   }}
@@ -285,8 +285,8 @@ export default function AdminTopNav({
                   <span
                     className="rounded-pill px-3 py-1 text-truncate"
                     style={{
-                      background: "var(--dz-surface-2)",
-                      color: "var(--dz-ink)",
+                      background: "rgba(255,255,255,0.08)",
+                      color: "#FFFFFF",
                       fontSize: "0.78rem",
                       fontWeight: 500,
                       maxWidth: 160,
@@ -300,7 +300,8 @@ export default function AdminTopNav({
 
             <button
               type="button"
-              className="admin-sidebar-mobile-toggle btn btn-sm btn-outline-secondary"
+              className="admin-sidebar-mobile-toggle btn btn-sm"
+              style={{ borderColor: "rgba(255,255,255,0.25)", color: "#FFFFFF" }}
               onClick={() => setMobileOpen((v) => !v)}
               aria-expanded={mobileOpen}
               aria-label="Basculer le menu admin"
