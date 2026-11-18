@@ -16,7 +16,7 @@ import {
 import { exportOrdersToExcel } from "../../utils/exportOrdersExcel";
 
 import { subscribeSSE, type ServerEvent } from "../../services/events";
-import { me } from "../../services/auth";
+import { me, getAccessToken } from "../../services/auth";
 
 import OrdersStatsCards from "../../components/ordersAdmin/OrdersStatsCards";
 import OrdersFiltersBar from "../../components/ordersAdmin/OrdersFiltersBar";
@@ -173,7 +173,9 @@ export default function OrdersAdminPage() {
   }, [refresh]);
 
   useEffect(() => {
-    const sub = subscribeSSE("/api/events/stream", (evt: ServerEvent) => {
+    const token = getAccessToken();
+    const sseUrl = `/api/events/stream${token ? `?access_token=${encodeURIComponent(token)}` : ""}`;
+    const sub = subscribeSSE(sseUrl, (evt: ServerEvent) => {
       if (evt.type === "ORDER_CREATED" || evt.type === "ORDER_STATUS") {
         refresh();
 
