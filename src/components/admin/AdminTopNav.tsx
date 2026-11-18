@@ -4,15 +4,12 @@ import {
   LayoutDashboard,
   ShoppingBag,
   Boxes,
-  Percent,
   FileBarChart2,
   Sparkles,
   Megaphone,
   Users,
   Store,
   Wallet,
-  UserPlus,
-  Briefcase,
   Menu as MenuIcon,
   X as CloseIcon,
   ChevronDown,
@@ -121,7 +118,6 @@ export default function AdminTopNav({
         items: [
           { to: "/admin/orders", label: "Commandes", icon: ShoppingBag },
           { to: "/admin/products", label: "Produits", icon: Boxes },
-          { to: "/admin/promotions", label: "Promotions", icon: Percent },
         ],
       },
       {
@@ -145,8 +141,6 @@ export default function AdminTopNav({
       g.push({
         label: "Réseau",
         items: [
-          { to: "/admin/candidatures", label: "Candidatures", icon: UserPlus },
-          { to: "/admin/commerciaux", label: "Commerciaux", icon: Briefcase },
           { to: "/admin/shops", label: "Boutiques", icon: Store },
           { to: "/admin/suppliers", label: "Fournisseurs", icon: Building2 },
           { to: "/admin/vendors", label: "Vendeurs", icon: Store },
@@ -266,7 +260,7 @@ export default function AdminTopNav({
               </div>
               <div style={{ fontSize: ".85rem", color: "rgba(207,227,216,0.7)" }}>
                 {isVendor
-                  ? "Ventes, produits, promotions et dépenses."
+                  ? "Ventes, produits et dépenses."
                   : "Ventes, boutiques, utilisateurs, affiliés."}
               </div>
               <div className="d-flex flex-wrap gap-2 mt-2">
