@@ -301,7 +301,7 @@ export function KpiSparkCard({
       style={{ borderRadius: "var(--dz-radius-lg)" }}
     >
       <div className="card-body p-3 p-sm-4">
-        <div className="d-flex align-items-center justify-content-between mb-2 gap-2">
+        <div className="d-flex align-items-center justify-content-between flex-wrap mb-2 gap-2">
           <span
             className="d-inline-flex align-items-center justify-content-center flex-shrink-0"
             style={{
@@ -315,36 +315,39 @@ export function KpiSparkCard({
             <Icon size={18} strokeWidth={2.2} />
           </span>
 
-          {hasTrend ? (
-            <span
-              className="d-inline-flex align-items-center gap-1 px-2 py-1"
-              style={{
-                borderRadius: 999,
-                fontSize: ".72rem",
-                fontWeight: 700,
-                background: trendUp ? "var(--dz-green-tint)" : "var(--dz-red-tint)",
-                color: trendUp ? "var(--dz-green)" : "var(--dz-red)",
-              }}
-            >
-              {trendUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-              {Math.abs(trendPercent as number).toFixed(2)}%
-            </span>
-          ) : null}
+          <div className="d-flex align-items-center flex-wrap gap-2" style={{ minWidth: 0 }}>
+            {hasTrend ? (
+              <span
+                className="d-inline-flex align-items-center gap-1 px-2 py-1 flex-shrink-0"
+                style={{
+                  borderRadius: 999,
+                  fontSize: ".72rem",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                  background: trendUp ? "var(--dz-green-tint)" : "var(--dz-red-tint)",
+                  color: trendUp ? "var(--dz-green)" : "var(--dz-red)",
+                }}
+              >
+                {trendUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                {Math.abs(trendPercent as number).toFixed(2)}%
+              </span>
+            ) : null}
 
-          {periodOptions && periodOptions.length > 0 ? (
-            <select
-              className="form-select form-select-sm"
-              style={{ width: "auto", fontSize: ".78rem" }}
-              value={period}
-              onChange={(e) => onPeriodChange?.(e.target.value)}
-            >
-              {periodOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          ) : null}
+            {periodOptions && periodOptions.length > 0 ? (
+              <select
+                className="form-select form-select-sm"
+                style={{ width: "auto", maxWidth: "100%", fontSize: ".78rem" }}
+                value={period}
+                onChange={(e) => onPeriodChange?.(e.target.value)}
+              >
+                {periodOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
         </div>
 
         <div className="text-muted small text-truncate mb-1">{label}</div>
