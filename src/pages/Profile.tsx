@@ -14,6 +14,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { PageLoader } from "../components/ui/Spinner";
+import { getCaps } from "../utils/capabilities";
 import {
   type User,
   login,
@@ -60,6 +61,17 @@ async function apiOtpStart(
     method: "POST",
     body: JSON.stringify({ phone, purpose }),
   });
+}
+
+// Après connexion/inscription : chaque rôle arrive directement sur son
+// espace de gestion (admin -> /admin, vendeur/fournisseur/resto/commercial
+// -> /ma-boutique) au lieu de l'accueil public générique. Un simple
+// membre reste redirigé vers l'accueil, inchangé.
+function postLoginPath(u: User | null): string {
+  const caps = getCaps(u?.role);
+  if (caps.canAccessAdmin) return "/admin";
+  if (caps.canAccessPro) return "/ma-boutique";
+  return "/";
 }
 
 export default function ProfilePage() {
@@ -264,6 +276,7 @@ export default function ProfilePage() {
     try {
       const u = await login(phoneVal, loginPassword);
       setUser(u);
+      const redirectTo = postLoginPath(u);
 
       const uVille = titleCase((u as any)?.ville || "") || villeFromContext;
       const uCommune = titleCase((u as any)?.commune || "");
@@ -282,7 +295,7 @@ export default function ProfilePage() {
       if (uCommune && uQuartier)
         locApi.addQuartier(uVille, uCommune, uQuartier);
 
-      navigate("/", { replace: true });
+      navigate(redirectTo, { replace: true });
     } catch (e: any) {
       setErr(e.message || "Erreur de connexion");
     }
@@ -347,7 +360,7 @@ export default function ProfilePage() {
 
       const u = await login(phoneVal, regPassword);
       setUser(u);
-      navigate("/", { replace: true });
+      navigate(postLoginPath(u), { replace: true });
     } catch (e: any) {
       setErr(e.message || "Erreur d'inscription");
     }
