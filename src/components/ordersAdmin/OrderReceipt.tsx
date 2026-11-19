@@ -58,8 +58,9 @@ function paymentMethodLabel(method: any) {
   if (!m) return "—";
   if (["CASH", "ESPECES", "ESPÈCES"].includes(m)) return "Espèces";
   if (["CARD", "CARTE"].includes(m)) return "Carte";
-  if (["BANK_TRANSFER", "TRANSFER", "VIREMENT", "BANK"].includes(m))
+  if (["BANK_TRANSFER", "TRANSFER", "VIREMENT", "BANK", "BMCE"].includes(m))
     return "Virement";
+  if (["GAZHALA", "GHAZALA"].includes(m)) return "Ghazala";
   if (["DEPOT_VENTE", "DEPOT", "CONSIGNMENT"].includes(m)) return "Dépôt vente";
 
   return String(method);

@@ -17,7 +17,7 @@ import {
 
 type AnyObj = Record<string, any>;
 type CustomerRole = "CLIENT" | "VENDEUR";
-type PosPaymentMethod = "BMCE" | "GAZHALA" | "CASH";
+type PosPaymentMethod = "VIREMENT" | "GAZHALA" | "CASH";
 
 type Props = {
   open: boolean;
@@ -137,14 +137,14 @@ function normalizeCustomerRole(value: any): CustomerRole {
 }
 
 function normalizePaymentMethod(method: PosPaymentMethod) {
-  if (method === "BMCE" || method === "GAZHALA") return "BANK_TRANSFER";
+  if (method === "VIREMENT" || method === "GAZHALA") return "BANK_TRANSFER";
   return "CASH";
 }
 
 function getPaymentMethodLabel(method: PosPaymentMethod) {
-  if (method === "BMCE") return "BMCE";
-  if (method === "GAZHALA") return "GAZHALA";
-  return "CASH";
+  if (method === "VIREMENT") return "Virement";
+  if (method === "GAZHALA") return "Ghazala";
+  return "Cash";
 }
 
 export default function PosSaleModal({ open, onClose, onCreated }: Props) {
@@ -853,9 +853,9 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           onChange={(e) => setPayMethod(e.target.value as PosPaymentMethod)}
                           disabled={saving}
                         >
-                          <option value="BMCE">BMCE</option>
-                          <option value="GAZHALA">GAZHALA</option>
-                          <option value="CASH">CASH</option>
+                          <option value="CASH">Cash</option>
+                          <option value="VIREMENT">Virement</option>
+                          <option value="GAZHALA">Ghazala</option>
                         </select>
                       </div>
 

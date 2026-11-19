@@ -602,9 +602,8 @@ export default function OrderViewModal(props: {
                                   </div>
 
                                   <div className="col-12 col-md-4">
-                                    <input
-                                      className="form-control form-control-sm"
-                                      placeholder="Méthode (CASH, VIREMENT...)"
+                                    <select
+                                      className="form-select form-select-sm"
                                       value={payMethod}
                                       onChange={(e) =>
                                         canModifyFromFront &&
@@ -612,7 +611,11 @@ export default function OrderViewModal(props: {
                                       }
                                       disabled={!canModifyFromFront || paySaving}
                                       style={wrapText}
-                                    />
+                                    >
+                                      <option value="CASH">Cash</option>
+                                      <option value="VIREMENT">Virement</option>
+                                      <option value="GHAZALA">Ghazala</option>
+                                    </select>
                                   </div>
 
                                   <div className="col-12">

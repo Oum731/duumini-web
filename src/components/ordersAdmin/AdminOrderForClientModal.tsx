@@ -19,7 +19,7 @@ import { LoadingState } from "../ui/Spinner";
 type AnyObj = Record<string, any>;
 
 type CustomerRole = "CLIENT" | "VENDEUR";
-type AdminPaymentMethod = "BMCE" | "GAZHALA" | "CASH";
+type AdminPaymentMethod = "VIREMENT" | "GAZHALA" | "CASH";
 
 type ClientLite = {
   id: number;
@@ -194,14 +194,14 @@ function normalizeCustomerRole(value?: string | null): CustomerRole {
 }
 
 function normalizePaymentMethod(method: AdminPaymentMethod) {
-  if (method === "BMCE" || method === "GAZHALA") return "BANK_TRANSFER";
+  if (method === "VIREMENT" || method === "GAZHALA") return "BANK_TRANSFER";
   return "CASH";
 }
 
 function paymentMethodLabel(method: AdminPaymentMethod) {
-  if (method === "BMCE") return "BMCE";
-  if (method === "GAZHALA") return "GAZHALA";
-  return "CASH";
+  if (method === "VIREMENT") return "Virement";
+  if (method === "GAZHALA") return "Ghazala";
+  return "Cash";
 }
 
 function dedupeClients(list: ClientLite[]) {
@@ -1366,9 +1366,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         onChange={(e) => setPayMethod((e.target as HTMLSelectElement).value as AdminPaymentMethod)}
                         disabled={saving}
                       >
-                        <option value="BMCE">BMCE</option>
-                        <option value="GAZHALA">GAZHALA</option>
-                        <option value="CASH">CASH</option>
+                        <option value="CASH">Cash</option>
+                        <option value="VIREMENT">Virement</option>
+                        <option value="GAZHALA">Ghazala</option>
                       </select>
                     </div>
 
