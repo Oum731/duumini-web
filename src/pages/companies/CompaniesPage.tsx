@@ -6,12 +6,17 @@ import { getCompanyCaps } from "../../utils/capabilities";
 import { LoadingState } from "../../components/ui/Spinner";
 import {
   addCompanyMember,
+  attachShopToCompany,
   companyErrorMessage,
   createCompany,
+  detachShopFromCompany,
+  listAvailableShops,
   listCompanyMembers,
+  listCompanyShops,
   removeCompanyMember,
   updateCompanyMemberRole,
   type CompanyMember,
+  type CompanyShop,
   type InternalRole,
   type SupplierType,
 } from "../../services/companies";
@@ -336,6 +341,147 @@ function MembersPanel({ companyId, myRole }: { companyId: number; myRole?: Inter
   );
 }
 
+function ShopsPanel({ companyId, myRole }: { companyId: number; myRole?: InternalRole }) {
+  const [shops, setShops] = useState<CompanyShop[]>([]);
+  const [available, setAvailable] = useState<CompanyShop[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedShopId, setSelectedShopId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const caps = getCompanyCaps(myRole ?? null);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [shopsItems, availableItems] = await Promise.all([
+        listCompanyShops(companyId),
+        caps.canManageEmployees ? listAvailableShops(companyId) : Promise.resolve([]),
+      ]);
+      setShops(shopsItems);
+      setAvailable(availableItems);
+    } catch (e: any) {
+      setError(companyErrorMessage(e, "Impossible de charger les boutiques."));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  async function attach() {
+    const shopId = Number(selectedShopId);
+    if (!shopId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await attachShopToCompany(companyId, shopId);
+      setSelectedShopId("");
+      await load();
+    } catch (e: any) {
+      setError(companyErrorMessage(e, "Impossible de rattacher cette boutique."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function detach(shopId: number) {
+    if (!window.confirm("Détacher cette boutique de l'entreprise ?")) return;
+    try {
+      await detachShopFromCompany(companyId, shopId);
+      await load();
+    } catch (e: any) {
+      setError(companyErrorMessage(e, "Impossible de détacher cette boutique."));
+    }
+  }
+
+  return (
+    <div className="card p-3 mt-4" style={{ borderRadius: "var(--duu-radius-md, 18px)" }}>
+      <div className="d-flex align-items-center justify-content-between mb-3">
+        <h5 className="m-0">Boutiques</h5>
+      </div>
+      <p className="text-muted small mb-3">
+        Les boutiques rattachées sont visibles et gérables par tous les employés de
+        l'entreprise (commandes, produits, finances), au lieu d'être limitées à leur
+        propriétaire.
+      </p>
+
+      {error && <div className="alert alert-danger py-2">{error}</div>}
+      {loading && <LoadingState />}
+
+      {!loading && !shops.length && (
+        <div className="text-muted mb-3">Aucune boutique rattachée pour le moment.</div>
+      )}
+
+      {!loading && !!shops.length && (
+        <div className="table-responsive mb-3">
+          <table className="table align-middle">
+            <thead>
+              <tr>
+                <th>Boutique</th>
+                <th>Ville</th>
+                {caps.canManageEmployees && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {shops.map((s) => (
+                <tr key={s.id}>
+                  <td>{s.name}</td>
+                  <td>{s.city || "—"}</td>
+                  {caps.canManageEmployees && (
+                    <td>
+                      <button
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => detach(s.id)}
+                      >
+                        Détacher
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && caps.canManageEmployees && (
+        <div className="d-flex gap-2 align-items-end flex-wrap">
+          <div style={{ minWidth: 220 }}>
+            <label className="form-label">Rattacher une de mes boutiques</label>
+            <select
+              className="form-select"
+              value={selectedShopId}
+              onChange={(e) => setSelectedShopId(e.target.value)}
+              disabled={!available.length}
+            >
+              <option value="">
+                {available.length ? "Choisir une boutique…" : "Aucune boutique disponible"}
+              </option>
+              {available.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="btn btn-dark"
+            disabled={!selectedShopId || busy}
+            onClick={attach}
+          >
+            {busy ? "Rattachement…" : "Rattacher"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CompaniesPage() {
   const { myCompanies, activeCompanyId, activeCompany, setActiveCompany, loading, refresh } =
     useCompany();
@@ -369,7 +515,10 @@ export default function CompaniesPage() {
       <CreateCompanyForm onCreated={refresh} />
 
       {activeCompany && (
-        <MembersPanel companyId={activeCompany.id} myRole={activeCompany.my_role} />
+        <>
+          <MembersPanel companyId={activeCompany.id} myRole={activeCompany.my_role} />
+          <ShopsPanel companyId={activeCompany.id} myRole={activeCompany.my_role} />
+        </>
       )}
     </div>
   );

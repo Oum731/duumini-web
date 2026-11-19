@@ -114,3 +114,36 @@ export async function updateCompanyMemberRole(
 export async function removeCompanyMember(companyId: number, userId: number) {
   return api.delete<{ ok: true }>(`/api/companies/${companyId}/members/${userId}`);
 }
+
+/** ===== Boutiques (écran d'allocation — isolation par entreprise) ===== */
+
+export type CompanyShop = {
+  id: number;
+  name: string;
+  slug?: string | null;
+  city?: string | null;
+  owner_id: number;
+  shop_type?: string | null;
+};
+
+/** Boutiques déjà rattachées à l'entreprise */
+export async function listCompanyShops(companyId: number) {
+  const res = await api.get<{ items: CompanyShop[] }>(`/api/companies/${companyId}/shops`);
+  return res.items;
+}
+
+/** Boutiques possédées par l'utilisateur agissant, pas encore rattachées */
+export async function listAvailableShops(companyId: number) {
+  const res = await api.get<{ items: CompanyShop[] }>(
+    `/api/companies/${companyId}/shops/available`
+  );
+  return res.items;
+}
+
+export async function attachShopToCompany(companyId: number, shopId: number) {
+  return api.post<{ ok: true }>(`/api/companies/${companyId}/shops`, { shop_id: shopId });
+}
+
+export async function detachShopFromCompany(companyId: number, shopId: number) {
+  return api.delete<{ ok: true }>(`/api/companies/${companyId}/shops/${shopId}`);
+}
