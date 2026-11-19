@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -20,8 +20,11 @@ import {
   CreditCard,
   Building2,
   ClipboardList,
+  UserRound,
+  LogOut,
+  Globe2,
 } from "lucide-react";
-import { me } from "../../services/auth";
+import { me, logout } from "../../services/auth";
 
 type AnyObj = Record<string, any>;
 
@@ -77,6 +80,24 @@ export default function AdminTopNav({
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [loggingOut, setLoggingOut] = useState(false);
+  const navigate = useNavigate();
+
+  // ✅ Le sidebar admin est désormais la seule navigation affichée sur
+  // /admin (la navbar publique est masquée — voir App.tsx) : il doit donc
+  // offrir lui-même l'accès au profil et à la déconnexion, sinon un admin
+  // n'aurait plus aucun moyen de se déconnecter depuis cette page.
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch {
+    } finally {
+      setLoggingOut(false);
+      navigate("/", { replace: true });
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -249,6 +270,33 @@ export default function AdminTopNav({
           background: var(--duu-yellow);
           color: var(--duu-black);
         }
+        .admin-sidebar-account{
+          display: flex;
+          flex-direction: column;
+          gap: .2rem;
+          margin-bottom: 1rem;
+          padding-bottom: .75rem;
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .admin-sidebar-account-link{
+          display: flex;
+          align-items: center;
+          gap: .5rem;
+          padding: .4rem .6rem;
+          border-radius: var(--dz-radius-md);
+          color: #CFE3D8;
+          font-weight: 600;
+          font-size: .84rem;
+          text-decoration: none;
+          background: transparent;
+          border: 0;
+          text-align: left;
+          width: 100%;
+        }
+        .admin-sidebar-account-link:hover{
+          background: rgba(255,255,255,0.08);
+          color: #ffffff;
+        }
       `}</style>
 
       <div className="admin-sidebar-card">
@@ -306,6 +354,30 @@ export default function AdminTopNav({
         )}
 
         <div className={`admin-sidebar-body ${mobileOpen ? "open" : ""}`}>
+          <div className="admin-sidebar-account">
+            <NavLink
+              to="/profile"
+              className="admin-sidebar-account-link"
+              onClick={() => setMobileOpen(false)}
+            >
+              <UserRound size={16} strokeWidth={2.1} />
+              <span>Mon profil</span>
+            </NavLink>
+            <NavLink to="/" className="admin-sidebar-account-link" onClick={() => setMobileOpen(false)}>
+              <Globe2 size={16} strokeWidth={2.1} />
+              <span>Voir le site public</span>
+            </NavLink>
+            <button
+              type="button"
+              className="admin-sidebar-account-link"
+              onClick={handleLogout}
+              disabled={loggingOut}
+            >
+              <LogOut size={16} strokeWidth={2.1} />
+              <span>{loggingOut ? "Déconnexion…" : "Se déconnecter"}</span>
+            </button>
+          </div>
+
           {groups.map((group) => {
             const isCollapsed = collapsedGroups.has(group.label);
             return (

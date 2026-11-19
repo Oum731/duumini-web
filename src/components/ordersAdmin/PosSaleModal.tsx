@@ -8,12 +8,13 @@ import {
   type OrderStatus,
   type PaymentStatus,
 } from "../../services/orders";
-import { normalizePhone, isValidPhoneIntl } from "../../utils/phone";
+import { normalizePhone, normalizePhoneInput, isValidPhoneIntl } from "../../utils/phone";
 import { LoadingState } from "../ui/Spinner";
 import {
   listCommercialProfiles,
   type AdminCommercialProfile,
 } from "../../services/commercialProfiles";
+import { searchClients, type ClientSearchResult } from "../../services/adminUsers";
 
 type AnyObj = Record<string, any>;
 type CustomerRole = "CLIENT" | "VENDEUR";
@@ -152,6 +153,16 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
   const [cLast, setCLast] = useState("");
   const [cPhone, setCPhone] = useState("");
 
+  // ✅ Évite d'enregistrer deux fois le même client : recherche en direct
+  // (debounce) parmi les comptes/commandes existants pendant la saisie du
+  // téléphone. Si une erreur de frappe reproduit un numéro déjà connu, le
+  // vendeur voit la fiche existante et choisit de l'utiliser (évite
+  // d'écraser son nom par erreur) ou de corriger le numéro.
+  const [clientMatches, setClientMatches] = useState<ClientSearchResult[]>([]);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [matchDismissed, setMatchDismissed] = useState(false);
+
   const [cCity, setCCity] = useState("");
   const [cCommune, setCCommune] = useState("");
   const [cDistrict, setCDistrict] = useState("");
@@ -245,6 +256,11 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     setCFirst("");
     setCLast("");
     setCPhone("");
+
+    setClientMatches([]);
+    setMatchLoading(false);
+    setSelectedClientId(null);
+    setMatchDismissed(false);
 
     setCCity("");
     setCCommune("");
@@ -372,6 +388,66 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     };
   }, [open, loadAllProducts, loadCommercials]);
 
+  // ✅ Dès que le téléphone tapé ne correspond plus au client déjà
+  // sélectionné, on oublie la sélection (le vendeur est en train de
+  // corriger/changer de numéro) et on relance la recherche.
+  useEffect(() => {
+    if (!selectedClientId) return;
+    const match = clientMatches.find((c) => c.id === selectedClientId);
+    if (match && normalizePhoneInput(match.phone || "") !== normalizePhoneInput(cPhone)) {
+      setSelectedClientId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cPhone]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const digits = normalizePhoneInput(cPhone).replace(/[^\d+]/g, "");
+    if (digits.length < 6) {
+      setClientMatches([]);
+      setMatchLoading(false);
+      return;
+    }
+
+    setMatchDismissed(false);
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      setMatchLoading(true);
+      try {
+        const res = await searchClients(cPhone);
+        if (cancelled) return;
+        const needle = normalizePhoneInput(cPhone);
+        const matches = (res.items || []).filter((c) => {
+          const p = normalizePhoneInput(c.phone || "");
+          return p && (p === needle || p.includes(needle) || needle.includes(p));
+        });
+        setClientMatches(matches.slice(0, 5));
+      } catch {
+        if (!cancelled) setClientMatches([]);
+      } finally {
+        if (!cancelled) setMatchLoading(false);
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [cPhone, open]);
+
+  function selectClient(c: ClientSearchResult) {
+    setSelectedClientId(c.id);
+    setCFirst(c.first_name || "");
+    setCLast(c.last_name || "");
+    setCPhone(c.phone || cPhone);
+    if (c.city) setCCity(c.city);
+    if (c.commune) setCCommune(c.commune);
+    if (c.district) setCDistrict(c.district);
+    if (c.role) setCustomerRole(normalizeCustomerRole(c.role));
+    setClientMatches([]);
+  }
+
   const filteredResults = useMemo(() => {
     const ql = search.trim().toLowerCase();
     let arr = results;
@@ -455,10 +531,19 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     const payload = {
       customer_role: role,
       commercial_id: commercialId,
+      // ✅ Si un client existant a été sélectionné via la recherche par
+      // téléphone (voir selectClient), on le rattache explicitement au
+      // lieu de ne compter que sur le matching par téléphone côté
+      // backend — évite toute ambiguïté en cas de numéro modifié depuis.
+      customer_id: selectedClientId || undefined,
 
       contact: {
-        first_name: cFirst || "Client",
-        last_name: cLast || "POS",
+        // ✅ Laisser vide plutôt que défaulter à "Client"/"POS" : sinon,
+        // sur un client déjà existant (même numéro), le backend écrase
+        // son vrai nom par ce placeholder (voir updateUserProfileFromAdminOrder
+        // côté API — un champ vide/null n'est jamais écrit, un placeholder si).
+        first_name: cFirst.trim() || null,
+        last_name: cLast.trim() || null,
         phone: normalizedPhone,
         city: cCity || null,
         commune: cCommune || null,
@@ -910,12 +995,64 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
                       <div className="col-12">
                         <input
-                          className="form-control"
+                          className={`form-control ${selectedClientId ? "border-success" : ""}`}
                           placeholder="Téléphone (+212...)"
                           value={cPhone}
                           onChange={(e) => setCPhone(e.target.value)}
                           disabled={saving}
                         />
+
+                        {selectedClientId ? (
+                          <div className="alert alert-success py-2 px-3 mt-2 mb-0 d-flex align-items-center justify-content-between gap-2">
+                            <div className="small">
+                              Client existant sélectionné :{" "}
+                              <strong>
+                                {`${cFirst} ${cLast}`.trim() || `#${selectedClientId}`}
+                              </strong>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-dark"
+                              onClick={() => setSelectedClientId(null)}
+                              disabled={saving}
+                            >
+                              Changer
+                            </button>
+                          </div>
+                        ) : matchLoading ? (
+                          <div className="small text-muted mt-2">Recherche de client existant…</div>
+                        ) : clientMatches.length > 0 && !matchDismissed ? (
+                          <div className="alert alert-warning py-2 px-3 mt-2 mb-0">
+                            <div className="small fw-semibold mb-1">
+                              Un ou plusieurs clients existent déjà avec ce numéro :
+                            </div>
+                            <div className="d-flex flex-column gap-1">
+                              {clientMatches.map((c) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  className="btn btn-sm btn-outline-dark text-start"
+                                  onClick={() => selectClient(c)}
+                                  disabled={saving}
+                                >
+                                  {`${c.first_name || ""} ${c.last_name || ""}`.trim() || c.phone}{" "}
+                                  <span className="text-muted">
+                                    — {c.phone}
+                                    {c.city ? ` · ${c.city}` : ""}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-link px-0 mt-1"
+                              onClick={() => setMatchDismissed(true)}
+                              disabled={saving}
+                            >
+                              Ce n'est pas lui, continuer avec ce numéro
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="col-12 col-sm-6">

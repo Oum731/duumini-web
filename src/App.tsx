@@ -149,10 +149,26 @@ function AdminShell() {
   );
 }
 
+// ✅ /admin a son propre sidebar complet (AdminTopNav, avec son propre
+// accès profil/déconnexion — voir AdminTopNav.tsx) : la navbar publique
+// (recherche produit, livraison, Accueil/Acheter/Découvrir...) n'y a plus
+// sa place, elle double la navigation et pousse le contenu hors-écran sur
+// mobile (voir débordement signalé). Gardée partout ailleurs, y compris
+// pour les espaces pro sans sidebar dédié (/ma-boutique, /vendeur, ...)
+// qui dépendent encore de son dropdown "Espace pro" pour naviguer.
 function NavbarWithCount() {
   const { totalItems } = useCart();
+  const { pathname } = useLocation();
+
+  if (pathname.startsWith("/admin")) return null;
 
   return <Navbar cartCount={totalItems} />;
+}
+
+function FooterGate() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/admin")) return null;
+  return <Footer />;
 }
 
 function FloatingCartGuard() {
@@ -610,7 +626,7 @@ export default function App() {
           <GuestOrderWidget />
           <ScrollTopButton threshold={380} offsetBottom={84} offsetRight={16} />
           <FloatingCartGuard />
-          <Footer />
+          <FooterGate />
           <NotificationBubble />
           <CookieBanner />
           <SellIntentGate />
