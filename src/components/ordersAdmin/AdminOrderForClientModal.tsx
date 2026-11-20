@@ -18,7 +18,11 @@ import { LoadingState } from "../ui/Spinner";
 
 type AnyObj = Record<string, any>;
 
-type CustomerRole = "CLIENT" | "VENDEUR";
+type CustomerRole = "CLIENT" | "VENDEUR" | "RESTAURANT" | "FOURNISSEUR";
+const PROFESSIONAL_ROLES: CustomerRole[] = ["VENDEUR", "RESTAURANT", "FOURNISSEUR"];
+function isProfessionalRole(role: CustomerRole) {
+  return PROFESSIONAL_ROLES.includes(role);
+}
 type AdminPaymentMethod =
   | "CASH"
   | "VIREMENT_DUUMINI"
@@ -194,7 +198,8 @@ function normalizePhoneKey(phone?: string | null) {
 }
 
 function normalizeCustomerRole(value?: string | null): CustomerRole {
-  return String(value || "").trim().toUpperCase() === "VENDEUR" ? "VENDEUR" : "CLIENT";
+  const v = String(value || "").trim().toUpperCase();
+  return PROFESSIONAL_ROLES.includes(v as CustomerRole) ? (v as CustomerRole) : "CLIENT";
 }
 
 function normalizePaymentMethod(method: AdminPaymentMethod) {
@@ -692,13 +697,13 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       return;
     }
 
-    if (role === "VENDEUR") {
+    if (isProfessionalRole(role)) {
       if (!vendorCommercialName) {
-        alert("Le nom commercial est obligatoire pour un vendeur.");
+        alert("Le nom commercial est obligatoire pour un client professionnel (vendeur, restaurant, fournisseur).");
         return;
       }
       if (!vendorIce) {
-        alert("L'ICE est obligatoire pour un vendeur.");
+        alert("L'ICE est obligatoire pour un client professionnel (vendeur, restaurant, fournisseur).");
         return;
       }
     }
@@ -744,8 +749,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       last_name: selectedClient.last_name || undefined,
       phone: normalizePhoneKey(selectedClient.phone) || undefined,
       role,
-      commercial_name: role === "VENDEUR" ? vendorCommercialName : undefined,
-      ice: role === "VENDEUR" ? vendorIce : undefined,
+      commercial_name: isProfessionalRole(role) ? vendorCommercialName : undefined,
+      ice: isProfessionalRole(role) ? vendorIce : undefined,
       ...clientLocation,
     };
 
@@ -1058,7 +1063,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                                 {c.from_orders ? " • orders" : ""}
                                 {c.ville ? ` • ${c.ville}` : ""}
                                 {c.quartier ? ` • ${c.quartier}` : ""}
-                                {normalizeCustomerRole(c.role) === "VENDEUR" ? " • VENDEUR" : " • CLIENT"}
+                                {` • ${normalizeCustomerRole(c.role)}`}
                               </div>
                             </button>
                           );
@@ -1116,6 +1121,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                       >
                         <option value="CLIENT">CLIENT</option>
                         <option value="VENDEUR">VENDEUR</option>
+                        <option value="RESTAURANT">RESTAURANT</option>
+                        <option value="FOURNISSEUR">FOURNISSEUR AGRÉÉ</option>
                       </select>
                     </div>
 
@@ -1125,7 +1132,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         className="form-control duu-input"
                         value={commercialName}
                         onChange={(e) => setCommercialName((e.target as HTMLInputElement).value)}
-                        disabled={saving || customerRole !== "VENDEUR"}
+                        disabled={saving || !isProfessionalRole(customerRole)}
                         placeholder="Ex: MIENRA GROUP"
                       />
                     </div>
@@ -1136,14 +1143,15 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         className="form-control duu-input"
                         value={ice}
                         onChange={(e) => setIce((e.target as HTMLInputElement).value)}
-                        disabled={saving || customerRole !== "VENDEUR"}
+                        disabled={saving || !isProfessionalRole(customerRole)}
                         placeholder="Ex: 003492191000081"
                       />
                     </div>
                   </div>
 
                   <div className="small text-muted mt-1">
-                    La ville est obligatoire. Si le client est vendeur, le nom commercial et l’ICE sont obligatoires.
+                    La ville est obligatoire. Si le client est vendeur, restaurant ou fournisseur agréé, le nom
+                    commercial et l’ICE sont obligatoires.
                   </div>
 
                   <div className="row g-2 mt-2">

@@ -17,7 +17,11 @@ import {
 import { searchClients, type ClientSearchResult } from "../../services/adminUsers";
 
 type AnyObj = Record<string, any>;
-type CustomerRole = "CLIENT" | "VENDEUR";
+type CustomerRole = "CLIENT" | "VENDEUR" | "RESTAURANT" | "FOURNISSEUR";
+const PROFESSIONAL_ROLES: CustomerRole[] = ["VENDEUR", "RESTAURANT", "FOURNISSEUR"];
+function isProfessionalRole(role: CustomerRole) {
+  return PROFESSIONAL_ROLES.includes(role);
+}
 type PosPaymentMethod =
   | "CASH"
   | "VIREMENT_DUUMINI"
@@ -136,9 +140,8 @@ function computeAdminDiscountAmount(
 }
 
 function normalizeCustomerRole(value: any): CustomerRole {
-  return String(value || "").trim().toUpperCase() === "VENDEUR"
-    ? "VENDEUR"
-    : "CLIENT";
+  const v = String(value || "").trim().toUpperCase();
+  return PROFESSIONAL_ROLES.includes(v as CustomerRole) ? (v as CustomerRole) : "CLIENT";
 }
 
 function normalizePaymentMethod(method: PosPaymentMethod) {
@@ -521,13 +524,13 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
     const role = normalizeCustomerRole(customerRole);
 
-    if (role === "VENDEUR") {
+    if (isProfessionalRole(role)) {
       if (!commercialName.trim()) {
-        alert("Le nom commercial est obligatoire pour un client vendeur.");
+        alert("Le nom commercial est obligatoire pour un client professionnel (vendeur, restaurant, fournisseur).");
         return;
       }
       if (!customerIce.trim()) {
-        alert("L'ICE est obligatoire pour un client vendeur.");
+        alert("L'ICE est obligatoire pour un client professionnel (vendeur, restaurant, fournisseur).");
         return;
       }
     }
@@ -574,8 +577,8 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
         address_line: cAddress || null,
         landmark: cLandmark || null,
         role,
-        commercial_name: role === "VENDEUR" ? commercialName.trim() : null,
-        ice: role === "VENDEUR" ? customerIce.trim() : null,
+        commercial_name: isProfessionalRole(role) ? commercialName.trim() : null,
+        ice: isProfessionalRole(role) ? customerIce.trim() : null,
       },
 
       address: {
@@ -1140,10 +1143,12 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                         >
                           <option value="CLIENT">Client</option>
                           <option value="VENDEUR">Vendeur</option>
+                          <option value="RESTAURANT">Restaurant</option>
+                          <option value="FOURNISSEUR">Fournisseur agréé</option>
                         </select>
                       </div>
 
-                      {customerRole === "VENDEUR" ? (
+                      {isProfessionalRole(customerRole) ? (
                         <>
                           <div className="col-12 col-sm-4">
                             <input
@@ -1189,7 +1194,8 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
 
                     <div className="small text-muted mt-2">
                       Si le téléphone correspond à un compte existant, le backend mettra à jour ce compte avec le rôle
-                      choisi. Si tu choisis <strong>VENDEUR</strong>, le nom commercial et l’ICE sont obligatoires.
+                      choisi. Pour <strong>Vendeur</strong>, <strong>Restaurant</strong> ou{" "}
+                      <strong>Fournisseur agréé</strong>, le nom commercial et l’ICE sont obligatoires.
                     </div>
 
                     <div className="form-check mt-3">
