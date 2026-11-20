@@ -18,7 +18,11 @@ import { searchClients, type ClientSearchResult } from "../../services/adminUser
 
 type AnyObj = Record<string, any>;
 type CustomerRole = "CLIENT" | "VENDEUR";
-type PosPaymentMethod = "VIREMENT" | "GAZHALA" | "CASH";
+type PosPaymentMethod =
+  | "CASH"
+  | "VIREMENT_DUUMINI"
+  | "VIREMENT_VENDEUR"
+  | "GAZHALA";
 
 type Props = {
   open: boolean;
@@ -138,14 +142,33 @@ function normalizeCustomerRole(value: any): CustomerRole {
 }
 
 function normalizePaymentMethod(method: PosPaymentMethod) {
-  if (method === "VIREMENT" || method === "GAZHALA") return "BANK_TRANSFER";
-  return "CASH";
+  // ✅ Le backend reconnaît ces 4 valeurs directement (voir
+  // isBankTransferMethod côté API) — plus besoin de les regrouper sous
+  // "BANK_TRANSFER", ce qui perdait la distinction Duumini/vendeur.
+  return method;
 }
 
-function getPaymentMethodLabel(method: PosPaymentMethod) {
-  if (method === "VIREMENT") return "Virement";
-  if (method === "GAZHALA") return "Ghazala";
-  return "Cash";
+function getPaymentMethodLabel(method: PosPaymentMethod, vendorName?: string | null) {
+  if (method === "CASH") return "Cash";
+  if (method === "VIREMENT_DUUMINI") return "Virement Duumini";
+  if (method === "VIREMENT_VENDEUR") return `Virement ${vendorName || "vendeur"}`;
+  return "Ghazala";
+}
+
+// ✅ Nom du vendeur pour "Virement vendeur" : résolu depuis le panier quand
+// tous les articles appartiennent à la même boutique, sinon générique.
+function resolveBasketVendorName(basket: { product: Product }[]): string | null {
+  const shopIds = new Set<number>();
+  const names = new Set<string>();
+
+  for (const { product } of basket) {
+    const anyP = product as AnyObj;
+    if (anyP.shop_id != null) shopIds.add(Number(anyP.shop_id));
+    if (anyP.shop_name) names.add(String(anyP.shop_name));
+  }
+
+  if (shopIds.size === 1 && names.size === 1) return [...names][0];
+  return null;
 }
 
 export default function PosSaleModal({ open, onClose, onCreated }: Props) {
@@ -515,7 +538,7 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
     const status = computePayStatus(total, paid);
 
     const normalizedPhone = cPhone.trim() ? normalizePhone(cPhone) : null;
-    const paymentMethodLabel = getPaymentMethodLabel(payMethod);
+    const paymentMethodLabel = getPaymentMethodLabel(payMethod, resolveBasketVendorName(basket));
     const paymentMethodNormalized = normalizePaymentMethod(payMethod);
 
     const itemsPayload = basket.map((b) => {
@@ -939,7 +962,10 @@ export default function PosSaleModal({ open, onClose, onCreated }: Props) {
                           disabled={saving}
                         >
                           <option value="CASH">Cash</option>
-                          <option value="VIREMENT">Virement</option>
+                          <option value="VIREMENT_DUUMINI">Virement Duumini</option>
+                          <option value="VIREMENT_VENDEUR">
+                            Virement {resolveBasketVendorName(basket) || "vendeur"}
+                          </option>
                           <option value="GAZHALA">Ghazala</option>
                         </select>
                       </div>

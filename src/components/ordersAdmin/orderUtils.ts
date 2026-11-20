@@ -153,12 +153,17 @@ export function computeOrderAmounts(order: AnyObj) {
         ? numSafe(order.delivery.fee)
         : numSafe(order?.delivery_fee ?? order?.deliveryFee ?? 0);
 
+  // ✅ CA = produit réellement vendu (après réduction admin), pas le
+  // sous-total initial : on préfère discounted_items_amount à items_amount
+  // quand l'API le fournit (égal à items_amount si aucune réduction).
   let itemsAmount =
-    hasTotals && typeof totals.items_amount === "number"
-      ? Number(totals.items_amount)
-      : typeof order?.items_amount === "number"
-        ? Number(order.items_amount)
-        : 0;
+    hasTotals && typeof totals.discounted_items_amount === "number"
+      ? Number(totals.discounted_items_amount)
+      : hasTotals && typeof totals.items_amount === "number"
+        ? Number(totals.items_amount)
+        : typeof order?.items_amount === "number"
+          ? Number(order.items_amount)
+          : 0;
 
   if (!itemsAmount || itemsAmount <= 0) {
     const arr = Array.isArray(order?.items)

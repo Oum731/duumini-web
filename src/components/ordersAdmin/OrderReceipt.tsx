@@ -58,6 +58,8 @@ function paymentMethodLabel(method: any) {
   if (!m) return "—";
   if (["CASH", "ESPECES", "ESPÈCES"].includes(m)) return "Espèces";
   if (["CARD", "CARTE"].includes(m)) return "Carte";
+  if (m === "VIREMENT_DUUMINI") return "Virement Duumini";
+  if (m === "VIREMENT_VENDEUR") return "Virement vendeur";
   if (["BANK_TRANSFER", "TRANSFER", "VIREMENT", "BANK", "BMCE"].includes(m))
     return "Virement";
   if (["GAZHALA", "GHAZALA"].includes(m)) return "Ghazala";

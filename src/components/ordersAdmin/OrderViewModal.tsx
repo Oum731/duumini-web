@@ -426,6 +426,24 @@ export default function OrderViewModal(props: {
                                   {address.gps.lng?.toFixed?.(5)}
                                 </div>
                               ) : null}
+
+                              {address?.delivery_mode &&
+                              address.delivery_mode !== "GRATUITE" ? (
+                                <div className="small mt-2" style={wrapText}>
+                                  <span className="badge bg-secondary me-1">
+                                    {address.delivery_mode === "GAZHALA"
+                                      ? "Gazhala"
+                                      : address.delivery_mode === "LIVREUR"
+                                        ? "Livreur"
+                                        : address.delivery_mode}
+                                  </span>
+                                  {address?.delivery_covered_by_duumini ? (
+                                    <span className="badge bg-dark">
+                                      Prise en charge Duumini
+                                    </span>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
 
                             {(detail as AnyObj)?.geo_link ? (
@@ -613,7 +631,12 @@ export default function OrderViewModal(props: {
                                       style={wrapText}
                                     >
                                       <option value="CASH">Cash</option>
-                                      <option value="VIREMENT">Virement</option>
+                                      <option value="VIREMENT_DUUMINI">
+                                        Virement Duumini
+                                      </option>
+                                      <option value="VIREMENT_VENDEUR">
+                                        Virement vendeur
+                                      </option>
                                       <option value="GHAZALA">Ghazala</option>
                                     </select>
                                   </div>

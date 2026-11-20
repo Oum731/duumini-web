@@ -19,7 +19,11 @@ import { LoadingState } from "../ui/Spinner";
 type AnyObj = Record<string, any>;
 
 type CustomerRole = "CLIENT" | "VENDEUR";
-type AdminPaymentMethod = "VIREMENT" | "GAZHALA" | "CASH";
+type AdminPaymentMethod =
+  | "CASH"
+  | "VIREMENT_DUUMINI"
+  | "VIREMENT_VENDEUR"
+  | "GAZHALA";
 
 type ClientLite = {
   id: number;
@@ -194,14 +198,33 @@ function normalizeCustomerRole(value?: string | null): CustomerRole {
 }
 
 function normalizePaymentMethod(method: AdminPaymentMethod) {
-  if (method === "VIREMENT" || method === "GAZHALA") return "BANK_TRANSFER";
-  return "CASH";
+  // ✅ Le backend reconnaît ces 4 valeurs directement (isBankTransferMethod
+  // côté API) — garder la distinction Duumini/vendeur jusque dans le
+  // payment.method stocké, pas seulement dans le label affiché.
+  return method;
 }
 
-function paymentMethodLabel(method: AdminPaymentMethod) {
-  if (method === "VIREMENT") return "Virement";
-  if (method === "GAZHALA") return "Ghazala";
-  return "Cash";
+function paymentMethodLabel(method: AdminPaymentMethod, vendorName?: string | null) {
+  if (method === "CASH") return "Cash";
+  if (method === "VIREMENT_DUUMINI") return "Virement Duumini";
+  if (method === "VIREMENT_VENDEUR") return `Virement ${vendorName || "vendeur"}`;
+  return "Ghazala";
+}
+
+// ✅ Nom du vendeur pour "Virement vendeur" : résolu depuis le panier quand
+// tous les articles appartiennent à la même boutique, sinon générique.
+function resolveBasketVendorName(basket: { product: Product }[]): string | null {
+  const shopIds = new Set<number>();
+  const names = new Set<string>();
+
+  for (const { product } of basket) {
+    const anyP = product as AnyObj;
+    if (anyP.shop_id != null) shopIds.add(Number(anyP.shop_id));
+    if (anyP.shop_name) names.add(String(anyP.shop_name));
+  }
+
+  if (shopIds.size === 1 && names.size === 1) return [...names][0];
+  return null;
 }
 
 function dedupeClients(list: ClientLite[]) {
@@ -310,8 +333,11 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
 
   const [deliveryFee, setDeliveryFee] = useState<number>(0);
   const [deliveryMode, setDeliveryMode] = useState<
-    "SIMPLE" | "EXPRESS" | "CITY" | "CASABLANCA" | "PROMO_FREE"
-  >("SIMPLE");
+    "GRATUITE" | "GAZHALA" | "LIVREUR"
+  >("GRATUITE");
+  // ✅ "Livraison prise en charge" : Duumini paie/couvre le livreur au lieu
+  // du client — pertinent seulement pour Gazhala/Livreur (jamais Gratuite).
+  const [deliveryCovered, setDeliveryCovered] = useState(false);
 
   const [discountType, setDiscountType] = useState<AdminDiscountType>("NONE");
   const [discountValue, setDiscountValue] = useState<number>(0);
@@ -378,6 +404,13 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
   }, [paidClamped, amountPaid]);
 
   useEffect(() => {
+    if (deliveryMode === "GRATUITE") {
+      setDeliveryFee(0);
+      setDeliveryCovered(false);
+    }
+  }, [deliveryMode]);
+
+  useEffect(() => {
     if (!selectedClient) {
       setClientCity("");
       setClientDistrict("");
@@ -406,7 +439,8 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
     setMarkDone(true);
 
     setDeliveryFee(0);
-    setDeliveryMode("SIMPLE");
+    setDeliveryMode("GRATUITE");
+    setDeliveryCovered(false);
 
     setDiscountType("NONE");
     setDiscountValue(0);
@@ -715,7 +749,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
       ...clientLocation,
     };
 
-    const label = paymentMethodLabel(payMethod);
+    const label = paymentMethodLabel(payMethod, resolveBasketVendorName(basket));
     const backendMethod = normalizePaymentMethod(payMethod);
     const finalPayNote =
       payNote.trim() ||
@@ -753,6 +787,7 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
         mode: deliveryMode,
         fee: Math.max(0, numSafe(deliveryFee)),
         currency: "MAD",
+        covered_by_duumini: deliveryMode !== "GRATUITE" && deliveryCovered,
       },
 
       items: itemsPayload,
@@ -1285,11 +1320,9 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         onChange={(e) => setDeliveryMode((e.target as HTMLSelectElement).value as any)}
                         disabled={saving}
                       >
-                        <option value="SIMPLE">SIMPLE</option>
-                        <option value="EXPRESS">EXPRESS</option>
-                        <option value="CITY">CITY</option>
-                        <option value="CASABLANCA">CASABLANCA</option>
-                        <option value="PROMO_FREE">PROMO_FREE</option>
+                        <option value="GRATUITE">Gratuite</option>
+                        <option value="GAZHALA">Gazhala</option>
+                        <option value="LIVREUR">Livreur</option>
                       </select>
                     </div>
 
@@ -1302,9 +1335,26 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         className="form-control duu-input"
                         value={toInputNumberValue(deliveryFee)}
                         onChange={(e) => setDeliveryFee(fromInputNumberValue((e.target as HTMLInputElement).value))}
-                        disabled={saving}
+                        disabled={saving || deliveryMode === "GRATUITE"}
                       />
                     </div>
+
+                    {deliveryMode !== "GRATUITE" ? (
+                      <div className="col-12">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${deliveryCovered ? "btn-dark" : "btn-outline-dark"}`}
+                          onClick={() => setDeliveryCovered((v) => !v)}
+                          disabled={saving}
+                        >
+                          {deliveryCovered ? "✓ " : ""}Livraison prise en charge (Duumini)
+                        </button>
+                        <div className="small text-muted mt-1">
+                          À activer si c'est Duumini qui paie le {deliveryMode === "GAZHALA" ? "Gazhala" : "livreur"},
+                          pas le client.
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <hr className="my-3" />
@@ -1367,7 +1417,10 @@ export default function AdminOrderForClientModal({ open, onClose, onCreated }: P
                         disabled={saving}
                       >
                         <option value="CASH">Cash</option>
-                        <option value="VIREMENT">Virement</option>
+                        <option value="VIREMENT_DUUMINI">Virement Duumini</option>
+                        <option value="VIREMENT_VENDEUR">
+                          Virement {resolveBasketVendorName(basket) || "vendeur"}
+                        </option>
                         <option value="GAZHALA">Ghazala</option>
                       </select>
                     </div>
